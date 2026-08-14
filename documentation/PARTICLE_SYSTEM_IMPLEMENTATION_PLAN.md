@@ -925,15 +925,15 @@ pass。默认关闭 diagnostics 时不能引入逐粒子计数、GPU query 或 r
 - GPU event 不经 CPU count/readback 驱动 spawn；
 - event overflow、channel capacity 和 callback policy 有负向测试。
 
-### P5：Mesh、Ribbon/Trail 与高级渲染
+### P5：Mesh、Ribbon/Trail 与高级渲染（已完成）
 
 交付：
 
-- mesh instancing、mesh index 和 per-mesh bucket；
-- ribbon/trail topology、segment compact 和 indirect draw；
-- lit particle 与场景光照的受控子集；
-- per-view sorting、soft depth、Bloom/TAA composition 完整矩阵；
-- optional motion vector 仅在明确支持的 opaque/masked renderer 上开放。
+- [x] mesh instancing、mesh index 和 per-mesh bucket；
+- [x] ribbon/trail topology、segment compact 和 indirect draw；
+- [x] lit particle 与场景光照的受控子集；
+- [x] per-view sorting、soft depth、Bloom/TAA composition 完整矩阵；
+- [x] optional motion vector 仅在明确支持的 opaque/masked renderer 上开放。
 
 门禁：
 

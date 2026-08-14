@@ -45,7 +45,10 @@ import type {
 } from './ScriptableRenderGraph';
 import { depthClearValue } from '../renderer/DepthConvention';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
-import { particleGPUForwardFeature } from '../../particle/gpu/ParticleGPUForwardFeature';
+import {
+    particleGPUForwardFeature,
+    particleGPUOpaqueForwardFeature
+} from '../../particle/gpu/ParticleGPUForwardFeature';
 
 /** Stable stages at which a forward feature may synchronously record graph work. */
 export type ForwardRenderInjectionPoint =
@@ -78,6 +81,11 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
 export interface ForwardRenderPipelineFeatureRuntime {
     /** Request sampled scene depth for this frame before Forward allocates its attachments. */
     requiresSampledDepth?(context: RenderPipelineContext): boolean;
+    /**
+     * Request separate opaque and transparent scene passes for this frame. A conditional boundary
+     * feature is not recorded when every split request is inactive.
+     */
+    requiresSplitScene?(context: RenderPipelineContext): boolean;
     /**
      * Record this feature at its configured injection point.
      *
@@ -967,6 +975,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         let sampledDepth = false;
         let samplesBetweenQueues = false;
         let splitScene = false;
+        let unconditionalBoundaryFeature = false;
         for (let index = 0; index < features.length; index += 1) {
             const feature = features[index];
             const runtime = runtimes[index];
@@ -983,6 +992,13 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             sampledColor ||= feature.requirements.sampledSceneColor;
             sampledDepth ||= feature.requirements.sampledDepth;
             splitScene ||= feature.requirements.splitScene ?? false;
+            if (
+                (feature.injectionPoint === 'after-opaque' ||
+                    feature.injectionPoint === 'before-transparent') &&
+                runtime.requiresSplitScene === undefined
+            ) {
+                unconditionalBoundaryFeature = true;
+            }
             if (
                 feature.requirements.sampledSceneColor &&
                 (feature.injectionPoint === 'after-opaque' ||
@@ -1011,11 +1027,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         this.#requiresSampledColor = sampledColor;
         this.#requiresSampledDepth = sampledDepth;
         this.#samplesBetweenQueues = samplesBetweenQueues;
-        this.#splitScene =
-            options.opaqueTexture ||
-            splitScene ||
-            this.#groups[injectionPointIndex('after-opaque')]?.length !== 0 ||
-            this.#groups[injectionPointIndex('before-transparent')]?.length !== 0;
+        this.#splitScene = options.opaqueTexture || splitScene || unconditionalBoundaryFeature;
     }
 
     record(context: RenderPipelineContext): void {
@@ -1027,6 +1039,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             throw new Error('Sampled forward scene color requires a color output attachment');
         }
         this.#frameRequiresSampledDepth = this.#requiresSampledDepth;
+        let frameSplitScene = this.#splitScene;
         for (const feature of this.#compiledFeatures) {
             const required = feature.runtime.requiresSampledDepth?.(context);
             if (required !== undefined && typeof required !== 'boolean') {
@@ -1035,6 +1048,13 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 );
             }
             this.#frameRequiresSampledDepth ||= required ?? false;
+            const splitRequired = feature.runtime.requiresSplitScene?.(context);
+            if (splitRequired !== undefined && typeof splitRequired !== 'boolean') {
+                throw new TypeError(
+                    `Forward render feature ${feature.name} requiresSplitScene must return boolean`
+                );
+            }
+            frameSplitScene ||= splitRequired ?? false;
         }
         const sceneSampleCount: RenderTargetSampleCount =
             this.#frameRequiresSampledDepth || this.#samplesBetweenQueues
@@ -1076,7 +1096,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.recordFeatureGroup('after-shadow');
             this.recordFeatureGroup('before-opaque');
 
-            if (this.#splitScene) {
+            if (frameSplitScene) {
                 const opaque = context.createRendererList(this.#opaqueListDescriptor);
                 this.recordScenePass(
                     context,
@@ -1530,9 +1550,11 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     readonly #sceneScale: number;
 
     constructor(options: ForwardRenderPipelineFactoryOptions = {}) {
-        const features = [particleGPUForwardFeature, ...(options.features ?? [])].map(
-            snapshotFeature
-        );
+        const features = [
+            particleGPUOpaqueForwardFeature,
+            particleGPUForwardFeature,
+            ...(options.features ?? [])
+        ].map(snapshotFeature);
         const names = new Set<string>();
         for (const feature of features) {
             if (names.has(feature.name)) {

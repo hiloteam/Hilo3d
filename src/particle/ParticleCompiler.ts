@@ -1,4 +1,6 @@
 import { deriveParticleEmitterBounds, particleEmitterRequiresManualBounds } from './ParticleBounds';
+import Geometry from '../geometry/Geometry';
+import { TRIANGLES } from '../constants/webgl';
 import type {
     ParticleAttributeLayout,
     ParticleAttributeName,
@@ -26,9 +28,19 @@ import type {
 } from './ParticleTypes';
 
 /** Backend capabilities and optional automatic execution threshold used during plan selection. */
+export interface ParticleAdvancedQualityPlan {
+    /** Enable ribbon/trail topology. Explicit false fails definitions that require it. */
+    readonly ribbons?: boolean;
+    /** Enable the controlled Lambert scene-light subset. */
+    readonly litParticles?: boolean;
+    /** Enable portable opaque/masked mesh motion-vector output. */
+    readonly motionVectors?: boolean;
+}
+
 export interface ParticleCompilationEnvironment {
     readonly backend?: 'webgl2' | 'webgpu';
     readonly preferGPUAboveCapacity?: number;
+    readonly advancedQuality?: Readonly<ParticleAdvancedQualityPlan>;
 }
 
 interface AttributeShape {
@@ -56,7 +68,9 @@ const ATTRIBUTE_SHAPES: Readonly<Record<string, AttributeShape>> = Object.freeze
     'sprite-frame': { storage: 'f32', components: 1 },
     mass: { storage: 'f32', components: 1 },
     'noise-offset': { storage: 'f32', components: 3 },
-    'collision-state': { storage: 'u32', components: 1 }
+    'collision-state': { storage: 'u32', components: 1 },
+    'mesh-index': { storage: 'u32', components: 1 },
+    'ribbon-id': { storage: 'u32', components: 1 }
 });
 
 function align(value: number, alignment: number): number {
@@ -105,6 +119,48 @@ function validateColorValue(value: ParticleColorValue | undefined, label: string
         validateVector(value.max, 4, `${label}.max`);
     } else {
         validateVector(value, 4, label);
+    }
+}
+
+function validateIntegerScalar(value: ParticleScalarValue | undefined, label: string): void {
+    if (value === undefined) return;
+    const values = typeof value === 'number' ? [value] : [value.min, value.max];
+    for (const candidate of values) {
+        if (!Number.isSafeInteger(candidate) || candidate < 0) {
+            throw new RangeError(`${label} must contain non-negative safe integers`);
+        }
+    }
+    if (values.length === 2 && (values[0] ?? 0) > (values[1] ?? 0)) {
+        throw new RangeError(`${label}.min must not exceed max`);
+    }
+}
+
+function validateParticleGeometry(geometry: Geometry, label: string): void {
+    if (!(geometry instanceof Geometry)) throw new TypeError(`${label} must be a Geometry`);
+    if (geometry.mode !== TRIANGLES) {
+        throw new TypeError(`${label} must use triangle-list topology`);
+    }
+    const vertices = geometry.vertices;
+    if (vertices?.size !== 3 || vertices.count < 3) {
+        throw new TypeError(`${label} requires three-component positions`);
+    }
+    if (!(vertices.data instanceof Float32Array)) {
+        throw new TypeError(`${label} positions must use Float32Array storage`);
+    }
+    const normals = geometry.normals;
+    if (normals?.size !== 3 || normals.count !== vertices.count) {
+        throw new TypeError(`${label} requires one three-component normal per vertex`);
+    }
+    if (!(normals.data instanceof Float32Array)) {
+        throw new TypeError(`${label} normals must use Float32Array storage`);
+    }
+    const uvs = geometry.uvs;
+    if (uvs !== null && (uvs.size !== 2 || uvs.count !== vertices.count)) {
+        throw new TypeError(`${label} UVs must contain one vec2 per vertex`);
+    }
+    const indices = geometry.indices;
+    if (indices !== null && indices.size !== 1) {
+        throw new TypeError(`${label} indices must be scalar`);
     }
 }
 
@@ -402,7 +458,19 @@ function collectAttributes(emitter: ParticleEmitterDefinition): Set<ParticleAttr
         attributes.add('size');
         attributes.add('rotation');
         attributes.add('color');
-        attributes.add('sprite-frame');
+        if (emitter.renderers.some(renderer => renderer.type === 'sprite')) {
+            attributes.add('sprite-frame');
+        }
+        if (emitter.renderers.some(renderer => renderer.type === 'mesh')) {
+            attributes.add('mesh-index');
+        }
+        if (
+            emitter.renderers.some(
+                renderer => renderer.type === 'ribbon' || renderer.type === 'trail'
+            )
+        ) {
+            attributes.add('ribbon-id');
+        }
     }
     for (const module of emitter.modules) {
         switch (module.type) {
@@ -548,7 +616,10 @@ function selectPlanKind(
     return 'cpu-stateful';
 }
 
-function validateEmitter(emitter: ParticleEmitterDefinition): void {
+function validateEmitter(
+    emitter: ParticleEmitterDefinition,
+    environment: Readonly<ParticleCompilationEnvironment>
+): void {
     validateScalar(emitter.emission.rateOverTime, `${emitter.name}.emission.rateOverTime`);
     validateScalar(emitter.emission.rateOverDistance, `${emitter.name}.emission.rateOverDistance`);
     for (const [index, burst] of (emitter.emission.bursts ?? []).entries()) {
@@ -563,6 +634,8 @@ function validateEmitter(emitter: ParticleEmitterDefinition): void {
     validateScalar(emitter.initialize.size, `${emitter.name}.initialize.size`);
     validateScalar(emitter.initialize.rotation, `${emitter.name}.initialize.rotation`);
     validateScalar(emitter.initialize.mass, `${emitter.name}.initialize.mass`);
+    validateIntegerScalar(emitter.initialize.meshIndex, `${emitter.name}.initialize.meshIndex`);
+    validateIntegerScalar(emitter.initialize.ribbonId, `${emitter.name}.initialize.ribbonId`);
     validateVectorValue(emitter.initialize.position, `${emitter.name}.initialize.position`);
     validateVectorValue(emitter.initialize.direction, `${emitter.name}.initialize.direction`);
     validateColorValue(emitter.initialize.color, `${emitter.name}.initialize.color`);
@@ -576,7 +649,11 @@ function validateEmitter(emitter: ParticleEmitterDefinition): void {
         module => module.type === 'scene-depth-collision'
     );
     const usesSoftParticles = emitter.renderers.some(
-        renderer => renderer.softParticle !== undefined
+        renderer =>
+            (renderer.type === 'sprite' ||
+                renderer.type === 'ribbon' ||
+                renderer.type === 'trail') &&
+            renderer.softParticle !== undefined
     );
     if ((usesSceneDepthCollision || usesSoftParticles) && emitter.execution !== 'gpu') {
         throw new TypeError(
@@ -584,7 +661,96 @@ function validateEmitter(emitter: ParticleEmitterDefinition): void {
         );
     }
     for (const [index, renderer] of emitter.renderers.entries()) {
-        const soft = renderer.softParticle;
+        const rendererLabel = `${emitter.name}.renderers[${String(index)}]`;
+        if ('coverage' in renderer) {
+            const coverage = renderer.coverage ?? 'transparent';
+            if (coverage !== 'transparent' && renderer.blend !== undefined) {
+                throw new TypeError(`${rendererLabel}.blend requires transparent coverage`);
+            }
+            if (coverage === 'masked') {
+                const cutoff = renderer.alphaCutoff ?? 0.5;
+                requireFinite(cutoff, `${rendererLabel}.alphaCutoff`);
+                if (cutoff < 0 || cutoff > 1) {
+                    throw new RangeError(
+                        `${rendererLabel}.alphaCutoff must be between zero and one`
+                    );
+                }
+            }
+        }
+        if (renderer.type === 'mesh') {
+            if (
+                renderer.lighting === 'lambert' &&
+                environment.advancedQuality?.litParticles === false
+            ) {
+                throw new TypeError(`${rendererLabel} requires disabled lit-particle quality`);
+            }
+            if (renderer.meshes.length === 0 || renderer.meshes.length > 16) {
+                throw new RangeError(
+                    `${rendererLabel}.meshes must contain between 1 and 16 assets`
+                );
+            }
+            renderer.meshes.forEach((asset, assetIndex) => {
+                validateParticleGeometry(
+                    asset.geometry,
+                    `${rendererLabel}.meshes[${String(assetIndex)}].geometry`
+                );
+            });
+            const meshIndex = emitter.initialize.meshIndex;
+            const maximumIndex =
+                meshIndex === undefined
+                    ? 0
+                    : typeof meshIndex === 'number'
+                      ? meshIndex
+                      : meshIndex.max;
+            if (maximumIndex >= renderer.meshes.length) {
+                throw new RangeError(
+                    `${emitter.name}.initialize.meshIndex exceeds renderer mesh buckets`
+                );
+            }
+            if (
+                renderer.motionVectors === true &&
+                (renderer.coverage ?? 'transparent') === 'transparent'
+            ) {
+                throw new TypeError(
+                    `${rendererLabel}.motionVectors requires opaque or masked coverage`
+                );
+            }
+            if (
+                renderer.motionVectors === true &&
+                environment.advancedQuality?.motionVectors === false
+            ) {
+                throw new TypeError(`${rendererLabel} requires disabled motion-vector quality`);
+            }
+            if (renderer.motionVectors === true && emitter.execution === 'gpu') {
+                throw new TypeError(
+                    `${rendererLabel}.motionVectors is currently supported by portable CPU mesh output only`
+                );
+            }
+        } else if (renderer.type === 'ribbon' || renderer.type === 'trail') {
+            if (environment.advancedQuality?.ribbons === false) {
+                throw new TypeError(`${rendererLabel} requires disabled ribbon quality`);
+            }
+            if (
+                renderer.lighting === 'lambert' &&
+                environment.advancedQuality?.litParticles === false
+            ) {
+                throw new TypeError(`${rendererLabel} requires disabled lit-particle quality`);
+            }
+            requireFinite(renderer.widthScale ?? 1, `${rendererLabel}.widthScale`);
+            requireFinite(renderer.tilesPerUnit ?? 1, `${rendererLabel}.tilesPerUnit`);
+            if ((renderer.widthScale ?? 1) <= 0 || (renderer.tilesPerUnit ?? 1) <= 0) {
+                throw new RangeError(`${rendererLabel} widthScale/tilesPerUnit must be positive`);
+            }
+            if ((renderer.sort ?? 'none') !== 'none') {
+                throw new TypeError(
+                    `${rendererLabel}.sort cannot reorder ribbon topology; sort renderer groups instead`
+                );
+            }
+        }
+        const soft =
+            renderer.type === 'sprite' || renderer.type === 'ribbon' || renderer.type === 'trail'
+                ? renderer.softParticle
+                : undefined;
         if (soft === undefined) continue;
         requireFinite(
             soft.distance,
@@ -638,7 +804,7 @@ export function compileParticleSystemDefinition(
         }
     }
     const emitters = definition.emitters.map((emitter, index) => {
-        validateEmitter(emitter);
+        validateEmitter(emitter, environment);
         const layout = buildAttributeLayout(emitter);
         const luts = collectLUTs(emitter);
         const statelessModules = analyzeParticleStatelessEligibility(emitter);
@@ -683,6 +849,7 @@ export function compileParticleSystemDefinition(
             definition: definition.hash,
             backend: environment.backend ?? 'portable',
             threshold: environment.preferGPUAboveCapacity ?? 'none',
+            advancedQuality: environment.advancedQuality ?? 'default',
             layouts: emitters.map(emitter => emitter.layoutHash)
         }),
         emitters: Object.freeze(emitters)

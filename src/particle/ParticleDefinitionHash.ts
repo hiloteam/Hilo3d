@@ -1,10 +1,12 @@
 import Texture from '../texture/Texture';
+import Geometry from '../geometry/Geometry';
 import ParticleCurve from './ParticleCurve';
 import ParticleGradient from './ParticleGradient';
 import { ParticleParameter } from './ParticleParameter';
 
 function opaqueIdentity(value: object): string | null {
     if (value instanceof Texture) return `Texture(${value.id})`;
+    if (value instanceof Geometry) return `Geometry(${value.id})`;
     if (value instanceof ParticleParameter) {
         return `Parameter(${value.name}:${value.type})`;
     }
@@ -82,6 +84,7 @@ function snapshotValue(value: unknown, seen: Set<object>): unknown {
     }
     if (
         value instanceof Texture ||
+        value instanceof Geometry ||
         value instanceof ParticleCurve ||
         value instanceof ParticleGradient ||
         value instanceof ParticleParameter

@@ -2124,6 +2124,7 @@ export interface ForwardRenderPipelineFeatureRuntime {
     record(context: ForwardRenderFeatureContext): unknown;
     recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
     requiresSampledDepth?(context: RenderPipelineContext): boolean;
+    requiresSplitScene?(context: RenderPipelineContext): boolean;
     readonly usesRenderGraphTimeline?: boolean;
 }
 
@@ -5298,6 +5299,36 @@ export function parseRadianceHDR(input: ArrayBuffer | Uint8Array): RadianceHDRIm
 export const PARTICLE_DEFINITION_VERSION: 1;
 
 // @public
+export interface ParticleAdvancedQualityPlan {
+    readonly litParticles?: boolean;
+    readonly motionVectors?: boolean;
+    readonly ribbons?: boolean;
+}
+
+// @public
+export interface ParticleAdvancedSurfaceDefinition {
+    // (undocumented)
+    readonly alphaCutoff?: number;
+    // (undocumented)
+    readonly blend?: 'alpha' | 'premultiplied-alpha' | 'additive';
+    readonly composition?: ParticleCompositionMode;
+    // (undocumented)
+    readonly coverage?: ParticleSurfaceCoverage;
+    // (undocumented)
+    readonly depthTest?: boolean;
+    // (undocumented)
+    readonly depthWrite?: boolean;
+    // (undocumented)
+    readonly lighting?: ParticleLightingMode;
+    // (undocumented)
+    readonly renderOrder?: number;
+    // (undocumented)
+    readonly sort?: ParticleSortMode;
+    // (undocumented)
+    readonly texture?: Texture<unknown> | null;
+}
+
+// @public
 export type ParticleAnalyticCollider = ParticlePlaneCollider | ParticleSphereCollider | ParticleBoxCollider | ParticleCapsuleCollider;
 
 // @public
@@ -5328,7 +5359,7 @@ export interface ParticleAttributeLayout {
 }
 
 // @public
-export type ParticleAttributeName = 'stable-id' | 'generation' | 'alive' | 'age' | 'lifetime' | 'normalized-age' | 'position' | 'previous-position' | 'spawn-position' | 'velocity' | 'size' | 'base-size' | 'rotation' | 'base-rotation' | 'color' | 'base-color' | 'sprite-frame' | 'mass' | 'noise-offset' | 'collision-state' | `custom:${string}`;
+export type ParticleAttributeName = 'stable-id' | 'generation' | 'alive' | 'age' | 'lifetime' | 'normalized-age' | 'position' | 'previous-position' | 'spawn-position' | 'velocity' | 'size' | 'base-size' | 'rotation' | 'base-rotation' | 'color' | 'base-color' | 'sprite-frame' | 'mass' | 'noise-offset' | 'collision-state' | 'mesh-index' | 'ribbon-id' | `custom:${string}`;
 
 // @public
 export interface ParticleAutomaticBounds {
@@ -5518,8 +5549,10 @@ export interface ParticleColorOverLifetimeModule {
 // @public
 export type ParticleColorValue = ParticleColor | ParticleRange<ParticleColor>;
 
-// @public
+// @public (undocumented)
 export interface ParticleCompilationEnvironment {
+    // (undocumented)
+    readonly advancedQuality?: Readonly<ParticleAdvancedQualityPlan>;
     // (undocumented)
     readonly backend?: 'webgl2' | 'webgpu';
     // (undocumented)
@@ -5563,6 +5596,9 @@ export interface ParticleCompiledPlan {
     // (undocumented)
     readonly hash: string;
 }
+
+// @public
+export type ParticleCompositionMode = 'scene';
 
 // @public
 export interface ParticleConeShape extends ParticleShapeBase {
@@ -5898,8 +5934,10 @@ export interface ParticleInitializeDefinition {
     readonly lifetime?: ParticleScalarValue;
     // (undocumented)
     readonly mass?: ParticleScalarValue;
+    readonly meshIndex?: ParticleScalarValue;
     // (undocumented)
     readonly position?: ParticleVector3Value;
+    readonly ribbonId?: ParticleScalarValue;
     readonly rotation?: ParticleScalarValue;
     // (undocumented)
     readonly size?: ParticleScalarValue;
@@ -5944,6 +5982,9 @@ export interface ParticleLifetimeByEmitterSpeedModule {
 }
 
 // @public
+export type ParticleLightingMode = 'unlit' | 'lambert';
+
+// @public
 export interface ParticleLimitVelocityModule {
     // (undocumented)
     readonly dampen?: number;
@@ -5971,6 +6012,25 @@ export interface ParticleManualBounds {
     readonly min: ParticleVector3;
     // (undocumented)
     readonly mode: 'manual';
+}
+
+// @public
+export interface ParticleMeshAsset {
+    // (undocumented)
+    readonly geometry: Geometry;
+    // (undocumented)
+    readonly texture?: Texture<unknown> | null;
+}
+
+// @public
+export interface ParticleMeshRendererDefinition extends ParticleAdvancedSurfaceDefinition {
+    // (undocumented)
+    readonly meshes: readonly ParticleMeshAsset[];
+    readonly motionVectors?: boolean;
+    // (undocumented)
+    readonly orientation?: 'rotation' | 'velocity';
+    // (undocumented)
+    readonly type: 'mesh';
 }
 
 // @public
@@ -6071,7 +6131,25 @@ export type ParticleRange<T> = Readonly<{
 }>;
 
 // @public
-export type ParticleRendererDefinition = ParticleSpriteRendererDefinition;
+export type ParticleRendererDefinition = ParticleSpriteRendererDefinition | ParticleMeshRendererDefinition | ParticleRibbonRendererDefinition;
+
+// @public
+export interface ParticleRibbonRendererDefinition extends ParticleAdvancedSurfaceDefinition {
+    // (undocumented)
+    readonly facing?: 'view' | 'world-up';
+    readonly softParticle?: Readonly<{
+        readonly distance: number;
+        readonly contrast?: number;
+    }>;
+    // (undocumented)
+    readonly tilesPerUnit?: number;
+    // (undocumented)
+    readonly type: 'ribbon' | 'trail';
+    // (undocumented)
+    readonly uvMode?: 'stretch' | 'repeat';
+    // (undocumented)
+    readonly widthScale?: number;
+}
 
 // @public
 export interface ParticleRotateAroundPointModule {
@@ -6223,6 +6301,9 @@ export interface ParticleSubEmitterModule {
 }
 
 // @public
+export type ParticleSurfaceCoverage = 'opaque' | 'masked' | 'transparent';
+
+// @public
 export class ParticleSystem extends Node_2 {
     constructor(parameters: Readonly<ParticleSystemParameters>);
     get aliveCount(): number;
@@ -6251,6 +6332,8 @@ export class ParticleSystem extends Node_2 {
     gpuFrameSubmitted(frameIndex: number): void;
     // @internal
     get hasGPUEmitters(): boolean;
+    // @internal
+    get hasGPUOpaqueRenderers(): boolean;
     // (undocumented)
     pause(): this;
     // (undocumented)
@@ -6258,9 +6341,11 @@ export class ParticleSystem extends Node_2 {
     get playing(): boolean;
     // @internal
     prepareGPU(renderer: RendererContract): void;
+    // @internal
+    prepareView(camera: Camera): void;
     readEvents(maxEvents?: number): Promise<ParticleEventAggregate>;
     // @internal
-    recordGPU(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean): void;
+    recordGPU(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
     // @internal
     get requiresGPUSampledDepth(): boolean;
     // (undocumented)

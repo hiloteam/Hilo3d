@@ -1,4 +1,5 @@
 import type Texture from '../texture/Texture';
+import type Geometry from '../geometry/Geometry';
 import type ParticleCurve from './ParticleCurve';
 import type ParticleGradient from './ParticleGradient';
 
@@ -154,6 +155,10 @@ export interface ParticleInitializeDefinition {
     /** Rotation in radians. */
     readonly rotation?: ParticleScalarValue;
     readonly mass?: ParticleScalarValue;
+    /** Integer mesh bucket selected at spawn. Omit to distribute by stable particle id. */
+    readonly meshIndex?: ParticleScalarValue;
+    /** Integer ribbon group selected at spawn. Particles only link inside the same group. */
+    readonly ribbonId?: ParticleScalarValue;
 }
 
 /** Constant velocity added before integration. */
@@ -435,6 +440,30 @@ export type ParticleSpriteAlignment = 'view' | 'world-up' | 'stretched' | 'veloc
 /** Particle-level sort mode. */
 export type ParticleSortMode = 'none' | 'distance' | 'youngest' | 'oldest';
 
+/** Surface coverage used to place particle output in the shared render queues. */
+export type ParticleSurfaceCoverage = 'opaque' | 'masked' | 'transparent';
+
+/** Deliberately small scene-light subset supported by mesh and ribbon particles. */
+export type ParticleLightingMode = 'unlit' | 'lambert';
+
+/** Particle composition behavior relative to temporal and bloom stages. */
+export type ParticleCompositionMode = 'scene';
+
+/** Shared controls for non-sprite particle surfaces. */
+export interface ParticleAdvancedSurfaceDefinition {
+    readonly texture?: Texture<unknown> | null;
+    readonly coverage?: ParticleSurfaceCoverage;
+    readonly alphaCutoff?: number;
+    readonly blend?: 'alpha' | 'premultiplied-alpha' | 'additive';
+    readonly lighting?: ParticleLightingMode;
+    readonly depthTest?: boolean;
+    readonly depthWrite?: boolean;
+    readonly sort?: ParticleSortMode;
+    readonly renderOrder?: number;
+    /** P5 renders into linear scene color before Bloom; other policies fail at compile time. */
+    readonly composition?: ParticleCompositionMode;
+}
+
 /** Portable sprite output consumed by CPU and WebGPU plans. */
 export interface ParticleSpriteRendererDefinition {
     readonly type: 'sprite';
@@ -454,8 +483,40 @@ export interface ParticleSpriteRendererDefinition {
     }>;
 }
 
+/** One immutable geometry bucket consumed by a mesh particle renderer. */
+export interface ParticleMeshAsset {
+    readonly geometry: Geometry;
+    readonly texture?: Texture<unknown> | null;
+}
+
+/** Instanced mesh output. One draw is emitted per non-empty mesh bucket, never per particle. */
+export interface ParticleMeshRendererDefinition extends ParticleAdvancedSurfaceDefinition {
+    readonly type: 'mesh';
+    readonly meshes: readonly ParticleMeshAsset[];
+    readonly orientation?: 'rotation' | 'velocity';
+    /** Available only for opaque/masked portable CPU mesh output. */
+    readonly motionVectors?: boolean;
+}
+
+/** Ribbon and trail output compacting adjacent members of each ribbon into dense segments. */
+export interface ParticleRibbonRendererDefinition extends ParticleAdvancedSurfaceDefinition {
+    readonly type: 'ribbon' | 'trail';
+    readonly facing?: 'view' | 'world-up';
+    readonly widthScale?: number;
+    readonly uvMode?: 'stretch' | 'repeat';
+    readonly tilesPerUnit?: number;
+    /** Optional WebGPU scene-depth fade. Depth write must remain disabled. */
+    readonly softParticle?: Readonly<{
+        readonly distance: number;
+        readonly contrast?: number;
+    }>;
+}
+
 /** Renderer definitions remain separate from simulation modules. */
-export type ParticleRendererDefinition = ParticleSpriteRendererDefinition;
+export type ParticleRendererDefinition =
+    | ParticleSpriteRendererDefinition
+    | ParticleMeshRendererDefinition
+    | ParticleRibbonRendererDefinition;
 
 /** Immutable emitter authoring input. */
 export interface ParticleEmitterDefinitionInput {

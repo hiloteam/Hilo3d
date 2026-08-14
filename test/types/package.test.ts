@@ -53,6 +53,9 @@ import {
     type OrbitControlsOptions,
     type ParticleModule,
     type ParticleBudgetProfile,
+    type ParticleAdvancedQualityPlan,
+    type ParticleMeshRendererDefinition,
+    type ParticleRibbonRendererDefinition,
     type ParticleStatelessSupport,
     type ParticleSystemDefinitionInput,
     type ParticleSystemParameters,
@@ -176,6 +179,27 @@ const particleDefinitionInput = {
     ]
 } satisfies ParticleSystemDefinitionInput;
 const particleDefinition = ParticleSystemDefinition.create(particleDefinitionInput);
+const particleMeshRenderer = {
+    type: 'mesh',
+    meshes: [{ geometry: new BoxGeometry() }],
+    coverage: 'opaque',
+    lighting: 'lambert',
+    motionVectors: true
+} satisfies ParticleMeshRendererDefinition;
+const particleRibbonRenderer = {
+    type: 'trail',
+    widthScale: 0.5,
+    uvMode: 'repeat',
+    tilesPerUnit: 2
+} satisfies ParticleRibbonRendererDefinition;
+const particleAdvancedQuality = {
+    ribbons: true,
+    litParticles: true,
+    motionVectors: true
+} satisfies ParticleAdvancedQualityPlan;
+void particleMeshRenderer;
+void particleRibbonRenderer;
+void particleAdvancedQuality;
 const particleSystemParameters = {
     definition: particleDefinition,
     seed: 42,

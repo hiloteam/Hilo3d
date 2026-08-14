@@ -343,8 +343,16 @@ export class ParticleGPUSpawnController {
             1e-6,
             sampleParticleScalar(this.definition.initialize.mass, 1, this.key(particleId, 73))
         );
-        this.commands[offset + 14] = 0;
-        this.commands[offset + 15] = 0;
+        this.commands[offset + 14] = Math.floor(
+            sampleParticleScalar(
+                this.definition.initialize.meshIndex,
+                particleId,
+                this.key(particleId, 74)
+            )
+        );
+        this.commands[offset + 15] = Math.floor(
+            sampleParticleScalar(this.definition.initialize.ribbonId, 0, this.key(particleId, 75))
+        );
         this.#pendingSpawnCount++;
         this.#spawnSequence = (this.#spawnSequence + 1) >>> 0;
     }

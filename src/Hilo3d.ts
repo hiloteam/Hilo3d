@@ -67,6 +67,7 @@ export { default as OrbitControls, type OrbitControlsOptions } from './controls/
 
 export {
     compileParticleSystemDefinition,
+    type ParticleAdvancedQualityPlan,
     type ParticleCompilationEnvironment
 } from './particle/ParticleCompiler';
 export type {

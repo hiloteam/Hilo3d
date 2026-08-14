@@ -1,6 +1,8 @@
 import type Camera from '../../camera/Camera';
 import type { EventListener } from '../../core/EventDispatcher';
 import type Node from '../../core/Node';
+import DirectionalLight from '../../light/DirectionalLight';
+import Light from '../../light/Light';
 import {
     DEFAULT_MATERIAL_PIPELINE_STATE,
     type MaterialPipelineState
@@ -8,6 +10,7 @@ import {
 import { MaterialBlendPreset } from '../../material/MaterialCompiler';
 import ComputeKernel from '../../render/compute/ComputeKernel';
 import ComputeSampler from '../../render/compute/ComputeSampler';
+import type ComputeShader from '../../render/compute/ComputeShader';
 import type { RendererContract } from '../../render/RendererCore';
 import type { StorageBuffer } from '../../render/StorageBuffer';
 import UniformBuffer from '../../render/UniformBuffer';
@@ -39,6 +42,10 @@ import {
 import type { ParticleGPUSpawnController } from './ParticleGPUSpawnController';
 import type { ParticleSubEmitterModule } from '../ParticleTypes';
 import { ParticleGPUTransaction } from './ParticleGPUTransaction';
+import type {
+    ParticleGPUMeshRendererPlan,
+    ParticleGPURibbonRendererPlan
+} from './ParticleGPUAdvancedPlan';
 
 const EMPTY_SAMPLERS: readonly never[] = Object.freeze([]);
 const PARTICLE_PARAMETER_LAYOUT = createStd140Layout({
@@ -55,7 +62,16 @@ const PARTICLE_VIEW_LAYOUT = createStd140Layout({
     u_projectionMatrix: 'mat4',
     u_modelMatrix: 'mat4',
     u_cameraPosition: 'vec4',
-    u_viewport: 'vec4'
+    u_viewport: 'vec4',
+    u_particleAmbient: 'vec4',
+    u_particleDirectionalColor: { type: 'vec4', arrayLength: 4 },
+    u_particleDirectionalDirection: { type: 'vec4', arrayLength: 4 }
+});
+const PARTICLE_RIBBON_SORT_LAYOUT = createStd140Layout({
+    size: 'uint',
+    stride: 'uint',
+    capacity: 'uint',
+    padding: 'uint'
 });
 
 class MutableBufferBinding implements ComputeBufferBinding {
@@ -138,11 +154,12 @@ class MutableDepthAttachment implements RenderPipelineDepthStencilAttachment {
 class MutableIndirectDraw {
     readonly kind = 'draw-indirect';
     buffer = 0 as RenderGraphBufferHandle;
+    byteOffset = 0;
 }
 
 class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
     readonly uniformBuffers: readonly UniformBuffer[];
-    readonly buffers = [new MutableBufferBinding()];
+    readonly buffers: MutableBufferBinding[];
     readonly textures: { texture: RenderGraphTextureHandle }[] = [];
     readonly samplers: readonly ComputeSampler[];
     readonly samplesDepth: boolean;
@@ -156,9 +173,11 @@ class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
         readonly viewUniform: UniformBuffer,
         spriteSampler: ComputeSampler | null,
         depthSampler: ComputeSampler | null,
-        depthReadOnly: boolean
+        depthReadOnly: boolean,
+        bufferCount = 1
     ) {
         this.uniformBuffers = Object.freeze([viewUniform]);
+        this.buffers = Array.from({ length: bufferCount }, () => new MutableBufferBinding());
         this.samplers = Object.freeze([
             ...(spriteSampler === null ? [] : [spriteSampler]),
             ...(depthSampler === null ? [] : [depthSampler])
@@ -172,20 +191,28 @@ class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
     }
 
     configure(
-        rendererData: RenderGraphBufferHandle,
+        buffers: readonly RenderGraphBufferHandle[],
         indirect: RenderGraphBufferHandle,
+        indirectByteOffset: number,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
         texture: RenderGraphTextureHandle | null,
         context: RenderPipelineContext
     ): void {
-        const rendererBinding = this.buffers[0];
         const colorAttachment = this.colorAttachments[0];
-        if (!rendererBinding || !colorAttachment) {
+        if (!colorAttachment || buffers.length !== this.buffers.length) {
             throw new Error('Particle draw parameter storage is unavailable');
         }
-        rendererBinding.buffer = rendererData;
+        for (let index = 0; index < buffers.length; index += 1) {
+            const binding = this.buffers[index];
+            const buffer = buffers[index];
+            if (!binding || buffer === undefined) {
+                throw new Error('Particle draw buffer binding is unavailable');
+            }
+            binding.buffer = buffer;
+        }
         this.draw.buffer = indirect;
+        this.draw.byteOffset = indirectByteOffset;
         colorAttachment.texture = color;
         if (depth !== null && this.depthStencilAttachment !== undefined) {
             this.depthStencilAttachment.texture = depth;
@@ -255,6 +282,50 @@ interface ParticleEventRouteRuntime {
     frameIndex: number;
 }
 
+interface ParticleGPUMeshRuntime {
+    readonly kind: 'mesh';
+    readonly plan: Readonly<ParticleGPUMeshRendererPlan>;
+    readonly bucketIndices: StorageBuffer;
+    readonly bucketCounters: StorageBuffer;
+    readonly indirect: StorageBuffer;
+    readonly geometry: readonly StorageBuffer[];
+    readonly reset: ComputeRenderPass;
+    readonly build: ComputeRenderPass;
+    readonly finalize: ComputeRenderPass;
+    readonly resetParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly buildParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly finalizeParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly draws: readonly Readonly<{
+        standard: GPUDrivenRenderPass;
+        reversed: GPUDrivenRenderPass;
+        parameters: RenderPassParameterPool<ParticleDrawParameters>;
+    }>[];
+}
+
+interface ParticleGPURibbonRuntime {
+    readonly kind: 'ribbon';
+    readonly plan: Readonly<ParticleGPURibbonRendererPlan>;
+    readonly topology: StorageBuffer;
+    readonly segments: StorageBuffer;
+    readonly counter: StorageBuffer;
+    readonly indirect: StorageBuffer;
+    readonly reset: ComputeRenderPass;
+    readonly initializeTopology: ComputeRenderPass;
+    readonly sortTopology: ComputeRenderPass;
+    readonly buildSegments: ComputeRenderPass;
+    readonly finalize: ComputeRenderPass;
+    readonly resetParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly initializeParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly sortParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly buildParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly finalizeParameters: RenderPassParameterPool<ParticleComputeParameters>;
+    readonly standard: GPUDrivenRenderPass;
+    readonly reversed: GPUDrivenRenderPass;
+    readonly drawParameters: RenderPassParameterPool<ParticleDrawParameters>;
+}
+
+type ParticleGPUAdvancedRuntime = ParticleGPUMeshRuntime | ParticleGPURibbonRuntime;
+
 function blendState(
     blend: ParticleGPUCompiledPlan['renderers'][number]['definition']['blend']
 ): NonNullable<MaterialPipelineState['blend']> {
@@ -268,6 +339,14 @@ function blendState(
     }
 }
 
+function advancedBlendState(
+    definition:
+        ParticleGPUMeshRendererPlan['definition'] | ParticleGPURibbonRendererPlan['definition']
+): NonNullable<MaterialPipelineState['blend']> | undefined {
+    if ((definition.coverage ?? 'transparent') !== 'transparent') return undefined;
+    return blendState(definition.blend);
+}
+
 function drawPipelineState(
     renderer: ParticleGPUCompiledPlan['renderers'][number]['definition'],
     reversed: boolean
@@ -279,6 +358,27 @@ function drawPipelineState(
         depthWrite: renderer.depthWrite ?? false,
         depthCompare: reversed ? 'greater-equal' : 'less-equal',
         blend: blendState(renderer.blend)
+    });
+}
+
+function advancedDrawPipelineState(
+    definition:
+        ParticleGPUMeshRendererPlan['definition'] | ParticleGPURibbonRendererPlan['definition'],
+    reversed: boolean
+): Readonly<MaterialPipelineState> {
+    const transparent = (definition.coverage ?? 'transparent') === 'transparent';
+    const soft =
+        definition.type === 'ribbon' || definition.type === 'trail'
+            ? definition.softParticle
+            : undefined;
+    const blend = advancedBlendState(definition);
+    return Object.freeze({
+        ...DEFAULT_MATERIAL_PIPELINE_STATE,
+        cullMode: definition.type === 'mesh' ? 'back' : 'none',
+        depthTest: soft === undefined ? (definition.depthTest ?? true) : false,
+        depthWrite: definition.depthWrite ?? !transparent,
+        depthCompare: reversed ? 'greater-equal' : 'less-equal',
+        ...(blend === undefined ? {} : { blend })
     });
 }
 
@@ -378,6 +478,9 @@ export class ParticleGPUEmitterRuntime {
     };
     readonly #viewCameraPosition = new Float32Array(4);
     readonly #viewViewport = new Float32Array(4);
+    readonly #viewAmbient = new Float32Array(4);
+    readonly #viewDirectionalColors = new Float32Array(16);
+    readonly #viewDirectionalDirections = new Float32Array(16);
     readonly #recoveryPass: ComputeRenderPass;
     readonly #resetPass: ComputeRenderPass;
     readonly #simulatePass: ComputeRenderPass;
@@ -393,6 +496,7 @@ export class ParticleGPUEmitterRuntime {
     readonly #buildParameters: RenderPassParameterPool<ParticleComputeParameters>;
     readonly #sortParameters: RenderPassParameterPool<ParticleComputeParameters>;
     readonly #rendererPasses: readonly ParticleRendererPasses[];
+    readonly #advancedRuntimes: readonly ParticleGPUAdvancedRuntime[];
     readonly #eventRoutes = new Map<
         Readonly<ParticleSubEmitterModule>,
         ParticleEventRouteRuntime
@@ -418,10 +522,7 @@ export class ParticleGPUEmitterRuntime {
         this.transaction = new ParticleGPUTransaction(seed, definitionHash);
         this.#renderer = renderer;
         this.#buffers = createBufferSet(renderer, this.compiled);
-        const pass = (
-            shader: ParticleGPUCompiledPlan['shaders'][keyof ParticleGPUCompiledPlan['shaders']],
-            label: string
-        ): ComputeRenderPass => {
+        const pass = (shader: ComputeShader | null, label: string): ComputeRenderPass => {
             if (shader === null) throw new Error(`Particle compute shader ${label} is unavailable`);
             return new ComputeRenderPass(new ComputeKernel({ shader, label }), label);
         };
@@ -545,6 +646,205 @@ export class ParticleGPUEmitterRuntime {
                 });
             })
         );
+        const createAdvancedBuffer = (
+            suffix: string,
+            byteLength: number,
+            usage: Parameters<RendererContract['createStorageBuffer']>[0]['usage'],
+            initialData?: ArrayBufferView
+        ): StorageBuffer =>
+            renderer.createStorageBuffer({
+                label: `${plan.definition.name}:particle-${suffix}`,
+                byteLength,
+                usage,
+                recovery: 'cpu-shadow',
+                ...(initialData === undefined ? {} : { initialData })
+            });
+        this.#advancedRuntimes = Object.freeze(
+            this.compiled.advancedRenderers.map((advanced, advancedIndex) => {
+                if (advanced.kind === 'mesh') {
+                    const bucketIndices = createAdvancedBuffer(
+                        `mesh-${String(advancedIndex)}-bucket-indices`,
+                        advanced.bucketIndexByteLength,
+                        ['storage']
+                    );
+                    const bucketCounters = createAdvancedBuffer(
+                        `mesh-${String(advancedIndex)}-bucket-counters`,
+                        advanced.bucketCounterByteLength,
+                        ['storage']
+                    );
+                    const indirect = createAdvancedBuffer(
+                        `mesh-${String(advancedIndex)}-indirect`,
+                        advanced.indirectByteLength,
+                        ['storage', 'indirect']
+                    );
+                    const geometry = Object.freeze(
+                        advanced.assets.map((asset, assetIndex) =>
+                            createAdvancedBuffer(
+                                `mesh-${String(advancedIndex)}-geometry-${String(assetIndex)}`,
+                                Math.max(16, Math.ceil(asset.vertexData.byteLength / 16) * 16),
+                                ['storage'],
+                                asset.vertexData
+                            )
+                        )
+                    );
+                    const reset = pass(
+                        advanced.reset,
+                        `${plan.definition.name}:mesh-bucket-reset:${String(advancedIndex)}`
+                    );
+                    const build = pass(
+                        advanced.build,
+                        `${plan.definition.name}:mesh-bucket-build:${String(advancedIndex)}`
+                    );
+                    const finalize = pass(
+                        advanced.finalize,
+                        `${plan.definition.name}:mesh-indirect-finalize:${String(advancedIndex)}`
+                    );
+                    const draws = Object.freeze(
+                        advanced.assets.map((asset, assetIndex) => {
+                            const create = (reversed: boolean): GPUDrivenRenderPass =>
+                                new GPUDrivenRenderPass({
+                                    name: `${plan.definition.name}:mesh-${String(advancedIndex)}-${String(assetIndex)}-${reversed ? 'reversed' : 'standard'}`,
+                                    shader: asset.shader,
+                                    pipelineState: advancedDrawPipelineState(
+                                        advanced.definition,
+                                        reversed
+                                    )
+                                });
+                            return Object.freeze({
+                                standard: create(false),
+                                reversed: create(true),
+                                parameters: new RenderPassParameterPool(
+                                    () =>
+                                        new ParticleDrawParameters(
+                                            UniformBuffer.fromSchema(PARTICLE_VIEW_LAYOUT),
+                                            asset.texture === null || asset.texture === undefined
+                                                ? null
+                                                : sampler,
+                                            null,
+                                            !(advanced.definition.depthWrite ?? true),
+                                            3
+                                        )
+                                )
+                            });
+                        })
+                    );
+                    const runtime: ParticleGPUMeshRuntime = {
+                        kind: 'mesh',
+                        plan: advanced,
+                        bucketIndices,
+                        bucketCounters,
+                        indirect,
+                        geometry,
+                        reset,
+                        build,
+                        finalize,
+                        resetParameters: computePool(
+                            2,
+                            false,
+                            Math.max(1, Math.ceil(advanced.assets.length / 64))
+                        ),
+                        buildParameters: computePool(5, false, this.compiled.workgroupCount),
+                        finalizeParameters: computePool(
+                            2,
+                            false,
+                            Math.max(1, Math.ceil(advanced.assets.length / 64))
+                        ),
+                        draws
+                    };
+                    return runtime;
+                }
+                const topology = createAdvancedBuffer(
+                    `${advanced.definition.type}-${String(advancedIndex)}-topology`,
+                    advanced.topologyByteLength,
+                    ['storage']
+                );
+                const segments = createAdvancedBuffer(
+                    `${advanced.definition.type}-${String(advancedIndex)}-segments`,
+                    advanced.segmentByteLength,
+                    ['storage']
+                );
+                const counter = createAdvancedBuffer(
+                    `${advanced.definition.type}-${String(advancedIndex)}-counter`,
+                    advanced.counterByteLength,
+                    ['storage']
+                );
+                const indirect = createAdvancedBuffer(
+                    `${advanced.definition.type}-${String(advancedIndex)}-indirect`,
+                    advanced.indirectByteLength,
+                    ['storage', 'indirect']
+                );
+                const createDraw = (reversed: boolean): GPUDrivenRenderPass =>
+                    new GPUDrivenRenderPass({
+                        name: `${plan.definition.name}:${advanced.definition.type}-${reversed ? 'reversed' : 'standard'}`,
+                        shader: advanced.shader,
+                        pipelineState: advancedDrawPipelineState(advanced.definition, reversed)
+                    });
+                const sortParameters = new RenderPassParameterPool(
+                    () =>
+                        new ParticleComputeParameters(
+                            3,
+                            UniformBuffer.fromSchema(PARTICLE_RIBBON_SORT_LAYOUT),
+                            Math.max(1, Math.ceil(advanced.topologyCapacity / 64))
+                        )
+                );
+                const runtime: ParticleGPURibbonRuntime = {
+                    kind: 'ribbon',
+                    plan: advanced,
+                    topology,
+                    segments,
+                    counter,
+                    indirect,
+                    reset: pass(advanced.reset, `${plan.definition.name}:ribbon-reset`),
+                    initializeTopology: pass(
+                        advanced.initializeTopology,
+                        `${plan.definition.name}:ribbon-topology-initialize`
+                    ),
+                    sortTopology: pass(
+                        advanced.sortTopology,
+                        `${plan.definition.name}:ribbon-topology-sort`
+                    ),
+                    buildSegments: pass(
+                        advanced.buildSegments,
+                        `${plan.definition.name}:ribbon-segment-compact`
+                    ),
+                    finalize: pass(
+                        advanced.finalize,
+                        `${plan.definition.name}:ribbon-indirect-finalize`
+                    ),
+                    resetParameters: computePool(2, false, 1),
+                    initializeParameters: computePool(
+                        2,
+                        false,
+                        Math.max(1, Math.ceil(advanced.topologyCapacity / 64))
+                    ),
+                    sortParameters,
+                    buildParameters: computePool(
+                        6,
+                        false,
+                        Math.max(1, Math.ceil(advanced.topologyCapacity / 64))
+                    ),
+                    finalizeParameters: computePool(2, false, 1),
+                    standard: createDraw(false),
+                    reversed: createDraw(true),
+                    drawParameters: new RenderPassParameterPool(
+                        () =>
+                            new ParticleDrawParameters(
+                                UniformBuffer.fromSchema(PARTICLE_VIEW_LAYOUT),
+                                advanced.definition.texture === null ||
+                                    advanced.definition.texture === undefined
+                                    ? null
+                                    : sampler,
+                                advanced.definition.softParticle === undefined
+                                    ? null
+                                    : depthSampler,
+                                !(advanced.definition.depthWrite ?? false),
+                                1
+                            )
+                    )
+                };
+                return runtime;
+            })
+        );
         this.#restoredListener = (): void => {
             this.controller.restart();
             this.transaction.restart();
@@ -559,7 +859,8 @@ export class ParticleGPUEmitterRuntime {
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
         system: Node,
-        drawVisible: boolean
+        drawVisible: boolean,
+        phase: 'opaque' | 'transparent'
     ): void {
         this.assertAlive();
         const recordsSimulation =
@@ -601,7 +902,15 @@ export class ParticleGPUEmitterRuntime {
         const build = context.acquirePassParameters(this.#buildParameters);
         build.configure([activeState, activeAlive, imported.counters, imported.rendererData]);
         context.graph.addPass(this.#buildRendererPass, build);
-        this.recordDraws(context, imported, color, depth, system);
+        this.recordAdvancedBuilds(
+            context,
+            imported,
+            activeState,
+            activeAlive,
+            imported.rendererData,
+            phase
+        );
+        this.recordDraws(context, imported, color, depth, system, phase);
     }
 
     /** Route events captured by this frame directly into a target GPU emitter's active state. @internal */
@@ -697,6 +1006,19 @@ export class ParticleGPUEmitterRuntime {
             this.#buffers.indirect
         ]) {
             buffer.destroy();
+        }
+        for (const runtime of this.#advancedRuntimes) {
+            if (runtime.kind === 'mesh') {
+                runtime.bucketIndices.destroy();
+                runtime.bucketCounters.destroy();
+                runtime.indirect.destroy();
+                for (const geometry of runtime.geometry) geometry.destroy();
+            } else {
+                runtime.topology.destroy();
+                runtime.segments.destroy();
+                runtime.counter.destroy();
+                runtime.indirect.destroy();
+            }
         }
     }
 
@@ -819,36 +1141,91 @@ export class ParticleGPUEmitterRuntime {
         imported: ParticleGPUImportedBuffers,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        system: Node
+        system: Node,
+        phase: 'opaque' | 'transparent'
     ): void {
         context.camera.updateViewProjectionMatrix();
-        for (let index = 0; index < this.#rendererPasses.length; index += 1) {
-            const rendererPass = this.#rendererPasses[index];
-            const rendererPlan = this.compiled.renderers[index];
-            if (!rendererPass || !rendererPlan) continue;
-            if ((rendererPlan.definition.depthTest ?? true) && depth === null) {
-                throw new Error('GPU particle depth testing requires a Forward depth attachment');
+        if (phase === 'transparent') {
+            for (let index = 0; index < this.#rendererPasses.length; index += 1) {
+                const rendererPass = this.#rendererPasses[index];
+                const rendererPlan = this.compiled.renderers[index];
+                if (!rendererPass || !rendererPlan) continue;
+                if ((rendererPlan.definition.depthTest ?? true) && depth === null) {
+                    throw new Error(
+                        'GPU particle depth testing requires a Forward depth attachment'
+                    );
+                }
+                const parameters = context.acquirePassParameters(rendererPass.parameters);
+                this.writeViewUniform(parameters.viewUniform, context, system);
+                const texture = rendererPlan.definition.texture;
+                parameters.configure(
+                    [imported.rendererData],
+                    imported.indirect,
+                    0,
+                    color,
+                    depth,
+                    texture === null || texture === undefined
+                        ? null
+                        : context.graph.importTexture(texture),
+                    context
+                );
+                context.graph.addPass(
+                    context.camera.depthMode === 'reversed'
+                        ? rendererPass.reversed
+                        : rendererPass.standard,
+                    parameters
+                );
             }
-            const parameters = context.acquirePassParameters(rendererPass.parameters);
-            const viewUniform = parameters.viewUniform;
-            viewUniform.set('u_viewMatrix', context.camera.viewMatrix.elements);
-            viewUniform.set('u_projectionMatrix', context.camera.jitteredProjectionMatrix.elements);
-            viewUniform.set(
-                'u_modelMatrix',
-                this.compiled.emitter.definition.simulationSpace === 'local'
-                    ? system.worldMatrix.elements
-                    : IDENTITY_MATRIX
-            );
-            cameraPosition(context.camera, this.#viewCameraPosition);
-            this.#viewCameraPosition[3] = context.camera.depthMode === 'reversed' ? 1 : 0;
-            viewUniform.set('u_cameraPosition', this.#viewCameraPosition);
-            const viewport = context.viewport;
-            this.#viewViewport.set([viewport[2], viewport[3], 1 / viewport[2], 1 / viewport[3]]);
-            viewUniform.set('u_viewport', this.#viewViewport);
-            const texture = rendererPlan.definition.texture;
+        }
+        for (const runtime of this.#advancedRuntimes) {
+            const transparent =
+                (runtime.plan.definition.coverage ?? 'transparent') === 'transparent';
+            if ((phase === 'transparent') !== transparent) continue;
+            if ((runtime.plan.definition.depthTest ?? true) && depth === null) {
+                throw new Error(
+                    'Advanced GPU particle depth testing requires a Forward depth attachment'
+                );
+            }
+            if (runtime.kind === 'mesh') {
+                const bucketIndices = context.graph.importStorageBuffer(runtime.bucketIndices);
+                const indirect = context.graph.importStorageBuffer(runtime.indirect);
+                for (let assetIndex = 0; assetIndex < runtime.draws.length; assetIndex += 1) {
+                    const draw = runtime.draws[assetIndex];
+                    const asset = runtime.plan.assets[assetIndex];
+                    const geometry = runtime.geometry[assetIndex];
+                    if (!draw || !asset || !geometry) continue;
+                    const parameters = context.acquirePassParameters(draw.parameters);
+                    this.writeViewUniform(parameters.viewUniform, context, system);
+                    const texture = asset.texture;
+                    parameters.configure(
+                        [
+                            imported.rendererData,
+                            bucketIndices,
+                            context.graph.importStorageBuffer(geometry)
+                        ],
+                        indirect,
+                        assetIndex * 16,
+                        color,
+                        depth,
+                        texture === null || texture === undefined
+                            ? null
+                            : context.graph.importTexture(texture),
+                        context
+                    );
+                    context.graph.addPass(
+                        context.camera.depthMode === 'reversed' ? draw.reversed : draw.standard,
+                        parameters
+                    );
+                }
+                continue;
+            }
+            const parameters = context.acquirePassParameters(runtime.drawParameters);
+            this.writeViewUniform(parameters.viewUniform, context, system);
+            const texture = runtime.plan.definition.texture;
             parameters.configure(
-                imported.rendererData,
-                imported.indirect,
+                [context.graph.importStorageBuffer(runtime.segments)],
+                context.graph.importStorageBuffer(runtime.indirect),
+                0,
                 color,
                 depth,
                 texture === null || texture === undefined
@@ -857,12 +1234,128 @@ export class ParticleGPUEmitterRuntime {
                 context
             );
             context.graph.addPass(
-                context.camera.depthMode === 'reversed'
-                    ? rendererPass.reversed
-                    : rendererPass.standard,
+                context.camera.depthMode === 'reversed' ? runtime.reversed : runtime.standard,
                 parameters
             );
         }
+    }
+
+    private recordAdvancedBuilds(
+        context: RenderPipelineContext,
+        imported: ParticleGPUImportedBuffers,
+        state: RenderGraphBufferHandle,
+        alive: RenderGraphBufferHandle,
+        rendererData: RenderGraphBufferHandle,
+        phase: 'opaque' | 'transparent'
+    ): void {
+        for (const runtime of this.#advancedRuntimes) {
+            const transparent =
+                (runtime.plan.definition.coverage ?? 'transparent') === 'transparent';
+            if ((phase === 'transparent') !== transparent) continue;
+            if (runtime.kind === 'mesh') {
+                const bucketIndices = context.graph.importStorageBuffer(runtime.bucketIndices);
+                const bucketCounters = context.graph.importStorageBuffer(runtime.bucketCounters);
+                const indirect = context.graph.importStorageBuffer(runtime.indirect);
+                const reset = context.acquirePassParameters(runtime.resetParameters);
+                reset.configure([bucketCounters, indirect]);
+                context.graph.addPass(runtime.reset, reset);
+                const build = context.acquirePassParameters(runtime.buildParameters);
+                build.configure([state, alive, imported.counters, bucketIndices, bucketCounters]);
+                context.graph.addPass(runtime.build, build);
+                const finalize = context.acquirePassParameters(runtime.finalizeParameters);
+                finalize.configure([bucketCounters, indirect]);
+                context.graph.addPass(runtime.finalize, finalize);
+                continue;
+            }
+            const topology = context.graph.importStorageBuffer(runtime.topology);
+            const segments = context.graph.importStorageBuffer(runtime.segments);
+            const counter = context.graph.importStorageBuffer(runtime.counter);
+            const indirect = context.graph.importStorageBuffer(runtime.indirect);
+            const reset = context.acquirePassParameters(runtime.resetParameters);
+            reset.configure([counter, indirect]);
+            context.graph.addPass(runtime.reset, reset);
+            const initialize = context.acquirePassParameters(runtime.initializeParameters);
+            initialize.configure([imported.counters, topology]);
+            context.graph.addPass(runtime.initializeTopology, initialize);
+            let size = 2;
+            while (size <= runtime.plan.topologyCapacity) {
+                let stride = size >>> 1;
+                while (stride > 0) {
+                    const sort = context.acquirePassParameters(runtime.sortParameters);
+                    const uniform = sort.uniformBuffers[0];
+                    if (!uniform) throw new Error('Particle ribbon sort uniform is unavailable');
+                    uniform.set('size', size);
+                    uniform.set('stride', stride);
+                    uniform.set('capacity', runtime.plan.topologyCapacity);
+                    uniform.set('padding', 0);
+                    sort.configure([state, alive, topology]);
+                    context.graph.addPass(runtime.sortTopology, sort);
+                    stride >>>= 1;
+                }
+                size <<= 1;
+            }
+            const build = context.acquirePassParameters(runtime.buildParameters);
+            build.configure([state, alive, rendererData, topology, counter, segments]);
+            context.graph.addPass(runtime.buildSegments, build);
+            const finalize = context.acquirePassParameters(runtime.finalizeParameters);
+            finalize.configure([counter, indirect]);
+            context.graph.addPass(runtime.finalize, finalize);
+        }
+    }
+
+    private writeViewUniform(
+        viewUniform: UniformBuffer,
+        context: RenderPipelineContext,
+        system: Node
+    ): void {
+        viewUniform.set('u_viewMatrix', context.camera.viewMatrix.elements);
+        viewUniform.set('u_projectionMatrix', context.camera.jitteredProjectionMatrix.elements);
+        viewUniform.set(
+            'u_modelMatrix',
+            this.compiled.emitter.definition.simulationSpace === 'local'
+                ? system.worldMatrix.elements
+                : IDENTITY_MATRIX
+        );
+        cameraPosition(context.camera, this.#viewCameraPosition);
+        this.#viewCameraPosition[3] = context.camera.depthMode === 'reversed' ? 1 : 0;
+        viewUniform.set('u_cameraPosition', this.#viewCameraPosition);
+        const viewport = context.viewport;
+        this.#viewViewport.set([viewport[2], viewport[3], 1 / viewport[2], 1 / viewport[3]]);
+        viewUniform.set('u_viewport', this.#viewViewport);
+        this.collectSceneLighting(context);
+        viewUniform.set('u_particleAmbient', this.#viewAmbient);
+        viewUniform.set('u_particleDirectionalColor', this.#viewDirectionalColors);
+        viewUniform.set('u_particleDirectionalDirection', this.#viewDirectionalDirections);
+    }
+
+    private collectSceneLighting(context: RenderPipelineContext): void {
+        this.#viewAmbient.fill(0);
+        this.#viewDirectionalColors.fill(0);
+        this.#viewDirectionalDirections.fill(0);
+        this.#viewAmbient[3] = 1;
+        let directionalIndex = 0;
+        context.scene.traverse(node => {
+            if (!(node instanceof Light) || !node.enabled) return;
+            const red = node.color.r * node.amount;
+            const green = node.color.g * node.amount;
+            const blue = node.color.b * node.amount;
+            if (node.isAmbientLight) {
+                this.#viewAmbient[0] = (this.#viewAmbient[0] ?? 0) + red;
+                this.#viewAmbient[1] = (this.#viewAmbient[1] ?? 0) + green;
+                this.#viewAmbient[2] = (this.#viewAmbient[2] ?? 0) + blue;
+                return;
+            }
+            if (!(node instanceof DirectionalLight) || directionalIndex >= 4) return;
+            const direction = node.getWorldDirection();
+            const offset = directionalIndex * 4;
+            this.#viewDirectionalColors[offset] = red;
+            this.#viewDirectionalColors[offset + 1] = green;
+            this.#viewDirectionalColors[offset + 2] = blue;
+            this.#viewDirectionalDirections[offset] = direction.x;
+            this.#viewDirectionalDirections[offset + 1] = direction.y;
+            this.#viewDirectionalDirections[offset + 2] = direction.z;
+            directionalIndex++;
+        });
     }
 
     private writeParticleUniform(parameters: ParticleComputeParameters): void {

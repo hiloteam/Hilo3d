@@ -13,7 +13,7 @@ import {
 import type { ParticleCompiledEmitterPlan, ParticleCompiledPlan } from './ParticleCompiledPlan';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
 import type { ParticleScalarValue, ParticleVector3 } from './ParticleTypes';
-import { ParticleCPUInstanceWriter } from './cpu/ParticleCPUInstanceWriter';
+import { createParticleCPUWriters, type ParticleCPUWriter } from './cpu/ParticleCPUWriter';
 import {
     ParticleCPUSimulator,
     type ParticleEmitterFrameContext,
@@ -34,7 +34,7 @@ interface ParticleEmitterRuntime {
     readonly simulator: ParticleCPUSimulator | ParticleStatelessRuntime | null;
     readonly gpuController: ParticleGPUSpawnController | null;
     gpuRuntime: ParticleGPUEmitterRuntime | null;
-    readonly writers: readonly ParticleCPUInstanceWriter[];
+    readonly writers: readonly ParticleCPUWriter[];
     culledSeconds: number;
     stoppedByCulling: boolean;
 }
@@ -168,6 +168,19 @@ class ParticleSystem extends Node {
         return this.#runtimes.some(runtime => runtime.gpuController !== null);
     }
 
+    /** Whether a GPU emitter contributes opaque or alpha-masked advanced draws. @internal */
+    get hasGPUOpaqueRenderers(): boolean {
+        return this.#runtimes.some(
+            runtime =>
+                runtime.gpuController !== null &&
+                runtime.plan.definition.renderers.some(
+                    renderer =>
+                        renderer.type !== 'sprite' &&
+                        (renderer.coverage ?? 'transparent') !== 'transparent'
+                )
+        );
+    }
+
     /** Whether this system needs a sampled Forward depth texture for GPU simulation/raster. @internal */
     get requiresGPUSampledDepth(): boolean {
         return this.#runtimes.some(
@@ -177,7 +190,11 @@ class ParticleSystem extends Node {
                     module => module.type === 'scene-depth-collision'
                 ) ||
                     runtime.plan.definition.renderers.some(
-                        renderer => renderer.softParticle !== undefined
+                        renderer =>
+                            (renderer.type === 'sprite' ||
+                                renderer.type === 'ribbon' ||
+                                renderer.type === 'trail') &&
+                            renderer.softParticle !== undefined
                     ))
         );
     }
@@ -392,12 +409,18 @@ class ParticleSystem extends Node {
         }
     }
 
+    /** Refresh per-camera CPU sort and topology streams before scene collection. @internal */
+    prepareView(camera: Camera): void {
+        this.syncWriters(camera);
+    }
+
     /** Record GPU simulation and storage-raster passes through the active Forward graph. @internal */
     recordGPU(
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        drawVisible: boolean
+        drawVisible: boolean,
+        phase: 'opaque' | 'transparent'
     ): void {
         for (const runtime of this.#runtimes) {
             if (runtime.gpuController === null) continue;
@@ -407,7 +430,7 @@ class ParticleSystem extends Node {
                     'GPU ParticleSystem resources were not prepared before Render Graph recording'
                 );
             }
-            gpuRuntime.record(context, color, depth, this, drawVisible);
+            gpuRuntime.record(context, color, depth, this, drawVisible, phase);
         }
         for (const runtime of this.#runtimes) {
             const source = runtime.gpuRuntime;
@@ -455,9 +478,8 @@ class ParticleSystem extends Node {
             plan.kind === 'stateless'
                 ? new ParticleStatelessRuntime(plan, this.seed)
                 : new ParticleCPUSimulator(plan, this.seed);
-        const writers = plan.definition.renderers.map(
-            (renderer, index) =>
-                new ParticleCPUInstanceWriter(plan, simulator.state, renderer, index)
+        const writers = plan.definition.renderers.flatMap((renderer, index) =>
+            createParticleCPUWriters(plan, simulator.state, renderer, index)
         );
         return {
             plan,
@@ -562,9 +584,9 @@ class ParticleSystem extends Node {
         return false;
     }
 
-    private syncWriters(): void {
+    private syncWriters(cameraOverride?: Camera): void {
         const stage = this.findStage();
-        const camera = stage?.cameras[0];
+        const camera = cameraOverride ?? stage?.cameras[0];
         const cameraElements = camera?.worldMatrix.elements;
         const cameraX = cameraElements?.[12] ?? camera?.x ?? 0;
         const cameraY = cameraElements?.[13] ?? camera?.y ?? 0;

@@ -408,7 +408,17 @@ Graph，stateful simulation 每 application frame 最多推进一次，提交成
 generation 与时钟。P4 在相同链路加入 analytic/scene-depth collision、GPU event
 capture/route，以及只采样 Forward depth、在 fragment 内执行 depth compare 且不绑定同 pass depth
 attachment 的 Soft Particle；GPU sub-emitter 的 event count 与 target state 不经过 CPU
-readback。WebGL 2 上 GPU feature 保持惰性。公共合同与 P0-P4 边界见
+readback。P5 在 portable path 增加按 Camera 刷新的 mesh instance bucket 与 ribbon segment instance
+stream；WebGPU path 增加 GPU mesh-index scatter/per-asset indirect、独立 ribbon topology
+index 的 Bitonic sort、segment compact 和 indirect draw。opaque/masked GPU mesh 在内建
+`after-opaque` feature 中记录，transparent sprite/mesh/ribbon 在 `after-transparent`
+记录，均先于同 injection point 的用户 Bloom；opaque feature 通过逐帧 `requiresSplitScene()`
+只在可见 GPU opaque/masked emitter 存在时拆开 opaque/transparent scene
+pass，空场景不付出额外 pass。CPU opaque/masked mesh 继续进入普通 renderer
+list，只有显式启用时才提供 motion-vector role。lit particle 只打包 ambient 加最多四个 directional
+light，不复制完整场景光照栈。Soft ribbon 与 Soft sprite 一样只采样当前 depth、不把 depth 作为同 pass
+attachment。WebGL 2 上 GPU
+feature 保持惰性，高级 GPU/quality 需求在编译期 fail-closed。公共合同与 P0-P5 边界见
 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。
 
 相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)、[`compute_raytracing.ts`](../examples/compute_raytracing.ts)。

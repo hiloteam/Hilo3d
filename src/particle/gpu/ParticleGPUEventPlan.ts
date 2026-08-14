@@ -95,6 +95,12 @@ export function compileParticleGPUSubEmitterRoute(
             ? ''
             : `targetState[${String(attribute)}u + particleIndex] = bitcast<u32>(${wgslFloat(value)});`;
     };
+    const optionalUIntAssignment = (name: string, sourceExpression: string): string => {
+        const attribute = offset(target, name);
+        return attribute === null
+            ? ''
+            : `targetState[${String(attribute)}u + particleIndex] = ${sourceExpression};`;
+    };
     const size = scalar(target.definition.initialize.size, 1);
     const rotation = scalar(target.definition.initialize.rotation, 0);
     const mass = scalar(target.definition.initialize.mass, 1);
@@ -194,6 +200,16 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
         ${optionalScalarAssignment('rotation', rotation)}
         ${optionalScalarAssignment('base-rotation', rotation)}
         ${optionalScalarAssignment('mass', mass)}
+        ${optionalUIntAssignment(
+            'mesh-index',
+            target.definition.initialize.meshIndex === undefined
+                ? 'source.metadata.y ^ (index * 0x9e3779b1u)'
+                : `${String(Math.floor(scalar(target.definition.initialize.meshIndex, 0)))}u`
+        )}
+        ${optionalUIntAssignment(
+            'ribbon-id',
+            `${String(Math.floor(scalar(target.definition.initialize.ribbonId, 0)))}u`
+        )}
         ${colorAssignments}
         let aliveIndex = atomicAdd(&targetCounters.aliveCount, 1u);
         targetAlive[aliveIndex] = particleIndex;

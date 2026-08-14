@@ -27,6 +27,8 @@ export type ParticleAttributeName =
     | 'mass'
     | 'noise-offset'
     | 'collision-state'
+    | 'mesh-index'
+    | 'ribbon-id'
     | `custom:${string}`;
 
 export interface ParticleAttributeLayout {

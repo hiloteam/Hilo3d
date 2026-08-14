@@ -9,6 +9,11 @@ import type {
     ParticleVector3Value
 } from '../ParticleTypes';
 import { particleGPUEventType } from './ParticleGPUEventPlan';
+import {
+    compileParticleGPUMeshRenderer,
+    compileParticleGPURibbonRenderer,
+    type ParticleGPUAdvancedRendererPlan
+} from './ParticleGPUAdvancedPlan';
 
 const WORKGROUP_SIZE = 64;
 
@@ -46,6 +51,7 @@ export interface ParticleGPUCompiledPlan {
     readonly buffers: Readonly<ParticleGPUBufferLayout>;
     readonly shaders: Readonly<ParticleGPUShaderPlan>;
     readonly renderers: readonly Readonly<ParticleGPUStorageRendererPlan>[];
+    readonly advancedRenderers: readonly Readonly<ParticleGPUAdvancedRendererPlan>[];
     readonly workgroupCount: number;
     readonly sortStrategy: 'none' | 'bitonic' | 'radix-buckets';
     readonly recoveryPolicy: 'reinitialize';
@@ -646,6 +652,18 @@ function initializeShader(
             );
         })
         .join('\n');
+    const meshIndex = optional('mesh-index');
+    const ribbonId = optional('ribbon-id');
+    const topologyAssignments = `${
+        meshIndex === null
+            ? ''
+            : `stateTarget[${String(meshIndex)}u + particleIndex] = u32(command.rotationMass.z);`
+    }
+${
+    ribbonId === null
+        ? ''
+        : `stateTarget[${String(ribbonId)}u + particleIndex] = u32(command.rotationMass.w);`
+}`;
     return new ComputeShader({
         label: `${plan.definition.name}:particle-initialize`,
         workgroupSize: [WORKGROUP_SIZE],
@@ -699,6 +717,7 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     ${valueAssignment('mass', 'max(command.rotationMass.y, 0.000001)')}
     ${valueAssignment('sprite-frame', '0.0')}
     ${colorAssignments}
+    ${topologyAssignments}
     ${customAssignments}
     let outputIndex = atomicAdd(&counters.outputAliveCount, 1u);
     aliveTarget[outputIndex] = particleIndex;
@@ -1134,7 +1153,7 @@ function rendererBuildShader(
     const size = attributeOffset(plan, 'size');
     const rotation = attributeOffset(plan, 'rotation');
     const color = attributeOffset(plan, 'color');
-    const frame = attributeOffset(plan, 'sprite-frame');
+    const frame = optionalAttributeOffset(plan, 'sprite-frame');
     const velocity = attributeOffset(plan, 'velocity');
     const noise = optionalAttributeOffset(plan, 'noise-offset');
     const age = attributeOffset(plan, 'age');
@@ -1169,7 +1188,7 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let baseColor = vec4<f32>(stateFloat(${String(baseColor ?? color)}u + particleIndex * 4u), stateFloat(${String(baseColor ?? color)}u + particleIndex * 4u + 1u), stateFloat(${String(baseColor ?? color)}u + particleIndex * 4u + 2u), stateFloat(${String(baseColor ?? color)}u + particleIndex * 4u + 3u));
     var renderSize = stateFloat(${String(size)}u + particleIndex);
     var renderRotation = stateFloat(${String(rotation)}u + particleIndex);
-    var renderFrame = stateFloat(${String(frame)}u + particleIndex);
+    var renderFrame = ${frame === null ? '0.0' : `stateFloat(${String(frame)}u + particleIndex)`};
     var renderColor = vec4<f32>(stateFloat(${String(color)}u + particleIndex * 4u), stateFloat(${String(color)}u + particleIndex * 4u + 1u), stateFloat(${String(color)}u + particleIndex * 4u + 2u), stateFloat(${String(color)}u + particleIndex * 4u + 3u));
     ${visual.statements}
     rendererData[invocation.x * 4u] = vec4<f32>(position + noiseOffset, renderSize);
@@ -1410,6 +1429,24 @@ export function compileParticleGPUPlan(
           ? 'bitonic'
           : 'radix-buckets';
     const sort = sortShader(plan, buffers, sortStrategy);
+    const advancedRenderers: Readonly<ParticleGPUAdvancedRendererPlan>[] = [];
+    for (const renderer of plan.definition.renderers) {
+        switch (renderer.type) {
+            case 'sprite':
+                break;
+            case 'mesh':
+                advancedRenderers.push(
+                    compileParticleGPUMeshRenderer(plan, renderer, buffers.rendererDataByteLength)
+                );
+                break;
+            case 'ribbon':
+            case 'trail':
+                advancedRenderers.push(
+                    compileParticleGPURibbonRenderer(plan, renderer, buffers.rendererDataByteLength)
+                );
+                break;
+        }
+    }
     return Object.freeze({
         emitter: plan,
         buffers,
@@ -1423,8 +1460,11 @@ export function compileParticleGPUPlan(
             sort
         }),
         renderers: Object.freeze(
-            plan.definition.renderers.map(renderer => storageRenderer(plan, renderer, buffers))
+            plan.definition.renderers
+                .filter(renderer => renderer.type === 'sprite')
+                .map(renderer => storageRenderer(plan, renderer, buffers))
         ),
+        advancedRenderers: Object.freeze(advancedRenderers),
         workgroupCount: Math.ceil(plan.definition.capacity / WORKGROUP_SIZE),
         sortStrategy,
         recoveryPolicy: 'reinitialize'

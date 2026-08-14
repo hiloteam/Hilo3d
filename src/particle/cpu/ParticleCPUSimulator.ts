@@ -691,6 +691,24 @@ export class ParticleCPUSimulator {
                 this.state.f32('base-color').set(this.#temporaryA, index * 4);
         }
         if (this.state.has('sprite-frame')) this.state.f32('sprite-frame')[index] = 0;
+        if (this.state.has('mesh-index')) {
+            this.state.u32('mesh-index')[index] = Math.floor(
+                sampleParticleScalar(
+                    this.definition.initialize.meshIndex,
+                    key.particleId,
+                    this.key(key.particleId, 74)
+                )
+            );
+        }
+        if (this.state.has('ribbon-id')) {
+            this.state.u32('ribbon-id')[index] = Math.floor(
+                sampleParticleScalar(
+                    this.definition.initialize.ribbonId,
+                    0,
+                    this.key(key.particleId, 75)
+                )
+            );
+        }
         if (this.state.has('mass')) {
             this.state.f32('mass')[index] = Math.max(
                 1e-6,

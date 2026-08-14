@@ -340,6 +340,24 @@ export class ParticleStatelessRuntime {
             }
         }
         if (this.state.has('sprite-frame')) this.state.f32('sprite-frame')[index] = 0;
+        if (this.state.has('mesh-index')) {
+            this.state.u32('mesh-index')[index] = Math.floor(
+                sampleParticleScalar(
+                    this.plan.definition.initialize.meshIndex,
+                    particleId,
+                    this.key(particleId, 74)
+                )
+            );
+        }
+        if (this.state.has('ribbon-id')) {
+            this.state.u32('ribbon-id')[index] = Math.floor(
+                sampleParticleScalar(
+                    this.plan.definition.initialize.ribbonId,
+                    0,
+                    this.key(particleId, 75)
+                )
+            );
+        }
         if (this.state.has('mass')) {
             this.state.f32('mass')[index] = Math.max(
                 1e-6,

@@ -70,6 +70,20 @@ function shapeExtent(emitter: ParticleEmitterDefinition): readonly [number, numb
     }
 }
 
+function rendererRadius(emitter: ParticleEmitterDefinition): number {
+    let radiusScale = 0.5;
+    for (const renderer of emitter.renderers) {
+        if (renderer.type === 'mesh') {
+            for (const asset of renderer.meshes) {
+                radiusScale = Math.max(radiusScale, asset.geometry.getLocalSphereBounds().radius);
+            }
+        } else if (renderer.type === 'ribbon' || renderer.type === 'trail') {
+            radiusScale = Math.max(radiusScale, (renderer.widthScale ?? 1) * 0.5);
+        }
+    }
+    return scalarMaximum(emitter.initialize.size, 1) * radiusScale;
+}
+
 /** Return whether conservative automatic bounds are impossible for this emitter. */
 export function particleEmitterRequiresManualBounds(emitter: ParticleEmitterDefinition): boolean {
     return emitter.modules.some(module => module.type === 'vector-field');
@@ -112,7 +126,7 @@ export function deriveParticleEmitterBounds(emitter: ParticleEmitterDefinition):
         if (module.type !== 'noise' || module.mode !== 'position-offset') return maximum;
         return Math.max(maximum, vectorMaximum(module.strength));
     }, 0);
-    const size = scalarMaximum(emitter.initialize.size, 1) * 0.5;
+    const size = rendererRadius(emitter);
     const travel =
         initialOffset +
         speed * lifetime +

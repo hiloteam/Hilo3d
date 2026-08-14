@@ -1,12 +1,14 @@
 # Particle system
 
 Hilo3D exposes one versioned particle asset model for portable CPU simulation, stateful WebGPU
-simulation, and lightweight stateless reconstruction. P0-P4 are implemented: immutable definitions
+simulation, and lightweight stateless reconstruction. P0-P5 are implemented: immutable definitions
 compile to a liveness-based SoA plan, CPU emitters render through one instanced `Mesh`, WebGPU
 stateful emitters record persistent simulation and storage raster through the Render Graph, and
 stateless emitters rebuild renderer attributes from absolute time without cross-frame particle
 state. P4 adds analytic/depth interaction, soft particles, bounded events, typed channels, and
-GPU-resident sub-emitter routing.
+GPU-resident sub-emitter routing. P5 adds mesh buckets, ribbon/trail topology, controlled Lambert
+scene lighting, per-view ordering, temporal composition rules, and opt-in opaque/masked mesh motion
+vectors.
 
 ## Public workflow
 
@@ -89,14 +91,15 @@ bounds because the compiler cannot infer a conservative extent from arbitrary te
 `aliveCount` intentionally reports only CPU-resident particles. GPU emitters do not read alive
 counts, sort keys, state, or indirect arguments back to JavaScript in the production loop.
 
-## Implemented P0-P4 modules
+## Implemented P0-P5 modules
 
 - Lifecycle and spawn: duration, loop, delay, prewarm, fixed step, time scale, rate over time, rate
   over distance, burst, and manual emission.
 - Shapes: point, line/edge, box, circle/disc, sphere/hemisphere, cone, and torus/donut with the
   applicable surface/volume, arc, and thickness controls.
 - Initialization: position, direction, speed, lifetime, mass, color, size, and rotation using
-  constants or deterministic ranges.
+  constants or deterministic ranges. `meshIndex` and `ribbonId` select fixed renderer topology at
+  spawn without adding script callbacks.
 - Motion: velocity, force, gravity, wind, drag, limit velocity, inherited emitter velocity, lifetime
   by emitter speed, radial/orbital/vortex force, point/line attraction, rotation around a point,
   sphere conformance, vector field, and deterministic vector/curl noise.
@@ -115,6 +118,43 @@ capacities. Soft sprites sample the Forward scene depth through the constrained 
 shader, perform their depth comparison in the fragment stage, and omit a depth attachment from that
 pass. `softParticle.distance` and optional `contrast` control the fade; `depthWrite: true` is
 rejected before graph compilation.
+
+## Mesh, ribbon/trail, and advanced composition
+
+`type: 'mesh'` accepts 1–16 immutable triangle-list `Geometry` assets. CPU/stateless plans create
+one dense instance stream and one child `Mesh` per asset bucket. Stateful WebGPU plans scatter dense
+renderer indices into fixed per-mesh buckets with atomics, finalize one indirect command per asset,
+and pull an expanded triangle stream from renderer-owned storage. The draw count is therefore
+bounded by authored mesh assets, never by alive particles. Omit `initialize.meshIndex` to distribute
+by stable particle ID, or provide a non-negative integer/range that fits every mesh renderer.
+
+`type: 'ribbon'` and `type: 'trail'` group particles by `initialize.ribbonId`. The portable path
+heap-sorts `(ribbonId, stableId)` indices and compacts adjacent members into a dense instanced
+segment stream. WebGPU initializes a per-view topology index, Bitonic-sorts it without moving
+particle state, atomically compacts valid adjacent segments, and emits one indirect draw. Width,
+view/world-up facing, stretch/repeat UVs, texture, controlled Lambert lighting, and sampled-depth
+softness are supported. Particle distance sorting is intentionally rejected on ribbon/trail
+definitions because it would break link topology; sort renderer groups with `renderOrder` instead.
+
+Mesh and ribbon lighting deliberately consumes ambient light plus at most four directional scene
+lights, without particle shadows, point/spot lights, or a second backend-specific material model.
+`ParticleCompilationEnvironment.advancedQuality` can explicitly disable ribbons, lit particles, or
+motion vectors; a definition requiring a disabled tier fails before a frame instead of changing its
+look on WebGL 2.
+
+The supported composition matrix is:
+
+| Output                          | Queue/composition                                               | Soft depth                                                 | TAA/motion contract                                        | Bloom    |
+| ------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- | -------- |
+| Sprite/ribbon/trail transparent | after opaque temporal resolve, in linear scene color            | WebGPU sampled current depth; no depth attachment feedback | no opaque history; reactive by queue placement             | included |
+| CPU mesh opaque/masked          | ordinary shared opaque queue                                    | not applicable                                             | optional `motionVectors`; transparent coverage is rejected | included |
+| GPU mesh opaque/masked          | built-in `after-opaque` particle stage before temporal features | not applicable                                             | no motion-vector API; requesting it fails                  | included |
+| Mesh transparent                | shared transparent stage                                        | not exposed                                                | no opaque history                                          | included |
+
+`composition` currently accepts only `'scene'`: particles are composed in linear scene color before
+Bloom/tone mapping. Per-particle global interleaving with arbitrary transparent meshes is not
+promised. Sprite/mesh distance sort is per Camera; the shared renderer refreshes portable instance
+streams before each camera invocation, while WebGPU builds view-local ordering in the graph.
 
 ## Interaction and bounded events
 
@@ -163,11 +203,11 @@ are `play()`, `pause()`, `stop()`, `restart()`, `simulate()`, `emit()`, and `sen
 Fixed-step CPU simulation is reproducible for the same definition, seed, emission commands, and time
 steps.
 
-CPU emitters update one dense interleaved instance stream per sprite renderer and issue one direct
-instanced draw. GPU emitters retain double-buffered state, alive/dead indices, spawn commands,
-renderer data, counters, and indirect arguments as renderer-owned resources. Simulation records at
-most once per application frame; sorting and raster are camera-specific. Submission success commits
-the staged clock and buffer generation, while a discarded frame rolls them back.
+CPU emitters update dense interleaved sprite, mesh-bucket, or ribbon-segment streams and issue one
+draw per renderer/bucket. GPU emitters retain double-buffered state, alive/dead indices, spawn
+commands, renderer data, counters, and indirect arguments as renderer-owned resources. Simulation
+records at most once per application frame; sorting and raster are camera-specific. Submission
+success commits the staged clock and buffer generation, while a discarded frame rolls them back.
 
 On WebGPU device restoration, GPU emitter resources are recreated from backend-neutral definitions
 and the deterministic seed. The P2 recovery policy restarts the emitter from its initial clock;
@@ -178,17 +218,17 @@ The default Forward pipeline owns the built-in GPU particle feature. It is inert
 a scene has no GPU particle emitters. GPU simulation, event capture/routing, compaction, sort,
 renderer-data build, and indirect raster all declare their storage, sampled depth, indirect, and
 attachment access through the Render Graph. Scene-depth collision reads depth from compute. Soft
-sprites use sampled depth without attaching it to the same pass, so the graph contains no
-sampled-depth/attachment feedback edge.
+sprites and soft ribbons use sampled depth without attaching it to the same pass, so the graph
+contains no sampled-depth/attachment feedback edge.
 
 ## Current boundary
 
-P5-P6 remain outside this implementation. In particular, there is no mesh/ribbon/trail renderer,
-serialization upgrade pipeline, capture cache, or graph editor yet. GPU event observation is
-intentionally limited to resident routing; application-visible GPU diagnostics remain aggregate and
-asynchronous rather than a production-loop particle readback. The public fixed module union rejects
-arbitrary callbacks and arbitrary shader source by design.
+P6 remains outside this implementation. In particular, there is no serialization upgrade pipeline,
+capture cache, baking API, or graph editor yet. GPU event observation is intentionally limited to
+resident routing; application-visible GPU diagnostics remain aggregate and asynchronous rather than
+a production-loop particle readback. The public fixed module union rejects arbitrary callbacks and
+arbitrary shader source by design.
 
 The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
 its specialized implementation for now. It will be migrated only after the remaining particle
-feature phases are complete, so P0-P4 do not reduce or reshape that fixture prematurely.
+feature phases are complete, so P0-P5 do not reduce or reshape that fixture prematurely.
