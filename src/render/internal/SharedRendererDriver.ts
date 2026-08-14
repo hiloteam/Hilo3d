@@ -476,6 +476,7 @@ class SharedRendererDriver
     }
 
     override render(stage: RendererScene, camera: Camera, fireEvent = false): void {
+        this.prepareParticleRendererResources(stage);
         this.recordFrameCommand(() => {
             const selected = this.renderTarget;
             this.#pipelineHost.recordPipeline(stage, camera, selected, fireEvent);
@@ -1015,6 +1016,7 @@ class SharedRendererDriver
         camera: Camera,
         fireEvent = false
     ): void {
+        this.prepareParticleRendererResources(stage);
         this.recordFrameCommand(() => {
             this.#pipelineHost.recordPipeline(
                 stage,
@@ -1022,6 +1024,14 @@ class SharedRendererDriver
                 this.requireOwnedTarget(target),
                 fireEvent
             );
+        });
+    }
+
+    private prepareParticleRendererResources(scene: RendererScene): void {
+        scene.traverse(node => {
+            if (Reflect.get(node, 'hasGPUEmitters') !== true) return;
+            const prepare: unknown = Reflect.get(node, 'prepareGPU');
+            if (typeof prepare === 'function') Reflect.apply(prepare, node, [this]);
         });
     }
 

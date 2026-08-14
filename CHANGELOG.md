@@ -29,6 +29,15 @@
 
 ### Changes
 
+- Add the versioned public `ParticleSystemDefinition`/`ParticleSystem` API through P0-P2. Compile
+  immutable fixed modules into liveness-based SoA layouts with deterministic counter RNG and shared
+  curve/gradient LUTs; provide portable CPU fixed-step simulation with one interleaved instanced
+  sprite draw on WebGL 2/WebGPU; and add renderer-owned stateful WebGPU simulation, alive/dead
+  compaction, spawn commands, indirect arguments, Bitonic/distance-bucket sorting, recovery-aware
+  commit/rollback, and constrained storage-aware sprite raster through the default Forward Render
+  Graph. Keep the existing specialized compute-particle showcase unchanged until the remaining
+  particle phases are complete, and reserve unsupported stateless execution for P3 with an explicit
+  compile-time error.
 - Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
   Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
   perspective, physical sun disc, procedural weather map, quality-tier Perlin/Worley volumetric

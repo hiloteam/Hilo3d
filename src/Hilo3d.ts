@@ -66,6 +66,43 @@ export {
 export { default as OrbitControls, type OrbitControlsOptions } from './controls/OrbitControls';
 
 export {
+    compileParticleSystemDefinition,
+    type ParticleCompilationEnvironment
+} from './particle/ParticleCompiler';
+export type {
+    ParticleAttributeLayout,
+    ParticleAttributeName,
+    ParticleCompiledEmitterPlan,
+    ParticleCompiledPlan,
+    ParticleCurveLUT,
+    ParticleGradientLUT
+} from './particle/ParticleCompiledPlan';
+export {
+    default as ParticleCurve,
+    type ParticleCurveInterpolation,
+    type ParticleCurveKeyframe,
+    type ParticleCurveOptions,
+    type ParticleCurveWrapMode
+} from './particle/ParticleCurve';
+export { default as ParticleEmitterDefinition } from './particle/ParticleEmitterDefinition';
+export { default as ParticleGradient, type ParticleGradientKey } from './particle/ParticleGradient';
+export {
+    ParticleParameter,
+    ParticleParameterSet,
+    type ParticleParameterType,
+    type ParticleParameterValue
+} from './particle/ParticleParameter';
+export {
+    default as ParticleSystem,
+    type ParticleSystemEmitCommand,
+    type ParticleSystemParameters,
+    type ParticleSystemSimulateOptions
+} from './particle/ParticleSystem';
+export { default as ParticleSystemDefinition } from './particle/ParticleSystemDefinition';
+export { PARTICLE_DEFINITION_VERSION } from './particle/ParticleTypes';
+export type * from './particle/ParticleTypes';
+
+export {
     default as BoxGeometry,
     type BoxGeometryParameters,
     type UV

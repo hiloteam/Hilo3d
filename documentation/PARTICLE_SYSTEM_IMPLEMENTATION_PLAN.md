@@ -1,10 +1,15 @@
 # Hilo3D 粒子系统实现计划
 
-状态：规划中
+状态：P0、P1、P2 运行时已实现；示例迁移延后；P3-P6 规划中
 
 调研基线：2026-08-14
 
 外部基线：Unity 6.5 `6000.5.8f1` / Visual Effect Graph 17.5，Unreal Engine 5.8.1 / Niagara
+
+实现记录：P0-P2 的当前公共用法、执行策略、模块范围、恢复语义和明确边界见
+[`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。现有 `compute_particles`
+fixture 保持原实现，待粒子功能全部完成后再统一改造；P3
+stateless 模式当前在编译期明确拒绝，不会伪装成 CPU stateful plan。
 
 ## 结论先行
 

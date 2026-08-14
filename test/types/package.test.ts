@@ -18,6 +18,10 @@ import {
     MeshPicker,
     Node,
     OrbitControls,
+    ParticleCurve,
+    ParticleGradient,
+    ParticleSystem,
+    ParticleSystemDefinition,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -43,6 +47,9 @@ import {
     type MeshParameters,
     type NodeParameters,
     type OrbitControlsOptions,
+    type ParticleModule,
+    type ParticleSystemDefinitionInput,
+    type ParticleSystemParameters,
     type CullingResultsHandle,
     type ComputeTextureSampleType,
     type ComputeTextureViewDimension,
@@ -126,6 +133,49 @@ const orbitControlsOptions = {
 const orbitControls = new OrbitControls(stage, orbitControlsOptions);
 orbitControls.setView(camera.position, orbitControls.target);
 orbitControls.dispose();
+const particleModules = [
+    { type: 'gravity', force: [0, -1, 0] },
+    {
+        type: 'size-over-lifetime',
+        curve: new ParticleCurve([
+            { time: 0, value: 1 },
+            { time: 1, value: 0 }
+        ])
+    },
+    {
+        type: 'color-over-lifetime',
+        gradient: new ParticleGradient([
+            { time: 0, color: [1, 1, 1, 1] },
+            { time: 1, color: [1, 0, 0, 0] }
+        ])
+    }
+] satisfies readonly ParticleModule[];
+const particleDefinitionInput = {
+    emitters: [
+        {
+            name: 'type-consumer',
+            capacity: 64,
+            execution: 'cpu',
+            emission: { rateOverTime: 8 },
+            initialize: { lifetime: 1, size: 0.1 },
+            modules: particleModules,
+            renderers: [{ type: 'sprite', blend: 'additive' }]
+        }
+    ]
+} satisfies ParticleSystemDefinitionInput;
+const particleDefinition = ParticleSystemDefinition.create(particleDefinitionInput);
+const particleSystemParameters = {
+    definition: particleDefinition,
+    seed: 42,
+    autoPlay: false
+} satisfies ParticleSystemParameters;
+const particleSystem = new ParticleSystem(particleSystemParameters);
+particleSystem
+    .emit(4)
+    .simulate(1 / 60)
+    .play()
+    .pause()
+    .restart();
 const webgpuRendererParameters = {
     backend: 'webgpu',
     domElement: document.createElement('canvas'),

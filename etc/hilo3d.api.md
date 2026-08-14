@@ -938,6 +938,9 @@ export interface ColorUberOptions {
 }
 
 // @public
+export function compileParticleSystemDefinition(definition: ParticleSystemDefinition, environment?: Readonly<ParticleCompilationEnvironment>): Readonly<ParticleCompiledPlan>;
+
+// @public
 export interface ComputeBufferBinding {
     readonly buffer: RenderGraphBufferHandle;
     readonly byteLength?: number;
@@ -2307,6 +2310,8 @@ export class GeometryData {
     setByOffset(offset: number, value: GeometryAttributeValue): void;
     setSubData(offset: number, data: TypedArray): void;
     size: GeometryComponentSize;
+    get stepMode(): 'vertex' | 'instance';
+    set stepMode(value: 'vertex' | 'instance');
     get stride(): number;
     set stride(value: number);
     // (undocumented)
@@ -2337,6 +2342,7 @@ export interface GeometryDataParameters {
     normalized?: boolean;
     // (undocumented)
     offset?: number;
+    stepMode?: 'vertex' | 'instance';
     // (undocumented)
     stride?: number;
     // (undocumented)
@@ -4794,6 +4800,8 @@ export class Mesh extends Node_2 {
     // (undocumented)
     geometry: Geometry | null;
     getRenderOption(opt?: ShaderOptions): ShaderOptions;
+    get instanceCount(): number;
+    set instanceCount(value: number);
     get isDestroyed(): boolean;
     // (undocumented)
     protected _isDestroyed: boolean;
@@ -4817,6 +4825,7 @@ export interface MeshParameters extends NodeParameters {
     frustumTest?: boolean;
     // (undocumented)
     geometry?: Geometry | null;
+    instanceCount?: number;
     // (undocumented)
     material?: MaterialInstance | null;
     // (undocumented)
@@ -5280,6 +5289,818 @@ export interface OrthographicCameraParameters extends CameraParameters {
 
 // @public
 export function parseRadianceHDR(input: ArrayBuffer | Uint8Array): RadianceHDRImage;
+
+// @public
+export const PARTICLE_DEFINITION_VERSION: 1;
+
+// @public
+export interface ParticleAttractionModule {
+    // (undocumented)
+    readonly lineEnd?: ParticleVector3;
+    // (undocumented)
+    readonly lineStart?: ParticleVector3;
+    // (undocumented)
+    readonly point?: ParticleVector3;
+    // (undocumented)
+    readonly strength: ParticleScalarValue;
+    // (undocumented)
+    readonly type: 'point-attraction' | 'line-attraction';
+}
+
+// @public (undocumented)
+export interface ParticleAttributeLayout {
+    // (undocumented)
+    readonly byteLength: number;
+    readonly byteOffset: number;
+    // (undocumented)
+    readonly components: 1 | 2 | 3 | 4;
+    // (undocumented)
+    readonly name: ParticleAttributeName;
+    // (undocumented)
+    readonly storage: 'f32' | 'u32';
+}
+
+// @public
+export type ParticleAttributeName = 'stable-id' | 'generation' | 'alive' | 'age' | 'lifetime' | 'normalized-age' | 'position' | 'previous-position' | 'spawn-position' | 'velocity' | 'size' | 'base-size' | 'rotation' | 'base-rotation' | 'color' | 'base-color' | 'sprite-frame' | 'mass' | 'noise-offset' | `custom:${string}`;
+
+// @public
+export interface ParticleAutomaticBounds {
+    // (undocumented)
+    readonly mode: 'automatic';
+}
+
+// @public
+export type ParticleBoundsDefinition = ParticleManualBounds | ParticleAutomaticBounds | ParticleDynamicBounds;
+
+// @public
+export interface ParticleBoxShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly size: ParticleVector3;
+    // (undocumented)
+    readonly type: 'box';
+}
+
+// @public
+export interface ParticleBurstDefinition {
+    // (undocumented)
+    readonly count: number;
+    // (undocumented)
+    readonly cycles?: number;
+    // (undocumented)
+    readonly interval?: number;
+    // (undocumented)
+    readonly time: number;
+}
+
+// @public
+export type ParticleBySpeedModule = ParticleScalarBySpeedModule | ParticleColorBySpeedModule;
+
+// @public
+export interface ParticleCameraModule {
+    // (undocumented)
+    readonly range?: readonly [number, number];
+    // (undocumented)
+    readonly scale?: number;
+    // (undocumented)
+    readonly type: 'camera-offset' | 'camera-fade' | 'screen-space-size';
+}
+
+// @public
+export interface ParticleCircleShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly radius: number;
+    // (undocumented)
+    readonly type: 'circle' | 'disc';
+}
+
+// @public
+export type ParticleColor = ParticleVector4;
+
+// @public
+export interface ParticleColorBySpeedModule {
+    // (undocumented)
+    readonly gradient: ParticleGradient;
+    // (undocumented)
+    readonly speedRange: readonly [number, number];
+    // (undocumented)
+    readonly type: 'color-by-speed';
+}
+
+// @public
+export interface ParticleColorOverLifetimeModule {
+    // (undocumented)
+    readonly gradient: ParticleGradient;
+    // (undocumented)
+    readonly type: 'color-over-lifetime';
+}
+
+// @public
+export type ParticleColorValue = ParticleColor | ParticleRange<ParticleColor>;
+
+// @public
+export interface ParticleCompilationEnvironment {
+    // (undocumented)
+    readonly backend?: 'webgl2' | 'webgpu';
+    // (undocumented)
+    readonly preferGPUAboveCapacity?: number;
+}
+
+// @public
+export interface ParticleCompiledEmitterPlan {
+    // (undocumented)
+    readonly attributeByteLength: number;
+    // (undocumented)
+    readonly attributes: readonly Readonly<ParticleAttributeLayout>[];
+    // (undocumented)
+    readonly bounds: Readonly<Bounds>;
+    // (undocumented)
+    readonly curveLUTs: readonly Readonly<ParticleCurveLUT>[];
+    // (undocumented)
+    readonly definition: ParticleEmitterDefinition;
+    // (undocumented)
+    readonly emitterId: number;
+    // (undocumented)
+    readonly gradientLUTs: readonly Readonly<ParticleGradientLUT>[];
+    // (undocumented)
+    readonly kind: 'cpu-stateful' | 'gpu-stateful' | 'stateless';
+    // (undocumented)
+    readonly layoutHash: string;
+    // (undocumented)
+    readonly statelessDiagnostics: readonly string[];
+    // (undocumented)
+    readonly statelessEligible: boolean;
+}
+
+// @public
+export interface ParticleCompiledPlan {
+    // (undocumented)
+    readonly definition: ParticleSystemDefinition;
+    // (undocumented)
+    readonly emitters: readonly Readonly<ParticleCompiledEmitterPlan>[];
+    // (undocumented)
+    readonly hash: string;
+}
+
+// @public
+export interface ParticleConeShape extends ParticleShapeBase {
+    readonly angle: number;
+    // (undocumented)
+    readonly length?: number;
+    // (undocumented)
+    readonly radius: number;
+    // (undocumented)
+    readonly type: 'cone';
+}
+
+// @public
+export interface ParticleConformSphereModule {
+    // (undocumented)
+    readonly center?: ParticleVector3;
+    // (undocumented)
+    readonly radius: number;
+    // (undocumented)
+    readonly strength: number;
+    // (undocumented)
+    readonly type: 'conform-sphere';
+}
+
+// @public
+export type ParticleCullingReaction = 'render-only' | 'pause' | 'pause-and-catch-up' | 'stop';
+
+// @public
+export class ParticleCurve {
+    constructor(keys: readonly ParticleCurveKeyframe[], options?: ParticleCurveOptions);
+    bake(sampleCount?: number): Float32Array;
+    // (undocumented)
+    readonly interpolation: ParticleCurveInterpolation;
+    // (undocumented)
+    readonly keys: readonly Readonly<ParticleCurveKeyframe>[];
+    sample(time: number): number;
+    // (undocumented)
+    readonly wrap: ParticleCurveWrapMode;
+}
+
+// @public
+export type ParticleCurveInterpolation = 'linear' | 'smooth';
+
+// @public
+export interface ParticleCurveKeyframe {
+    // (undocumented)
+    readonly time: number;
+    // (undocumented)
+    readonly value: number;
+}
+
+// @public
+export interface ParticleCurveLUT {
+    // (undocumented)
+    readonly curve: ParticleCurve;
+    // (undocumented)
+    readonly values: Float32Array;
+}
+
+// @public
+export interface ParticleCurveOptions {
+    // (undocumented)
+    readonly interpolation?: ParticleCurveInterpolation;
+    // (undocumented)
+    readonly wrap?: ParticleCurveWrapMode;
+}
+
+// @public
+export type ParticleCurveWrapMode = 'clamp' | 'loop' | 'ping-pong';
+
+// @public
+export interface ParticleCustomChannelModule {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly type: 'custom-channel';
+    // (undocumented)
+    readonly value: number | ParticleVector2 | ParticleVector3 | ParticleVector4;
+    // (undocumented)
+    readonly valueType: 'float' | 'vec2' | 'vec3' | 'vec4' | 'color';
+}
+
+// @public
+export interface ParticleDragModule {
+    // (undocumented)
+    readonly coefficient: number;
+    // (undocumented)
+    readonly type: 'drag';
+}
+
+// @public
+export interface ParticleDynamicBounds {
+    // (undocumented)
+    readonly mode: 'dynamic';
+}
+
+// @public
+export interface ParticleEmissionDefinition {
+    // (undocumented)
+    readonly bursts?: readonly ParticleBurstDefinition[];
+    // (undocumented)
+    readonly rateOverDistance?: ParticleScalarValue;
+    // (undocumented)
+    readonly rateOverTime?: ParticleScalarValue;
+}
+
+// @public
+export class ParticleEmitterDefinition {
+    constructor(input: Readonly<ParticleEmitterDefinitionInput>);
+    // (undocumented)
+    readonly bounds: ParticleBoundsDefinition;
+    // (undocumented)
+    readonly capacity: number;
+    // (undocumented)
+    readonly culling: ParticleCullingReaction;
+    // (undocumented)
+    readonly duration: number;
+    // (undocumented)
+    readonly emission: ParticleEmissionDefinition;
+    // (undocumented)
+    readonly execution: ParticleExecutionMode;
+    // (undocumented)
+    readonly fixedStep: number;
+    // (undocumented)
+    readonly hash: string;
+    // (undocumented)
+    readonly initialize: ParticleInitializeDefinition;
+    // (undocumented)
+    readonly looping: boolean;
+    // (undocumented)
+    readonly maxCatchUpSteps: number;
+    // (undocumented)
+    readonly modules: readonly ParticleModule[];
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly overflow: ParticleOverflowPolicy;
+    // (undocumented)
+    readonly prewarm: boolean;
+    // (undocumented)
+    readonly renderers: readonly ParticleRendererDefinition[];
+    // (undocumented)
+    readonly shape: ParticleShapeDefinition;
+    // (undocumented)
+    readonly simulationSpace: ParticleSimulationSpace;
+    // (undocumented)
+    readonly startDelay: number;
+}
+
+// @public
+export interface ParticleEmitterDefinitionInput {
+    // (undocumented)
+    readonly bounds?: ParticleBoundsDefinition;
+    // (undocumented)
+    readonly capacity: number;
+    // (undocumented)
+    readonly culling?: ParticleCullingReaction;
+    // (undocumented)
+    readonly duration?: number;
+    // (undocumented)
+    readonly emission?: ParticleEmissionDefinition;
+    // (undocumented)
+    readonly execution?: ParticleExecutionMode;
+    // (undocumented)
+    readonly fixedStep?: number;
+    // (undocumented)
+    readonly initialize?: ParticleInitializeDefinition;
+    // (undocumented)
+    readonly looping?: boolean;
+    // (undocumented)
+    readonly maxCatchUpSteps?: number;
+    // (undocumented)
+    readonly modules?: readonly ParticleModule[];
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly overflow?: ParticleOverflowPolicy;
+    // (undocumented)
+    readonly prewarm?: boolean;
+    // (undocumented)
+    readonly renderers: readonly ParticleRendererDefinition[];
+    // (undocumented)
+    readonly shape?: ParticleShapeDefinition;
+    // (undocumented)
+    readonly simulationSpace?: ParticleSimulationSpace;
+    // (undocumented)
+    readonly startDelay?: number;
+}
+
+// @public
+export type ParticleExecutionMode = 'auto' | 'cpu' | 'gpu' | 'stateless';
+
+// @public
+export interface ParticleForceModule {
+    // (undocumented)
+    readonly force: ParticleVector3Value;
+    // (undocumented)
+    readonly space?: ParticleSimulationSpace;
+    // (undocumented)
+    readonly type: 'force-over-lifetime' | 'gravity' | 'wind';
+}
+
+// @public
+export class ParticleGradient {
+    constructor(keys: readonly ParticleGradientKey[]);
+    bake(sampleCount?: number): Float32Array;
+    // (undocumented)
+    readonly keys: readonly Readonly<ParticleGradientKey>[];
+    sample(time: number, target: Float32Array, offset?: number): void;
+}
+
+// @public
+export interface ParticleGradientKey {
+    // (undocumented)
+    readonly color: ParticleColor;
+    // (undocumented)
+    readonly time: number;
+}
+
+// @public
+export interface ParticleGradientLUT {
+    // (undocumented)
+    readonly gradient: ParticleGradient;
+    // (undocumented)
+    readonly values: Float32Array;
+}
+
+// @public
+export interface ParticleInheritVelocityModule {
+    // (undocumented)
+    readonly multiplier?: number;
+    // (undocumented)
+    readonly type: 'inherit-emitter-velocity';
+}
+
+// @public
+export interface ParticleInitializeDefinition {
+    // (undocumented)
+    readonly color?: ParticleColorValue;
+    // (undocumented)
+    readonly direction?: ParticleVector3Value;
+    // (undocumented)
+    readonly lifetime?: ParticleScalarValue;
+    // (undocumented)
+    readonly mass?: ParticleScalarValue;
+    // (undocumented)
+    readonly position?: ParticleVector3Value;
+    readonly rotation?: ParticleScalarValue;
+    // (undocumented)
+    readonly size?: ParticleScalarValue;
+    // (undocumented)
+    readonly speed?: ParticleScalarValue;
+}
+
+// @public
+export interface ParticleKillModule {
+    // (undocumented)
+    readonly range: readonly [number, number];
+    // (undocumented)
+    readonly type: 'kill-speed' | 'kill-distance';
+}
+
+// @public
+export interface ParticleKillVolumeModule {
+    // (undocumented)
+    readonly center?: ParticleVector3;
+    // (undocumented)
+    readonly mode?: 'inside' | 'outside';
+    // (undocumented)
+    readonly normal?: ParticleVector3;
+    // (undocumented)
+    readonly offset?: number;
+    // (undocumented)
+    readonly radius?: number;
+    // (undocumented)
+    readonly size?: ParticleVector3;
+    // (undocumented)
+    readonly type: 'kill-plane' | 'kill-box' | 'kill-sphere';
+}
+
+// @public
+export interface ParticleLifetimeByEmitterSpeedModule {
+    // (undocumented)
+    readonly lifetimeRange: readonly [number, number];
+    // (undocumented)
+    readonly speedRange: readonly [number, number];
+    // (undocumented)
+    readonly type: 'lifetime-by-emitter-speed';
+}
+
+// @public
+export interface ParticleLimitVelocityModule {
+    // (undocumented)
+    readonly dampen?: number;
+    // (undocumented)
+    readonly limit: ParticleScalarValue;
+    // (undocumented)
+    readonly type: 'limit-velocity';
+}
+
+// @public
+export interface ParticleLineShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly end: ParticleVector3;
+    // (undocumented)
+    readonly start: ParticleVector3;
+    // (undocumented)
+    readonly type: 'line' | 'edge';
+}
+
+// @public
+export interface ParticleManualBounds {
+    // (undocumented)
+    readonly max: ParticleVector3;
+    // (undocumented)
+    readonly min: ParticleVector3;
+    // (undocumented)
+    readonly mode: 'manual';
+}
+
+// @public
+export type ParticleModule = ParticleVelocityModule | ParticleForceModule | ParticleDragModule | ParticleLimitVelocityModule | ParticleInheritVelocityModule | ParticleNoiseModule | ParticleScalarOverLifetimeModule | ParticleColorOverLifetimeModule | ParticleBySpeedModule | ParticleTextureSheetModule | ParticleRadialForceModule | ParticleAttractionModule | ParticleRotateAroundPointModule | ParticleConformSphereModule | ParticleLifetimeByEmitterSpeedModule | ParticleKillModule | ParticleKillVolumeModule | ParticleCameraModule | ParticleCustomChannelModule | ParticleVectorFieldModule;
+
+// @public
+export interface ParticleNoiseModule {
+    // (undocumented)
+    readonly damping?: number;
+    // (undocumented)
+    readonly field: 'vector' | 'curl';
+    // (undocumented)
+    readonly frequency: number;
+    // (undocumented)
+    readonly lacunarity?: number;
+    // (undocumented)
+    readonly mode: 'position-offset' | 'force';
+    // (undocumented)
+    readonly octaves: 1 | 2 | 3 | 4;
+    // (undocumented)
+    readonly persistence?: number;
+    // (undocumented)
+    readonly scrollVelocity?: ParticleVector3;
+    // (undocumented)
+    readonly seedOffset?: number;
+    // (undocumented)
+    readonly space?: ParticleSimulationSpace;
+    // (undocumented)
+    readonly strength: ParticleVector3Value;
+    // (undocumented)
+    readonly type: 'noise';
+}
+
+// @public
+export type ParticleOverflowPolicy = 'drop-new' | 'replace-oldest';
+
+// @public
+export class ParticleParameter<T extends ParticleParameterValue = ParticleParameterValue> {
+    constructor(name: string, type: ParticleParameterType, defaultValue: T);
+    // (undocumented)
+    readonly defaultValue: T;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly type: ParticleParameterType;
+}
+
+// @public
+export class ParticleParameterSet {
+    // (undocumented)
+    get<T extends ParticleParameterValue>(parameter: ParticleParameter<T>): T;
+    // (undocumented)
+    reset(parameter?: ParticleParameter): this;
+    // (undocumented)
+    get revision(): number;
+    // (undocumented)
+    set<T extends ParticleParameterValue>(parameter: ParticleParameter<T>, value: T): this;
+}
+
+// @public
+export type ParticleParameterType = 'float' | 'uint' | 'boolean' | 'vector2' | 'vector3' | 'vector4' | 'color' | 'texture' | 'curve' | 'gradient';
+
+// @public
+export type ParticleParameterValue = number | boolean | Vector2 | Vector3 | Vector4 | Color | Texture<unknown> | ParticleCurve | ParticleGradient;
+
+// @public
+export interface ParticlePointShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly type: 'point';
+}
+
+// @public
+export interface ParticleRadialForceModule {
+    // (undocumented)
+    readonly axis?: ParticleVector3;
+    // (undocumented)
+    readonly center?: ParticleVector3;
+    // (undocumented)
+    readonly strength: ParticleScalarValue;
+    // (undocumented)
+    readonly type: 'radial-force' | 'orbital-force' | 'vortex-force';
+}
+
+// @public
+export type ParticleRange<T> = Readonly<{
+    min: T;
+    max: T;
+}>;
+
+// @public
+export type ParticleRendererDefinition = ParticleSpriteRendererDefinition;
+
+// @public
+export interface ParticleRotateAroundPointModule {
+    // (undocumented)
+    readonly angularSpeed: ParticleScalarValue;
+    // (undocumented)
+    readonly axis?: ParticleVector3;
+    // (undocumented)
+    readonly center?: ParticleVector3;
+    // (undocumented)
+    readonly type: 'rotate-around-point';
+}
+
+// @public
+export interface ParticleScalarBySpeedModule {
+    // (undocumented)
+    readonly curve: ParticleCurve;
+    // (undocumented)
+    readonly speedRange: readonly [number, number];
+    // (undocumented)
+    readonly type: 'size-by-speed' | 'rotation-by-speed';
+}
+
+// @public
+export interface ParticleScalarOverLifetimeModule {
+    // (undocumented)
+    readonly curve: ParticleCurve;
+    // (undocumented)
+    readonly cycles?: number;
+    // (undocumented)
+    readonly type: 'alpha-over-lifetime' | 'size-over-lifetime' | 'rotation-over-lifetime' | 'frame-over-lifetime';
+}
+
+// @public
+export type ParticleScalarValue = number | ParticleRange<number>;
+
+// @public
+export interface ParticleShapeBase {
+    // (undocumented)
+    readonly arc?: number;
+    // (undocumented)
+    readonly distribution?: 'surface' | 'volume';
+    // (undocumented)
+    readonly thickness?: number;
+}
+
+// @public
+export type ParticleShapeDefinition = ParticlePointShape | ParticleLineShape | ParticleBoxShape | ParticleCircleShape | ParticleSphereShape | ParticleConeShape | ParticleTorusShape;
+
+// @public
+export type ParticleSimulationSpace = 'local' | 'world';
+
+// @public
+export type ParticleSortMode = 'none' | 'distance' | 'youngest' | 'oldest';
+
+// @public
+export interface ParticleSphereShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly radius: number;
+    // (undocumented)
+    readonly type: 'sphere' | 'hemisphere';
+}
+
+// @public
+export type ParticleSpriteAlignment = 'view' | 'world-up' | 'stretched' | 'velocity';
+
+// @public
+export interface ParticleSpriteRendererDefinition {
+    // (undocumented)
+    readonly alignment?: ParticleSpriteAlignment;
+    // (undocumented)
+    readonly blend?: 'alpha' | 'premultiplied-alpha' | 'additive';
+    // (undocumented)
+    readonly depthTest?: boolean;
+    // (undocumented)
+    readonly depthWrite?: boolean;
+    // (undocumented)
+    readonly pivot?: ParticleVector2;
+    // (undocumented)
+    readonly renderOrder?: number;
+    // (undocumented)
+    readonly sort?: ParticleSortMode;
+    // (undocumented)
+    readonly stretchScale?: number;
+    // (undocumented)
+    readonly texture?: Texture<unknown> | null;
+    // (undocumented)
+    readonly type: 'sprite';
+}
+
+// @public
+export class ParticleSystem extends Node_2 {
+    constructor(parameters: Readonly<ParticleSystemParameters>);
+    get aliveCount(): number;
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    clone(isChild?: boolean): ParticleSystem;
+    // (undocumented)
+    readonly compiledPlan: Readonly<ParticleCompiledPlan>;
+    get completed(): boolean;
+    // (undocumented)
+    readonly definition: ParticleSystemDefinition;
+    // (undocumented)
+    destroy(renderer?: Renderer, destroyTextures?: boolean): this;
+    get elapsedSeconds(): number;
+    emit(count: number, emitter?: string): this;
+    // (undocumented)
+    emit(command: Readonly<ParticleSystemEmitCommand>): this;
+    // @internal
+    gpuFrameDiscarded(frameIndex: number): void;
+    // @internal
+    gpuFrameSubmitted(frameIndex: number): void;
+    // @internal
+    get hasGPUEmitters(): boolean;
+    // (undocumented)
+    pause(): this;
+    // (undocumented)
+    play(): this;
+    get playing(): boolean;
+    // @internal
+    prepareGPU(renderer: RendererContract): void;
+    // @internal
+    recordGPU(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean): void;
+    // (undocumented)
+    restart(): this;
+    // (undocumented)
+    readonly seed: number;
+    sendEvent(name: string, payload?: unknown): this;
+    simulate(seconds: number, options?: Readonly<ParticleSystemSimulateOptions>): this;
+    stateHash(emitter?: string): string;
+    // (undocumented)
+    stop(): this;
+    // (undocumented)
+    get timeScale(): number;
+    set timeScale(value: number);
+    // (undocumented)
+    static readonly typeName = "ParticleSystem";
+    // (undocumented)
+    update(deltaTimeMilliseconds: number): void;
+}
+
+// @public
+export class ParticleSystemDefinition {
+    static create(input: Readonly<ParticleSystemDefinitionInput>): ParticleSystemDefinition;
+    // (undocumented)
+    readonly emitters: readonly ParticleEmitterDefinition[];
+    getEmitter(name: string): ParticleEmitterDefinition | null;
+    // (undocumented)
+    readonly hash: string;
+    // (undocumented)
+    readonly version: 1;
+}
+
+// @public
+export interface ParticleSystemDefinitionInput {
+    // (undocumented)
+    readonly emitters: readonly ParticleEmitterDefinitionInput[];
+    // (undocumented)
+    readonly version?: typeof PARTICLE_DEFINITION_VERSION;
+}
+
+// @public
+export interface ParticleSystemEmitCommand {
+    // (undocumented)
+    readonly count: number;
+    // (undocumented)
+    readonly emitter?: string;
+    // (undocumented)
+    readonly position?: ParticleVector3;
+    // (undocumented)
+    readonly velocity?: ParticleVector3;
+}
+
+// @public
+export interface ParticleSystemParameters extends NodeParameters {
+    // (undocumented)
+    readonly autoPlay?: boolean;
+    readonly compilationEnvironment?: Readonly<ParticleCompilationEnvironment>;
+    // (undocumented)
+    readonly definition: ParticleSystemDefinition;
+    // (undocumented)
+    readonly seed?: number;
+    // (undocumented)
+    readonly timeScale?: number;
+}
+
+// @public
+export interface ParticleSystemSimulateOptions {
+    // (undocumented)
+    readonly fixedStep?: number;
+}
+
+// @public
+export interface ParticleTextureSheetModule {
+    // (undocumented)
+    readonly columns: number;
+    // (undocumented)
+    readonly cycles?: number;
+    // (undocumented)
+    readonly fps?: number;
+    // (undocumented)
+    readonly mode: 'lifetime' | 'speed' | 'fps';
+    // (undocumented)
+    readonly rows: number;
+    // (undocumented)
+    readonly speedRange?: readonly [number, number];
+    // (undocumented)
+    readonly type: 'texture-sheet';
+}
+
+// @public
+export interface ParticleTorusShape extends ParticleShapeBase {
+    // (undocumented)
+    readonly radius: number;
+    // (undocumented)
+    readonly tubeRadius: number;
+    // (undocumented)
+    readonly type: 'torus' | 'donut';
+}
+
+// @public
+export type ParticleVector2 = readonly [number, number];
+
+// @public
+export type ParticleVector3 = readonly [number, number, number];
+
+// @public
+export type ParticleVector3Value = ParticleVector3 | ParticleRange<ParticleVector3>;
+
+// @public
+export type ParticleVector4 = readonly [number, number, number, number];
+
+// @public
+export interface ParticleVectorFieldModule {
+    // (undocumented)
+    readonly strength: number;
+    // (undocumented)
+    readonly texture: Texture<unknown>;
+    // (undocumented)
+    readonly type: 'vector-field';
+}
+
+// @public
+export interface ParticleVelocityModule {
+    // (undocumented)
+    readonly space?: ParticleSimulationSpace;
+    // (undocumented)
+    readonly type: 'velocity-over-lifetime';
+    // (undocumented)
+    readonly velocity: ParticleVector3Value;
+}
 
 // @public
 export class PBRMaterial extends MaterialInstance {
