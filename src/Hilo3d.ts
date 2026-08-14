@@ -86,6 +86,14 @@ export {
 } from './particle/ParticleCurve';
 export { default as ParticleEmitterDefinition } from './particle/ParticleEmitterDefinition';
 export {
+    ParticleEventChannel,
+    type ParticleEventChannelParameters,
+    type ParticleEventChannelPayload,
+    type ParticleEventChannelSchema,
+    type ParticleEventFieldType,
+    type ParticleEventFieldValue
+} from './particle/ParticleEventChannel';
+export {
     ParticleBudgetManager,
     type ParticleBudgetDecision,
     type ParticleBudgetProfile,
@@ -104,6 +112,10 @@ export {
     type ParticleSystemParameters,
     type ParticleSystemSimulateOptions
 } from './particle/ParticleSystem';
+export type {
+    ParticleEventAggregate,
+    ParticleEventRecord
+} from './particle/cpu/ParticleCPUEventBuffer';
 export { default as ParticleSystemDefinition } from './particle/ParticleSystemDefinition';
 export { ParticleSystemPool } from './particle/ParticleSystemPool';
 export {

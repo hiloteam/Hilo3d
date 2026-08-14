@@ -39,6 +39,14 @@
   particle phases are complete. Add stateless eligibility metadata and asset-level diagnostics,
   absolute-time CPU reconstruction, a no-state Naga-validated WebGPU renderer-data generator,
   deterministic budget/quality decisions, and reusable short-effect system pooling.
+- Extend the particle runtime through P4 with analytic collision and triggers, WebGPU scene-depth
+  collision, sampled-depth soft sprites with fragment depth comparison, compact bounded CPU events,
+  typed `ParticleEventChannel`, asynchronous aggregate reads, and GPU-resident event
+  capture/sub-emitter routing without count or state readback. Allow constrained storage graphics
+  shaders to specialize ordinary GLSL numeric depth samplers into WGSL depth textures.
+- Allow a Forward feature runtime to request sampled single-sample scene depth per frame before
+  attachment allocation, so scene-dependent effects do not force unrelated RenderTarget frames
+  through an intermediate depth path.
 - Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
   Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
   perspective, physical sun disc, procedural weather map, quality-tier Perlin/Worley volumetric

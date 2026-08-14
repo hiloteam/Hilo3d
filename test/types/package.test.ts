@@ -20,6 +20,7 @@ import {
     OrbitControls,
     ParticleBudgetManager,
     ParticleCurve,
+    ParticleEventChannel,
     ParticleGradient,
     ParticleSystem,
     ParticleSystemDefinition,
@@ -153,6 +154,11 @@ const particleModules = [
             { time: 0, color: [1, 1, 1, 1] },
             { time: 1, color: [1, 0, 0, 0] }
         ])
+    },
+    {
+        type: 'collision',
+        colliders: [{ type: 'plane', normal: [0, 1, 0] }],
+        event: 'impact'
     }
 ] satisfies readonly ParticleModule[];
 const particleDefinitionInput = {
@@ -161,6 +167,7 @@ const particleDefinitionInput = {
             name: 'type-consumer',
             capacity: 64,
             execution: 'cpu',
+            eventCapacity: 32,
             emission: { rateOverTime: 8 },
             initialize: { lifetime: 1, size: 0.1 },
             modules: particleModules,
@@ -181,6 +188,17 @@ particleSystem
     .play()
     .pause()
     .restart();
+const particleEventChannel = new ParticleEventChannel<{
+    readonly position: readonly [number, number, number];
+    readonly kind: number;
+}>({
+    name: 'type-consumer-impact',
+    capacity: 8,
+    schema: { position: 'vec3', kind: 'uint' }
+});
+particleEventChannel.submit({ position: [0, 1, 0], kind: 1 });
+particleEventChannel.emitTo(particleSystem, { positionField: 'position' });
+void particleSystem.readEvents(8);
 const particleBudgetProfile = {
     maxSystems: 32,
     maxParticles: 10_000,

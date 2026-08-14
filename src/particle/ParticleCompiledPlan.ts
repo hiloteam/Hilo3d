@@ -26,6 +26,7 @@ export type ParticleAttributeName =
     | 'sprite-frame'
     | 'mass'
     | 'noise-offset'
+    | 'collision-state'
     | `custom:${string}`;
 
 export interface ParticleAttributeLayout {

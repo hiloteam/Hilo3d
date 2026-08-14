@@ -4,7 +4,10 @@ import type {
     ForwardRenderPipelineFeature,
     ForwardRenderPipelineFeatureRuntime
 } from '../../render/pipeline/ForwardRenderPipeline';
-import type { RenderPipelineCreateContext } from '../../render/pipeline/RenderPipeline';
+import type {
+    RenderPipelineContext,
+    RenderPipelineCreateContext
+} from '../../render/pipeline/RenderPipeline';
 
 class ParticleGPUForwardFeatureRuntime implements ForwardRenderPipelineFeatureRuntime {
     readonly #supported: boolean;
@@ -15,6 +18,14 @@ class ParticleGPUForwardFeatureRuntime implements ForwardRenderPipelineFeatureRu
             context.capabilities.supportsCapability('storage-buffer') &&
             context.capabilities.supportsCapability('compute-pass') &&
             context.capabilities.supportsCapability('indirect-draw');
+    }
+
+    requiresSampledDepth(context: RenderPipelineContext): boolean {
+        let required = false;
+        context.scene.traverse(node => {
+            if (node instanceof ParticleSystem && node.requiresGPUSampledDepth) required = true;
+        });
+        return required;
     }
 
     record(context: ForwardRenderFeatureContext): void {

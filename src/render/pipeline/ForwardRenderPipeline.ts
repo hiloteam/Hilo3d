@@ -76,6 +76,8 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
 
 /** Renderer-local feature state created by a reusable feature configuration. */
 export interface ForwardRenderPipelineFeatureRuntime {
+    /** Request sampled scene depth for this frame before Forward allocates its attachments. */
+    requiresSampledDepth?(context: RenderPipelineContext): boolean;
     /**
      * Record this feature at its configured injection point.
      *
@@ -947,6 +949,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #opaqueTextureEnabled: boolean;
     readonly #minimumSceneScale: number;
     #sceneScale: number;
+    #frameRequiresSampledDepth = false;
     readonly #sceneExtent: MutableRelativeExtent;
     #destroyed = false;
 
@@ -1023,8 +1026,18 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         if (this.#requiresSampledColor && colorCount === 0) {
             throw new Error('Sampled forward scene color requires a color output attachment');
         }
+        this.#frameRequiresSampledDepth = this.#requiresSampledDepth;
+        for (const feature of this.#compiledFeatures) {
+            const required = feature.runtime.requiresSampledDepth?.(context);
+            if (required !== undefined && typeof required !== 'boolean') {
+                throw new TypeError(
+                    `Forward render feature ${feature.name} requiresSampledDepth must return boolean`
+                );
+            }
+            this.#frameRequiresSampledDepth ||= required ?? false;
+        }
         const sceneSampleCount: RenderTargetSampleCount =
-            this.#requiresSampledDepth || this.#samplesBetweenQueues
+            this.#frameRequiresSampledDepth || this.#samplesBetweenQueues
                 ? 1
                 : context.output.sampleCount;
         const surfaceComposition = this.acquireSurfaceComposition(context);
@@ -1221,7 +1234,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         const canUseOutput =
             outputDepth !== null &&
             sampleCount === context.output.sampleCount &&
-            !this.#requiresSampledDepth &&
+            !this.#frameRequiresSampledDepth &&
             !(context.output.kind === 'surface' && usesIntermediateColor);
         if (canUseOutput) return outputDepth;
         if (outputDepth !== null && context.output.kind === 'render-target') {
@@ -1229,7 +1242,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 'Forward features requiring intermediate depth cannot preserve the selected RenderTarget depth/stencil attachment; use a custom RenderPipeline'
             );
         }
-        if (outputFormat === null && !this.#requiresSampledDepth) return null;
+        if (outputFormat === null && !this.#frameRequiresSampledDepth) return null;
         this.#depthDescriptor.format = outputFormat ?? 'depth24plus';
         this.#depthDescriptor.sampleCount = sampleCount;
         return context.graph.createTexture('forward scene depth', this.#depthDescriptor);
@@ -1286,7 +1299,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.#sceneColorFormat ?? context.output.colorFormat(0);
         this.#surfaceCompositionColorFormats.length = 1;
         descriptor.sampleCount = 1;
-        descriptor.depthStencilSampled = this.#requiresSampledDepth;
+        descriptor.depthStencilSampled = this.#frameRequiresSampledDepth;
         const depthFormat = context.output.depthStencilFormat;
         if (depthFormat === null) delete descriptor.depthStencilFormat;
         else descriptor.depthStencilFormat = depthFormat;
@@ -1393,10 +1406,10 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }
         operations.depthLoadOp = firstScenePass ? 'clear' : 'load';
         operations.depthStoreOp =
-            lastScenePass && !this.#requiresSampledDepth ? 'discard' : 'store';
+            lastScenePass && !this.#frameRequiresSampledDepth ? 'discard' : 'store';
         operations.stencilLoadOp = firstScenePass ? 'clear' : 'load';
         operations.stencilStoreOp =
-            lastScenePass && !this.#requiresSampledDepth ? 'discard' : 'store';
+            lastScenePass && !this.#frameRequiresSampledDepth ? 'discard' : 'store';
     }
 
     private recordOutputPasses(

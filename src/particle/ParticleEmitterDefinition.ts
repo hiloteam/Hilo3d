@@ -5,6 +5,7 @@ import type {
     ParticleEmissionDefinition,
     ParticleEmitterDefinitionInput,
     ParticleExecutionMode,
+    ParticleEventOverflowPolicy,
     ParticleInitializeDefinition,
     ParticleModule,
     ParticleOverflowPolicy,
@@ -33,6 +34,8 @@ class ParticleEmitterDefinition {
     readonly simulationSpace: ParticleSimulationSpace;
     readonly overflow: ParticleOverflowPolicy;
     readonly culling: ParticleCullingReaction;
+    readonly eventCapacity: number;
+    readonly eventOverflow: ParticleEventOverflowPolicy;
     readonly bounds: ParticleBoundsDefinition;
     readonly emission: ParticleEmissionDefinition;
     readonly shape: ParticleShapeDefinition;
@@ -79,6 +82,12 @@ class ParticleEmitterDefinition {
         this.simulationSpace = input.simulationSpace ?? 'local';
         this.overflow = input.overflow ?? 'drop-new';
         this.culling = input.culling ?? 'render-only';
+        const eventCapacity = input.eventCapacity ?? 256;
+        if (!Number.isSafeInteger(eventCapacity) || eventCapacity < 0 || eventCapacity > 65_536) {
+            throw new RangeError(`${input.name}.eventCapacity must be between zero and 65536`);
+        }
+        this.eventCapacity = eventCapacity;
+        this.eventOverflow = input.eventOverflow ?? 'drop-new';
         this.bounds = snapshotParticleDefinitionValue(
             input.bounds ?? ({ mode: 'automatic' } as const)
         );
@@ -100,6 +109,8 @@ class ParticleEmitterDefinition {
             simulationSpace: this.simulationSpace,
             overflow: this.overflow,
             culling: this.culling,
+            eventCapacity: this.eventCapacity,
+            eventOverflow: this.eventOverflow,
             bounds: this.bounds,
             emission: this.emission,
             shape: this.shape,

@@ -8,6 +8,7 @@ import type {
     ParticleVector3,
     ParticleVector3Value
 } from '../ParticleTypes';
+import { particleGPUEventType } from './ParticleGPUEventPlan';
 
 const WORKGROUP_SIZE = 64;
 
@@ -18,6 +19,8 @@ export interface ParticleGPUBufferLayout {
     readonly counterByteLength: number;
     readonly parameterByteLength: number;
     readonly spawnCommandByteLength: number;
+    readonly eventByteLength: number;
+    readonly eventCounterByteLength: number;
     readonly rendererDataByteLength: number;
     readonly indirectArgumentByteLength: number;
 }
@@ -183,6 +186,60 @@ function killModuleSource(module: ParticleModule, moduleIndex: number): string {
     }
 }
 
+function collisionModuleSource(module: ParticleModule, moduleIndex: number): string {
+    if (module.type !== 'collision') return '';
+    const bounce = f32(module.bounce ?? 0.5);
+    const friction = f32(module.friction ?? 0);
+    const emitEvent = `particleEmitEvent(${String(particleGPUEventType(module.event ?? 'collision'))}u, stableId, position, velocity);`;
+    return module.colliders
+        .map((collider, colliderIndex) => {
+            const suffix = `${String(moduleIndex)}_${String(colliderIndex)}`;
+            switch (collider.type) {
+                case 'plane':
+                    return `
+let collisionNormal_${suffix} = normalize(vec3<f32>(${collider.normal.map(f32).join(', ')}));
+let collisionPenetration_${suffix} = ${f32(collider.offset ?? 0)} - dot(position, collisionNormal_${suffix});
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(collisionNormal_${suffix}, collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+                case 'sphere': {
+                    const center = collider.center ?? [0, 0, 0];
+                    return `
+let collisionDelta_${suffix} = position - vec3<f32>(${center.map(f32).join(', ')});
+let collisionDistance_${suffix} = length(collisionDelta_${suffix});
+let collisionPenetration_${suffix} = ${f32(collider.radius)} - collisionDistance_${suffix};
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+                }
+                case 'box': {
+                    const center = collider.center ?? [0, 0, 0];
+                    return `
+let collisionBoxDelta_${suffix} = position - vec3<f32>(${center.map(f32).join(', ')});
+let collisionBoxPenetration_${suffix} = vec3<f32>(${collider.size.map(value => f32(value * 0.5)).join(', ')}) - abs(collisionBoxDelta_${suffix});
+if (all(collisionBoxPenetration_${suffix} > vec3<f32>(0.0))) {
+    var collisionNormal_${suffix} = vec3<f32>(0.0, 0.0, select(-1.0, 1.0, collisionBoxDelta_${suffix}.z >= 0.0));
+    var collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.z;
+    if (collisionBoxPenetration_${suffix}.x <= collisionPenetration_${suffix}) { collisionNormal_${suffix} = vec3<f32>(select(-1.0, 1.0, collisionBoxDelta_${suffix}.x >= 0.0), 0.0, 0.0); collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.x; }
+    if (collisionBoxPenetration_${suffix}.y <= collisionPenetration_${suffix}) { collisionNormal_${suffix} = vec3<f32>(0.0, select(-1.0, 1.0, collisionBoxDelta_${suffix}.y >= 0.0), 0.0); collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.y; }
+    particleResolveCollision(collisionNormal_${suffix}, collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity);
+    ${emitEvent}
+}`;
+                }
+                case 'capsule': {
+                    const segment = collider.end.map(
+                        (value, index) => value - (collider.start[index] ?? 0)
+                    );
+                    return `
+let collisionCapsuleStart_${suffix} = vec3<f32>(${collider.start.map(f32).join(', ')});
+let collisionCapsuleSegment_${suffix} = vec3<f32>(${segment.map(f32).join(', ')});
+let collisionCapsuleAmount_${suffix} = clamp(dot(position - collisionCapsuleStart_${suffix}, collisionCapsuleSegment_${suffix}) / max(dot(collisionCapsuleSegment_${suffix}, collisionCapsuleSegment_${suffix}), 0.000001), 0.0, 1.0);
+let collisionDelta_${suffix} = position - (collisionCapsuleStart_${suffix} + collisionCapsuleSegment_${suffix} * collisionCapsuleAmount_${suffix});
+let collisionDistance_${suffix} = length(collisionDelta_${suffix});
+let collisionPenetration_${suffix} = ${f32(collider.radius)} - collisionDistance_${suffix};
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+                }
+            }
+        })
+        .join('\n');
+}
+
 function wgslShared(plan: Readonly<ParticleCompiledEmitterPlan>): string {
     return `
 struct ParticleParams {
@@ -192,6 +249,7 @@ struct ParticleParams {
     spawn: vec4<u32>,
     cameraPosition: vec4<f32>,
     sort: vec4<u32>,
+    viewProjection: mat4x4<f32>,
 };
 struct ParticleCounters {
     aliveCount: atomic<u32>,
@@ -206,6 +264,7 @@ fn mix32(input: u32) -> u32 {
     mixed = (mixed ^ (mixed >> 15u)) * 0x846ca68bu;
     return mixed ^ (mixed >> 16u);
 }
+
 fn particleRandom(stableId: u32, lane: u32) -> f32 {
     var value = mix32(params.spawn.z);
     value = mix32(value ^ ${String(Math.imul(plan.emitterId, 0x9e3779b1) >>> 0)}u);
@@ -256,6 +315,32 @@ fn particleCurlNoise(point: vec3<f32>, seed: u32, octaves: u32, lacunarity: f32,
     let z0 = particleVectorNoise(point - dz, seed, octaves, lacunarity, persistence);
     let z1 = particleVectorNoise(point + dz, seed, octaves, lacunarity, persistence);
     return vec3<f32>((y1.z - y0.z) - (z1.y - z0.y), (z1.x - z0.x) - (x1.z - x0.z), (x1.y - x0.y) - (y1.x - y0.x)) / (2.0 * epsilon);
+}`;
+}
+
+function particleEventWGSL(capacity: number): string {
+    return `
+struct ParticleEventRecord {
+    metadata: vec4<u32>,
+    position: vec4<f32>,
+    velocity: vec4<f32>,
+};
+struct ParticleEventCounters {
+    count: atomic<u32>,
+    droppedCount: atomic<u32>,
+    padding0: vec2<u32>,
+};
+fn particleEmitEvent(eventType: u32, stableId: u32, position: vec3<f32>, velocity: vec3<f32>) {
+    let eventIndex = atomicAdd(&eventCounters.count, 1u);
+    if (eventIndex >= ${String(capacity)}u) {
+        atomicAdd(&eventCounters.droppedCount, 1u);
+        return;
+    }
+    eventRecords[eventIndex] = ParticleEventRecord(
+        vec4<u32>(eventType, stableId, 0u, 0u),
+        vec4<f32>(position, 1.0),
+        vec4<f32>(velocity, 0.0)
+    );
 }`;
 }
 
@@ -321,8 +406,9 @@ function simulateShader(
     const stableId = attributeOffset(plan, 'stable-id');
     const mass = optionalAttributeOffset(plan, 'mass');
     const moduleSource = plan.definition.modules.map(forceModuleSource).join('\n');
+    const collisionSource = plan.definition.modules.map(collisionModuleSource).join('\n');
     const killSource = plan.definition.modules.map(killModuleSource).join('\n');
-    let vectorFieldBinding = 7;
+    let vectorFieldBinding = 9;
     const vectorFieldDeclarations: string[] = [];
     const vectorFieldBindings: (
         | {
@@ -330,7 +416,7 @@ function simulateShader(
               readonly group: number;
               readonly binding: number;
               readonly kind: 'sampled-texture';
-              readonly sampleType: 'float';
+              readonly sampleType: 'float' | 'depth';
           }
         | {
               readonly name: string;
@@ -362,6 +448,36 @@ function simulateShader(
         );
         vectorFieldBinding += 2;
     }
+    const sceneDepthCollision = plan.definition.modules.find(
+        module => module.type === 'scene-depth-collision'
+    );
+    const sceneDepthDeclaration =
+        sceneDepthCollision?.type === 'scene-depth-collision'
+            ? `@group(0) @binding(${String(vectorFieldBinding)}) var particleSceneDepth: texture_depth_2d;`
+            : '';
+    if (sceneDepthCollision?.type === 'scene-depth-collision') {
+        vectorFieldBindings.push({
+            name: 'particleSceneDepth',
+            group: 0,
+            binding: vectorFieldBinding,
+            kind: 'sampled-texture',
+            sampleType: 'depth'
+        });
+    }
+    const sceneDepthSource =
+        sceneDepthCollision?.type === 'scene-depth-collision'
+            ? `
+    let particleClip = params.viewProjection * vec4<f32>(position, 1.0);
+    let particleNdc = particleClip.xyz / max(abs(particleClip.w), 0.000001);
+    let particleUV = particleNdc.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+    if (all(particleUV >= vec2<f32>(0.0)) && all(particleUV <= vec2<f32>(1.0))) {
+        let particleDepthSize = vec2<i32>(textureDimensions(particleSceneDepth));
+        let particleDepthPixel = clamp(vec2<i32>(particleUV * vec2<f32>(particleDepthSize)), vec2<i32>(0), particleDepthSize - vec2<i32>(1));
+        let sceneDepth = textureLoad(particleSceneDepth, particleDepthPixel, 0);
+        let depthHit = select(particleNdc.z >= sceneDepth - ${f32(sceneDepthCollision.thickness ?? 0.001)}, particleNdc.z <= sceneDepth + ${f32(sceneDepthCollision.thickness ?? 0.001)}, params.spawn.w != 0u);
+        if (depthHit) { position = previousPosition; velocity *= -${f32(sceneDepthCollision.bounce ?? 0.5)} * (1.0 - ${f32(sceneDepthCollision.friction ?? 0)}); particleEmitEvent(${String(particleGPUEventType(sceneDepthCollision.event ?? 'collision'))}u, stableId, position, velocity); }
+    }`
+            : '';
     return new ComputeShader({
         label: `${plan.definition.name}:particle-simulate`,
         workgroupSize: [WORKGROUP_SIZE],
@@ -373,7 +489,18 @@ function simulateShader(
 @group(0) @binding(4) var<storage, read_write> aliveTarget: array<u32>;
 @group(0) @binding(5) var<storage, read_write> deadIndices: array<u32>;
 @group(0) @binding(6) var<storage, read_write> counters: ParticleCounters;
+@group(0) @binding(7) var<storage, read_write> eventRecords: array<ParticleEventRecord>;
+@group(0) @binding(8) var<storage, read_write> eventCounters: ParticleEventCounters;
 ${vectorFieldDeclarations.join('\n')}
+${sceneDepthDeclaration}
+${particleEventWGSL(plan.definition.eventCapacity)}
+fn particleResolveCollision(normal: vec3<f32>, penetration: f32, bounce: f32, friction: f32, position: ptr<function, vec3<f32>>, velocity: ptr<function, vec3<f32>>) {
+    *position += normal * penetration;
+    let incoming = dot(*velocity, normal);
+    if (incoming < 0.0) { *velocity -= normal * incoming * (1.0 + bounce); }
+    let normalVelocity = normal * dot(*velocity, normal);
+    *velocity = normalVelocity + (*velocity - normalVelocity) * (1.0 - friction);
+}
 @compute @workgroup_size(${String(WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (invocation.x >= atomicLoad(&counters.aliveCount)) { return; }
@@ -390,6 +517,8 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     var noiseOffset = vec3<f32>(0.0);
     ${moduleSource}
     position += velocity * deltaTime;
+    ${collisionSource}
+    ${sceneDepthSource}
     var alive = age < lifetime;
     ${killSource}
     ${storageAssignments(plan, 'stateTarget')}
@@ -397,6 +526,7 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
         let outputIndex = atomicAdd(&counters.outputAliveCount, 1u);
         aliveTarget[outputIndex] = particleIndex;
     } else {
+        particleEmitEvent(${String(particleGPUEventType('death'))}u, stableId, position, velocity);
         let deadIndex = atomicAdd(&counters.deadCount, 1u);
         deadIndices[deadIndex] = particleIndex;
     }
@@ -454,6 +584,22 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
                 kind: 'storage-buffer',
                 access: 'read-write',
                 minBindingSize: buffers.counterByteLength
+            },
+            {
+                name: 'eventRecords',
+                group: 0,
+                binding: 7,
+                kind: 'storage-buffer',
+                access: 'write-discard',
+                minBindingSize: buffers.eventByteLength
+            },
+            {
+                name: 'eventCounters',
+                group: 0,
+                binding: 8,
+                kind: 'storage-buffer',
+                access: 'read-write',
+                minBindingSize: buffers.eventCounterByteLength
             },
             ...vectorFieldBindings
         ]
@@ -516,6 +662,9 @@ struct SpawnCommand {
 @group(0) @binding(3) var<storage, read_write> deadIndices: array<u32>;
 @group(0) @binding(4) var<storage, read_write> counters: ParticleCounters;
 @group(0) @binding(5) var<storage, read> spawnCommands: array<SpawnCommand>;
+@group(0) @binding(6) var<storage, read_write> eventRecords: array<ParticleEventRecord>;
+@group(0) @binding(7) var<storage, read_write> eventCounters: ParticleEventCounters;
+${particleEventWGSL(plan.definition.eventCapacity)}
 fn acquireParticleIndex() -> u32 {
     let available = atomicLoad(&counters.deadCount);
     if (available > 0u) {
@@ -553,6 +702,7 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     ${customAssignments}
     let outputIndex = atomicAdd(&counters.outputAliveCount, 1u);
     aliveTarget[outputIndex] = particleIndex;
+    particleEmitEvent(${String(particleGPUEventType('birth'))}u, params.spawn.y + invocation.x, position, velocity);
 }`,
         bindings: [
             {
@@ -600,6 +750,22 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
                 binding: 5,
                 kind: 'read-only-storage-buffer',
                 minBindingSize: buffers.spawnCommandByteLength
+            },
+            {
+                name: 'eventRecords',
+                group: 0,
+                binding: 6,
+                kind: 'storage-buffer',
+                access: 'read-write',
+                minBindingSize: buffers.eventByteLength
+            },
+            {
+                name: 'eventCounters',
+                group: 0,
+                binding: 7,
+                kind: 'storage-buffer',
+                access: 'read-write',
+                minBindingSize: buffers.eventCounterByteLength
             }
         ]
     });
@@ -698,7 +864,8 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
         source: `
 struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>, deadCount: atomic<u32>, nextIndex: atomic<u32>, droppedSpawnCount: atomic<u32>, };
 @group(0) @binding(0) var<storage, read_write> counters: ParticleCounters;
-@compute @workgroup_size(1) fn main() { atomicStore(&counters.outputAliveCount, 0u); }`,
+@group(0) @binding(1) var<storage, read_write> eventCounters: array<atomic<u32>>;
+@compute @workgroup_size(1) fn main() { atomicStore(&counters.outputAliveCount, 0u); atomicStore(&eventCounters[0], 0u); atomicStore(&eventCounters[1], 0u); }`,
         bindings: [
             {
                 name: 'counters',
@@ -707,6 +874,14 @@ struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>
                 kind: 'storage-buffer',
                 access: 'read-write',
                 minBindingSize: buffers.counterByteLength
+            },
+            {
+                name: 'eventCounters',
+                group: 0,
+                binding: 1,
+                kind: 'storage-buffer',
+                access: 'write-discard',
+                minBindingSize: buffers.eventCounterByteLength
             }
         ]
     });
@@ -1050,6 +1225,18 @@ function storageRenderer(
         ? 'vec4 texel = texture(u_particleTexture, particleUV);'
         : 'vec4 texel = vec4(1.0);';
     const textureBinding = 1;
+    const depthBinding = renderer.texture ? textureBinding + 2 : textureBinding;
+    const softParticleSource = renderer.softParticle
+        ? 'uniform sampler2D u_particleSceneDepth;'
+        : '';
+    const softParticleFade = renderer.softParticle
+        ? `float sceneDepth = texelFetch(u_particleSceneDepth, ivec2(gl_FragCoord.xy), 0).r; ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''} color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(renderer.softParticle.distance)}, 0.0, 1.0), ${f32(renderer.softParticle.contrast ?? 1)});`
+        : '';
+    const softVertexOutput = renderer.softParticle ? 'out float particleDepthMode;' : '';
+    const softVertexAssignment = renderer.softParticle
+        ? 'particleDepthMode = u_cameraPosition.w;'
+        : '';
+    const softFragmentInput = renderer.softParticle ? 'in float particleDepthMode;' : '';
     const alignment = renderer.alignment ?? 'view';
     const pivot = renderer.pivot ?? [0, 0];
     const stretchScale = renderer.stretchScale ?? 1;
@@ -1111,6 +1298,23 @@ function storageRenderer(
                       kind: 'sampler' as const
                   }
               ]
+            : []),
+        ...(renderer.softParticle
+            ? [
+                  {
+                      name: 'u_particleSceneDepth',
+                      group: 3,
+                      binding: depthBinding,
+                      kind: 'sampled-texture' as const,
+                      sampleType: 'depth' as const
+                  },
+                  {
+                      name: 'u_particleSceneDepth',
+                      group: 3,
+                      binding: depthBinding + 1,
+                      kind: 'sampler' as const
+                  }
+              ]
             : [])
     ];
     return Object.freeze({
@@ -1129,7 +1333,7 @@ layout(std140) uniform ParticleViewBlock {
     vec4 u_viewport;
 };
 layout(std430) readonly buffer ParticleRenderData { vec4 values[]; } particleRenderData;
-out vec2 particleUV; out vec4 particleColor;
+out vec2 particleUV; out vec4 particleColor; ${softVertexOutput}
 vec2 particleCorner(int vertexIndex) {
     vec2 corner = vec2(-0.5, -0.5);
     if (vertexIndex == 1 || vertexIndex == 2 || vertexIndex == 4) corner.x = 0.5;
@@ -1158,15 +1362,17 @@ void main() {
     float frameValue = mod(max(0.0, floor(rotationFrame.y)), ${String(rows * columns)}.0);
     particleUV = (particleCorner(localIndex) + vec2(0.5) + vec2(mod(frameValue, ${String(columns)}.0), floor(frameValue / ${String(columns)}.0))) / vec2(${String(columns)}.0, ${String(rows)}.0);
     particleColor = sourceColor;
+    ${softVertexAssignment}
     ${cameraFadeSource}
 }`,
             fragmentSource: `#version 310 es
 precision highp float;
 precision highp int;
-in vec2 particleUV; in vec4 particleColor;
+in vec2 particleUV; in vec4 particleColor; ${softFragmentInput}
 ${textureSource}
+${softParticleSource}
 layout(location = 0) out vec4 fragmentColor;
-void main() { ${textureSample} vec4 color = texel * particleColor; ${renderer.blend === 'alpha' || renderer.blend === undefined ? '' : 'color.rgb *= color.a;'} if (color.a <= 0.00001) discard; fragmentColor = color; }`
+void main() { ${textureSample} vec4 color = texel * particleColor; ${softParticleFade} ${renderer.blend === 'alpha' || renderer.blend === undefined ? '' : 'color.rgb *= color.a;'} if (color.a <= 0.00001) discard; fragmentColor = color; }`
         })
     });
 }
@@ -1186,8 +1392,10 @@ export function compileParticleGPUPlan(
         aliveIndexByteLength: align(plan.definition.capacity * 4, 16),
         deadIndexByteLength: align(plan.definition.capacity * 4, 16),
         counterByteLength: 32,
-        parameterByteLength: 96,
+        parameterByteLength: 160,
         spawnCommandByteLength: align(plan.definition.capacity * 64, 16),
+        eventByteLength: Math.max(16, align(plan.definition.eventCapacity * 48, 16)),
+        eventCounterByteLength: 16,
         rendererDataByteLength: align(plan.definition.capacity * 64, 16),
         indirectArgumentByteLength: 16
     });

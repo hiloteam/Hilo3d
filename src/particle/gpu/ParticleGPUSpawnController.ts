@@ -142,7 +142,11 @@ export class ParticleGPUSpawnController {
             fixedStep * this.definition.maxCatchUpSteps
         );
         let steps = 0;
-        while (this.#accumulator + 1e-9 >= fixedStep && steps < this.definition.maxCatchUpSteps) {
+        const stepTolerance = fixedStep * 1e-6;
+        while (
+            this.#accumulator + stepTolerance >= fixedStep &&
+            steps < this.definition.maxCatchUpSteps
+        ) {
             this.step(Math.fround(fixedStep), context);
             this.#accumulator -= fixedStep;
             steps++;

@@ -1,11 +1,12 @@
 # Particle system
 
 Hilo3D exposes one versioned particle asset model for portable CPU simulation, stateful WebGPU
-simulation, and lightweight stateless reconstruction. P0-P3 are implemented: immutable definitions
+simulation, and lightweight stateless reconstruction. P0-P4 are implemented: immutable definitions
 compile to a liveness-based SoA plan, CPU emitters render through one instanced `Mesh`, WebGPU
 stateful emitters record persistent simulation and storage raster through the Render Graph, and
 stateless emitters rebuild renderer attributes from absolute time without cross-frame particle
-state.
+state. P4 adds analytic/depth interaction, soft particles, bounded events, typed channels, and
+GPU-resident sub-emitter routing.
 
 ## Public workflow
 
@@ -88,7 +89,7 @@ bounds because the compiler cannot infer a conservative extent from arbitrary te
 `aliveCount` intentionally reports only CPU-resident particles. GPU emitters do not read alive
 counts, sort keys, state, or indirect arguments back to JavaScript in the production loop.
 
-## Implemented P0-P2 modules
+## Implemented P0-P4 modules
 
 - Lifecycle and spawn: duration, loop, delay, prewarm, fixed step, time scale, rate over time, rate
   over distance, burst, and manual emission.
@@ -103,12 +104,36 @@ counts, sort keys, state, or indirect arguments back to JavaScript in the produc
   texture-sheet lifetime/speed/FPS modes, camera offset/fade, screen-space size, and typed custom
   channels.
 - Kill: age/capacity plus speed, distance, plane, box, and sphere conditions.
+- Interaction: CPU/WebGPU analytic plane, sphere, axis-aligned box, and capsule collision; CPU
+  trigger enter/inside/exit state; and WebGPU scene-depth collision.
 
 The sprite renderer supports view, world-up, velocity, and stretched alignment; alpha,
 premultiplied-alpha, and additive composition; depth test/write; pivot and texture sheets; render
 order; and `none`, distance, youngest, or oldest CPU sorting. GPU distance sorting uses Bitonic for
 power-of-two capacities up to 4096 and a distance-bucket profile for larger or non-power-of-two
-capacities.
+capacities. Soft sprites sample the Forward scene depth through the constrained storage-raster
+shader, perform their depth comparison in the fragment stage, and omit a depth attachment from that
+pass. `softParticle.distance` and optional `contrast` control the fade; `depthWrite: true` is
+rejected before graph compilation.
+
+## Interaction and bounded events
+
+CPU simulation writes birth, death, collision, and trigger records to compact typed-array rings. No
+per-particle JavaScript callback runs in the simulation loop. `await system.readEvents(limit)`
+materializes a bounded aggregate after simulation, including per-name counts, remaining records, and
+dropped-event diagnostics. Emitter `eventCapacity`/`eventOverflow` and system
+`eventReadbackCapacity` make both queue limits explicit.
+
+`sub-emitter` modules route matching CPU events to an existing emitter as batched spawn commands.
+For GPU-to-GPU routes, simulation/initialize kernels capture compact records in renderer-owned
+buffers and a later Render Graph compute pass writes the target emitter's active state directly. The
+spawned target particles participate from the following simulation frame; event counts and particle
+state never cross a CPU readback boundary. GPU-to-CPU routes fail compilation.
+
+`ParticleEventChannel<Payload>` is the application-facing typed service path. Its fixed schema
+accepts float/uint/boolean/vector/color fields, validates payloads, applies `drop-new` or
+`drop-oldest`, exposes capacity diagnostics, and can drain position/velocity bursts into a resident
+`ParticleSystem` without constructing short-lived systems.
 
 ## Stateless reconstruction and scalability
 
@@ -150,16 +175,20 @@ public `ParticleSystem` and definition identities remain unchanged. CPU state re
 is re-uploaded through normal resource recovery.
 
 The default Forward pipeline owns the built-in GPU particle feature. It is inert on WebGL 2 and when
-a scene has no GPU particle emitters. GPU simulation, compaction, sort, renderer-data build, and
-indirect raster all declare their storage, indirect, and attachment access through the Render Graph.
+a scene has no GPU particle emitters. GPU simulation, event capture/routing, compaction, sort,
+renderer-data build, and indirect raster all declare their storage, sampled depth, indirect, and
+attachment access through the Render Graph. Scene-depth collision reads depth from compute. Soft
+sprites use sampled depth without attaching it to the same pass, so the graph contains no
+sampled-depth/attachment feedback edge.
 
 ## Current boundary
 
-P4-P6 remain outside this implementation. In particular, there is no collision/event channel,
-soft-particle depth sampling, mesh/ribbon/trail renderer, serialization upgrade pipeline, capture
-cache, or graph editor yet. The public fixed module union rejects arbitrary callbacks and arbitrary
-shader source by design.
+P5-P6 remain outside this implementation. In particular, there is no mesh/ribbon/trail renderer,
+serialization upgrade pipeline, capture cache, or graph editor yet. GPU event observation is
+intentionally limited to resident routing; application-visible GPU diagnostics remain aggregate and
+asynchronous rather than a production-loop particle readback. The public fixed module union rejects
+arbitrary callbacks and arbitrary shader source by design.
 
 The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
 its specialized implementation for now. It will be migrated only after the remaining particle
-feature phases are complete, so P0-P3 do not reduce or reshape that fixture prematurely.
+feature phases are complete, so P0-P4 do not reduce or reshape that fixture prematurely.

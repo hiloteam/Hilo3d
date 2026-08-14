@@ -17,6 +17,7 @@ import type {
     ParticleVector3Value
 } from '../ParticleTypes';
 import { ParticleCPUState } from './ParticleCPUState';
+import { ParticleCPUEventBuffer } from './ParticleCPUEventBuffer';
 import { particleCurlNoise, particleVectorNoise } from './ParticleNoise';
 
 const ZERO_VECTOR: ParticleVector3 = Object.freeze([0, 0, 0]);
@@ -31,6 +32,150 @@ interface MutableParticleRandomKey {
     particleId: number;
     generation: number;
     lane: number;
+}
+
+function colliderContains(
+    collider: Extract<ParticleModule, { type: 'collision' }>['colliders'][number],
+    x: number,
+    y: number,
+    z: number
+): boolean {
+    switch (collider.type) {
+        case 'plane':
+            return (
+                x * collider.normal[0] + y * collider.normal[1] + z * collider.normal[2] <
+                (collider.offset ?? 0)
+            );
+        case 'sphere': {
+            const center = collider.center ?? ZERO_VECTOR;
+            return length3(x - center[0], y - center[1], z - center[2]) <= collider.radius;
+        }
+        case 'box': {
+            const center = collider.center ?? ZERO_VECTOR;
+            return (
+                Math.abs(x - center[0]) <= collider.size[0] * 0.5 &&
+                Math.abs(y - center[1]) <= collider.size[1] * 0.5 &&
+                Math.abs(z - center[2]) <= collider.size[2] * 0.5
+            );
+        }
+        case 'capsule': {
+            const dx = collider.end[0] - collider.start[0];
+            const dy = collider.end[1] - collider.start[1];
+            const dz = collider.end[2] - collider.start[2];
+            const squared = dx * dx + dy * dy + dz * dz;
+            const amount =
+                squared <= 1e-8
+                    ? 0
+                    : Math.min(
+                          1,
+                          Math.max(
+                              0,
+                              ((x - collider.start[0]) * dx +
+                                  (y - collider.start[1]) * dy +
+                                  (z - collider.start[2]) * dz) /
+                                  squared
+                          )
+                      );
+            return (
+                length3(
+                    x - (collider.start[0] + dx * amount),
+                    y - (collider.start[1] + dy * amount),
+                    z - (collider.start[2] + dz * amount)
+                ) <= collider.radius
+            );
+        }
+    }
+}
+
+function colliderContact(
+    collider: Extract<ParticleModule, { type: 'collision' }>['colliders'][number],
+    x: number,
+    y: number,
+    z: number,
+    particleRadius: number,
+    normal: Float32Array
+): number {
+    switch (collider.type) {
+        case 'plane': {
+            const normalLength = Math.max(1e-8, length3(...collider.normal));
+            normal[0] = collider.normal[0] / normalLength;
+            normal[1] = collider.normal[1] / normalLength;
+            normal[2] = collider.normal[2] / normalLength;
+            const distance = x * normal[0] + y * normal[1] + z * normal[2] - (collider.offset ?? 0);
+            return Math.max(0, particleRadius - distance);
+        }
+        case 'sphere': {
+            const center = collider.center ?? ZERO_VECTOR;
+            const dx = x - center[0];
+            const dy = y - center[1];
+            const dz = z - center[2];
+            const distance = length3(dx, dy, dz);
+            const target = collider.radius + particleRadius;
+            if (distance >= target) return 0;
+            const inverse = distance <= 1e-8 ? 0 : 1 / distance;
+            normal[0] = distance <= 1e-8 ? 0 : dx * inverse;
+            normal[1] = distance <= 1e-8 ? 1 : dy * inverse;
+            normal[2] = distance <= 1e-8 ? 0 : dz * inverse;
+            return target - distance;
+        }
+        case 'box': {
+            const center = collider.center ?? ZERO_VECTOR;
+            const dx = x - center[0];
+            const dy = y - center[1];
+            const dz = z - center[2];
+            const hx = collider.size[0] * 0.5 + particleRadius;
+            const hy = collider.size[1] * 0.5 + particleRadius;
+            const hz = collider.size[2] * 0.5 + particleRadius;
+            if (Math.abs(dx) >= hx || Math.abs(dy) >= hy || Math.abs(dz) >= hz) return 0;
+            const px = hx - Math.abs(dx);
+            const py = hy - Math.abs(dy);
+            const pz = hz - Math.abs(dz);
+            normal.fill(0, 0, 3);
+            if (px <= py && px <= pz) {
+                normal[0] = dx < 0 ? -1 : 1;
+                return px;
+            }
+            if (py <= pz) {
+                normal[1] = dy < 0 ? -1 : 1;
+                return py;
+            }
+            normal[2] = dz < 0 ? -1 : 1;
+            return pz;
+        }
+        case 'capsule': {
+            const dx = collider.end[0] - collider.start[0];
+            const dy = collider.end[1] - collider.start[1];
+            const dz = collider.end[2] - collider.start[2];
+            const squared = dx * dx + dy * dy + dz * dz;
+            const amount =
+                squared <= 1e-8
+                    ? 0
+                    : Math.min(
+                          1,
+                          Math.max(
+                              0,
+                              ((x - collider.start[0]) * dx +
+                                  (y - collider.start[1]) * dy +
+                                  (z - collider.start[2]) * dz) /
+                                  squared
+                          )
+                      );
+            const cx = collider.start[0] + dx * amount;
+            const cy = collider.start[1] + dy * amount;
+            const cz = collider.start[2] + dz * amount;
+            const sx = x - cx;
+            const sy = y - cy;
+            const sz = z - cz;
+            const distance = length3(sx, sy, sz);
+            const target = collider.radius + particleRadius;
+            if (distance >= target) return 0;
+            const inverse = distance <= 1e-8 ? 0 : 1 / distance;
+            normal[0] = distance <= 1e-8 ? 0 : sx * inverse;
+            normal[1] = distance <= 1e-8 ? 1 : sy * inverse;
+            normal[2] = distance <= 1e-8 ? 0 : sz * inverse;
+            return target - distance;
+        }
+    }
 }
 
 export interface ParticleEmitterFrameContext {
@@ -239,6 +384,7 @@ export class ParticleCPUSimulator {
     readonly definition: ParticleEmitterDefinition;
     readonly plan: Readonly<ParticleCompiledEmitterPlan>;
     readonly state: ParticleCPUState;
+    readonly events: ParticleCPUEventBuffer;
     readonly #seed: number;
     readonly #curveLUTs = new Map<ParticleCurve, Float32Array>();
     readonly #gradientLUTs = new Map<ParticleGradient, Float32Array>();
@@ -263,6 +409,7 @@ export class ParticleCPUSimulator {
         this.plan = plan;
         this.definition = plan.definition;
         this.state = new ParticleCPUState(plan);
+        this.events = new ParticleCPUEventBuffer(plan.definition);
         this.#seed = seed >>> 0;
         this.#randomKey = {
             systemSeed: this.#seed,
@@ -294,6 +441,7 @@ export class ParticleCPUSimulator {
 
     clear(): void {
         this.state.clear();
+        this.events.clear();
         this.#pendingCommands.length = 0;
         this.#rateAccumulator = 0;
     }
@@ -337,7 +485,11 @@ export class ParticleCPUSimulator {
             fixedStep * this.definition.maxCatchUpSteps
         );
         let steps = 0;
-        while (this.#accumulator + 1e-9 >= fixedStep && steps < this.definition.maxCatchUpSteps) {
+        const stepTolerance = fixedStep * 1e-6;
+        while (
+            this.#accumulator + stepTolerance >= fixedStep &&
+            steps < this.definition.maxCatchUpSteps
+        ) {
             this.step(Math.fround(fixedStep), context);
             this.#accumulator -= fixedStep;
             steps++;
@@ -506,6 +658,7 @@ export class ParticleCPUSimulator {
             this.state.f32('noise-offset').fill(0, positionOffset, positionOffset + 3);
         this.initializeRenderableAttributes(index, key);
         this.initializeModuleAttributes(index, key);
+        this.emitEvent('birth', index);
     }
 
     private initializeRenderableAttributes(index: number, key: ParticleRandomKey): void {
@@ -553,6 +706,7 @@ export class ParticleCPUSimulator {
     private initializeModuleAttributes(index: number, key: ParticleRandomKey): void {
         const velocityOffset = index * 3;
         const velocity = this.state.f32('velocity');
+        if (this.state.has('collision-state')) this.state.u32('collision-state')[index] = 0;
         for (const module of this.definition.modules) {
             switch (module.type) {
                 case 'inherit-emitter-velocity': {
@@ -623,8 +777,10 @@ export class ParticleCPUSimulator {
             );
             normalized[index] = Math.fround(normalizedAge);
             this.updateMotion(index, deltaTime);
+            this.updateInteractions(index);
             this.updateVisualAttributes(index, normalizedAge);
             if ((ages[index] ?? 0) >= (lifetimes[index] ?? 0) || this.shouldKill(index)) {
+                this.emitEvent('death', index);
                 this.state.removeParticle(index);
                 continue;
             }
@@ -973,6 +1129,95 @@ export class ParticleCPUSimulator {
                     break;
             }
         }
+    }
+
+    private updateInteractions(index: number): void {
+        const positions = this.state.f32('position');
+        const velocities = this.state.f32('velocity');
+        const offset = index * 3;
+        const radius = this.state.has('size') ? (this.state.f32('size')[index] ?? 0) * 0.5 : 0;
+        for (const module of this.definition.modules) {
+            if (module.type === 'collision') {
+                for (const collider of module.colliders) {
+                    const penetration = colliderContact(
+                        collider,
+                        positions[offset] ?? 0,
+                        positions[offset + 1] ?? 0,
+                        positions[offset + 2] ?? 0,
+                        radius * (module.radiusScale ?? 1),
+                        this.#temporaryA
+                    );
+                    if (penetration <= 0) continue;
+                    const nx = this.#temporaryA[0] ?? 0;
+                    const ny = this.#temporaryA[1] ?? 0;
+                    const nz = this.#temporaryA[2] ?? 0;
+                    positions[offset] = (positions[offset] ?? 0) + nx * penetration;
+                    positions[offset + 1] = (positions[offset + 1] ?? 0) + ny * penetration;
+                    positions[offset + 2] = (positions[offset + 2] ?? 0) + nz * penetration;
+                    let vx = velocities[offset] ?? 0;
+                    let vy = velocities[offset + 1] ?? 0;
+                    let vz = velocities[offset + 2] ?? 0;
+                    const incoming = vx * nx + vy * ny + vz * nz;
+                    if (incoming < 0) {
+                        const bounce = module.bounce ?? 0.5;
+                        vx -= (1 + bounce) * incoming * nx;
+                        vy -= (1 + bounce) * incoming * ny;
+                        vz -= (1 + bounce) * incoming * nz;
+                    }
+                    const friction = module.friction ?? 0;
+                    const normalVelocity = vx * nx + vy * ny + vz * nz;
+                    vx = normalVelocity * nx + (vx - normalVelocity * nx) * (1 - friction);
+                    vy = normalVelocity * ny + (vy - normalVelocity * ny) * (1 - friction);
+                    vz = normalVelocity * nz + (vz - normalVelocity * nz) * (1 - friction);
+                    velocities[offset] = Math.fround(vx);
+                    velocities[offset + 1] = Math.fround(vy);
+                    velocities[offset + 2] = Math.fround(vz);
+                    const lifetimeLoss = module.lifetimeLoss ?? 0;
+                    if (lifetimeLoss > 0) {
+                        const lifetime = this.state.f32('lifetime')[index] ?? 1;
+                        this.state.f32('age')[index] = Math.fround(
+                            (this.state.f32('age')[index] ?? 0) + lifetime * lifetimeLoss
+                        );
+                    }
+                    this.emitEvent(module.event ?? 'collision', index);
+                }
+                continue;
+            }
+            if (module.type !== 'trigger') continue;
+            const states = this.state.u32('collision-state');
+            const previous = states[index] ?? 0;
+            let current = 0;
+            for (let volumeIndex = 0; volumeIndex < module.volumes.length; volumeIndex += 1) {
+                const volume = module.volumes[volumeIndex];
+                if (
+                    volume &&
+                    colliderContains(
+                        volume,
+                        positions[offset] ?? 0,
+                        positions[offset + 1] ?? 0,
+                        positions[offset + 2] ?? 0
+                    )
+                ) {
+                    current |= 1 << volumeIndex;
+                }
+            }
+            const entered = current & ~previous;
+            const exited = previous & ~current;
+            if (entered !== 0 && module.events?.enter) this.emitEvent(module.events.enter, index);
+            if (current !== 0 && module.events?.inside) this.emitEvent(module.events.inside, index);
+            if (exited !== 0 && module.events?.exit) this.emitEvent(module.events.exit, index);
+            states[index] = current >>> 0;
+        }
+    }
+
+    private emitEvent(name: string, index: number): void {
+        this.events.push(
+            name,
+            this.state.u32('stable-id')[index] ?? 0,
+            this.state.f32('position'),
+            this.state.f32('velocity'),
+            index * 3
+        );
     }
 
     private shouldKill(index: number): boolean {

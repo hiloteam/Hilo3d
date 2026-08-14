@@ -32,7 +32,12 @@ import {
 import { createStd140Layout } from '../../render/ubo/Std140Layout';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import { compileParticleGPUPlan, type ParticleGPUCompiledPlan } from './ParticleGPUPlan';
+import {
+    compileParticleGPUSubEmitterRoute,
+    type ParticleGPUSubEmitterRoutePlan
+} from './ParticleGPUEventPlan';
 import type { ParticleGPUSpawnController } from './ParticleGPUSpawnController';
+import type { ParticleSubEmitterModule } from '../ParticleTypes';
 import { ParticleGPUTransaction } from './ParticleGPUTransaction';
 
 const EMPTY_SAMPLERS: readonly never[] = Object.freeze([]);
@@ -42,7 +47,8 @@ const PARTICLE_PARAMETER_LAYOUT = createStd140Layout({
     emitterVelocity: 'vec4',
     spawn: 'uvec4',
     cameraPosition: 'vec4',
-    sort: 'uvec4'
+    sort: 'uvec4',
+    viewProjection: 'mat4'
 });
 const PARTICLE_VIEW_LAYOUT = createStd140Layout({
     u_viewMatrix: 'mat4',
@@ -118,8 +124,15 @@ class MutableColorAttachment implements RenderPipelineColorAttachment {
 
 class MutableDepthAttachment implements RenderPipelineDepthStencilAttachment {
     texture = 0 as RenderGraphTextureHandle;
-    readonly depthLoadOp = 'load';
-    readonly depthStoreOp = 'store';
+    readonly depthLoadOp?: 'load';
+    readonly depthStoreOp?: 'store';
+
+    constructor(readonly depthReadOnly: boolean) {
+        if (!depthReadOnly) {
+            this.depthLoadOp = 'load';
+            this.depthStoreOp = 'store';
+        }
+    }
 }
 
 class MutableIndirectDraw {
@@ -132,19 +145,30 @@ class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
     readonly buffers = [new MutableBufferBinding()];
     readonly textures: { texture: RenderGraphTextureHandle }[] = [];
     readonly samplers: readonly ComputeSampler[];
+    readonly samplesDepth: boolean;
     readonly draw = new MutableIndirectDraw();
     readonly colorAttachments = [new MutableColorAttachment()];
-    readonly depthStencilAttachment = new MutableDepthAttachment();
+    readonly depthStencilAttachment?: MutableDepthAttachment;
     readonly viewport: [number, number, number, number] = [0, 0, 1, 1];
     readonly scissor: [number, number, number, number] = [0, 0, 1, 1];
 
     constructor(
         readonly viewUniform: UniformBuffer,
-        sampler: ComputeSampler | null
+        spriteSampler: ComputeSampler | null,
+        depthSampler: ComputeSampler | null,
+        depthReadOnly: boolean
     ) {
         this.uniformBuffers = Object.freeze([viewUniform]);
-        this.samplers = sampler === null ? EMPTY_SAMPLERS : Object.freeze([sampler]);
-        if (sampler !== null) this.textures.push({ texture: 0 as RenderGraphTextureHandle });
+        this.samplers = Object.freeze([
+            ...(spriteSampler === null ? [] : [spriteSampler]),
+            ...(depthSampler === null ? [] : [depthSampler])
+        ]);
+        this.samplesDepth = depthSampler !== null;
+        if (!this.samplesDepth) {
+            this.depthStencilAttachment = new MutableDepthAttachment(depthReadOnly);
+        }
+        if (spriteSampler !== null) this.textures.push({ texture: 0 as RenderGraphTextureHandle });
+        if (this.samplesDepth) this.textures.push({ texture: 0 as RenderGraphTextureHandle });
     }
 
     configure(
@@ -163,9 +187,25 @@ class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
         rendererBinding.buffer = rendererData;
         this.draw.buffer = indirect;
         colorAttachment.texture = color;
-        if (depth !== null) this.depthStencilAttachment.texture = depth;
-        const textureBinding = this.textures[0];
-        if (textureBinding !== undefined && texture !== null) textureBinding.texture = texture;
+        if (depth !== null && this.depthStencilAttachment !== undefined) {
+            this.depthStencilAttachment.texture = depth;
+        }
+        let textureIndex = 0;
+        if (texture !== null) {
+            const textureBinding = this.textures[textureIndex];
+            if (textureBinding === undefined) {
+                throw new Error('Particle sprite texture binding is unavailable');
+            }
+            textureBinding.texture = texture;
+            textureIndex++;
+        }
+        if (this.samplesDepth) {
+            const depthBinding = this.textures[textureIndex];
+            if (depthBinding === undefined || depth === null) {
+                throw new Error('Soft particles require a Forward depth attachment');
+            }
+            depthBinding.texture = depth;
+        }
         const viewport = context.viewport;
         this.viewport[0] = viewport[0];
         this.viewport[1] = viewport[1];
@@ -184,6 +224,8 @@ interface ParticleGPUBufferSet {
     readonly dead: StorageBuffer;
     readonly counters: StorageBuffer;
     readonly spawnCommands: StorageBuffer;
+    readonly events: StorageBuffer;
+    readonly eventCounters: StorageBuffer;
     readonly rendererData: StorageBuffer;
     readonly indirect: StorageBuffer;
 }
@@ -194,6 +236,8 @@ interface ParticleGPUImportedBuffers {
     readonly dead: RenderGraphBufferHandle;
     readonly counters: RenderGraphBufferHandle;
     readonly spawnCommands: RenderGraphBufferHandle;
+    readonly events: RenderGraphBufferHandle;
+    readonly eventCounters: RenderGraphBufferHandle;
     readonly rendererData: RenderGraphBufferHandle;
     readonly indirect: RenderGraphBufferHandle;
 }
@@ -202,6 +246,13 @@ interface ParticleRendererPasses {
     readonly standard: GPUDrivenRenderPass;
     readonly reversed: GPUDrivenRenderPass;
     readonly parameters: RenderPassParameterPool<ParticleDrawParameters>;
+}
+
+interface ParticleEventRouteRuntime {
+    readonly plan: Readonly<ParticleGPUSubEmitterRoutePlan>;
+    readonly pass: ComputeRenderPass;
+    readonly parameters: RenderPassParameterPool<ParticleComputeParameters>;
+    frameIndex: number;
 }
 
 function blendState(
@@ -224,7 +275,7 @@ function drawPipelineState(
     return Object.freeze({
         ...DEFAULT_MATERIAL_PIPELINE_STATE,
         cullMode: 'none',
-        depthTest: renderer.depthTest ?? true,
+        depthTest: renderer.softParticle === undefined ? (renderer.depthTest ?? true) : false,
         depthWrite: renderer.depthWrite ?? false,
         depthCompare: reversed ? 'greater-equal' : 'less-equal',
         blend: blendState(renderer.blend)
@@ -267,6 +318,8 @@ function createBufferSet(
             ['storage', 'copy-destination'],
             'cpu-shadow'
         ),
+        events: create('events', plan.buffers.eventByteLength, ['storage']),
+        eventCounters: create('event-counters', plan.buffers.eventCounterByteLength, ['storage']),
         rendererData: create('renderer-data', plan.buffers.rendererDataByteLength, ['storage']),
         indirect: create('indirect', plan.buffers.indirectArgumentByteLength, [
             'storage',
@@ -292,6 +345,8 @@ function importBuffers(
         dead: graph.importStorageBuffer(buffers.dead),
         counters: graph.importStorageBuffer(buffers.counters),
         spawnCommands: graph.importStorageBuffer(buffers.spawnCommands),
+        events: graph.importStorageBuffer(buffers.events),
+        eventCounters: graph.importStorageBuffer(buffers.eventCounters),
         rendererData: graph.importStorageBuffer(buffers.rendererData),
         indirect: graph.importStorageBuffer(buffers.indirect)
     };
@@ -318,7 +373,8 @@ export class ParticleGPUEmitterRuntime {
         emitterVelocity: new Float32Array(4),
         spawn: new Uint32Array(4),
         cameraPosition: new Float32Array(4),
-        sort: new Uint32Array(4)
+        sort: new Uint32Array(4),
+        viewProjection: new Float32Array(16)
     };
     readonly #viewCameraPosition = new Float32Array(4);
     readonly #viewViewport = new Float32Array(4);
@@ -337,6 +393,10 @@ export class ParticleGPUEmitterRuntime {
     readonly #buildParameters: RenderPassParameterPool<ParticleComputeParameters>;
     readonly #sortParameters: RenderPassParameterPool<ParticleComputeParameters>;
     readonly #rendererPasses: readonly ParticleRendererPasses[];
+    readonly #eventRoutes = new Map<
+        Readonly<ParticleSubEmitterModule>,
+        ParticleEventRouteRuntime
+    >();
     readonly #restoredListener: EventListener;
     #simulationFrame = -1;
     #recoveryFrame = -1;
@@ -415,6 +475,9 @@ export class ParticleGPUEmitterRuntime {
         const vectorFieldCount = plan.definition.modules.filter(
             module => module.type === 'vector-field'
         ).length;
+        const samplesSceneDepth = plan.definition.modules.some(
+            module => module.type === 'scene-depth-collision'
+        );
         const vectorFieldSampler = new ComputeSampler({
             label: `${plan.definition.name}:vector-field-sampler`,
             addressModeU: 'repeat',
@@ -426,15 +489,15 @@ export class ParticleGPUEmitterRuntime {
             Array.from({ length: vectorFieldCount }, () => vectorFieldSampler)
         );
         this.#recoveryParameters = computePool(7, false, this.compiled.workgroupCount);
-        this.#resetParameters = computePool(1, false, 1);
+        this.#resetParameters = computePool(2, false, 1);
         this.#simulateParameters = computePool(
-            6,
+            8,
             true,
             this.compiled.workgroupCount,
-            vectorFieldCount,
+            vectorFieldCount + (samplesSceneDepth ? 1 : 0),
             vectorFieldSamplers
         );
-        this.#initializeParameters = computePool(5, true, 1);
+        this.#initializeParameters = computePool(7, true, 1);
         this.#finalizeParameters = computePool(2, false, 1);
         this.#buildParameters = computePool(4, false, this.compiled.workgroupCount);
         this.#sortParameters = computePool(
@@ -447,6 +510,12 @@ export class ParticleGPUEmitterRuntime {
             magFilter: 'linear',
             minFilter: 'linear',
             mipmapFilter: 'linear'
+        });
+        const depthSampler = new ComputeSampler({
+            label: `${plan.definition.name}:particle-depth-sampler`,
+            magFilter: 'nearest',
+            minFilter: 'nearest',
+            mipmapFilter: 'nearest'
         });
         this.#rendererPasses = Object.freeze(
             this.compiled.renderers.map(rendererPlan => {
@@ -466,7 +535,11 @@ export class ParticleGPUEmitterRuntime {
                         () =>
                             new ParticleDrawParameters(
                                 UniformBuffer.fromSchema(PARTICLE_VIEW_LAYOUT),
-                                hasTexture ? sampler : null
+                                hasTexture ? sampler : null,
+                                rendererPlan.definition.softParticle === undefined
+                                    ? null
+                                    : depthSampler,
+                                !(rendererPlan.definition.depthWrite ?? false)
                             )
                     )
                 });
@@ -514,7 +587,7 @@ export class ParticleGPUEmitterRuntime {
             this.#recoveryFrame = context.frameIndex;
         }
         if (recordsSimulation) {
-            this.recordSimulation(context, imported, system);
+            this.recordSimulation(context, imported, system, depth);
             this.#simulationFrame = context.frameIndex;
         }
         const activeStateIndex =
@@ -529,6 +602,61 @@ export class ParticleGPUEmitterRuntime {
         build.configure([activeState, activeAlive, imported.counters, imported.rendererData]);
         context.graph.addPass(this.#buildRendererPass, build);
         this.recordDraws(context, imported, color, depth, system);
+    }
+
+    /** Route events captured by this frame directly into a target GPU emitter's active state. @internal */
+    recordEventRoute(
+        context: RenderPipelineContext,
+        target: ParticleGPUEmitterRuntime,
+        module: Readonly<ParticleSubEmitterModule>
+    ): void {
+        this.assertAlive();
+        target.assertAlive();
+        if (this.#simulationFrame !== context.frameIndex) return;
+        let route = this.#eventRoutes.get(module);
+        if (route === undefined) {
+            const plan = compileParticleGPUSubEmitterRoute(
+                this.compiled.emitter,
+                target.compiled.emitter,
+                module
+            );
+            route = {
+                plan,
+                pass: new ComputeRenderPass(
+                    new ComputeKernel({ shader: plan.shader, label: plan.shader.label }),
+                    plan.shader.label
+                ),
+                parameters: new RenderPassParameterPool(
+                    () =>
+                        new ParticleComputeParameters(
+                            6,
+                            null,
+                            Math.max(
+                                1,
+                                Math.ceil(this.compiled.emitter.definition.eventCapacity / 64)
+                            )
+                        )
+                ),
+                frameIndex: -1
+            };
+            this.#eventRoutes.set(module, route);
+        }
+        if (route.frameIndex === context.frameIndex) return;
+        const sourceBuffers = importBuffers(context, this.#buffers);
+        const targetBuffers = importBuffers(context, target.#buffers);
+        const targetStateIndex =
+            target.transaction.staged?.sourceIndex ?? target.transaction.committed.sourceIndex;
+        const parameters = context.acquirePassParameters(route.parameters);
+        parameters.configure([
+            sourceBuffers.events,
+            sourceBuffers.eventCounters,
+            targetBuffers.state[targetStateIndex],
+            targetBuffers.alive[targetStateIndex],
+            targetBuffers.dead,
+            targetBuffers.counters
+        ]);
+        context.graph.addPass(route.pass, parameters);
+        route.frameIndex = context.frameIndex;
     }
 
     frameSubmitted(frameIndex: number): void {
@@ -563,6 +691,8 @@ export class ParticleGPUEmitterRuntime {
             this.#buffers.dead,
             this.#buffers.counters,
             this.#buffers.spawnCommands,
+            this.#buffers.events,
+            this.#buffers.eventCounters,
             this.#buffers.rendererData,
             this.#buffers.indirect
         ]) {
@@ -573,7 +703,8 @@ export class ParticleGPUEmitterRuntime {
     private recordSimulation(
         context: RenderPipelineContext,
         imported: ParticleGPUImportedBuffers,
-        system: Node
+        system: Node,
+        depth: RenderGraphTextureHandle | null
     ): void {
         const spawnCount = this.controller.pendingSpawnCount;
         const staged = this.transaction.stage(this.controller.pendingDeltaSeconds, spawnCount);
@@ -589,11 +720,18 @@ export class ParticleGPUEmitterRuntime {
         ]);
         values.emitterPosition.set([world[12], world[13], world[14], 1]);
         values.emitterVelocity.set(this.controller.emitterVelocity);
-        values.spawn.set([spawnCount, this.controller.pendingSpawnStart, this.transaction.seed, 0]);
+        values.spawn.set([
+            spawnCount,
+            this.controller.pendingSpawnStart,
+            this.transaction.seed,
+            context.camera.depthMode === 'reversed' ? 1 : 0
+        ]);
+        context.camera.updateViewProjectionMatrix();
         cameraPosition(context.camera, values.cameraPosition);
+        values.viewProjection.set(context.camera.jitteredViewProjectionMatrix.elements);
         values.sort.fill(0);
         const reset = context.acquirePassParameters(this.#resetParameters);
-        reset.configure([imported.counters]);
+        reset.configure([imported.counters, imported.eventCounters]);
         context.graph.addPass(this.#resetPass, reset);
         const simulate = context.acquirePassParameters(this.#simulateParameters);
         this.writeParticleUniform(simulate);
@@ -603,13 +741,24 @@ export class ParticleGPUEmitterRuntime {
             imported.alive[sourceIndex],
             imported.alive[targetIndex],
             imported.dead,
-            imported.counters
+            imported.counters,
+            imported.events,
+            imported.eventCounters
         ]);
-        simulate.configureTextures(
-            this.compiled.emitter.definition.modules
-                .filter(module => module.type === 'vector-field')
-                .map(module => context.graph.importTexture(module.texture))
-        );
+        const simulationTextures = this.compiled.emitter.definition.modules
+            .filter(module => module.type === 'vector-field')
+            .map(module => context.graph.importTexture(module.texture));
+        if (
+            this.compiled.emitter.definition.modules.some(
+                module => module.type === 'scene-depth-collision'
+            )
+        ) {
+            if (depth === null) {
+                throw new Error('Scene-depth particle collision requires a Forward depth texture');
+            }
+            simulationTextures.push(depth);
+        }
+        simulate.configureTextures(simulationTextures);
         context.graph.addPass(this.#simulatePass, simulate);
         if (spawnCount > 0) {
             const initialize = context.acquirePassParameters(this.#initializeParameters);
@@ -620,7 +769,9 @@ export class ParticleGPUEmitterRuntime {
                 imported.alive[targetIndex],
                 imported.dead,
                 imported.counters,
-                imported.spawnCommands
+                imported.spawnCommands,
+                imported.events,
+                imported.eventCounters
             ]);
             context.graph.addPass(this.#initializePass, initialize);
         }
@@ -689,6 +840,7 @@ export class ParticleGPUEmitterRuntime {
                     : IDENTITY_MATRIX
             );
             cameraPosition(context.camera, this.#viewCameraPosition);
+            this.#viewCameraPosition[3] = context.camera.depthMode === 'reversed' ? 1 : 0;
             viewUniform.set('u_cameraPosition', this.#viewCameraPosition);
             const viewport = context.viewport;
             this.#viewViewport.set([viewport[2], viewport[3], 1 / viewport[2], 1 / viewport[3]]);
@@ -722,6 +874,7 @@ export class ParticleGPUEmitterRuntime {
         uniform.set('spawn', this.#parameterValues.spawn);
         uniform.set('cameraPosition', this.#parameterValues.cameraPosition);
         uniform.set('sort', this.#parameterValues.sort);
+        uniform.set('viewProjection', this.#parameterValues.viewProjection);
     }
 
     private assertAlive(): void {

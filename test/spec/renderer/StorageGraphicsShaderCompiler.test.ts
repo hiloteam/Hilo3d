@@ -39,7 +39,7 @@ function createShader(
         readonly vertexSource?: string;
         readonly fragmentSource?: string;
         readonly storageName?: string;
-        readonly sampleType?: 'float' | 'uint';
+        readonly sampleType?: 'float' | 'depth' | 'uint';
     } = {}
 ): StorageGraphicsShader {
     return new StorageGraphicsShader({
@@ -203,6 +203,14 @@ describe('StorageGraphicsShaderCompiler', () => {
     it('validates the explicit sampled binding ABI against GLSL', () => {
         expect(() => compiler.compile(createShader({ sampleType: 'uint' }), 'webgpu')).toThrow(
             /sampleType uint does not match GLSL sampler2D/u
+        );
+    });
+
+    it('specializes ordinary GLSL numeric depth sampling into a WGSL depth texture', () => {
+        const compiled = compiler.compile(createShader({ sampleType: 'depth' }), 'webgpu');
+        expect(compiled.fragment.code).toContain('texture_depth_2d');
+        expect(compiled.fragment.reflection.bindings).toContainEqual(
+            expect.objectContaining({ name: 'albedo', sampleType: 'depth' })
         );
     });
 

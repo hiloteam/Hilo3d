@@ -41,6 +41,9 @@ export type ParticleCullingReaction = 'render-only' | 'pause' | 'pause-and-catch
 /** Capacity overflow behavior. */
 export type ParticleOverflowPolicy = 'drop-new' | 'replace-oldest';
 
+/** Overflow behavior for bounded particle event and data-channel buffers. */
+export type ParticleEventOverflowPolicy = 'drop-new' | 'drop-oldest';
+
 /** Manual local-space bounds. */
 export interface ParticleManualBounds {
     readonly mode: 'manual';
@@ -326,6 +329,79 @@ export interface ParticleVectorFieldModule {
     readonly strength: number;
 }
 
+/** Infinite plane used by analytic particle collision and trigger modules. */
+export interface ParticlePlaneCollider {
+    readonly type: 'plane';
+    readonly normal: ParticleVector3;
+    readonly offset?: number;
+}
+
+/** Solid sphere used by analytic particle collision and trigger modules. */
+export interface ParticleSphereCollider {
+    readonly type: 'sphere';
+    readonly center?: ParticleVector3;
+    readonly radius: number;
+}
+
+/** Axis-aligned solid box used by analytic particle collision and trigger modules. */
+export interface ParticleBoxCollider {
+    readonly type: 'box';
+    readonly center?: ParticleVector3;
+    readonly size: ParticleVector3;
+}
+
+/** Line-swept solid sphere used by analytic particle collision and trigger modules. */
+export interface ParticleCapsuleCollider {
+    readonly type: 'capsule';
+    readonly start: ParticleVector3;
+    readonly end: ParticleVector3;
+    readonly radius: number;
+}
+
+/** Backend-neutral analytic collision primitive. */
+export type ParticleAnalyticCollider =
+    ParticlePlaneCollider | ParticleSphereCollider | ParticleBoxCollider | ParticleCapsuleCollider;
+
+/** Resolve particles against a fixed list of analytic primitives. */
+export interface ParticleCollisionModule {
+    readonly type: 'collision';
+    readonly colliders: readonly ParticleAnalyticCollider[];
+    readonly bounce?: number;
+    readonly friction?: number;
+    readonly radiusScale?: number;
+    readonly lifetimeLoss?: number;
+    readonly event?: string;
+}
+
+/** Emit batched inside/enter/exit events for analytic trigger volumes. */
+export interface ParticleTriggerModule {
+    readonly type: 'trigger';
+    readonly volumes: readonly ParticleAnalyticCollider[];
+    readonly events?: Readonly<{
+        inside?: string;
+        enter?: string;
+        exit?: string;
+    }>;
+}
+
+/** WebGPU-only collision against the sampled opaque scene depth. */
+export interface ParticleSceneDepthCollisionModule {
+    readonly type: 'scene-depth-collision';
+    readonly thickness?: number;
+    readonly bounce?: number;
+    readonly friction?: number;
+    readonly event?: string;
+}
+
+/** Route a batched source event into another emitter without a CPU per-event callback. */
+export interface ParticleSubEmitterModule {
+    readonly type: 'sub-emitter';
+    readonly event: string;
+    readonly emitter: string;
+    readonly count?: number;
+    readonly inheritVelocity?: boolean;
+}
+
 /** Closed fixed-module union. Arbitrary code and per-particle callbacks are intentionally absent. */
 export type ParticleModule =
     | ParticleVelocityModule
@@ -347,7 +423,11 @@ export type ParticleModule =
     | ParticleKillVolumeModule
     | ParticleCameraModule
     | ParticleCustomChannelModule
-    | ParticleVectorFieldModule;
+    | ParticleVectorFieldModule
+    | ParticleCollisionModule
+    | ParticleTriggerModule
+    | ParticleSceneDepthCollisionModule
+    | ParticleSubEmitterModule;
 
 /** Sprite-facing mode evaluated per camera by the portable particle shader. */
 export type ParticleSpriteAlignment = 'view' | 'world-up' | 'stretched' | 'velocity';
@@ -367,6 +447,11 @@ export interface ParticleSpriteRendererDefinition {
     readonly renderOrder?: number;
     readonly pivot?: ParticleVector2;
     readonly stretchScale?: number;
+    /** WebGPU storage-raster depth fade. Depth write must remain disabled. */
+    readonly softParticle?: Readonly<{
+        readonly distance: number;
+        readonly contrast?: number;
+    }>;
 }
 
 /** Renderer definitions remain separate from simulation modules. */
@@ -386,6 +471,8 @@ export interface ParticleEmitterDefinitionInput {
     readonly simulationSpace?: ParticleSimulationSpace;
     readonly overflow?: ParticleOverflowPolicy;
     readonly culling?: ParticleCullingReaction;
+    readonly eventCapacity?: number;
+    readonly eventOverflow?: ParticleEventOverflowPolicy;
     readonly bounds?: ParticleBoundsDefinition;
     readonly emission?: ParticleEmissionDefinition;
     readonly shape?: ParticleShapeDefinition;

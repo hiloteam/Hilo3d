@@ -19,6 +19,7 @@ import {
     type ParticleEmitterFrameContext,
     type ParticleManualEmitCommand
 } from './cpu/ParticleCPUSimulator';
+import type { ParticleEventAggregate, ParticleEventRecord } from './cpu/ParticleCPUEventBuffer';
 import { ParticleGPUEmitterRuntime } from './gpu/ParticleGPURuntime';
 import { ParticleGPUSpawnController } from './gpu/ParticleGPUSpawnController';
 import { ParticleStatelessRuntime } from './stateless/ParticleStatelessRuntime';
@@ -46,6 +47,8 @@ export interface ParticleSystemParameters extends NodeParameters {
     readonly timeScale?: number;
     /** Optional compile target. Omit for a portable CPU-first plan. */
     readonly compilationEnvironment?: Readonly<ParticleCompilationEnvironment>;
+    /** Maximum materialized CPU events retained for bounded asynchronous application reads. */
+    readonly eventReadbackCapacity?: number;
 }
 
 /** Options for an explicit particle simulation advance. */
@@ -92,11 +95,14 @@ class ParticleSystem extends Node {
     readonly #cameraPosition: [number, number, number] = [0, 0, 0];
     readonly #inverseWorld = new Matrix4();
     readonly #cameraVector = new Vector3();
+    readonly #eventQueue: Readonly<ParticleEventRecord>[] = [];
+    readonly #eventReadbackCapacity: number;
     #playing: boolean;
     #timeScale = 1;
     #elapsedSeconds = 0;
     #completed = false;
     #gpuRenderer: RendererContract | null = null;
+    #eventDroppedCount = 0;
 
     constructor(parameters: Readonly<ParticleSystemParameters>) {
         const input: unknown = parameters;
@@ -114,6 +120,17 @@ class ParticleSystem extends Node {
         this.#compilationEnvironment = Object.freeze({
             ...(parameters.compilationEnvironment ?? {})
         });
+        const eventReadbackCapacity = parameters.eventReadbackCapacity ?? 1024;
+        if (
+            !Number.isSafeInteger(eventReadbackCapacity) ||
+            eventReadbackCapacity < 0 ||
+            eventReadbackCapacity > 65_536
+        ) {
+            throw new RangeError(
+                'ParticleSystem eventReadbackCapacity must be between 0 and 65536'
+            );
+        }
+        this.#eventReadbackCapacity = eventReadbackCapacity;
         this.compiledPlan = compileParticleSystemDefinition(
             this.definition,
             this.#compilationEnvironment
@@ -151,9 +168,31 @@ class ParticleSystem extends Node {
         return this.#runtimes.some(runtime => runtime.gpuController !== null);
     }
 
+    /** Whether this system needs a sampled Forward depth texture for GPU simulation/raster. @internal */
+    get requiresGPUSampledDepth(): boolean {
+        return this.#runtimes.some(
+            runtime =>
+                runtime.gpuController !== null &&
+                (runtime.plan.definition.modules.some(
+                    module => module.type === 'scene-depth-collision'
+                ) ||
+                    runtime.plan.definition.renderers.some(
+                        renderer => renderer.softParticle !== undefined
+                    ))
+        );
+    }
+
     /** True after all non-looping emitters finished and their dense alive ranges became empty. */
     get completed(): boolean {
         return this.#completed;
+    }
+
+    /** Bounded aggregate event diagnostics; no GPU or per-particle synchronous readback occurs. */
+    get eventDiagnostics(): Readonly<{ pendingCount: number; droppedCount: number }> {
+        return Object.freeze({
+            pendingCount: this.#eventQueue.length,
+            droppedCount: this.#eventDroppedCount
+        });
     }
 
     get timeScale(): number {
@@ -181,6 +220,8 @@ class ParticleSystem extends Node {
         this.#playing = false;
         this.#elapsedSeconds = 0;
         this.#completed = false;
+        this.#eventQueue.length = 0;
+        this.#eventDroppedCount = 0;
         for (const runtime of this.#runtimes) {
             runtime.simulator?.restart();
             if (runtime.gpuRuntime) runtime.gpuRuntime.restart();
@@ -247,6 +288,25 @@ class ParticleSystem extends Node {
         return this;
     }
 
+    /** Materialize at most `maxEvents` from compact CPU event buffers on an async boundary. */
+    async readEvents(maxEvents = this.#eventReadbackCapacity): Promise<ParticleEventAggregate> {
+        if (!Number.isSafeInteger(maxEvents) || maxEvents < 0) {
+            throw new RangeError('ParticleSystem event read limit must be non-negative');
+        }
+        const events = this.#eventQueue.splice(0, Math.min(maxEvents, this.#eventQueue.length));
+        const counts: Record<string, number> = {};
+        for (const event of events) counts[event.name] = (counts[event.name] ?? 0) + 1;
+        const droppedCount = this.#eventDroppedCount;
+        this.#eventDroppedCount = 0;
+        await Promise.resolve();
+        return Object.freeze({
+            events: Object.freeze(events),
+            counts: Object.freeze(counts),
+            droppedCount,
+            remainingCount: this.#eventQueue.length
+        });
+    }
+
     /** Deterministic dense-state hash for replay and regression tests. */
     stateHash(emitter?: string): string {
         const runtimes =
@@ -281,7 +341,8 @@ class ParticleSystem extends Node {
             seed: this.seed,
             autoPlay: this.#playing,
             timeScale: this.#timeScale,
-            compilationEnvironment: this.#compilationEnvironment
+            compilationEnvironment: this.#compilationEnvironment,
+            eventReadbackCapacity: this.#eventReadbackCapacity
         });
         clone.name = this.name;
         clone.layer = this.layer;
@@ -347,6 +408,20 @@ class ParticleSystem extends Node {
                 );
             }
             gpuRuntime.record(context, color, depth, this, drawVisible);
+        }
+        for (const runtime of this.#runtimes) {
+            const source = runtime.gpuRuntime;
+            if (source === null) continue;
+            for (const module of runtime.plan.definition.modules) {
+                if (module.type !== 'sub-emitter') continue;
+                const target = this.#runtimes.find(
+                    candidate => candidate.plan.definition.name === module.emitter
+                )?.gpuRuntime;
+                if (!target) {
+                    throw new Error(`GPU particle sub-emitter ${module.emitter} is unavailable`);
+                }
+                source.recordEventRoute(context, target, module);
+            }
         }
     }
 
@@ -417,6 +492,7 @@ class ParticleSystem extends Node {
                 runtime.gpuController.advance(seconds, this.#context, fixedStep);
             }
         }
+        this.collectCPUEvents();
     }
 
     private advanceWithCulling(seconds: number): void {
@@ -466,6 +542,7 @@ class ParticleSystem extends Node {
                     break;
             }
         }
+        this.collectCPUEvents();
     }
 
     private runtimeVisible(runtime: ParticleEmitterRuntime, stage: ParticleStage | null): boolean {
@@ -522,6 +599,39 @@ class ParticleSystem extends Node {
             for (let index = 0; index < steps; index += 1) {
                 if (simulator) simulator.simulate(fixedStep, this.#context, fixedStep);
                 else gpuController?.advance(fixedStep, this.#context, fixedStep);
+            }
+        }
+        this.collectCPUEvents();
+    }
+
+    private collectCPUEvents(): void {
+        for (const runtime of this.#runtimes) {
+            const simulator = runtime.simulator;
+            if (!(simulator instanceof ParticleCPUSimulator)) continue;
+            const aggregate = simulator.events.read(simulator.events.size);
+            this.#eventDroppedCount += aggregate.droppedCount;
+            for (const event of aggregate.events) {
+                for (const module of runtime.plan.definition.modules) {
+                    if (module.type !== 'sub-emitter' || module.event !== event.name) continue;
+                    const target = this.#runtimes.find(
+                        candidate => candidate.plan.definition.name === module.emitter
+                    );
+                    if (!target) {
+                        throw new Error(`Particle sub-emitter ${module.emitter} is unavailable`);
+                    }
+                    const command: ParticleManualEmitCommand = {
+                        count: module.count ?? 1,
+                        position: event.position,
+                        ...(module.inheritVelocity ? { velocity: event.velocity } : {})
+                    };
+                    if (target.simulator) target.simulator.emit(command);
+                    else target.gpuController?.emit(command);
+                }
+                if (this.#eventQueue.length >= this.#eventReadbackCapacity) {
+                    this.#eventDroppedCount++;
+                    continue;
+                }
+                this.#eventQueue.push(event);
             }
         }
     }

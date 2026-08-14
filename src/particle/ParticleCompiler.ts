@@ -55,7 +55,8 @@ const ATTRIBUTE_SHAPES: Readonly<Record<string, AttributeShape>> = Object.freeze
     'base-color': { storage: 'f32', components: 4 },
     'sprite-frame': { storage: 'f32', components: 1 },
     mass: { storage: 'f32', components: 1 },
-    'noise-offset': { storage: 'f32', components: 3 }
+    'noise-offset': { storage: 'f32', components: 3 },
+    'collision-state': { storage: 'u32', components: 1 }
 });
 
 function align(value: number, alignment: number): number {
@@ -158,6 +159,40 @@ function validateShape(shape: ParticleShapeDefinition, label: string): void {
             if (shape.radius < 0 || shape.tubeRadius < 0) {
                 throw new RangeError(`${label} torus radii must be non-negative`);
             }
+    }
+}
+
+function validateCollider(
+    collider: Extract<ParticleModule, { type: 'collision' }>['colliders'][number],
+    label: string
+): void {
+    switch (collider.type) {
+        case 'plane':
+            validateVector(collider.normal, 3, `${label}.normal`);
+            if (Math.hypot(...collider.normal) <= 1e-8) {
+                throw new RangeError(`${label}.normal must not be zero`);
+            }
+            if (collider.offset !== undefined) requireFinite(collider.offset, `${label}.offset`);
+            return;
+        case 'sphere':
+            if (collider.center !== undefined)
+                validateVector(collider.center, 3, `${label}.center`);
+            requireFinite(collider.radius, `${label}.radius`);
+            if (collider.radius < 0) throw new RangeError(`${label}.radius must be non-negative`);
+            return;
+        case 'box':
+            if (collider.center !== undefined)
+                validateVector(collider.center, 3, `${label}.center`);
+            validateVector(collider.size, 3, `${label}.size`);
+            if (collider.size.some(component => component < 0)) {
+                throw new RangeError(`${label}.size must be non-negative`);
+            }
+            return;
+        case 'capsule':
+            validateVector(collider.start, 3, `${label}.start`);
+            validateVector(collider.end, 3, `${label}.end`);
+            requireFinite(collider.radius, `${label}.radius`);
+            if (collider.radius < 0) throw new RangeError(`${label}.radius must be non-negative`);
     }
 }
 
@@ -293,6 +328,61 @@ function validateModule(module: ParticleModule, label: string): void {
         case 'vector-field':
             requireFinite(module.strength, `${label}.strength`);
             return;
+        case 'collision':
+            if (module.colliders.length === 0) {
+                throw new RangeError(`${label}.colliders must not be empty`);
+            }
+            module.colliders.forEach((collider, index) => {
+                validateCollider(collider, `${label}.colliders[${String(index)}]`);
+            });
+            for (const [name, value] of [
+                ['bounce', module.bounce ?? 0.5],
+                ['friction', module.friction ?? 0],
+                ['radiusScale', module.radiusScale ?? 1],
+                ['lifetimeLoss', module.lifetimeLoss ?? 0]
+            ] as const) {
+                requireFinite(value, `${label}.${name}`);
+                if (value < 0 || (name !== 'radiusScale' && value > 1)) {
+                    throw new RangeError(`${label}.${name} is outside its supported range`);
+                }
+            }
+            return;
+        case 'trigger':
+            if (module.volumes.length === 0 || module.volumes.length > 32) {
+                throw new RangeError(`${label}.volumes must contain between 1 and 32 entries`);
+            }
+            module.volumes.forEach((collider, index) => {
+                validateCollider(collider, `${label}.volumes[${String(index)}]`);
+            });
+            return;
+        case 'scene-depth-collision':
+            requireFinite(module.thickness ?? 0.001, `${label}.thickness`);
+            requireFinite(module.bounce ?? 0.5, `${label}.bounce`);
+            requireFinite(module.friction ?? 0, `${label}.friction`);
+            if ((module.thickness ?? 0.001) <= 0) {
+                throw new RangeError(`${label}.thickness must be positive`);
+            }
+            if ((module.bounce ?? 0.5) < 0 || (module.bounce ?? 0.5) > 1) {
+                throw new RangeError(`${label}.bounce must be between zero and one`);
+            }
+            if ((module.friction ?? 0) < 0 || (module.friction ?? 0) > 1) {
+                throw new RangeError(`${label}.friction must be between zero and one`);
+            }
+            return;
+        case 'sub-emitter':
+            if (!/^[A-Za-z_][A-Za-z0-9_.:-]*$/u.test(module.event)) {
+                throw new TypeError(`${label}.event is invalid`);
+            }
+            if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/u.test(module.emitter)) {
+                throw new TypeError(`${label}.emitter is invalid`);
+            }
+            if (
+                module.count !== undefined &&
+                (!Number.isSafeInteger(module.count) || module.count < 1)
+            ) {
+                throw new RangeError(`${label}.count must be a positive safe integer`);
+            }
+            return;
     }
 }
 
@@ -342,6 +432,9 @@ function collectAttributes(emitter: ParticleEmitterDefinition): Set<ParticleAttr
                 break;
             case 'custom-channel':
                 attributes.add(`custom:${module.name}`);
+                break;
+            case 'trigger':
+                attributes.add('collision-state');
                 break;
             default:
                 break;
@@ -476,6 +569,40 @@ function validateEmitter(emitter: ParticleEmitterDefinition): void {
     for (const [index, module] of emitter.modules.entries()) {
         validateModule(module, `${emitter.name}.modules[${String(index)}]`);
     }
+    if (emitter.modules.filter(module => module.type === 'trigger').length > 1) {
+        throw new RangeError(`${emitter.name} supports one trigger module with up to 32 volumes`);
+    }
+    const usesSceneDepthCollision = emitter.modules.some(
+        module => module.type === 'scene-depth-collision'
+    );
+    const usesSoftParticles = emitter.renderers.some(
+        renderer => renderer.softParticle !== undefined
+    );
+    if ((usesSceneDepthCollision || usesSoftParticles) && emitter.execution !== 'gpu') {
+        throw new TypeError(
+            `Particle emitter ${emitter.name} scene-depth interaction requires explicit GPU execution`
+        );
+    }
+    for (const [index, renderer] of emitter.renderers.entries()) {
+        const soft = renderer.softParticle;
+        if (soft === undefined) continue;
+        requireFinite(
+            soft.distance,
+            `${emitter.name}.renderers[${String(index)}].softParticle.distance`
+        );
+        requireFinite(
+            soft.contrast ?? 1,
+            `${emitter.name}.renderers[${String(index)}].softParticle.contrast`
+        );
+        if (soft.distance <= 0 || (soft.contrast ?? 1) <= 0) {
+            throw new RangeError(
+                `${emitter.name} soft-particle distance/contrast must be positive`
+            );
+        }
+        if (renderer.depthWrite === true) {
+            throw new TypeError(`${emitter.name} soft particles cannot enable depthWrite`);
+        }
+    }
     if (emitter.bounds.mode === 'manual') {
         validateVector(emitter.bounds.min, 3, `${emitter.name}.bounds.min`);
         validateVector(emitter.bounds.max, 3, `${emitter.name}.bounds.max`);
@@ -500,6 +627,16 @@ export function compileParticleSystemDefinition(
     definition: ParticleSystemDefinition,
     environment: Readonly<ParticleCompilationEnvironment> = {}
 ): Readonly<ParticleCompiledPlan> {
+    const emitterNames = new Set(definition.emitters.map(emitter => emitter.name));
+    for (const emitter of definition.emitters) {
+        for (const module of emitter.modules) {
+            if (module.type === 'sub-emitter' && !emitterNames.has(module.emitter)) {
+                throw new TypeError(
+                    `Particle emitter ${emitter.name} routes ${module.event} to missing emitter ${module.emitter}`
+                );
+            }
+        }
+    }
     const emitters = definition.emitters.map((emitter, index) => {
         validateEmitter(emitter);
         const layout = buildAttributeLayout(emitter);
@@ -528,6 +665,18 @@ export function compileParticleSystemDefinition(
                 kind === 'stateless' ? 0 : layout.byteLength * (kind === 'gpu-stateful' ? 2 : 1)
         });
     });
+    for (const source of emitters) {
+        if (source.kind !== 'gpu-stateful') continue;
+        for (const module of source.definition.modules) {
+            if (module.type !== 'sub-emitter') continue;
+            const target = emitters.find(candidate => candidate.definition.name === module.emitter);
+            if (target?.kind !== 'gpu-stateful') {
+                throw new TypeError(
+                    `GPU particle emitter ${source.definition.name} cannot route ${module.event} through CPU emitter ${module.emitter}`
+                );
+            }
+        }
+    }
     return Object.freeze({
         definition,
         hash: hashParticleDefinition({

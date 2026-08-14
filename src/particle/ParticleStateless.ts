@@ -85,7 +85,13 @@ function metadataForModule(
                 ? 'spawn-time emitter velocity requires transform history'
                 : module.type === 'vector-field'
                   ? 'texture-driven force feeds velocity back into later steps'
-                  : 'conditional kill behavior changes the surviving spawn interval'
+                  : module.type === 'collision' || module.type === 'trigger'
+                    ? 'interaction depends on prior contact or trigger state'
+                    : module.type === 'scene-depth-collision'
+                      ? 'scene depth is a per-view external input'
+                      : module.type === 'sub-emitter'
+                        ? 'event routing depends on stateful source events'
+                        : 'conditional kill behavior changes the surviving spawn interval'
     });
 }
 
