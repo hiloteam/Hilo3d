@@ -13,7 +13,7 @@ flowchart LR
     L --> S["Screen-space cloud visibility"]
     S --> P["Clustered PBR directional light"]
     P --> A["Sky + aerial perspective"]
-    A --> C["Half-resolution cloud march + temporal resolve"]
+    A --> C["Quality-tier cloud march + temporal resolve"]
     C --> F["Cloud-aware froxel injection and shafts"]
     F --> T["TAA / transparent / bloom"]
     T --> E["Histogram exposure + filmic display"]
@@ -40,9 +40,10 @@ Discontinuous authored changes call `invalidateHistory()`.
 
 ## Volumetric clouds and cloud shadows
 
-Clouds run at the selected quality tier's fractional resolution; `high` is half resolution. A
-procedural weather map supplies coverage, type, storm, and precipitation fields. The density march
-combines value/Perlin-like fBm with Worley cells, height-dependent erosion, wind advection, and a
+Clouds run at the selected quality tier's fractional resolution; `low`/`medium`/`high`/`ultra`
+currently use 0.25/0.375/0.625/0.75 of the internal scene resolution. A procedural weather map
+supplies coverage, type, storm, and precipitation fields. The density march combines
+value/Perlin-like fBm with Worley cells, height-dependent erosion, wind advection, and a
 frame-varying blue-noise rank. Quadratically distributed samples concentrate work near the first
 visible cloud layer. Secondary sun samples, atmosphere transmittance, multiple scattering, sky
 ambient, Henyey–Greenstein phase, silver lining, storm self-darkening, and bounded lightning pulses
@@ -78,6 +79,10 @@ uses filmic display with automatic exposure.
 - Cloud visibility currently covers registered GPU PBR buckets and froxel directional scattering.
   Ordinary Forward compatibility objects receive the later aerial/cloud composition but do not
   sample the cloud visibility texture during their material light loop.
+- Dynamic resolution updates atmosphere composition, cloud current/history, and cloud-shadow extents
+  from the runtime scene scale every frame. A scale change recreates size-dependent cloud history
+  through the normal submission-aware history recipe rather than retaining the pipeline's initial
+  scale.
 - Atmosphere LUTs are two-dimensional approximations rather than Bruneton-style spectral 4D LUTs.
   The public coefficients and ordering are stable; additional spectral channels remain future work.
 - Transparent media do not write cloud history or shadow the cloud march.
@@ -87,4 +92,5 @@ uses filmic display with automatic exposure.
 `examples/stormfront_observatory.html` is the authored integration fixture. It exposes solar time,
 cloud amount, wind speed, storm intensity, quality tiers, all intermediate debug views, camera
 composition controls, and live exposure diagnostics. Renderer unit tests cover option validation and
-fail-closed device requirements; the example is also part of the WebGPU release matrix.
+fail-closed device requirements plus runtime scene-scale propagation; the example is also part of
+the WebGPU release matrix.

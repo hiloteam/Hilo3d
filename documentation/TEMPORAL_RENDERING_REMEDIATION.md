@@ -129,14 +129,14 @@ packing 或更低质量 tier 必须作为独立设计，不能偷偷改变当前
 
 ## 自动化验收
 
-| 范围           | 自动化入口                                            | 必须证明                                                                                                             |
-| -------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| ABI/target     | Material、shader、PostProcessing Vitest               | `rgba16float` motion + optional `r8unorm` reactive MRT 合法，previous/current view depth 与 authored factor 均存在   |
-| 提交事务       | BuiltIn UBO 与 PostProcessing Vitest                  | 成功帧推进；失败、显隐间断、显式 invalidation 不消费旧 history；jitter 恢复为零                                      |
-| Clustered 集成 | Clustered Forward+ real-WebGPU Vitest                 | fused depth/motion/reactive pipeline、全部 compact material bucket、fallback、动态 Hi-Z/SSR/volumetric extent 均有效 |
-| 动态控制       | PostProcessing Vitest、Graph timeline                 | 只消费 ready GPU sample；warmup/迟滞/settling/上下限、重复/失败 sample 与销毁边界均 fail closed                      |
-| 真实画面       | `test/ui/temporal-aa.spec.ts`                         | 静态 history 收敛、camera cut 首帧不闪回、后续稳定、浏览器 GPU validation 为零                                       |
-| 架构/RHI       | `test:render:architecture`、`test:rhi`、`test:webgpu` | 不绕过 Render Graph/RHI，portable shader 与真实 WebGPU pipeline 可创建                                               |
+| 范围           | 自动化入口                                                   | 必须证明                                                                                                                              |
+| -------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ABI/target     | Material、shader、PostProcessing Vitest                      | `rgba16float` motion + optional `r8unorm` reactive MRT 合法，previous/current view depth 与 authored factor 均存在                    |
+| 提交事务       | BuiltIn UBO 与 PostProcessing Vitest                         | 成功帧推进；失败、显隐间断、显式 invalidation 不消费旧 history；jitter 恢复为零                                                       |
+| Clustered 集成 | Clustered Forward+ real-WebGPU Vitest、PostProcessing Vitest | fused depth/motion/reactive pipeline、全部 compact material bucket、fallback、动态 Hi-Z/SSR/volumetric/atmosphere-cloud extent 均有效 |
+| 动态控制       | PostProcessing Vitest、Graph timeline                        | 只消费 ready GPU sample；warmup/迟滞/settling/上下限、重复/失败 sample 与销毁边界均 fail closed                                       |
+| 真实画面       | `test/ui/temporal-aa.spec.ts`                                | 静态 history 收敛、camera cut 首帧不闪回、后续稳定、浏览器 GPU validation 为零                                                        |
+| 架构/RHI       | `test:render:architecture`、`test:rhi`、`test:webgpu`        | 不绕过 Render Graph/RHI，portable shader 与真实 WebGPU pipeline 可创建                                                                |
 
 用于人工审阅和自动化像素验收的页面是
 [`examples/temporal_aa_observatory.html`](../examples/temporal_aa_observatory.html)。它同时覆盖 100 个 GPU

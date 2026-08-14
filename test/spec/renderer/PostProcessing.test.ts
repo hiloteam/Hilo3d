@@ -13,9 +13,23 @@ import type {
     ForwardRenderPipelineFeature,
     ForwardRenderPipelineFeatureRuntime
 } from '../../../src/render/pipeline/ForwardRenderPipeline';
+import type {
+    RenderPipelineContext,
+    RenderPipelineCreateContext
+} from '../../../src/render/pipeline/RenderPipeline';
+import {
+    acquireRenderPassParameters,
+    type RenderPassParameterPool
+} from '../../../src/render/pipeline/RenderPassParameterPool';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../../../src/render/pipeline/passes/internal/PortableFullscreenShader';
 import type {
+    RenderGraphBufferHandle,
+    RenderGraphPassHandle,
+    RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
+    RenderPipelineHistoryTextureDescriptor,
+    RenderPipelineHistoryTextureResources,
+    RenderPipelineTextureDescriptor,
     ScriptableRenderPass,
     ScriptableRenderPassBuilder
 } from '../../../src/render/pipeline/ScriptableRenderGraph';
@@ -32,9 +46,14 @@ import {
     TemporalResolveController,
     snapshotTemporalAAOptions
 } from '../../../src/render/postprocessing/TemporalAA';
+import {
+    AtmosphereWeatherController,
+    snapshotAtmosphereWeatherOptions
+} from '../../../src/render/postprocessing/AtmosphereWeather';
 import type { RenderGraphTimelineSnapshot } from '../../../src/render/graph/RenderGraphTimeline';
 import Shader from '../../../src/shader/Shader';
 import type { RHIDevice } from '../../../src/render/rhi/core';
+import type { StorageBuffer } from '../../../src/render/StorageBuffer';
 
 declare const __HILO3D_GITHUB_ACTIONS_COVERAGE__: boolean;
 
@@ -249,6 +268,120 @@ describe('built-in post-processing', () => {
         expect(() => new AutoExposure({ lowPercentile: 0.4, highPercentile: 0.3 })).toThrow(
             /highPercentile/u
         );
+    });
+
+    it('resizes atmosphere and cloud resources with the runtime scene scale', () => {
+        const scales = new Map<string, number>();
+        let nextHandle = 1;
+        let frameIndex = 0;
+        const owner = Object.freeze({});
+        const nextTexture = (): RenderGraphTextureHandle =>
+            nextHandle++ as RenderGraphTextureHandle;
+        const rememberScale = (
+            name: string,
+            descriptor: Readonly<RenderPipelineTextureDescriptor>
+        ): void => {
+            if ('relativeTo' in descriptor.extent) {
+                scales.set(name, descriptor.extent.scale);
+            }
+        };
+        const graph = {
+            createTexture(
+                name: string,
+                descriptor: Readonly<RenderPipelineTextureDescriptor>
+            ): RenderGraphTextureHandle {
+                rememberScale(name, descriptor);
+                return nextTexture();
+            },
+            importStorageBuffer(_buffer: StorageBuffer): RenderGraphBufferHandle {
+                return nextHandle++ as RenderGraphBufferHandle;
+            },
+            acquireHistoryTexture(
+                _key: object,
+                descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>
+            ): RenderPipelineHistoryTextureResources {
+                rememberScale(descriptor.label ?? 'history', descriptor);
+                const current = nextTexture();
+                return {
+                    current,
+                    valid: false,
+                    generation: 0,
+                    historyCount: 1,
+                    history: () => current
+                };
+            },
+            invalidateHistoryTexture(_key: object): boolean {
+                return true;
+            },
+            addPass(_pass: unknown, _parameters: unknown): RenderGraphPassHandle {
+                return nextHandle++ as RenderGraphPassHandle;
+            }
+        };
+        const camera = new PerspectiveCamera({ aspect: 4 / 3, z: 4 });
+        const context = {
+            get frameIndex(): number {
+                return frameIndex;
+            },
+            camera,
+            output: { width: 160, height: 120 },
+            graph,
+            acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P {
+                return acquireRenderPassParameters(pool, owner, frameIndex);
+            },
+            writeStorageBuffer(
+                _buffer: StorageBuffer,
+                _byteOffset: number,
+                _data: ArrayBufferView
+            ): void {
+                // The test only inspects graph descriptors.
+            }
+        } as unknown as RenderPipelineContext;
+        const destroyBuffer = vi.fn();
+        const buffer = { destroy: destroyBuffer } as unknown as StorageBuffer;
+        const createContext = {
+            createStorageBuffer: () => buffer
+        } as unknown as RenderPipelineCreateContext;
+        const controller = new AtmosphereWeatherController(
+            snapshotAtmosphereWeatherOptions({ quality: 'high' }),
+            createContext,
+            1
+        );
+        const record = (sceneScale: number): void => {
+            const sceneDepth = nextTexture();
+            const prerequisites = controller.recordPrerequisites(
+                context,
+                sceneDepth,
+                sceneScale,
+                false
+            );
+            controller.recordComposite(context, {
+                sceneColor: nextTexture(),
+                sceneDepth,
+                sceneScale,
+                prerequisites
+            });
+        };
+
+        record(1);
+        expect(scales.get('Volumetric cloud screen-space shadow')).toBe(1);
+        expect(scales.get('Physical sky and aerial perspective HDR scene')).toBe(1);
+        expect(scales.get('Volumetric cloud radiance history')).toBe(0.625);
+        expect(scales.get('Volumetric cloud current radiance and transmittance')).toBe(0.625);
+        controller.frameSubmitted(frameIndex);
+
+        scales.clear();
+        frameIndex += 1;
+        record(0.6);
+        expect(scales.get('Volumetric cloud screen-space shadow')).toBe(0.6);
+        expect(scales.get('Physical sky and aerial perspective HDR scene')).toBe(0.6);
+        expect(scales.get('Physical atmosphere and volumetric cloud HDR scene')).toBe(0.6);
+        expect(scales.get('Volumetric cloud radiance history')).toBe(0.375);
+        expect(scales.get('Volumetric cloud current radiance and transmittance')).toBe(0.375);
+        expect(() => controller.recordPrerequisites(context, nextTexture(), 0, false)).toThrow(
+            /sceneScale/u
+        );
+        controller.destroy();
+        expect(destroyBuffer).toHaveBeenCalledOnce();
     });
 
     it('drives quantized dynamic resolution only from ready complete GPU timelines', () => {

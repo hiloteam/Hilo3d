@@ -31,7 +31,7 @@
 
 - Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
   Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
-  perspective, physical sun disc, procedural weather map, half-resolution Perlin/Worley volumetric
+  perspective, physical sun disc, procedural weather map, quality-tier Perlin/Worley volumetric
   cloud ray marching, blue-noise sampling, representative-depth temporal reprojection, cloud shadows
   for registered PBR directional light and froxel scattering, and storm lightning/sun-shaft
   lighting. Add GPU histogram percentile exposure with asymmetric eye adaptation, on-demand
@@ -44,13 +44,13 @@
   frame, and applies EWMA smoothing, hysteresis, quantized steps, warmup, settling, min/max bounds,
   duplicate-sample rejection, and fail-closed handling for unavailable, failed, or saturated
   timings. Resolution changes synchronously resize scene color/depth/motion/reactive, Hi-Z,
-  clusters, SSR and volumetric resources while invalidating size-dependent history; color/depth
-  history, transparent/UI composition and presentation remain output resolution. Add
-  `MaterialInstance.temporalReactiveFactor`, write it through a second `r8unorm` motion MRT in
-  ordinary Forward and the fused GPU Scene prepass, conservatively dilate it 3×3, and combine it
-  with luminance reactivity during TAA/TAAU rejection. Expose single-runtime Forward diagnostics and
-  Clustered scale/GPU-time diagnostics, with tests for controller stability, ABI validation,
-  material revisions, shared GPU packing, fallback and resource requirements.
+  clusters, GTAO/SSGI/SSR, volumetric, atmosphere and cloud resources while invalidating
+  size-dependent history; color/depth history, transparent/UI composition and presentation remain
+  output resolution. Add `MaterialInstance.temporalReactiveFactor`, write it through a second
+  `r8unorm` motion MRT in ordinary Forward and the fused GPU Scene prepass, conservatively dilate it
+  3×3, and combine it with luminance reactivity during TAA/TAAU rejection. Expose single-runtime
+  Forward diagnostics and Clustered scale/GPU-time diagnostics, with tests for controller stability,
+  ABI validation, material revisions, shared GPU packing, fallback and resource requirements.
 - Complete the native GPU Scene/Clustered Forward+ coverage slice for alpha-masked PBR, shared
   shadows, and area lights. Alpha coverage now uses base-color/opacity slot transforms, channels,
   encodings, factors, and cutoff consistently in indirect depth, motion, material-attribute, and

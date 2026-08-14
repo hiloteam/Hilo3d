@@ -10,8 +10,6 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
   [`documentation/RENDERING_ARCHITECTURE.md`](./documentation/RENDERING_ARCHITECTURE.md).
 - For engineering, packaging, or migration work, read
   [`documentation/ENGINEERING_MODERNIZATION.md`](./documentation/ENGINEERING_MODERNIZATION.md).
-- Treat [`documentation/RHI_REFACTOR_HANDOFF.md`](./documentation/RHI_REFACTOR_HANDOFF.md) as a
-  dated work log, not as higher authority than current code, tests, or architecture documentation.
 - Check `git status` first and preserve unrelated user changes.
 
 ## Toolchain and generated files

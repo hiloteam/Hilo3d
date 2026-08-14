@@ -164,10 +164,10 @@ stencil 值的透明自定义 pass 应保持 `renderScale=1`。
 render/compute pass GPU duration，以 EWMA、迟滞、量化 `scaleStep`、warmup 和 settling window 在
 `minScale`/`maxScale` 内调节；无可用、失败或饱和 sample 时保持当前比例，不回退到 CPU frame
 time。比例变化在下一帧同步更新 scene color/depth/motion/reactive、Hi-Z、cluster
-viewport、SSR 与 volumetric extent，并 fail closed 地重建尺寸相关 history。TAA color/depth
-history、transparent/particle/UI composition 和 presentation 始终保持 output
-resolution。使用 dynamic resolution 的 Forward feature 可通过
-`TemporalAA.readDynamicResolutionDiagnostics()`
+viewport、GTAO/SSGI/SSR、volumetric 与 atmosphere/cloud extent，并 fail
+closed 地重建尺寸相关 history。TAA color/depth history、transparent/particle/UI
+composition 和 presentation 始终保持 output resolution。使用 dynamic resolution 的 Forward
+feature 可通过 `TemporalAA.readDynamicResolutionDiagnostics()`
 读取单 renderer 的当前比例与平滑 GPU 时间；Clustered 路径在 `readDiagnostics()` 返回相同字段。
 
 ```ts

@@ -1743,6 +1743,13 @@ export class AtmosphereWeatherController {
     readonly #multiScatteringKey = Object.freeze({});
     readonly #cloudColorKey = Object.freeze({});
     readonly #cloudDepthKey = Object.freeze({});
+    readonly #sceneExtent: { readonly relativeTo: 'output'; scale: number };
+    readonly #cloudExtent: {
+        readonly relativeTo: 'output';
+        scale: number;
+        readonly minWidth: 1;
+        readonly minHeight: 1;
+    } | null;
     readonly #transmittanceDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #multiScatteringDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #cloudColorDescriptor: RenderPipelineHistoryTextureDescriptor | null;
@@ -1813,12 +1820,14 @@ export class AtmosphereWeatherController {
             usage: Object.freeze(['sampled' as const, 'storage' as const]),
             bufferCount: 2 as const
         });
+        this.#sceneExtent = { relativeTo: 'output', scale: sceneScale };
         this.#atmosphereOutputDescriptor = Object.freeze({
             format: 'rgba16float',
-            extent: Object.freeze({ relativeTo: 'output', scale: sceneScale })
+            extent: this.#sceneExtent
         });
         const clouds = settings.clouds;
         if (clouds === null) {
+            this.#cloudExtent = null;
             this.#cloudColorDescriptor = null;
             this.#cloudDepthDescriptor = null;
             this.#cloudCurrentDescriptor = null;
@@ -1828,37 +1837,37 @@ export class AtmosphereWeatherController {
             this.#cloudShadowPass = null;
             this.#compositePass = null;
         } else {
-            const cloudExtent = Object.freeze({
+            this.#cloudExtent = {
                 relativeTo: 'output' as const,
                 scale: sceneScale * clouds.resolutionScale,
-                minWidth: 1,
-                minHeight: 1
-            });
+                minWidth: 1 as const,
+                minHeight: 1 as const
+            };
             this.#cloudColorDescriptor = Object.freeze({
                 label: 'Volumetric cloud radiance history',
                 format: 'rgba16float',
-                extent: cloudExtent,
+                extent: this.#cloudExtent,
                 usage: Object.freeze(['sampled' as const, 'storage' as const]),
                 bufferCount: 2 as const
             });
             this.#cloudDepthDescriptor = Object.freeze({
                 label: 'Volumetric cloud representative-depth history',
                 format: 'r32float',
-                extent: cloudExtent,
+                extent: this.#cloudExtent,
                 usage: Object.freeze(['sampled' as const, 'storage' as const]),
                 bufferCount: 2 as const
             });
             this.#cloudCurrentDescriptor = Object.freeze({
                 format: 'rgba16float',
-                extent: cloudExtent
+                extent: this.#cloudExtent
             });
             this.#cloudDepthCurrentDescriptor = Object.freeze({
                 format: 'r32float',
-                extent: cloudExtent
+                extent: this.#cloudExtent
             });
             this.#cloudShadowDescriptor = Object.freeze({
                 format: 'rgba16float',
-                extent: Object.freeze({ relativeTo: 'output', scale: sceneScale })
+                extent: this.#sceneExtent
             });
             this.#cloudTracePass = cloudTracePass(clouds.cloudSteps, clouds.lightSteps);
             this.#cloudShadowPass = cloudShadowPass(clouds.shadowSteps);
@@ -1879,6 +1888,7 @@ export class AtmosphereWeatherController {
         historyValid: boolean
     ): Readonly<AtmosphereWeatherPrerequisites> {
         if (this.#destroyed) throw new Error('Atmosphere weather controller is destroyed');
+        this.updateSceneScale(sceneScale);
         const frameHistoryValid = this.packFrame(context, historyValid);
         context.writeStorageBuffer(this.#frameBuffer, 0, this.#frameView);
         const frame = context.graph.importStorageBuffer(this.#frameBuffer);
@@ -1971,6 +1981,7 @@ export class AtmosphereWeatherController {
         context: RenderPipelineContext,
         resources: Readonly<AtmosphereWeatherCompositeResources>
     ): RenderGraphTextureHandle {
+        this.updateSceneScale(resources.sceneScale);
         const { prerequisites } = resources;
         const atmosphereOutput = context.graph.createTexture(
             'Physical sky and aerial perspective HDR scene',
@@ -2102,6 +2113,16 @@ export class AtmosphereWeatherController {
         if (this.#destroyed) return;
         this.#destroyed = true;
         this.#frameBuffer.destroy();
+    }
+
+    private updateSceneScale(sceneScale: number): void {
+        if (!Number.isFinite(sceneScale) || sceneScale <= 0 || sceneScale > 1) {
+            throw new RangeError('Atmosphere weather sceneScale must be finite and in (0, 1]');
+        }
+        this.#sceneExtent.scale = sceneScale;
+        if (this.#cloudExtent !== null && this.#settings.clouds !== null) {
+            this.#cloudExtent.scale = sceneScale * this.#settings.clouds.resolutionScale;
+        }
     }
 
     private packFrame(context: RenderPipelineContext, historyValid: boolean): boolean {

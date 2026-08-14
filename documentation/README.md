@@ -12,7 +12,6 @@ committed.
 | [PBR, HDR, and post-processing](./PBR_AND_POST_PROCESSING.md)              | Layered glTF materials, modern PBR lighting, opaque scene texture, Bloom, Color Uber, and linear color contracts           |
 | [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)        | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap |
 | [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)    | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap        |
-| [Forward+ remediation](./FORWARD_PLUS_REMEDIATION.md)                      | Audited Forward+/Clustered/Hi-Z/batching correctness, performance fixes, and executable acceptance matrix                  |
 | [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)      | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence      |
 | [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                  | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence |
 | [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)      | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries   |
@@ -24,7 +23,6 @@ committed.
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |
 | [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                            |
 | [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                | RHI design goals, invariants, migration phases, and acceptance criteria                                                    |
-| [RHI refactor handoff](./RHI_REFACTOR_HANDOFF.md)                          | Dated implementation checkpoints, validation evidence, and historical handoff notes                                        |
 
 ## Source-of-truth order
 
@@ -40,8 +38,6 @@ When documents disagree, use this order:
 6. `RHI_REFACTOR_PLAN.md` for design intent and acceptance criteria not superseded above.
 7. `SCRIPTABLE_RENDER_PIPELINE_PLAN.md` for the implemented SRP design rationale, rollout record,
    acceptance checklist, and the integration points now used by compute/storage.
-8. `RHI_REFACTOR_HANDOFF.md` as historical context; older checkpoints may describe transitional
-   branches, incomplete work, or retired names.
 
 Update the relevant document whenever a change alters an architectural invariant, public workflow,
 backend policy, or validation requirement. Keep diagrams in [`assets/`](./assets/) and reference
