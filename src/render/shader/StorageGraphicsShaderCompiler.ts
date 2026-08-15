@@ -13,6 +13,7 @@ import type {
 } from '../rhi/core';
 import {
     prepareGLSLForNaga,
+    specializeWebGPUDepthSamplers,
     type GraphicsShaderStage,
     type GlslSamplerType,
     type PreparedShaderPair,
@@ -542,7 +543,8 @@ function validatePreparedAbi(
         const sourceSampleType = samplerSampleType(sampler.type);
         if (
             texture.sampleType !== sourceSampleType &&
-            !(sourceSampleType === 'float' && texture.sampleType === 'unfilterable-float')
+            !(sourceSampleType === 'float' && texture.sampleType === 'unfilterable-float') &&
+            !(sourceSampleType === 'float' && texture.sampleType === 'depth')
         ) {
             throw new TypeError(
                 `StorageGraphicsShader sampled texture ${sampler.name} sampleType ${texture.sampleType} does not match GLSL ${sampler.type}`
@@ -808,10 +810,28 @@ export class StorageGraphicsShaderCompiler {
             fragmentBlocks,
             storageDescriptors
         );
+        const textureDescriptors = bindingMap(shader.bindings, isSampledTextureBinding);
         const compiler = getInitializedNagaModule();
         if (compiler === null) throw new Error('Naga module is unavailable after initialization');
-        const vertexWgsl = translateStage(compiler, 'vertex', vertexGlsl);
-        const fragmentWgsl = translateStage(compiler, 'fragment', fragmentGlsl);
+        const translated = specializeWebGPUDepthSamplers(
+            {
+                vertex: {
+                    glsl: vertexGlsl,
+                    wgsl: translateStage(compiler, 'vertex', vertexGlsl)
+                },
+                fragment: {
+                    glsl: fragmentGlsl,
+                    wgsl: translateStage(compiler, 'fragment', fragmentGlsl)
+                },
+                vertexInputs: prepared.vertexInputs,
+                fragmentOutputs: prepared.fragmentOutputs,
+                uniformBlocks: prepared.uniformBlocks,
+                samplers: prepared.samplers
+            },
+            prepared.samplers.filter(
+                sampler => textureDescriptors.get(sampler.name)?.sampleType === 'depth'
+            )
+        );
         const metadata = snapshotMetadata(prepared, storageBuffers);
         const token = this.allocateToken();
         const compiled: CompiledStorageGraphicsShader = Object.freeze({
@@ -822,7 +842,7 @@ export class StorageGraphicsShaderCompiler {
             vertex: Object.freeze({
                 backend: 'webgpu',
                 stage: 'vertex',
-                code: vertexWgsl,
+                code: translated.vertex.wgsl,
                 entryPoint: 'main',
                 reflection: createReflection('vertex', shader, metadata),
                 cacheKey: token * 2
@@ -830,7 +850,7 @@ export class StorageGraphicsShaderCompiler {
             fragment: Object.freeze({
                 backend: 'webgpu',
                 stage: 'fragment',
-                code: fragmentWgsl,
+                code: translated.fragment.wgsl,
                 entryPoint: 'main',
                 reflection: createReflection('fragment', shader, metadata),
                 cacheKey: token * 2 + 1

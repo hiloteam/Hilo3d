@@ -66,6 +66,69 @@ export {
 export { default as OrbitControls, type OrbitControlsOptions } from './controls/OrbitControls';
 
 export {
+    compileParticleSystemDefinition,
+    type ParticleAdvancedQualityPlan,
+    type ParticleCompilationEnvironment
+} from './particle/ParticleCompiler';
+export type {
+    ParticleAttributeLayout,
+    ParticleAttributeName,
+    ParticleCompiledEmitterPlan,
+    ParticleCompiledPlan,
+    ParticleCurveLUT,
+    ParticleGradientLUT
+} from './particle/ParticleCompiledPlan';
+export {
+    default as ParticleCurve,
+    type ParticleCurveInterpolation,
+    type ParticleCurveKeyframe,
+    type ParticleCurveOptions,
+    type ParticleCurveWrapMode
+} from './particle/ParticleCurve';
+export { default as ParticleEmitterDefinition } from './particle/ParticleEmitterDefinition';
+export {
+    ParticleEventChannel,
+    type ParticleEventChannelParameters,
+    type ParticleEventChannelPayload,
+    type ParticleEventChannelSchema,
+    type ParticleEventFieldType,
+    type ParticleEventFieldValue
+} from './particle/ParticleEventChannel';
+export {
+    ParticleBudgetManager,
+    type ParticleBudgetDecision,
+    type ParticleBudgetProfile,
+    type ParticleBudgetRequest
+} from './particle/ParticleBudget';
+export { default as ParticleGradient, type ParticleGradientKey } from './particle/ParticleGradient';
+export {
+    ParticleParameter,
+    ParticleParameterSet,
+    type ParticleParameterType,
+    type ParticleParameterValue
+} from './particle/ParticleParameter';
+export {
+    default as ParticleSystem,
+    type ParticleSystemEmitCommand,
+    type ParticleSystemParameters,
+    type ParticleSystemSimulateOptions
+} from './particle/ParticleSystem';
+export type {
+    ParticleEventAggregate,
+    ParticleEventRecord
+} from './particle/cpu/ParticleCPUEventBuffer';
+export { default as ParticleSystemDefinition } from './particle/ParticleSystemDefinition';
+export { ParticleSystemPool } from './particle/ParticleSystemPool';
+export {
+    analyzeParticleStatelessEligibility,
+    particleStatelessBlockingDiagnostics,
+    type ParticleStatelessModuleMetadata,
+    type ParticleStatelessSupport
+} from './particle/ParticleStateless';
+export { PARTICLE_DEFINITION_VERSION } from './particle/ParticleTypes';
+export type * from './particle/ParticleTypes';
+
+export {
     default as BoxGeometry,
     type BoxGeometryParameters,
     type UV

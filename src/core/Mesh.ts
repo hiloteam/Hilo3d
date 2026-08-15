@@ -18,6 +18,8 @@ export interface MeshParameters extends NodeParameters {
     renderOrder?: number;
     castShadows?: boolean;
     receiveShadows?: boolean;
+    /** Active direct-draw instances when geometry supplies per-instance vertex streams. */
+    instanceCount?: number;
 }
 /**
  * Mesh
@@ -55,6 +57,22 @@ class Mesh extends Node {
     castShadows = true;
     /** Whether forward shading consumes scene shadow data for this object. */
     receiveShadows = true;
+    private _instanceCount = 1;
+    /**
+     * Active direct-draw instance count.
+     *
+     * Values above one require at least one `GeometryData` input with `stepMode: 'instance'`.
+     * Planner-owned `useInstanced` batching keeps its existing independent contract.
+     */
+    get instanceCount(): number {
+        return this._instanceCount;
+    }
+    set instanceCount(value: number) {
+        if (!Number.isSafeInteger(value) || value < 1) {
+            throw new RangeError('Mesh instanceCount must be a positive safe integer');
+        }
+        this._instanceCount = value;
+    }
     /**
      * @param params - 初始化参数，所有params都会复制到实例上
      * - `params.geometry`: 几何体
@@ -76,7 +94,8 @@ class Mesh extends Node {
         }
         Object.assign(node, {
             geometry: this.geometry,
-            material: this.material
+            material: this.material,
+            instanceCount: this.instanceCount
         });
         return node;
     }

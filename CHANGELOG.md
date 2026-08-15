@@ -29,6 +29,31 @@
 
 ### Changes
 
+- Add the versioned public `ParticleSystemDefinition`/`ParticleSystem` API through P0-P3. Compile
+  immutable fixed modules into liveness-based SoA layouts with deterministic counter RNG and shared
+  curve/gradient LUTs; provide portable CPU fixed-step simulation with one interleaved instanced
+  sprite draw on WebGL 2/WebGPU; and add renderer-owned stateful WebGPU simulation, alive/dead
+  compaction, spawn commands, indirect arguments, Bitonic/distance-bucket sorting, recovery-aware
+  commit/rollback, and constrained storage-aware sprite raster through the default Forward Render
+  Graph. Keep the existing specialized compute-particle showcase unchanged until the remaining
+  particle phases are complete. Add stateless eligibility metadata and asset-level diagnostics,
+  absolute-time CPU reconstruction, a no-state Naga-validated WebGPU renderer-data generator,
+  deterministic budget/quality decisions, and reusable short-effect system pooling.
+- Extend the particle runtime through P4 with analytic collision and triggers, WebGPU scene-depth
+  collision, sampled-depth soft sprites with fragment depth comparison, compact bounded CPU events,
+  typed `ParticleEventChannel`, asynchronous aggregate reads, and GPU-resident event
+  capture/sub-emitter routing without count or state readback. Allow constrained storage graphics
+  shaders to specialize ordinary GLSL numeric depth samplers into WGSL depth textures.
+- Complete particle P5 with portable mesh instancing and per-mesh buckets, ribbon/trail topology and
+  dense segment streams, WebGPU mesh scatter plus per-asset indirect draws, per-view GPU ribbon
+  topology sorting/segment compaction/indirect raster, ambient plus bounded directional Lambert
+  lighting, soft ribbons, explicit Bloom/TAA composition semantics, and opt-in motion vectors for
+  supported portable opaque/masked mesh output. Add fail-closed advanced quality gates instead of
+  silently degrading unsupported tiers. Allow the built-in opaque GPU particle boundary to request
+  opaque/transparent Forward splitting only on frames that actually draw eligible particles.
+- Allow a Forward feature runtime to request sampled single-sample scene depth per frame before
+  attachment allocation, so scene-dependent effects do not force unrelated RenderTarget frames
+  through an intermediate depth path.
 - Add an integrated WebGPU physical atmosphere and weather chain to Clustered Forward+: cached
   Rayleigh/Mie/ozone transmittance and multiple-scattering LUTs, a per-frame sky-view LUT, aerial
   perspective, physical sun disc, procedural weather map, quality-tier Perlin/Worley volumetric

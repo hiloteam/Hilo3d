@@ -813,7 +813,17 @@ export class MeshDrawProcessor {
         this.#pendingIndexBuffer = indexBuffer;
         this.#pendingIndexFormat = indexFormat;
         this.#pendingElementCount = elementCount;
-        this.#pendingInstanceCount = 1;
+        if (vertexPlan.instanceCapacity === 1 && mesh.instanceCount !== 1) {
+            throw new TypeError(
+                `Mesh ${mesh.id} instanceCount requires at least one per-instance GeometryData stream`
+            );
+        }
+        if (mesh.instanceCount > vertexPlan.instanceCapacity) {
+            throw new RangeError(
+                `Mesh ${mesh.id} instanceCount ${String(mesh.instanceCount)} exceeds instance stream capacity ${String(vertexPlan.instanceCapacity)}`
+            );
+        }
+        this.#pendingInstanceCount = mesh.instanceCount;
         const prepared = this.#draws.prepare(mesh, revision, this.#updatePreparedDraw);
 
         this.resourceUses.use(pipeline.pipeline);

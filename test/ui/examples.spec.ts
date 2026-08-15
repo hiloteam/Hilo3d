@@ -408,10 +408,24 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 items.map(item => (item as HTMLElement).dataset['examplePath'])
             )
         ).toEqual(expected.map(entry => entry.path));
-        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(10);
-        await expect(page.locator('.exampleBackendBadge[data-backend="webgl2"]')).toHaveCount(1);
+        const exclusiveBackendCounts = {
+            webgl2: expected.filter(
+                entry =>
+                    entry.supportedBackends.length === 1 && entry.supportedBackends[0] === 'webgl2'
+            ).length,
+            webgpu: expected.filter(
+                entry =>
+                    entry.supportedBackends.length === 1 && entry.supportedBackends[0] === 'webgpu'
+            ).length
+        };
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgpu"]')).toHaveCount(
+            exclusiveBackendCounts.webgpu
+        );
+        await expect(page.locator('.exampleBackendBadge[data-backend="webgl2"]')).toHaveCount(
+            exclusiveBackendCounts.webgl2
+        );
         await expect(page.locator('.exampleButton[data-backend-compatible="false"]')).toHaveCount(
-            backend === 'webgl2' ? 10 : 1
+            expected.filter(entry => !entry.supportedBackends.includes(backend)).length
         );
 
         const exampleFrame = page.locator('#exampleFrame');
@@ -540,7 +554,9 @@ test.describe('examples using the generic release gate', () => {
         test(`${examplePath} renders through ${backend} @${backend}`, async ({ page }) => {
             if (
                 examplePath === 'pbr2.html' ||
-                examplePath === 'ground_truth_ambient_occlusion.html'
+                examplePath === 'ground_truth_ambient_occlusion.html' ||
+                examplePath === 'particle_gpu_nebula.html' ||
+                examplePath === 'particle_orbital_weave.html'
             ) {
                 // The HDR material grid and multi-pass GTAO gallery are intentionally expensive
                 // under CI SwiftShader.

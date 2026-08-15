@@ -2801,6 +2801,50 @@ describe('Scriptable render pipeline', () => {
         expect(() => new ForwardRenderPipelineFactory({ features: [feature] })).not.toThrow();
     });
 
+    it('activates conditional opaque/transparent scene splitting per frame', async () => {
+        let splitRequired = false;
+        const runtime: ForwardRenderPipelineFeatureRuntime & { recordCount: number } = {
+            recordCount: 0,
+            requiresSplitScene(): boolean {
+                return splitRequired;
+            },
+            record(): void {
+                this.recordCount++;
+            },
+            destroy(): void {
+                // No renderer-local resources.
+            }
+        };
+        const feature: ForwardRenderPipelineFeature = {
+            name: 'conditional-split-feature',
+            injectionPoint: 'after-opaque',
+            requirements: {
+                sampledSceneColor: false,
+                sampledDepth: false
+            },
+            create(): ForwardRenderPipelineFeatureRuntime {
+                return runtime;
+            }
+        };
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 8,
+            height: 8,
+            antialias: false,
+            renderPipeline: new ForwardRenderPipelineFactory({ features: [feature] })
+        });
+        activeRenderers.push(renderer);
+        const scene = new Node();
+        const camera = new PerspectiveCamera();
+
+        renderer.render(scene, camera);
+        expect(runtime.recordCount).toBe(0);
+        splitRequired = true;
+        renderer.render(scene, camera);
+        expect(runtime.recordCount).toBe(1);
+    });
+
     it('validates fixed sub-native scene scale ownership across forward features', () => {
         const feature = (name: string, sceneScale: number): ForwardRenderPipelineFeature => ({
             name,

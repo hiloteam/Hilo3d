@@ -6,23 +6,25 @@ committed.
 
 ## Start here
 
-| Document                                                                   | Purpose                                                                                                                    |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [Rendering architecture](./RENDERING_ARCHITECTURE.md)                      | Current production rendering path: shared renderer, Render Graph, portable RHI, and WebGPU/WebGL2 backends                 |
-| [PBR, HDR, and post-processing](./PBR_AND_POST_PROCESSING.md)              | Layered glTF materials, modern PBR lighting, opaque scene texture, Bloom, Color Uber, and linear color contracts           |
-| [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)        | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap |
-| [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)    | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap        |
-| [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)      | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence      |
-| [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                  | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence |
-| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)      | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries   |
-| [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)  | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries    |
-| [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                     | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers  |
-| [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)    | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order  |
-| [2D rendering and multi-camera composition](./2D_RENDERING.md)             | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks               |
-| [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md) | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence     |
-| [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)  | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |
-| [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                            |
-| [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                | RHI design goals, invariants, migration phases, and acceptance criteria                                                    |
+| Document                                                                        | Purpose                                                                                                                    |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [Rendering architecture](./RENDERING_ARCHITECTURE.md)                           | Current production rendering path: shared renderer, Render Graph, portable RHI, and WebGPU/WebGL2 backends                 |
+| [PBR, HDR, and post-processing](./PBR_AND_POST_PROCESSING.md)                   | Layered glTF materials, modern PBR lighting, opaque scene texture, Bloom, Color Uber, and linear color contracts           |
+| [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)             | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap |
+| [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)         | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap        |
+| [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)           | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence      |
+| [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                       | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence |
+| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries   |
+| [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)       | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries    |
+| [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers  |
+| [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order  |
+| [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks               |
+| [Particle system](./PARTICLE_SYSTEM.md)                                         | Implemented P0-P2 public API, CPU/WebGPU execution policy, fixed modules, renderer integration, and current boundaries     |
+| [Particle system implementation plan](./PARTICLE_SYSTEM_IMPLEMENTATION_PLAN.md) | Unity 6.5/UE 5.8.1 feature analysis and a phased portable CPU, WebGPU stateful, and stateless particle architecture        |
+| [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)      | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence     |
+| [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)       | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration            |
+| [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                     | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                            |
+| [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                     | RHI design goals, invariants, migration phases, and acceptance criteria                                                    |
 
 ## Source-of-truth order
 

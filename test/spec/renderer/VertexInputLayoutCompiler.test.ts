@@ -59,6 +59,52 @@ function compileOne(
 }
 
 describe('VertexInputLayoutCompiler planning', () => {
+    it('keeps explicit per-instance streams separate from the shared vertex count', () => {
+        const position = new GeometryData(new Float32Array(18), 3);
+        const instances = new Float32Array(24);
+        const instancePosition = new GeometryData(instances, 4, {
+            bufferViewId: 'particle-instance',
+            stride: 48,
+            offset: 0,
+            stepMode: 'instance'
+        });
+        const instanceColor = new GeometryData(instances, 4, {
+            bufferViewId: 'particle-instance',
+            stride: 48,
+            offset: 16,
+            stepMode: 'instance'
+        });
+        const material = materialWith({ position, instancePosition, instanceColor });
+        const plan = new VertexInputLayoutCompiler().compile(
+            [
+                { name: 'position', location: 0 },
+                { name: 'instancePosition', location: 1 },
+                { name: 'instanceColor', location: 2 }
+            ],
+            meshWith(position, material),
+            material,
+            capabilities()
+        );
+
+        expect(plan.vertexCount).toBe(6);
+        expect(plan.instanceCapacity).toBe(2);
+        expect(plan.vertexBuffers).toEqual([
+            {
+                arrayStride: 12,
+                stepMode: 'vertex',
+                attributes: [{ format: 'float32x3', offset: 0, shaderLocation: 0 }]
+            },
+            {
+                arrayStride: 48,
+                stepMode: 'instance',
+                attributes: [
+                    { format: 'float32x4', offset: 0, shaderLocation: 1 },
+                    { format: 'float32x4', offset: 16, shaderLocation: 2 }
+                ]
+            }
+        ]);
+    });
+
     it('sorts unique streams by shader location and emits a shared immutable pipeline plan', () => {
         const position = new GeometryData(new Float32Array(9), 3);
         const uv = new GeometryData(new Float32Array(6), 2);

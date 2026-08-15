@@ -43,6 +43,7 @@ export interface VertexInputStreamPlan {
     readonly sources: readonly GeometryData[];
     readonly slot: number;
     readonly vertexCount: number;
+    readonly stepMode: 'vertex' | 'instance';
     readonly layout: Readonly<RHIVertexBufferLayout>;
 }
 
@@ -52,6 +53,8 @@ export interface VertexInputLayoutPlan {
     /** Contiguous pipeline layouts; `vertexBuffers[stream.slot] === stream.layout`. */
     readonly vertexBuffers: readonly Readonly<RHIVertexBufferLayout>[];
     readonly vertexCount: number;
+    /** Maximum instances addressable by every per-instance stream, or one when none exist. */
+    readonly instanceCapacity: number;
 }
 
 interface ResolvedInput {
@@ -66,6 +69,7 @@ interface ResolvedInput {
     readonly rows: number;
     readonly arrayStride: number;
     readonly vertexCount: number;
+    readonly stepMode: 'vertex' | 'instance';
 }
 
 interface InputSnapshot {
@@ -83,6 +87,7 @@ interface InputSnapshot {
     readonly stride: number;
     readonly offset: number;
     readonly bufferViewId: string;
+    readonly stepMode: 'vertex' | 'instance';
 }
 
 interface CachedPlan {
@@ -103,6 +108,7 @@ interface MutableStream {
     readonly sources: GeometryData[];
     readonly vertexCount: number;
     readonly arrayStride: number;
+    readonly stepMode: 'vertex' | 'instance';
     readonly attributes: RHIVertexAttribute[];
 }
 
@@ -598,7 +604,8 @@ function resolvedInput(
         columns: matrix?.columns ?? 1,
         rows: matrix?.rows ?? value.size,
         arrayStride: value.stride === 0 ? value.size * value.data.BYTES_PER_ELEMENT : value.stride,
-        vertexCount
+        vertexCount,
+        stepMode: value.stepMode
     };
 }
 
@@ -617,7 +624,8 @@ function snapshot(input: ResolvedInput): InputSnapshot {
         normalized: input.source.normalized,
         stride: input.source.stride,
         offset: input.source.offset,
-        bufferViewId: input.source.bufferViewId
+        bufferViewId: input.source.bufferViewId,
+        stepMode: input.source.stepMode
     };
 }
 
@@ -656,7 +664,8 @@ function snapshotMatches(
         cached.normalized === value.normalized &&
         cached.stride === value.stride &&
         cached.offset === value.offset &&
-        cached.bufferViewId === value.bufferViewId
+        cached.bufferViewId === value.bufferViewId &&
+        cached.stepMode === value.stepMode
     );
 }
 
@@ -674,6 +683,7 @@ function requireCompatibleCanonicalStream(
     candidate: ResolvedInput
 ): boolean {
     if (canonical.source === candidate.source) return true;
+    if (canonical.stepMode !== candidate.stepMode) return false;
     if (canonical.source.bufferViewId !== candidate.source.bufferViewId) return false;
     if (!sharesExactByteRange(canonical.source, candidate.source)) {
         throw new TypeError(
@@ -767,6 +777,7 @@ function buildPlan(
                 sources: [candidate.source],
                 vertexCount: candidate.vertexCount,
                 arrayStride: candidate.arrayStride,
+                stepMode: candidate.stepMode,
                 attributes: []
             };
             mutableStreams.push(stream);
@@ -790,20 +801,26 @@ function buildPlan(
         );
     }
 
-    const vertexCount = mutableStreams[0]?.vertexCount ?? 0;
+    let vertexCount = 0;
+    let instanceCapacity = 0;
     const streams = new Array<Readonly<VertexInputStreamPlan>>(mutableStreams.length);
     const vertexBuffers = new Array<Readonly<RHIVertexBufferLayout>>(mutableStreams.length);
     for (let slot = 0; slot < mutableStreams.length; slot += 1) {
         const mutable = mutableStreams[slot];
         if (mutable === undefined) continue;
-        if (mutable.vertexCount !== vertexCount) {
+        const expectedCount = mutable.stepMode === 'vertex' ? vertexCount : instanceCapacity;
+        if (expectedCount === 0) {
+            if (mutable.stepMode === 'vertex') vertexCount = mutable.vertexCount;
+            else instanceCapacity = mutable.vertexCount;
+        } else if (mutable.vertexCount !== expectedCount) {
+            const countName = mutable.stepMode === 'vertex' ? 'vertex count' : 'instance count';
             throw new RangeError(
-                `Per-vertex streams must contain the same vertex count; expected ${String(vertexCount)}, received ${String(mutable.vertexCount)}`
+                `Per-${mutable.stepMode} streams must contain the same ${countName}; expected ${String(expectedCount)}, received ${String(mutable.vertexCount)}`
             );
         }
         const layout: Readonly<RHIVertexBufferLayout> = Object.freeze({
             arrayStride: mutable.arrayStride,
-            stepMode: 'vertex',
+            stepMode: mutable.stepMode,
             attributes: Object.freeze(mutable.attributes)
         });
         const stream: Readonly<VertexInputStreamPlan> = Object.freeze({
@@ -811,6 +828,7 @@ function buildPlan(
             sources: Object.freeze(mutable.sources),
             slot,
             vertexCount: mutable.vertexCount,
+            stepMode: mutable.stepMode,
             layout
         });
         streams[slot] = stream;
@@ -821,7 +839,8 @@ function buildPlan(
         plan: Object.freeze({
             streams: Object.freeze(streams),
             vertexBuffers: Object.freeze(vertexBuffers),
-            vertexCount
+            vertexCount,
+            instanceCapacity: instanceCapacity === 0 ? 1 : instanceCapacity
         })
     };
 }

@@ -551,6 +551,7 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @returns 舞台本身。链式调用支持。
      */
     tick(dt: number): this {
+        this.prepareParticleRendererResources();
         this.traverseUpdate(dt);
         this.sortCameras();
         const cameras = this.cameras;
@@ -566,6 +567,14 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
             }
         }
         return this;
+    }
+
+    private prepareParticleRendererResources(): void {
+        this.traverse(node => {
+            if (Reflect.get(node, 'hasGPUEmitters') !== true) return;
+            const prepare: unknown = Reflect.get(node, 'prepareGPU');
+            if (typeof prepare === 'function') Reflect.apply(prepare, node, [this.renderer]);
+        });
     }
     /**
      * Replace the ordered camera composition.

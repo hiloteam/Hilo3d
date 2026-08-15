@@ -37,6 +37,11 @@ export const EXAMPLE_CATEGORIES = [
         description: 'Animation clips, tweening, morphing, and dynamic scenes.'
     },
     {
+        id: 'particles',
+        label: 'Particles',
+        description: 'Emitters, noise, topology, interaction, and GPU-resident simulation.'
+    },
+    {
         id: 'rendering',
         label: 'Rendering',
         description: 'Render targets, post-processing, buffers, and render pipelines.'
@@ -122,7 +127,12 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr2.html': 'PBR Material Lab',
     'pbr_layered_materials.html': 'Layered PBR Studio',
     'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
-    'cascaded_shadows.html': 'Cascaded Sunset Garden'
+    'cascaded_shadows.html': 'Cascaded Sunset Garden',
+    'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
+    'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
+    'particle_orbital_weave.html': 'Orbital Weave — Meshes, Ribbons & Trails',
+    'particle_collision_theatre.html': 'Collision Theatre — Particle Interaction',
+    'particle_gpu_nebula.html': 'Event Horizon — WebGPU Particle Nebula'
 });
 
 const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
@@ -186,7 +196,17 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'gltf_material_extensions.html':
         'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
     'cascaded_shadows.html':
-        'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.'
+        'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.',
+    'particle_elemental_forge.html':
+        'Compare every analytic emission shape through elemental sprite effects with lifetime curves, gradients, SubUV animation, alignments, blending, and sorting.',
+    'particle_noise_fields.html':
+        'Read vector and curl noise side by side as stateless position offsets and stateful forces with explicit octave, frequency, scroll, and damping profiles.',
+    'particle_orbital_weave.html':
+        'Orbit lit mesh buckets, topology-preserving ribbons, and velocity trails driven by shared portable particle simulation.',
+    'particle_collision_theatre.html':
+        'Launch particles through plane, sphere, box, and capsule colliders with triggers, bounded events, typed channels, and resident sub-emitters.',
+    'particle_gpu_nebula.html':
+        'Fold 65,536 stateful and stateless bodies around soft scene depth with compute simulation, collision, sorting, and GPU-resident event routing.'
 });
 
 const FEATURED_PATHS = new Set([
@@ -222,7 +242,12 @@ const FEATURED_PATHS = new Set([
     'temporal_aa_observatory.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
-    'compute_raytracing.html'
+    'compute_raytracing.html',
+    'particle_elemental_forge.html',
+    'particle_noise_fields.html',
+    'particle_orbital_weave.html',
+    'particle_collision_theatre.html',
+    'particle_gpu_nebula.html'
 ]);
 
 function categoryForPath(path: string): ExampleCategoryId {
@@ -230,6 +255,7 @@ function categoryForPath(path: string): ExampleCategoryId {
     if (normalized === 'quickstart.html') return 'getting-started';
     if (normalized.startsWith('2d_')) return '2d';
     if (normalized.startsWith('physics/')) return 'physics';
+    if (normalized.startsWith('particle_')) return 'particles';
     if (normalized.startsWith('loader/') || normalized.startsWith('gltfviewer/')) return 'loaders';
     if (
         /(?:geometry|billboard|wireframe|frustum_test|camerahelper|normal_map|uv_map)/u.test(
@@ -309,6 +335,7 @@ function descriptionForEntry(path: string, title: string, category: ExampleCateg
         lighting: `Study illumination, reflections, and shadow response with ${title}.`,
         textures: `Explore texture sampling, formats, and color handling with ${title}.`,
         animation: `Bring scene data to life through ${title}.`,
+        particles: `Explore particle authoring and simulation through ${title}.`,
         rendering: `Inspect the portable render pipeline through ${title}.`,
         interaction: `Connect cameras, pointers, and scene queries through ${title}.`,
         loaders: `Load and inspect production asset data with ${title}.`,
@@ -342,6 +369,7 @@ function createEntry(path: string): ExampleCatalogEntry {
                 path === 'compute_gpu_driven.html' ||
                 path === 'compute_eclipse_shrine.html' ||
                 path === 'compute_particles.html' ||
+                path === 'particle_gpu_nebula.html' ||
                 path === 'compute_raytracing.html'
               ? WEBGPU_ONLY
               : BOTH_BACKENDS;

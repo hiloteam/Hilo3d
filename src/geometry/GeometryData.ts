@@ -26,6 +26,8 @@ export interface GeometryDataParameters {
     bufferViewId?: string;
     stride?: number;
     offset?: number;
+    /** Advance this stream once per vertex or once per direct-draw instance. */
+    stepMode?: 'vertex' | 'instance';
 }
 
 export interface SubDataUpdate {
@@ -115,6 +117,18 @@ class GeometryData {
         if (!value) this.clearSubData();
     }
     bufferViewId: string;
+    private _stepMode: 'vertex' | 'instance' = 'vertex';
+    /** Portable RHI vertex-buffer stepping policy. */
+    get stepMode(): 'vertex' | 'instance' {
+        return this._stepMode;
+    }
+    set stepMode(value: 'vertex' | 'instance') {
+        const candidate: unknown = value;
+        if (candidate !== 'vertex' && candidate !== 'instance') {
+            throw new TypeError('GeometryData stepMode must be vertex or instance');
+        }
+        this._stepMode = candidate;
+    }
     readonly id: string;
     private _data: TypedArray;
     private readonly subDataList: SubDataUpdate[] = [];

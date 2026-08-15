@@ -230,7 +230,10 @@ color 需要中间纹理且 output 选择 `load`
 frame 开始前明确失败。scene color sampling 只允许在 opaque writer 之后。内置
 `ForwardRenderPipelineFeature.requirements.sampledDepth` 会创建 single-sample、sampleable
 depth；公共 fullscreen ABI 对普通 depth `sampler2D` 自动选择 non-filtering sampler，并在 WebGPU
-lowering 中专门化为 numeric depth texture。comparison sampling 仍要求显式 comparison 合同。
+lowering 中专门化为 numeric depth texture。comparison
+sampling 仍要求显式 comparison 合同。场景内容决定是否采样深度的 feature 可通过 runtime
+`requiresSampledDepth(context)`
+在 attachment 分配前逐帧升级该要求；静态 requirements 仍负责创建阶段的 backend/capability gate。
 
 WebGPU high-end profile 现在提供公开的
 `ClusteredForwardPlusPipelineFactory`。应用注册稳定的 geometry/material/LOD
@@ -363,7 +366,10 @@ storage。其 Material/Scene texture reflection 仍保留 2D-array/3D/cube 与 s
 type 与 format 不兼容时于 prepare 阶段拒绝。`GPUDrivenRenderPass` 把这种 shader 与普通 `Material`
 的 blend/depth/cull raster state 组合，并支持 vertex pulling、显式 vertex/index buffer、direct
 draw、draw indirect 和 indexed draw indirect。compute、copy 与 raster 都通过同一 graph
-access 建边，不读取 GPU 产生的 count、排序结果或 indirect arguments。
+access 建边，不读取 GPU 产生的 count、排序结果或 indirect arguments。普通 `sampler2D` 可以由显式
+`sampleType: 'depth'` ABI 专门化为 WGSL numeric depth
+texture；这条路径复用通用 GLSL→Naga 深度专门化，只允许 depth
+texture 支持的 load/sample 操作，仍要求同名 texture/sampler binding。
 
 Scriptable compute 与 GPU-driven raster 的 bind
 group 采用两级生命周期：layout 和全部绑定资源都能反查到 `ResourceRegistry`
@@ -390,6 +396,30 @@ WebGL 2 对 compute pipeline、storage binding 和 indirect draw 提供的是明
 implementation：在任何 native GL compute/storage 模拟之前失败，不使用 texture-backed SSBO、transform
 feedback、fragment compute 或 CPU fallback。完整公共合同、目标场景组合方式与首发边界见
 [`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。
+
+公共粒子系统复用同一条生产路径。CPU plan 把 liveness 编译后的 dense SoA 写入一个显式 per-instance
+vertex stream，并由普通 `MeshDrawProcessor` 发出单次 direct instanced draw；WebGPU stateful
+plan 由默认 Forward 的内建 feature 在透明场景之后记录 persistent state、alive/dead compact、spawn
+initialize、per-view sort、renderer-data build 和 indirect storage raster。P3 stateless
+plan 在兼容模块集上按 absolute emitter time 重建当帧 renderer input，compiled plan 的 persistent
+state byte length 为零；WebGPU generator 只声明 parameter、renderer-data 与 indirect buffer，device
+recovery 采用 `regenerate` 而不恢复 state/alive/dead list。全部 buffer/attachment 访问进入 Render
+Graph，stateful simulation 每 application frame 最多推进一次，提交成功才提交 double-buffer
+generation 与时钟。P4 在相同链路加入 analytic/scene-depth collision、GPU event
+capture/route，以及只采样 Forward depth、在 fragment 内执行 depth compare 且不绑定同 pass depth
+attachment 的 Soft Particle；GPU sub-emitter 的 event count 与 target state 不经过 CPU
+readback。P5 在 portable path 增加按 Camera 刷新的 mesh instance bucket 与 ribbon segment instance
+stream；WebGPU path 增加 GPU mesh-index scatter/per-asset indirect、独立 ribbon topology
+index 的 Bitonic sort、segment compact 和 indirect draw。opaque/masked GPU mesh 在内建
+`after-opaque` feature 中记录，transparent sprite/mesh/ribbon 在 `after-transparent`
+记录，均先于同 injection point 的用户 Bloom；opaque feature 通过逐帧 `requiresSplitScene()`
+只在可见 GPU opaque/masked emitter 存在时拆开 opaque/transparent scene
+pass，空场景不付出额外 pass。CPU opaque/masked mesh 继续进入普通 renderer
+list，只有显式启用时才提供 motion-vector role。lit particle 只打包 ambient 加最多四个 directional
+light，不复制完整场景光照栈。Soft ribbon 与 Soft sprite 一样只采样当前 depth、不把 depth 作为同 pass
+attachment。WebGL 2 上 GPU
+feature 保持惰性，高级 GPU/quality 需求在编译期 fail-closed。公共合同与 P0-P5 边界见
+[`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。
 
 相关代码：[`compute/`](../src/render/compute)、[`StorageBuffer.ts`](../src/render/StorageBuffer.ts)、[`storage/`](../src/render/storage)、[`ComputeRenderPass.ts`](../src/render/pipeline/passes/ComputeRenderPass.ts)、[`GPUDrivenRenderPass.ts`](../src/render/pipeline/passes/GPUDrivenRenderPass.ts)、[`ScriptableComputeDispatch.ts`](../src/render/renderer/ScriptableComputeDispatch.ts)、[`ScriptableGPUDrivenDraw.ts`](../src/render/renderer/ScriptableGPUDrivenDraw.ts)、[`compute_gpu_driven.ts`](../examples/compute_gpu_driven.ts)、[`compute_particles.ts`](../examples/compute_particles.ts)、[`compute_raytracing.ts`](../examples/compute_raytracing.ts)。
 
@@ -585,7 +615,9 @@ shader 的单一 GLSL 来源。f16 原始源码通过 Naga frontend，validator/
 binding 的 exact minimum 则按 WGSL store type 的 `SizeOf` 推导，runtime
 array 按一个元素计算。storage-aware raster 则使用 `StorageGraphicsShaderCompiler` 的受控 GLSL ES
 3.10 readonly storage subset，仍经 engine preprocessing、Vulkan GLSL
-4.50 和 Naga 生成 WGSL；仓库不维护手写 graphics WGSL 镜像。
+4.50 和 Naga 生成 WGSL；仓库不维护手写 graphics WGSL 镜像。当该受控 shader 的显式 ABI 把普通 float
+sampler 标记为 numeric depth 时，compiler 在 Naga 后复用统一 depth specialization，把 WGSL
+sampled-float texture 与标量返回值改写为 depth texture 合同。
 
 WebGPU mipmap utility 同样在设备创建前从 GLSL ES 3.00 经 Naga 准备为 Shader
 Artifact，再注入具体设备。共享 Renderer 复用已初始化的材质 compiler；低层 `RHIFactory`
