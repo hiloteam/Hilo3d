@@ -167,7 +167,7 @@ function validateParticleGeometry(geometry: Geometry, label: string): void {
 function validateShape(shape: ParticleShapeDefinition, label: string): void {
     if (shape.arc !== undefined) {
         requireFinite(shape.arc, `${label}.arc`);
-        if (shape.arc <= 0 || shape.arc > Math.PI * 2) {
+        if (shape.arc <= 0 || shape.arc > Math.fround(Math.PI * 2)) {
             throw new RangeError(`${label}.arc must be in the range (0, 2π]`);
         }
     }

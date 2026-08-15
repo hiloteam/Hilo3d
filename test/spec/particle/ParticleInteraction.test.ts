@@ -206,6 +206,9 @@ describe('ParticleSystem P4 WebGPU depth artifacts', () => {
         const renderer = gpu.renderers[0];
         if (!renderer) throw new Error('Expected a soft-particle renderer');
         expect(() => graphicsCompiler.compile(renderer.shader, 'webgpu')).not.toThrow();
+        expect(renderer.shader.fragmentSource).toContain('bool hasSceneDepth');
+        expect(renderer.shader.fragmentSource).toContain('sceneDepth > 0.000001');
+        expect(renderer.shader.fragmentSource).toContain('sceneDepth < 0.999999');
         expect(renderer.shader.bindings).toContainEqual(
             expect.objectContaining({
                 name: 'u_particleSceneDepth',

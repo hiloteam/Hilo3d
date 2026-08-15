@@ -50,6 +50,21 @@ function definition(): ParticleSystemDefinition {
 }
 
 describe('ParticleSystem P0/P1 contracts', () => {
+    it('accepts a full 2π authoring arc after the immutable float32 snapshot', () => {
+        const fullArc = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'full-arc',
+                    capacity: 8,
+                    shape: { type: 'torus', radius: 1, tubeRadius: 0.2, arc: Math.PI * 2 },
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+
+        expect(() => compileParticleSystemDefinition(fullArc)).not.toThrow();
+    });
+
     it('snapshots definitions, bakes liveness layouts, and rejects GPU on WebGL2', () => {
         const inputModules: { readonly type: 'drag'; readonly coefficient: number }[] = [
             { type: 'drag', coefficient: 0.25 }

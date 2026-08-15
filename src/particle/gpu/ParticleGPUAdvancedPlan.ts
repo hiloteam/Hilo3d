@@ -529,8 +529,11 @@ void main() {
         soft === undefined
             ? ''
             : `float sceneDepth = texelFetch(u_particleSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
-    ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''}
-    color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(soft.distance)}, 0.0, 1.0), ${f32(soft.contrast ?? 1)});`
+    bool hasSceneDepth = particleDepthMode > 0.5 ? sceneDepth > 0.000001 : sceneDepth < 0.999999;
+    if (hasSceneDepth) {
+        ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''}
+        color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(soft.distance)}, 0.0, 1.0), ${f32(soft.contrast ?? 1)});
+    }`
     }
     if (color.a <= 0.00001) discard;
     ${lightingSource(renderer.lighting === 'lambert')}

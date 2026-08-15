@@ -16,6 +16,7 @@ import type { ParticleCPUState } from './ParticleCPUState';
 
 const INSTANCE_FLOAT_STRIDE = 16;
 const INSTANCE_BYTE_STRIDE = INSTANCE_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
+let nextParticleCPUMeshBufferId = 1;
 
 class ParticleMeshGeometry extends Geometry {
     readonly #particleBounds: Bounds;
@@ -303,7 +304,7 @@ export class ParticleCPUMeshInstanceWriter {
         this.#bucketIndex = bucketIndex;
         this.#instanceData = new Float32Array(plan.definition.capacity * INSTANCE_FLOAT_STRIDE);
         this.#sortIndices = new Uint32Array(plan.definition.capacity);
-        const bufferViewId = `particle-mesh-instance:${plan.layoutHash}:${String(rendererIndex)}:${String(bucketIndex)}`;
+        const bufferViewId = `particle-mesh-instance:${String(nextParticleCPUMeshBufferId++)}:${plan.layoutHash}:${String(rendererIndex)}:${String(bucketIndex)}`;
         const source = (size: 1 | 3 | 4, offset: number): GeometryData =>
             new GeometryData(this.#instanceData, size, {
                 bufferViewId,

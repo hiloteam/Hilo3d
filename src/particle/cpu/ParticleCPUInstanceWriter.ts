@@ -17,6 +17,7 @@ import type { ParticleCPUState } from './ParticleCPUState';
 
 const INSTANCE_FLOAT_STRIDE = 16;
 const INSTANCE_BYTE_STRIDE = INSTANCE_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
+let nextParticleCPUInstanceBufferId = 1;
 
 class ParticleSpriteGeometry extends Geometry {
     readonly #particleBounds: Bounds;
@@ -80,6 +81,10 @@ function textureSheet(plan: Readonly<ParticleCompiledEmitterPlan>): readonly [nu
     return module?.type === 'texture-sheet' ? [module.rows, module.columns] : [1, 1];
 }
 
+function glslFloat(value: number): string {
+    return Number.isInteger(value) ? `${String(value)}.0` : String(value);
+}
+
 function createVertexSource(
     renderer: ParticleSpriteRendererDefinition,
     simulationSpace: 'local' | 'world',
@@ -114,7 +119,7 @@ void main(void) {
     vec3 position = a_particlePositionSize.xyz + a_particleNoiseOffset;
     vec4 worldPosition = ${simulationSpace === 'local' ? 'u_modelMatrix * vec4(position, 1.0)' : 'vec4(position, 1.0)'};
     vec4 viewPosition = u_viewMatrix * worldPosition;
-    vec2 corner = a_particleCorner + vec2(0.5) - vec2(${String(pivot[0])}, ${String(pivot[1])});
+    vec2 corner = a_particleCorner + vec2(0.5) - vec2(${glslFloat(pivot[0])}, ${glslFloat(pivot[1])});
     float sine = sin(a_particleRotationFrame.x);
     float cosine = cos(a_particleRotationFrame.x);
     corner = mat2(cosine, sine, -sine, cosine) * corner;
@@ -129,7 +134,7 @@ void main(void) {
         vec2 viewVelocity = (u_viewMatrix * vec4(a_particleVelocity, 0.0)).xy;
         axis = length(viewVelocity) > 0.000001 ? normalize(viewVelocity) : axis;
         side = vec2(axis.y, -axis.x);
-        corner.y *= 1.0 + length(a_particleVelocity) * ${String(stretchScale)};
+        corner.y *= 1.0 + length(a_particleVelocity) * ${glslFloat(stretchScale)};
     }
     vec2 billboardOffset = (side * corner.x + axis * corner.y) * a_particlePositionSize.w;
     gl_Position = u_projectionMatrix * vec4(viewPosition.xyz + vec3(billboardOffset, 0.0), 1.0);
@@ -228,7 +233,7 @@ export class ParticleCPUInstanceWriter {
         this.#renderer = renderer;
         this.#instanceData = new Float32Array(plan.definition.capacity * INSTANCE_FLOAT_STRIDE);
         this.#sortIndices = new Uint32Array(plan.definition.capacity);
-        const bufferViewId = `particle-instance:${plan.layoutHash}:${String(rendererIndex)}`;
+        const bufferViewId = `particle-instance:${String(nextParticleCPUInstanceBufferId++)}:${plan.layoutHash}:${String(rendererIndex)}`;
         const source = (size: 2 | 3 | 4, offset: number): GeometryData =>
             new GeometryData(this.#instanceData, size, {
                 bufferViewId,

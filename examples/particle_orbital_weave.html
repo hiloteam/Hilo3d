@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Portable mesh, ribbon, and trail particle topology with scene lighting and orbital motion."
+        />
+        <title>Hilo3D Particle Orbital Weave</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./particle_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <header class="particle-hero">
+            <div class="particle-kicker">Particle studies · 02 / topology</div>
+            <h1>Orbital Weave</h1>
+            <p>
+                Dense mesh buckets, luminous ribbons and velocity trails share one portable
+                simulation while preserving topology and bounded draw counts.
+            </p>
+            <div class="particle-chips">
+                <span>mesh buckets</span><span>ribbon + trail</span><span>Lambert lighting</span
+                ><span>ribbonId</span><span>motion vectors</span>
+            </div>
+        </header>
+        <div class="particle-hint">DRAG TO ORBIT · WATCH THE WEAVE REFORM</div>
+        <nav class="particle-nav" aria-label="Particle example collection">
+            <a href="./particle_elemental_forge.html">Elemental</a>
+            <a href="./particle_noise_fields.html">Noise</a>
+            <a aria-current="page" href="./particle_orbital_weave.html">Topology</a>
+            <a href="./particle_collision_theatre.html">Interaction</a>
+            <a href="./particle_gpu_nebula.html?backend=webgpu">GPU nebula</a>
+        </nav>
+        <script type="module" src="./particle_orbital_weave.ts"></script>
+    </body>
+</html>

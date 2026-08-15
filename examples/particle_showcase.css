@@ -1,0 +1,255 @@
+:root {
+    color-scheme: dark;
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+}
+
+body {
+    background: #02040c;
+    color: #f4f7ff;
+}
+
+.particle-hero {
+    position: fixed;
+    z-index: 100000;
+    top: 22px;
+    right: 24px;
+    width: min(390px, calc(100vw - 48px));
+    pointer-events: none;
+}
+
+.particle-kicker {
+    color: #7fe9ff;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.particle-hero h1 {
+    margin: 7px 0 6px;
+    font-size: clamp(24px, 4vw, 46px);
+    font-weight: 650;
+    letter-spacing: -0.045em;
+    line-height: 0.96;
+    text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55);
+}
+
+.particle-hero p {
+    margin: 0;
+    color: rgba(230, 239, 255, 0.7);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.particle-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.particle-chips span,
+.particle-nav a,
+.particle-controls button {
+    border: 1px solid rgba(150, 210, 255, 0.18);
+    border-radius: 999px;
+    background: rgba(8, 17, 35, 0.58);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+    color: rgba(230, 245, 255, 0.82);
+    font-size: 10px;
+    line-height: 1;
+    text-decoration: none;
+    backdrop-filter: blur(14px);
+}
+
+.particle-chips span {
+    padding: 7px 9px;
+}
+
+.particle-nav {
+    position: fixed;
+    z-index: 100005;
+    right: 24px;
+    bottom: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+    max-width: min(620px, calc(100vw - 48px));
+}
+
+.particle-nav a {
+    padding: 9px 12px;
+    pointer-events: auto;
+    transition:
+        border-color 160ms ease,
+        background 160ms ease,
+        transform 160ms ease;
+}
+
+.particle-nav a:hover,
+.particle-nav a[aria-current='page'] {
+    border-color: rgba(109, 231, 255, 0.72);
+    background: rgba(23, 82, 112, 0.62);
+    transform: translateY(-1px);
+}
+
+.particle-controls {
+    position: fixed;
+    z-index: 100005;
+    left: 22px;
+    bottom: 22px;
+    display: flex;
+    gap: 8px;
+}
+
+.particle-controls button {
+    padding: 10px 13px;
+    cursor: pointer;
+}
+
+.particle-controls button:hover {
+    border-color: rgba(255, 183, 93, 0.7);
+    background: rgba(94, 48, 20, 0.7);
+}
+
+.particle-readout {
+    position: fixed;
+    z-index: 100002;
+    right: 24px;
+    top: 205px;
+    min-width: 188px;
+    padding: 12px 14px;
+    border: 1px solid rgba(124, 206, 255, 0.14);
+    border-radius: 12px;
+    background: rgba(4, 10, 24, 0.62);
+    color: rgba(210, 233, 255, 0.76);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    line-height: 1.65;
+    white-space: pre;
+    backdrop-filter: blur(14px);
+    pointer-events: none;
+}
+
+.particle-hint {
+    position: fixed;
+    z-index: 100000;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    color: rgba(219, 235, 255, 0.48);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+}
+
+.particle-legend {
+    top: 132px;
+    right: auto;
+    left: 22px;
+    border-color: rgba(126, 220, 255, 0.2);
+    color: rgba(224, 241, 255, 0.82);
+}
+
+.particle-legend span {
+    display: block;
+}
+
+.noise-label {
+    position: fixed;
+    z-index: 100001;
+    transform: translate(-50%, -50%);
+    color: rgba(221, 240, 255, 0.62);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-shadow: 0 2px 12px #000;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.noise-label::before {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    margin-right: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 12px currentColor;
+    content: '';
+}
+
+.collision-direction {
+    position: fixed;
+    z-index: 100001;
+    top: 14%;
+    left: 48%;
+    transform: translateX(-50%);
+    color: rgba(190, 229, 255, 0.72);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-shadow: 0 0 14px rgba(80, 200, 255, 0.82);
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.collision-direction span {
+    display: block;
+    margin-bottom: 3px;
+    color: #9eeaff;
+    font-size: 24px;
+    line-height: 1;
+    text-align: center;
+}
+
+@media (max-width: 720px) {
+    .hilo3dStats {
+        display: none;
+    }
+    .particle-hero {
+        top: 16px;
+        right: 16px;
+        width: calc(100vw - 32px);
+    }
+    .particle-hero p {
+        max-width: 88%;
+    }
+    .particle-chips span:nth-child(n + 5) {
+        display: none;
+    }
+    .particle-nav {
+        right: 16px;
+        bottom: 16px;
+        max-width: calc(100vw - 32px);
+    }
+    .particle-nav a {
+        padding: 8px 9px;
+    }
+    .particle-controls {
+        left: 16px;
+        bottom: 72px;
+    }
+    .particle-readout {
+        top: auto;
+        right: 16px;
+        bottom: 70px;
+    }
+    .particle-hint {
+        display: none;
+    }
+    .particle-legend,
+    .collision-direction,
+    .noise-label {
+        display: none;
+    }
+}

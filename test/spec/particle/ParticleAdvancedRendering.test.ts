@@ -169,6 +169,7 @@ describe('ParticleSystem P5 portable topology', () => {
                         execution: 'cpu',
                         bounds,
                         renderers: [
+                            { type: 'sprite', alignment: 'view' },
                             {
                                 type: 'mesh',
                                 meshes: [
@@ -195,9 +196,51 @@ describe('ParticleSystem P5 portable topology', () => {
             await renderer.waitForIdle();
             renderer.render(scene, camera);
             await renderer.waitForIdle();
-            expect(renderer.renderInfo.drawCount).toBeGreaterThanOrEqual(3);
+            expect(renderer.renderInfo.drawCount).toBeGreaterThanOrEqual(4);
         } finally {
             system.destroy(renderer);
+            renderer.destroy();
+        }
+    });
+
+    it('renders multiple same-layout CPU particle systems with independent instance buffers', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 24,
+            height: 24,
+            antialias: false
+        });
+        const definition = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'same-layout',
+                    capacity: 8,
+                    execution: 'cpu',
+                    bounds,
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        const first = new ParticleSystem({ definition, autoPlay: false });
+        const second = new ParticleSystem({ definition, autoPlay: false });
+        second.x = 1;
+        const scene = new Node();
+        scene.addChild(first);
+        scene.addChild(second);
+        const camera = new PerspectiveCamera({ aspect: 1, near: 0.1, far: 10 });
+        camera.z = 4;
+        first.emit(2).simulate(1 / 60);
+        second.emit(2).simulate(1 / 60);
+        try {
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            renderer.render(scene, camera);
+            await renderer.waitForIdle();
+            expect(renderer.renderInfo.drawCount).toBeGreaterThanOrEqual(2);
+        } finally {
+            first.destroy(renderer);
+            second.destroy(renderer);
             renderer.destroy();
         }
     });
@@ -230,7 +273,11 @@ describe('ParticleSystem P5 WebGPU plans', () => {
                             coverage: 'opaque',
                             lighting: 'lambert'
                         },
-                        { type: 'ribbon', lighting: 'lambert' }
+                        {
+                            type: 'ribbon',
+                            lighting: 'lambert',
+                            softParticle: { distance: 0.1 }
+                        }
                     ]
                 }
             ]
@@ -252,6 +299,7 @@ describe('ParticleSystem P5 WebGPU plans', () => {
                 }
             } else {
                 expect(renderer.topologyCapacity).toBe(32);
+                expect(renderer.shader.fragmentSource).toContain('bool hasSceneDepth');
                 for (const shader of [
                     renderer.reset,
                     renderer.initializeTopology,

@@ -1249,7 +1249,12 @@ function storageRenderer(
         ? 'uniform sampler2D u_particleSceneDepth;'
         : '';
     const softParticleFade = renderer.softParticle
-        ? `float sceneDepth = texelFetch(u_particleSceneDepth, ivec2(gl_FragCoord.xy), 0).r; ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''} color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(renderer.softParticle.distance)}, 0.0, 1.0), ${f32(renderer.softParticle.contrast ?? 1)});`
+        ? `float sceneDepth = texelFetch(u_particleSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
+bool hasSceneDepth = particleDepthMode > 0.5 ? sceneDepth > 0.000001 : sceneDepth < 0.999999;
+if (hasSceneDepth) {
+    ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''}
+    color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(renderer.softParticle.distance)}, 0.0, 1.0), ${f32(renderer.softParticle.contrast ?? 1)});
+}`
         : '';
     const softVertexOutput = renderer.softParticle ? 'out float particleDepthMode;' : '';
     const softVertexAssignment = renderer.softParticle

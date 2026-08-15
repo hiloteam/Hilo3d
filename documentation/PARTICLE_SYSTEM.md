@@ -70,6 +70,35 @@ particles
     .play();
 ```
 
+## Maintained visual examples
+
+The example gallery groups particle coverage by the behavior an author is trying to learn rather
+than by implementation phase. Together the five pages exercise the complete P0-P5 rendering and
+interaction surface while keeping each source file readable:
+
+| Example                                                                      | Primary coverage                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`particle_elemental_forge.ts`](../examples/particle_elemental_forge.ts)     | Point/line/box/disc/sphere/hemisphere/cone/torus distributions, time and burst emission, lifetime curves, gradients, by-speed values, SubUV animation, sprite alignments, sorting, blending, camera modifiers, custom channels, and kill conditions.                               |
+| [`particle_noise_fields.ts`](../examples/particle_noise_fields.ts)           | Vector and curl noise, position-offset and force modes, one to four octaves, frequency, lacunarity, persistence, scroll velocity, damping, deterministic seeds, and stateless versus CPU stateful execution.                                                                       |
+| [`particle_orbital_weave.ts`](../examples/particle_orbital_weave.ts)         | Mesh buckets, opaque motion-vector eligibility, coherent world-space ribbon/trail sampling, view/world-up facing, repeat UVs, topology-safe ordering, conform/orbit motion, and portable instanced draws.                                                                          |
+| [`particle_collision_theatre.ts`](../examples/particle_collision_theatre.ts) | Four color-coded, staggered low-frequency plane/sphere/box/capsule streams, slender projectile trails, short rebounds, dense fire-spark impacts, triggers, bounded event aggregates, batched sub-emitters, typed application channels, and click-triggered full-field meteor rain. |
+| [`particle_gpu_nebula.ts`](../examples/particle_gpu_nebula.ts)               | Explicit WebGPU stateful simulation, stateless reconstruction, large capacities, distance sorting, soft particles, scene-depth and analytic collision, GPU-resident sub-emitter routing, fixed bounds, and readback-free runtime diagnostics.                                      |
+
+The pages use procedural textures so their presentation does not depend on a network service or an
+unreviewed binary asset. They are part of the recursively discovered WebGL 2/WebGPU example release
+matrix; the Event Horizon page is explicitly WebGPU-only because it requires compute, storage
+raster, sampled depth, and indirect draws.
+
+### Visual gallery
+
+| Elemental Forge                                                      | Turbulence Atlas                                                      |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| ![Elemental Forge](images/particle-showcases/elemental-forge.jpg)    | ![Turbulence Atlas](images/particle-showcases/noise-atlas.jpg)        |
+| **Orbital Weave**                                                    | **Collision Theatre**                                                 |
+| ![Orbital Weave](images/particle-showcases/orbital-weave.jpg)        | ![Collision Theatre](images/particle-showcases/collision-theatre.jpg) |
+| **Event Horizon (WebGPU)**                                           |                                                                       |
+| ![Event Horizon WebGPU](images/particle-showcases/event-horizon.jpg) |                                                                       |
+
 Definitions and their emitter/module/renderer records are immutable snapshots. Changing input
 objects after `ParticleSystemDefinition.create()` cannot mutate an existing compiled runtime. Create
 a new definition when topology changes. `ParticleCurve`, `ParticleGradient`, and typed

@@ -13,6 +13,7 @@ import type { ParticleCPUState } from './ParticleCPUState';
 
 const SEGMENT_FLOAT_STRIDE = 16;
 const SEGMENT_BYTE_STRIDE = SEGMENT_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
+let nextParticleCPURibbonBufferId = 1;
 
 class ParticleRibbonGeometry extends Geometry {
     readonly #particleBounds: Bounds;
@@ -173,7 +174,7 @@ export class ParticleCPURibbonWriter {
         this.#state = state;
         this.#segmentData = new Float32Array(plan.definition.capacity * SEGMENT_FLOAT_STRIDE);
         this.#topologyIndices = new Uint32Array(plan.definition.capacity);
-        const bufferViewId = `particle-ribbon-segment:${plan.layoutHash}:${String(rendererIndex)}`;
+        const bufferViewId = `particle-ribbon-segment:${String(nextParticleCPURibbonBufferId++)}:${plan.layoutHash}:${String(rendererIndex)}`;
         const source = (offset: number): GeometryData =>
             new GeometryData(this.#segmentData, 4, {
                 bufferViewId,

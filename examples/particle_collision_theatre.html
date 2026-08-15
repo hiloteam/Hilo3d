@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Interactive Hilo3D particle collisions, triggers, bounded events, typed channels, and sub-emitters."
+        />
+        <title>Hilo3D Particle Collision Theatre</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./particle_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <header class="particle-hero">
+            <div class="particle-kicker">Particle studies · 03 / interaction</div>
+            <h1>Collision Theatre</h1>
+            <p>
+                Four staggered streams strike four analytic primitives. Click the canvas to release
+                a full-field meteor rain with dense fire-spark impacts.
+            </p>
+            <div class="particle-chips">
+                <span>4 colliders</span><span>random cadence</span><span>trigger enter/exit</span
+                ><span>sub-emitter</span><span>typed channel</span><span>full-field rain</span>
+            </div>
+        </header>
+        <div class="collision-direction"><span>↓</span> downward test streams</div>
+        <output class="particle-readout" id="particle-readout">events warming up…</output>
+        <div class="particle-controls">
+            <button id="burst-button" type="button">Meteor rain</button>
+            <button id="pause-button" type="button">Pause</button>
+            <button id="restart-button" type="button">Restart</button>
+        </div>
+        <nav class="particle-nav" aria-label="Particle example collection">
+            <a href="./particle_elemental_forge.html">Elemental</a>
+            <a href="./particle_noise_fields.html">Noise</a>
+            <a href="./particle_orbital_weave.html">Topology</a>
+            <a aria-current="page" href="./particle_collision_theatre.html">Interaction</a>
+            <a href="./particle_gpu_nebula.html?backend=webgpu">GPU nebula</a>
+        </nav>
+        <script type="module" src="./particle_collision_theatre.ts"></script>
+    </body>
+</html>
