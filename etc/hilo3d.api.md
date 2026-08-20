@@ -715,6 +715,7 @@ export class Camera extends Node_2 {
     // (undocumented)
     isPerspectiveCamera: boolean;
     isPointVisible(point: Vector3): boolean;
+    isSphereVisible(sphere: Sphere): boolean;
     readonly jitteredProjectionMatrix: Matrix4;
     readonly jitteredViewProjectionMatrix: Matrix4;
     protected _needUpdateProjectionMatrix: boolean;
@@ -5415,6 +5416,7 @@ export interface ParticleBudgetDecision {
 // @public
 export class ParticleBudgetManager {
     constructor(profile?: Readonly<ParticleBudgetProfile>);
+    apply(systems: readonly ParticleSystem[], camera?: Camera): readonly Readonly<ParticleBudgetDecision>[];
     // (undocumented)
     readonly profile: Readonly<Required<ParticleBudgetProfile>>;
     resolve(requests: readonly Readonly<ParticleBudgetRequest>[]): readonly Readonly<ParticleBudgetDecision>[];
@@ -5545,6 +5547,9 @@ export interface ParticleColorOverLifetimeModule {
     // (undocumented)
     readonly type: 'color-over-lifetime';
 }
+
+// @public
+export type ParticleColorSource = ParticleColorValue | ParticleParameter<ParticleColor>;
 
 // @public
 export type ParticleColorValue = ParticleColor | ParticleRange<ParticleColor>;
@@ -5700,9 +5705,9 @@ export interface ParticleEmissionDefinition {
     // (undocumented)
     readonly bursts?: readonly ParticleBurstDefinition[];
     // (undocumented)
-    readonly rateOverDistance?: ParticleScalarValue;
+    readonly rateOverDistance?: ParticleScalarSource;
     // (undocumented)
-    readonly rateOverTime?: ParticleScalarValue;
+    readonly rateOverTime?: ParticleScalarSource;
 }
 
 // @public
@@ -5927,22 +5932,22 @@ export interface ParticleInheritVelocityModule {
 // @public
 export interface ParticleInitializeDefinition {
     // (undocumented)
-    readonly color?: ParticleColorValue;
+    readonly color?: ParticleColorSource;
     // (undocumented)
-    readonly direction?: ParticleVector3Value;
+    readonly direction?: ParticleVector3Source;
     // (undocumented)
-    readonly lifetime?: ParticleScalarValue;
+    readonly lifetime?: ParticleScalarSource;
     // (undocumented)
-    readonly mass?: ParticleScalarValue;
-    readonly meshIndex?: ParticleScalarValue;
+    readonly mass?: ParticleScalarSource;
+    readonly meshIndex?: ParticleScalarSource;
     // (undocumented)
-    readonly position?: ParticleVector3Value;
-    readonly ribbonId?: ParticleScalarValue;
-    readonly rotation?: ParticleScalarValue;
+    readonly position?: ParticleVector3Source;
+    readonly ribbonId?: ParticleScalarSource;
+    readonly rotation?: ParticleScalarSource;
     // (undocumented)
-    readonly size?: ParticleScalarValue;
+    readonly size?: ParticleScalarSource;
     // (undocumented)
-    readonly speed?: ParticleScalarValue;
+    readonly speed?: ParticleScalarSource;
 }
 
 // @public
@@ -6094,7 +6099,7 @@ export class ParticleParameterSet {
 export type ParticleParameterType = 'float' | 'uint' | 'boolean' | 'vector2' | 'vector3' | 'vector4' | 'color' | 'texture' | 'curve' | 'gradient';
 
 // @public
-export type ParticleParameterValue = number | boolean | Vector2 | Vector3 | Vector4 | Color | Texture<unknown> | ParticleCurve | ParticleGradient;
+export type ParticleParameterValue = number | boolean | ParticleVector2 | ParticleVector3 | ParticleVector4 | Texture<unknown> | ParticleCurve | ParticleGradient;
 
 // @public
 export interface ParticlePlaneCollider {
@@ -6184,6 +6189,9 @@ export interface ParticleScalarOverLifetimeModule {
 }
 
 // @public
+export type ParticleScalarSource = ParticleScalarValue | ParticleParameter<number>;
+
+// @public
 export type ParticleScalarValue = number | ParticleRange<number>;
 
 // @public
@@ -6260,7 +6268,6 @@ export interface ParticleSpriteRendererDefinition {
     }>;
     // (undocumented)
     readonly sort?: ParticleSortMode;
-    // (undocumented)
     readonly stretchScale?: number;
     // (undocumented)
     readonly texture?: Texture<unknown> | null;
@@ -6307,6 +6314,12 @@ export type ParticleSurfaceCoverage = 'opaque' | 'masked' | 'transparent';
 export class ParticleSystem extends Node_2 {
     constructor(parameters: Readonly<ParticleSystemParameters>);
     get aliveCount(): number;
+    // @internal
+    applyBudgetDecisions(decisions: readonly Readonly<ParticleBudgetDecision>[]): this;
+    // (undocumented)
+    readonly budgetId: string;
+    // (undocumented)
+    readonly budgetPriority: number;
     // (undocumented)
     className: string;
     // (undocumented)
@@ -6314,6 +6327,8 @@ export class ParticleSystem extends Node_2 {
     // (undocumented)
     readonly compiledPlan: Readonly<ParticleCompiledPlan>;
     get completed(): boolean;
+    // @internal
+    createBudgetRequests(camera?: Camera): readonly Readonly<ParticleBudgetRequest>[];
     // (undocumented)
     readonly definition: ParticleSystemDefinition;
     // (undocumented)
@@ -6334,6 +6349,12 @@ export class ParticleSystem extends Node_2 {
     get hasGPUEmitters(): boolean;
     // @internal
     get hasGPUOpaqueRenderers(): boolean;
+    // @internal
+    get hasPendingGPUWork(): boolean;
+    // @internal
+    isGPUVisible(camera: Camera): boolean;
+    // (undocumented)
+    readonly parameters: ParticleParameterSet;
     // (undocumented)
     pause(): this;
     // (undocumented)
@@ -6348,6 +6369,8 @@ export class ParticleSystem extends Node_2 {
     recordGPU(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
     // @internal
     get requiresGPUSampledDepth(): boolean;
+    // @internal
+    resetForPool(parameters: Readonly<ParticleSystemParameters>): this;
     // (undocumented)
     restart(): this;
     // (undocumented)
@@ -6402,10 +6425,13 @@ export interface ParticleSystemEmitCommand {
 export interface ParticleSystemParameters extends NodeParameters {
     // (undocumented)
     readonly autoPlay?: boolean;
+    readonly budgetId?: string;
+    readonly budgetPriority?: number;
     readonly compilationEnvironment?: Readonly<ParticleCompilationEnvironment>;
     // (undocumented)
     readonly definition: ParticleSystemDefinition;
     readonly eventReadbackCapacity?: number;
+    readonly parameters?: ParticleParameterSet;
     // (undocumented)
     readonly seed?: number;
     // (undocumented)
@@ -6480,6 +6506,9 @@ export type ParticleVector2 = readonly [number, number];
 
 // @public
 export type ParticleVector3 = readonly [number, number, number];
+
+// @public
+export type ParticleVector3Source = ParticleVector3Value | ParticleParameter<ParticleVector3>;
 
 // @public
 export type ParticleVector3Value = ParticleVector3 | ParticleRange<ParticleVector3>;

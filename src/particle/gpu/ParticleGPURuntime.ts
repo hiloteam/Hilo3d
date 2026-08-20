@@ -1,4 +1,5 @@
 import type Camera from '../../camera/Camera';
+import type { ParticleBudgetDecision } from '../ParticleBudget';
 import type { EventListener } from '../../core/EventDispatcher';
 import type Node from '../../core/Node';
 import DirectionalLight from '../../light/DirectionalLight';
@@ -57,7 +58,8 @@ const PARTICLE_PARAMETER_LAYOUT = createStd140Layout({
     sort: 'uvec4',
     viewProjection: 'mat4'
 });
-const PARTICLE_VIEW_LAYOUT = createStd140Layout({
+/** @internal Shared storage-particle view ABI. */
+export const PARTICLE_VIEW_LAYOUT = createStd140Layout({
     u_viewMatrix: 'mat4',
     u_projectionMatrix: 'mat4',
     u_modelMatrix: 'mat4',
@@ -82,7 +84,8 @@ class MutableTextureBinding implements ComputeTextureBinding {
     texture = 0 as RenderGraphTextureHandle;
 }
 
-class ParticleComputeParameters implements ComputeRenderPassParameters {
+/** @internal Shared compute-pass bindings for particle graph runtimes. */
+export class ParticleComputeParameters implements ComputeRenderPassParameters {
     readonly uniformBuffers: readonly UniformBuffer[];
     readonly buffers: MutableBufferBinding[];
     readonly textures: MutableTextureBinding[];
@@ -157,7 +160,8 @@ class MutableIndirectDraw {
     byteOffset = 0;
 }
 
-class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
+/** @internal Shared indirect storage-raster bindings for particle graph runtimes. */
+export class ParticleDrawParameters implements GPUDrivenRenderPassParameters {
     readonly uniformBuffers: readonly UniformBuffer[];
     readonly buffers: MutableBufferBinding[];
     readonly textures: { texture: RenderGraphTextureHandle }[] = [];
@@ -347,7 +351,8 @@ function advancedBlendState(
     return blendState(definition.blend);
 }
 
-function drawPipelineState(
+/** @internal Shared sprite pipeline state for GPU particle renderers. */
+export function drawPipelineState(
     renderer: ParticleGPUCompiledPlan['renderers'][number]['definition'],
     reversed: boolean
 ): Readonly<MaterialPipelineState> {
@@ -504,6 +509,11 @@ export class ParticleGPUEmitterRuntime {
     readonly #restoredListener: EventListener;
     #simulationFrame = -1;
     #recoveryFrame = -1;
+    #budgetEnabled = true;
+    #budgetSorting = true;
+    #budgetSoftParticles = true;
+    #budgetCollision = true;
+    #budgetRibbons = true;
     #recoveryPending = true;
     #destroyed = false;
 
@@ -599,7 +609,7 @@ export class ParticleGPUEmitterRuntime {
             vectorFieldSamplers
         );
         this.#initializeParameters = computePool(7, true, 1);
-        this.#finalizeParameters = computePool(2, false, 1);
+        this.#finalizeParameters = computePool(2, true, 1);
         this.#buildParameters = computePool(4, false, this.compiled.workgroupCount);
         this.#sortParameters = computePool(
             3,
@@ -895,7 +905,7 @@ export class ParticleGPUEmitterRuntime {
             this.transaction.staged?.sourceIndex ?? this.transaction.committed.sourceIndex;
         const activeState = imported.state[activeStateIndex];
         const activeAlive = imported.alive[activeStateIndex];
-        if (this.#sortPass !== null && drawVisible) {
+        if (this.#sortPass !== null && drawVisible && this.#budgetSorting) {
             this.recordSort(context, imported, activeState, activeAlive);
         }
         if (!drawVisible) return;
@@ -911,6 +921,18 @@ export class ParticleGPUEmitterRuntime {
             phase
         );
         this.recordDraws(context, imported, color, depth, system, phase);
+    }
+
+    /** Apply one emitter's frame-wide quality decision. @internal */
+    setBudget(decision: Readonly<ParticleBudgetDecision>): void {
+        const wasEnabled = this.#budgetEnabled;
+        this.#budgetEnabled = decision.enabled;
+        this.#budgetSorting = decision.sorting;
+        this.#budgetSoftParticles = decision.softParticles;
+        this.#budgetCollision = decision.collision;
+        this.#budgetRibbons = decision.ribbons;
+        this.controller.setBudget(decision.particleLimit, decision.spawnRateScale);
+        if (wasEnabled && !decision.enabled) this.restart();
     }
 
     /** Route events captured by this frame directly into a target GPU emitter's active state. @internal */
@@ -1052,6 +1074,8 @@ export class ParticleGPUEmitterRuntime {
         cameraPosition(context.camera, values.cameraPosition);
         values.viewProjection.set(context.camera.jitteredViewProjectionMatrix.elements);
         values.sort.fill(0);
+        values.sort[2] = this.controller.particleLimit;
+        values.sort[3] = this.#budgetCollision ? 1 : 0;
         const reset = context.acquirePassParameters(this.#resetParameters);
         reset.configure([imported.counters, imported.eventCounters]);
         context.graph.addPass(this.#resetPass, reset);
@@ -1098,6 +1122,7 @@ export class ParticleGPUEmitterRuntime {
             context.graph.addPass(this.#initializePass, initialize);
         }
         const finalize = context.acquirePassParameters(this.#finalizeParameters);
+        this.writeParticleUniform(finalize);
         finalize.configure([imported.counters, imported.indirect]);
         context.graph.addPass(this.#finalizePass, finalize);
     }
@@ -1178,6 +1203,7 @@ export class ParticleGPUEmitterRuntime {
             }
         }
         for (const runtime of this.#advancedRuntimes) {
+            if (runtime.kind === 'ribbon' && !this.#budgetRibbons) continue;
             const transparent =
                 (runtime.plan.definition.coverage ?? 'transparent') === 'transparent';
             if ((phase === 'transparent') !== transparent) continue;
@@ -1249,6 +1275,7 @@ export class ParticleGPUEmitterRuntime {
         phase: 'opaque' | 'transparent'
     ): void {
         for (const runtime of this.#advancedRuntimes) {
+            if (runtime.kind === 'ribbon' && !this.#budgetRibbons) continue;
             const transparent =
                 (runtime.plan.definition.coverage ?? 'transparent') === 'transparent';
             if ((phase === 'transparent') !== transparent) continue;
@@ -1320,7 +1347,7 @@ export class ParticleGPUEmitterRuntime {
         this.#viewCameraPosition[3] = context.camera.depthMode === 'reversed' ? 1 : 0;
         viewUniform.set('u_cameraPosition', this.#viewCameraPosition);
         const viewport = context.viewport;
-        this.#viewViewport.set([viewport[2], viewport[3], 1 / viewport[2], 1 / viewport[3]]);
+        this.#viewViewport.set([viewport[0], viewport[1], viewport[2], viewport[3]]);
         viewUniform.set('u_viewport', this.#viewViewport);
         this.collectSceneLighting(context);
         viewUniform.set('u_particleAmbient', this.#viewAmbient);
@@ -1332,7 +1359,7 @@ export class ParticleGPUEmitterRuntime {
         this.#viewAmbient.fill(0);
         this.#viewDirectionalColors.fill(0);
         this.#viewDirectionalDirections.fill(0);
-        this.#viewAmbient[3] = 1;
+        this.#viewAmbient[3] = this.#budgetSoftParticles ? 1 : 0;
         let directionalIndex = 0;
         context.scene.traverse(node => {
             if (!(node instanceof Light) || !node.enabled) return;

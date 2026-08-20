@@ -1,6 +1,7 @@
 import type Camera from '../camera/Camera';
 import Node, { type NodeParameters } from '../core/Node';
 import Matrix4 from '../math/Matrix4';
+import Sphere from '../math/Sphere';
 import Vector3 from '../math/Vector3';
 import type { Renderer } from '../render/Renderer';
 import type { RendererContract } from '../render/RendererCore';
@@ -11,8 +12,10 @@ import {
     type ParticleCompilationEnvironment
 } from './ParticleCompiler';
 import type { ParticleCompiledEmitterPlan, ParticleCompiledPlan } from './ParticleCompiledPlan';
+import type { ParticleBudgetDecision, ParticleBudgetRequest } from './ParticleBudget';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
-import type { ParticleScalarValue, ParticleVector3 } from './ParticleTypes';
+import { ParticleParameterSet, resolveParticleParameter } from './ParticleParameter';
+import type { ParticleScalarSource, ParticleVector3 } from './ParticleTypes';
 import { createParticleCPUWriters, type ParticleCPUWriter } from './cpu/ParticleCPUWriter';
 import {
     ParticleCPUSimulator,
@@ -23,6 +26,8 @@ import type { ParticleEventAggregate, ParticleEventRecord } from './cpu/Particle
 import { ParticleGPUEmitterRuntime } from './gpu/ParticleGPURuntime';
 import { ParticleGPUSpawnController } from './gpu/ParticleGPUSpawnController';
 import { ParticleStatelessRuntime } from './stateless/ParticleStatelessRuntime';
+import { particleStatelessGPUBlockingDiagnostics } from './stateless/ParticleStatelessGPUPlan';
+import { ParticleStatelessGPUEmitterRuntime } from './stateless/ParticleStatelessGPURuntime';
 
 interface ParticleStage extends Node {
     readonly isStage: true;
@@ -31,13 +36,28 @@ interface ParticleStage extends Node {
 
 interface ParticleEmitterRuntime {
     readonly plan: Readonly<ParticleCompiledEmitterPlan>;
-    readonly simulator: ParticleCPUSimulator | ParticleStatelessRuntime | null;
+    simulator: ParticleCPUSimulator | ParticleStatelessRuntime | null;
     readonly gpuController: ParticleGPUSpawnController | null;
     gpuRuntime: ParticleGPUEmitterRuntime | null;
-    readonly writers: readonly ParticleCPUWriter[];
+    statelessGPURuntime: ParticleStatelessGPUEmitterRuntime | null;
+    readonly statelessGPUCapable: boolean;
+    statelessGPUActive: boolean;
+    statelessAge: number;
+    writers: readonly ParticleCPUWriter[];
+    readonly localBounds: Sphere;
+    readonly worldBounds: Sphere;
+    budgetEnabled: boolean;
+    budgetParticleLimit: number;
+    budgetSpawnRateScale: number;
+    budgetSorting: boolean;
+    budgetSoftParticles: boolean;
+    budgetCollision: boolean;
+    budgetRibbons: boolean;
     culledSeconds: number;
     stoppedByCulling: boolean;
 }
+
+let nextParticleBudgetSystemId = 1;
 
 /** Construction parameters for a runtime particle scene node. */
 export interface ParticleSystemParameters extends NodeParameters {
@@ -45,6 +65,12 @@ export interface ParticleSystemParameters extends NodeParameters {
     readonly seed?: number;
     readonly autoPlay?: boolean;
     readonly timeScale?: number;
+    /** Live typed values used by bindable emission and initialization fields. */
+    readonly parameters?: ParticleParameterSet;
+    /** Stable identifier used by deterministic frame-wide particle budgeting. */
+    readonly budgetId?: string;
+    /** Higher values win budget allocation before distance and identifier tie-breaks. */
+    readonly budgetPriority?: number;
     /** Optional compile target. Omit for a portable CPU-first plan. */
     readonly compilationEnvironment?: Readonly<ParticleCompilationEnvironment>;
     /** Maximum materialized CPU events retained for bounded asynchronous application reads. */
@@ -76,9 +102,30 @@ function isParticleStage(node: Node): node is ParticleStage {
     return Reflect.get(node, 'isStage') === true && Array.isArray(Reflect.get(node, 'cameras'));
 }
 
-function maximumScalar(value: ParticleScalarValue | undefined, fallback: number): number {
+function maximumScalar(
+    value: ParticleScalarSource | undefined,
+    fallback: number,
+    parameters: ParticleParameterSet
+): number {
     if (value === undefined) return fallback;
-    return typeof value === 'number' ? value : value.max;
+    const source = resolveParticleParameter(value, parameters);
+    return typeof source === 'number' ? source : source.max;
+}
+
+function particleNodeParameters(
+    parameters: Readonly<ParticleSystemParameters>
+): Readonly<NodeParameters> {
+    const nodeParameters = { ...parameters } as Record<string, unknown>;
+    delete nodeParameters['definition'];
+    delete nodeParameters['seed'];
+    delete nodeParameters['autoPlay'];
+    delete nodeParameters['timeScale'];
+    delete nodeParameters['parameters'];
+    delete nodeParameters['budgetId'];
+    delete nodeParameters['budgetPriority'];
+    delete nodeParameters['compilationEnvironment'];
+    delete nodeParameters['eventReadbackCapacity'];
+    return nodeParameters;
 }
 
 /** Runtime scene node for immutable compiled particle-system definitions. */
@@ -88,6 +135,9 @@ class ParticleSystem extends Node {
     readonly definition: ParticleSystemDefinition;
     readonly compiledPlan: Readonly<ParticleCompiledPlan>;
     readonly seed: number;
+    readonly parameters: ParticleParameterSet;
+    readonly budgetId: string;
+    readonly budgetPriority: number;
     readonly #runtimes: readonly ParticleEmitterRuntime[];
     readonly #compilationEnvironment: Readonly<ParticleCompilationEnvironment>;
     readonly #contextPosition: [number, number, number] = [0, 0, 0];
@@ -113,9 +163,20 @@ class ParticleSystem extends Node {
         ) {
             throw new TypeError('ParticleSystem requires an immutable definition');
         }
-        super(parameters);
+        super(particleNodeParameters(parameters));
         this.definition = parameters.definition;
         this.seed = requireSeed(parameters.seed);
+        this.parameters = parameters.parameters ?? new ParticleParameterSet();
+        this.budgetId =
+            parameters.budgetId ??
+            `${this.definition.hash}:${String(nextParticleBudgetSystemId++)}`;
+        if (!/^[A-Za-z0-9_.:-]+$/u.test(this.budgetId)) {
+            throw new TypeError('ParticleSystem budgetId is invalid');
+        }
+        this.budgetPriority = parameters.budgetPriority ?? 0;
+        if (!Number.isFinite(this.budgetPriority)) {
+            throw new TypeError('ParticleSystem budgetPriority must be finite');
+        }
         this.timeScale = parameters.timeScale ?? 1;
         this.#compilationEnvironment = Object.freeze({
             ...(parameters.compilationEnvironment ?? {})
@@ -159,13 +220,17 @@ class ParticleSystem extends Node {
     /** Total dense alive count across CPU/stateless emitters; GPU plans avoid count readback. */
     get aliveCount(): number {
         let count = 0;
-        for (const runtime of this.#runtimes) count += runtime.simulator?.state.aliveCount ?? 0;
+        for (const runtime of this.#runtimes) {
+            if (!runtime.statelessGPUActive) count += runtime.simulator?.state.aliveCount ?? 0;
+        }
         return count;
     }
 
     /** Whether the compiled system contains renderer-owned stateful WebGPU emitters. @internal */
     get hasGPUEmitters(): boolean {
-        return this.#runtimes.some(runtime => runtime.gpuController !== null);
+        return this.#runtimes.some(
+            runtime => runtime.gpuController !== null || runtime.statelessGPUActive
+        );
     }
 
     /** Whether a GPU emitter contributes opaque or alpha-masked advanced draws. @internal */
@@ -199,6 +264,25 @@ class ParticleSystem extends Node {
         );
     }
 
+    /** Whether any GPU emitter has simulation or spawn work waiting for graph recording. @internal */
+    get hasPendingGPUWork(): boolean {
+        return this.#runtimes.some(
+            runtime => runtime.budgetEnabled && runtime.gpuController?.hasPendingWork === true
+        );
+    }
+
+    /** Whether this node contributes a visible GPU draw for one camera. @internal */
+    isGPUVisible(camera: Camera): boolean {
+        if (!this.hierarchyVisible() || !camera.isLayerVisible(this)) return false;
+        camera.updateViewProjectionMatrix();
+        return this.#runtimes.some(
+            runtime =>
+                runtime.budgetEnabled &&
+                (runtime.gpuController !== null || runtime.statelessGPUActive) &&
+                this.runtimeBoundsVisible(runtime, camera)
+        );
+    }
+
     /** True after all non-looping emitters finished and their dense alive ranges became empty. */
     get completed(): boolean {
         return this.#completed;
@@ -210,6 +294,111 @@ class ParticleSystem extends Node {
             pendingCount: this.#eventQueue.length,
             droppedCount: this.#eventDroppedCount
         });
+    }
+
+    /** Build current per-emitter requests for a frame-wide budget allocation. @internal */
+    createBudgetRequests(camera?: Camera): readonly Readonly<ParticleBudgetRequest>[] {
+        this.updateWorldContext();
+        if (camera !== undefined) {
+            let cameraRoot: Node = camera;
+            while (cameraRoot.parent !== null) cameraRoot = cameraRoot.parent;
+            cameraRoot.updateMatrixWorld(true);
+            camera.updateViewProjectionMatrix();
+        }
+        const world = this.worldMatrix.elements;
+        const cameraWorld = camera?.worldMatrix.elements;
+        const distance =
+            cameraWorld === undefined
+                ? 0
+                : Math.hypot(
+                      world[12] - cameraWorld[12],
+                      world[13] - cameraWorld[13],
+                      world[14] - cameraWorld[14]
+                  );
+        return Object.freeze(
+            this.#runtimes.map(runtime => {
+                const definition = runtime.plan.definition;
+                const maximumLifetime = maximumScalar(
+                    definition.initialize.lifetime,
+                    1,
+                    this.parameters
+                );
+                const rate = maximumScalar(definition.emission.rateOverTime, 0, this.parameters);
+                const burstCount = (definition.emission.bursts ?? []).reduce(
+                    (sum, burst) => sum + burst.count * (burst.cycles ?? 1),
+                    0
+                );
+                const estimatedAlive = runtime.simulator
+                    ? runtime.statelessGPUActive
+                        ? Math.min(
+                              definition.capacity,
+                              Math.ceil(Math.max(0, rate) * maximumLifetime) + burstCount
+                          )
+                        : runtime.simulator.state.aliveCount
+                    : Math.min(
+                          definition.capacity,
+                          Math.ceil(Math.max(0, rate) * maximumLifetime) + burstCount
+                      );
+                const visible =
+                    camera === undefined ||
+                    (this.hierarchyVisible() &&
+                        camera.isLayerVisible(this) &&
+                        this.runtimeBoundsVisible(runtime, camera));
+                return Object.freeze({
+                    systemId: this.budgetId,
+                    emitterId: runtime.plan.emitterId,
+                    capacity: definition.capacity,
+                    estimatedAlive,
+                    priority: this.budgetPriority,
+                    distance,
+                    visible
+                });
+            })
+        );
+    }
+
+    /** Apply one complete set of frame-wide budget decisions. @internal */
+    applyBudgetDecisions(decisions: readonly Readonly<ParticleBudgetDecision>[]): this {
+        const byEmitter = new Map(decisions.map(decision => [decision.emitterId, decision]));
+        for (const decision of decisions) {
+            if (decision.systemId !== this.budgetId) {
+                throw new TypeError('Particle budget decision belongs to another system');
+            }
+        }
+        for (const runtime of this.#runtimes) {
+            const decision = byEmitter.get(runtime.plan.emitterId);
+            if (decision === undefined) {
+                throw new RangeError(
+                    `Particle budget decision for emitter ${String(runtime.plan.emitterId)} is missing`
+                );
+            }
+            runtime.budgetEnabled = decision.enabled;
+            runtime.budgetParticleLimit = decision.particleLimit;
+            runtime.budgetSpawnRateScale = decision.spawnRateScale;
+            runtime.budgetSorting = decision.sorting;
+            runtime.budgetSoftParticles = decision.softParticles;
+            runtime.budgetCollision = decision.collision;
+            runtime.budgetRibbons = decision.ribbons;
+            if (runtime.simulator instanceof ParticleStatelessRuntime) {
+                runtime.simulator.setBudget(
+                    decision.particleLimit,
+                    decision.spawnRateScale,
+                    decision.collision,
+                    !runtime.statelessGPUActive
+                );
+            } else {
+                runtime.simulator?.setBudget(
+                    decision.particleLimit,
+                    decision.spawnRateScale,
+                    decision.collision
+                );
+            }
+            runtime.gpuController?.setBudget(decision.particleLimit, decision.spawnRateScale);
+            runtime.gpuRuntime?.setBudget(decision);
+            runtime.statelessGPURuntime?.setBudget(decision);
+        }
+        this.syncWriters();
+        return this;
     }
 
     get timeScale(): number {
@@ -245,6 +434,8 @@ class ParticleSystem extends Node {
             else runtime.gpuController?.restart();
             runtime.stoppedByCulling = false;
             runtime.culledSeconds = 0;
+            runtime.statelessGPUActive = runtime.statelessGPUCapable;
+            runtime.statelessAge = 0;
         }
         this.syncWriters();
         return this;
@@ -254,6 +445,53 @@ class ParticleSystem extends Node {
         this.stop();
         this.#playing = true;
         this.prewarmEmitters();
+        this.syncWriters();
+        return this;
+    }
+
+    /** Reset simulation and authored node state before a pool lease. @internal */
+    resetForPool(parameters: Readonly<ParticleSystemParameters>): this {
+        const template = new Node(particleNodeParameters(parameters));
+        this.stop();
+        this.name = template.name;
+        this.anim = template.anim;
+        this.animationId = template.animationId;
+        this.jointName = template.jointName;
+        this.autoUpdateWorldMatrix = template.autoUpdateWorldMatrix;
+        this.autoUpdateChildWorldMatrix = template.autoUpdateChildWorldMatrix;
+        this.needCallChildUpdate = template.needCallChildUpdate;
+        this.visible = template.visible;
+        this.layer = template.layer;
+        this.sortingLayer = template.sortingLayer;
+        this.zIndex = template.zIndex;
+        this.pointerEnabled = template.pointerEnabled;
+        this.pointerChildren = template.pointerChildren;
+        this.useHandCursor = template.useHandCursor;
+        this.userData = template.userData;
+        this.onUpdate = template.onUpdate;
+        this.onlySyncQuaternion = template.onlySyncQuaternion;
+        this.up.copy(template.up);
+        this.setPosition(template.x, template.y, template.z);
+        this.setScale(template.scaleX, template.scaleY, template.scaleZ);
+        this.setPivot(template.pivotX, template.pivotY, template.pivotZ);
+        this.setRotation(template.rotationX, template.rotationY, template.rotationZ);
+        this.timeScale = parameters.timeScale ?? 1;
+        this.applyBudgetDecisions(
+            this.#runtimes.map(runtime => ({
+                systemId: this.budgetId,
+                emitterId: runtime.plan.emitterId,
+                enabled: true,
+                particleLimit: runtime.plan.definition.capacity,
+                spawnRateScale: 1,
+                sorting: true,
+                softParticles: true,
+                collision: true,
+                ribbons: true,
+                reasons: Object.freeze([])
+            }))
+        );
+        this.#playing = parameters.autoPlay ?? true;
+        if (this.#playing) this.prewarmEmitters();
         this.syncWriters();
         return this;
     }
@@ -290,6 +528,10 @@ class ParticleSystem extends Node {
             ...(command.position === undefined ? {} : { position: command.position }),
             ...(command.velocity === undefined ? {} : { velocity: command.velocity })
         };
+        if (runtime.statelessGPUActive) {
+            runtime.statelessGPUActive = false;
+            this.materializeStatelessCPU(runtime);
+        }
         if (runtime.simulator) runtime.simulator.emit(manual);
         else if (runtime.gpuController) runtime.gpuController.emit(manual);
         else throw new Error(`Particle emitter ${runtime.plan.definition.name} has no runtime`);
@@ -333,7 +575,13 @@ class ParticleSystem extends Node {
         if (runtimes.length === 0) {
             throw new RangeError(`Particle emitter ${emitter ?? '<all>'} is unavailable`);
         }
-        return runtimes.map(runtime => runtime.simulator?.state.hash() ?? 'gpu').join(':');
+        return runtimes
+            .map(runtime =>
+                runtime.statelessGPUActive
+                    ? 'gpu-stateless'
+                    : (runtime.simulator?.state.hash() ?? 'gpu')
+            )
+            .join(':');
     }
 
     override update(deltaTimeMilliseconds: number): void {
@@ -358,6 +606,8 @@ class ParticleSystem extends Node {
             seed: this.seed,
             autoPlay: this.#playing,
             timeScale: this.#timeScale,
+            parameters: this.parameters,
+            budgetPriority: this.budgetPriority,
             compilationEnvironment: this.#compilationEnvironment,
             eventReadbackCapacity: this.#eventReadbackCapacity
         });
@@ -381,6 +631,8 @@ class ParticleSystem extends Node {
         for (const runtime of this.#runtimes) {
             runtime.gpuRuntime?.destroy();
             runtime.gpuRuntime = null;
+            runtime.statelessGPURuntime?.destroy();
+            runtime.statelessGPURuntime = null;
         }
         this.#gpuRenderer = null;
         return super.destroy(renderer, destroyTextures);
@@ -397,6 +649,25 @@ class ParticleSystem extends Node {
         }
         this.#gpuRenderer = renderer;
         for (const runtime of this.#runtimes) {
+            if (runtime.statelessGPUActive && runtime.statelessGPURuntime === null) {
+                runtime.statelessGPURuntime = new ParticleStatelessGPUEmitterRuntime(
+                    runtime.plan,
+                    this.seed,
+                    renderer
+                );
+                runtime.statelessGPURuntime.setBudget({
+                    systemId: this.budgetId,
+                    emitterId: runtime.plan.emitterId,
+                    enabled: runtime.budgetEnabled,
+                    particleLimit: runtime.budgetParticleLimit,
+                    spawnRateScale: runtime.budgetSpawnRateScale,
+                    sorting: runtime.budgetSorting,
+                    softParticles: runtime.budgetSoftParticles,
+                    collision: runtime.budgetCollision,
+                    ribbons: runtime.budgetRibbons,
+                    reasons: Object.freeze([])
+                });
+            }
             const controller = runtime.gpuController;
             if (controller === null || runtime.gpuRuntime !== null) continue;
             runtime.gpuRuntime = new ParticleGPUEmitterRuntime(
@@ -406,6 +677,18 @@ class ParticleSystem extends Node {
                 renderer,
                 controller
             );
+            runtime.gpuRuntime.setBudget({
+                systemId: this.budgetId,
+                emitterId: runtime.plan.emitterId,
+                enabled: runtime.budgetEnabled,
+                particleLimit: runtime.budgetParticleLimit,
+                spawnRateScale: runtime.budgetSpawnRateScale,
+                sorting: runtime.budgetSorting,
+                softParticles: runtime.budgetSoftParticles,
+                collision: runtime.budgetCollision,
+                ribbons: runtime.budgetRibbons,
+                reasons: Object.freeze([])
+            });
         }
     }
 
@@ -423,6 +706,23 @@ class ParticleSystem extends Node {
         phase: 'opaque' | 'transparent'
     ): void {
         for (const runtime of this.#runtimes) {
+            if (runtime.statelessGPUActive) {
+                const statelessGPU = runtime.statelessGPURuntime;
+                if (statelessGPU === null) {
+                    throw new Error(
+                        'Stateless GPU ParticleSystem resources were not prepared before recording'
+                    );
+                }
+                statelessGPU.record(
+                    context,
+                    color,
+                    depth,
+                    this,
+                    runtime.statelessAge,
+                    drawVisible && runtime.budgetEnabled,
+                    phase
+                );
+            }
             if (runtime.gpuController === null) continue;
             const gpuRuntime = runtime.gpuRuntime;
             if (gpuRuntime === null) {
@@ -430,19 +730,29 @@ class ParticleSystem extends Node {
                     'GPU ParticleSystem resources were not prepared before Render Graph recording'
                 );
             }
-            gpuRuntime.record(context, color, depth, this, drawVisible, phase);
+            gpuRuntime.record(
+                context,
+                color,
+                depth,
+                this,
+                drawVisible && runtime.budgetEnabled,
+                phase
+            );
         }
         for (const runtime of this.#runtimes) {
+            if (!runtime.budgetEnabled) continue;
             const source = runtime.gpuRuntime;
             if (source === null) continue;
             for (const module of runtime.plan.definition.modules) {
                 if (module.type !== 'sub-emitter') continue;
-                const target = this.#runtimes.find(
+                const targetRuntime = this.#runtimes.find(
                     candidate => candidate.plan.definition.name === module.emitter
-                )?.gpuRuntime;
+                );
+                const target = targetRuntime?.gpuRuntime;
                 if (!target) {
                     throw new Error(`GPU particle sub-emitter ${module.emitter} is unavailable`);
                 }
+                if (!targetRuntime.budgetEnabled) continue;
                 source.recordEventRoute(context, target, module);
             }
         }
@@ -455,10 +765,18 @@ class ParticleSystem extends Node {
 
     /** Preserve queued GPU commands and roll the double-buffer index back on failure. @internal */
     gpuFrameDiscarded(frameIndex: number): void {
-        for (const runtime of this.#runtimes) runtime.gpuRuntime?.frameDiscarded(frameIndex);
+        for (const runtime of this.#runtimes) {
+            runtime.gpuRuntime?.frameDiscarded(frameIndex);
+            runtime.statelessGPURuntime?.frameDiscarded(frameIndex);
+        }
     }
 
     private createRuntime(plan: Readonly<ParticleCompiledEmitterPlan>): ParticleEmitterRuntime {
+        const localBounds = new Sphere({
+            center: new Vector3(plan.bounds.x, plan.bounds.y, plan.bounds.z),
+            radius: Math.hypot(plan.bounds.width, plan.bounds.height, plan.bounds.depth) * 0.5
+        });
+        const worldBounds = localBounds.clone();
         if (plan.kind === 'gpu-stateful') {
             return {
                 plan,
@@ -466,27 +784,62 @@ class ParticleSystem extends Node {
                 gpuController: new ParticleGPUSpawnController(
                     plan.definition,
                     this.seed,
-                    plan.emitterId
+                    plan.emitterId,
+                    this.parameters
                 ),
                 gpuRuntime: null,
+                statelessGPURuntime: null,
+                statelessGPUCapable: false,
+                statelessGPUActive: false,
+                statelessAge: 0,
                 writers: Object.freeze([]),
+                localBounds,
+                worldBounds,
+                budgetEnabled: true,
+                budgetParticleLimit: plan.definition.capacity,
+                budgetSpawnRateScale: 1,
+                budgetSorting: true,
+                budgetSoftParticles: true,
+                budgetCollision: true,
+                budgetRibbons: true,
                 culledSeconds: 0,
                 stoppedByCulling: false
             };
         }
-        const simulator =
-            plan.kind === 'stateless'
-                ? new ParticleStatelessRuntime(plan, this.seed)
-                : new ParticleCPUSimulator(plan, this.seed);
-        const writers = plan.definition.renderers.flatMap((renderer, index) =>
-            createParticleCPUWriters(plan, simulator.state, renderer, index)
-        );
+        const statelessGPUActive =
+            plan.kind === 'stateless' &&
+            this.#compilationEnvironment.backend === 'webgpu' &&
+            particleStatelessGPUBlockingDiagnostics(plan).length === 0;
+        const simulator = statelessGPUActive
+            ? null
+            : plan.kind === 'stateless'
+              ? new ParticleStatelessRuntime(plan, this.seed, this.parameters)
+              : new ParticleCPUSimulator(plan, this.seed, this.parameters);
+        const writers =
+            simulator === null
+                ? []
+                : plan.definition.renderers.flatMap((renderer, index) =>
+                      createParticleCPUWriters(plan, simulator.state, renderer, index)
+                  );
         return {
             plan,
             simulator,
             gpuController: null,
             gpuRuntime: null,
+            statelessGPURuntime: null,
+            statelessGPUCapable: statelessGPUActive,
+            statelessGPUActive,
+            statelessAge: 0,
             writers: Object.freeze(writers),
+            localBounds,
+            worldBounds,
+            budgetEnabled: true,
+            budgetParticleLimit: plan.definition.capacity,
+            budgetSpawnRateScale: 1,
+            budgetSorting: true,
+            budgetSoftParticles: true,
+            budgetCollision: true,
+            budgetRibbons: true,
             culledSeconds: 0,
             stoppedByCulling: false
         };
@@ -508,11 +861,8 @@ class ParticleSystem extends Node {
 
     private advance(seconds: number, fixedStep?: number): void {
         for (const runtime of this.#runtimes) {
-            if (runtime.simulator) {
-                runtime.simulator.simulate(seconds, this.#context, fixedStep);
-            } else if (runtime.gpuController) {
-                runtime.gpuController.advance(seconds, this.#context, fixedStep);
-            }
+            if (!runtime.budgetEnabled) continue;
+            this.advanceRuntime(runtime, seconds, fixedStep);
         }
         this.collectCPUEvents();
     }
@@ -520,28 +870,25 @@ class ParticleSystem extends Node {
     private advanceWithCulling(seconds: number): void {
         const stage = this.findStage();
         for (const runtime of this.#runtimes) {
-            const simulator = runtime.simulator;
-            const gpuController = runtime.gpuController;
-            if ((!simulator && !gpuController) || runtime.stoppedByCulling) continue;
+            if (
+                (!runtime.statelessGPUActive &&
+                    runtime.simulator === null &&
+                    runtime.gpuController === null) ||
+                runtime.stoppedByCulling ||
+                !runtime.budgetEnabled
+            )
+                continue;
             const visible = this.runtimeVisible(runtime, stage);
             switch (runtime.plan.definition.culling) {
                 case 'render-only':
-                    if (simulator) simulator.simulate(seconds, this.#context);
-                    else gpuController?.advance(seconds, this.#context);
+                    this.advanceRuntime(runtime, seconds);
                     break;
                 case 'pause':
-                    if (visible) {
-                        if (simulator) simulator.simulate(seconds, this.#context);
-                        else gpuController?.advance(seconds, this.#context);
-                    }
+                    if (visible) this.advanceRuntime(runtime, seconds);
                     break;
                 case 'pause-and-catch-up':
                     if (visible) {
-                        if (simulator) {
-                            simulator.simulate(seconds + runtime.culledSeconds, this.#context);
-                        } else {
-                            gpuController?.advance(seconds + runtime.culledSeconds, this.#context);
-                        }
+                        this.advanceRuntime(runtime, seconds + runtime.culledSeconds);
                         runtime.culledSeconds = 0;
                     } else {
                         runtime.culledSeconds = Math.min(
@@ -553,12 +900,12 @@ class ParticleSystem extends Node {
                     break;
                 case 'stop':
                     if (visible) {
-                        if (simulator) simulator.simulate(seconds, this.#context);
-                        else gpuController?.advance(seconds, this.#context);
+                        this.advanceRuntime(runtime, seconds);
                     } else {
-                        simulator?.clear();
+                        runtime.simulator?.clear();
+                        runtime.statelessAge = 0;
                         if (runtime.gpuRuntime) runtime.gpuRuntime.restart();
-                        else gpuController?.restart();
+                        else runtime.gpuController?.restart();
                         runtime.stoppedByCulling = true;
                     }
                     break;
@@ -569,8 +916,13 @@ class ParticleSystem extends Node {
 
     private runtimeVisible(runtime: ParticleEmitterRuntime, stage: ParticleStage | null): boolean {
         if (stage === null) return true;
-        if (runtime.writers.length === 0) {
-            return this.visible && stage.cameras.some(camera => camera.isLayerVisible(this));
+        if (!this.hierarchyVisible()) return false;
+        if (runtime.statelessGPUActive || runtime.writers.length === 0) {
+            return stage.cameras.some(camera => {
+                if (!camera.isLayerVisible(this)) return false;
+                camera.updateViewProjectionMatrix();
+                return this.runtimeBoundsVisible(runtime, camera);
+            });
         }
         if ((runtime.simulator?.state.aliveCount ?? 0) === 0) return true;
         for (const camera of stage.cameras) {
@@ -582,6 +934,22 @@ class ParticleSystem extends Node {
             }
         }
         return false;
+    }
+
+    private hierarchyVisible(): boolean {
+        if (!this.visible) return false;
+        let ancestor = this.parent;
+        while (ancestor !== null) {
+            if (!ancestor.visible) return false;
+            ancestor = ancestor.parent;
+        }
+        return true;
+    }
+
+    private runtimeBoundsVisible(runtime: ParticleEmitterRuntime, camera: Camera): boolean {
+        if (runtime.plan.definition.simulationSpace === 'world') return true;
+        runtime.worldBounds.copy(runtime.localBounds).transformMat4(this.worldMatrix);
+        return camera.isSphereVisible(runtime.worldBounds);
     }
 
     private syncWriters(cameraOverride?: Camera): void {
@@ -605,7 +973,11 @@ class ParticleSystem extends Node {
                 if (runtime.plan.definition.simulationSpace === 'world') {
                     writer.mesh.worldMatrix.identity();
                 }
-                writer.sync(this.#cameraPosition);
+                writer.sync(this.#cameraPosition, {
+                    enabled: runtime.budgetEnabled && !runtime.statelessGPUActive,
+                    sorting: runtime.budgetSorting,
+                    ribbons: runtime.budgetRibbons
+                });
             }
         }
     }
@@ -613,14 +985,18 @@ class ParticleSystem extends Node {
     private prewarmEmitters(): void {
         this.updateWorldContext();
         for (const runtime of this.#runtimes) {
-            const simulator = runtime.simulator;
-            const gpuController = runtime.gpuController;
-            if ((!simulator && !gpuController) || !runtime.plan.definition.prewarm) continue;
+            if (
+                (!runtime.statelessGPUActive &&
+                    runtime.simulator === null &&
+                    runtime.gpuController === null) ||
+                !runtime.plan.definition.prewarm ||
+                !runtime.budgetEnabled
+            )
+                continue;
             const fixedStep = runtime.plan.definition.fixedStep;
             const steps = Math.ceil(runtime.plan.definition.duration / fixedStep);
             for (let index = 0; index < steps; index += 1) {
-                if (simulator) simulator.simulate(fixedStep, this.#context, fixedStep);
-                else gpuController?.advance(fixedStep, this.#context, fixedStep);
+                this.advanceRuntime(runtime, fixedStep, fixedStep);
             }
         }
         this.collectCPUEvents();
@@ -646,6 +1022,10 @@ class ParticleSystem extends Node {
                         position: event.position,
                         ...(module.inheritVelocity ? { velocity: event.velocity } : {})
                     };
+                    if (target.statelessGPUActive) {
+                        target.statelessGPUActive = false;
+                        this.materializeStatelessCPU(target);
+                    }
                     if (target.simulator) target.simulator.emit(command);
                     else target.gpuController?.emit(command);
                 }
@@ -665,20 +1045,27 @@ class ParticleSystem extends Node {
                 const gpuController = runtime.gpuController;
                 const maximumLifetime = maximumScalar(
                     runtime.plan.definition.initialize.lifetime,
-                    1
+                    1,
+                    this.parameters
+                );
+                const completionLifetime = Math.max(
+                    maximumLifetime,
+                    gpuController?.maximumObservedLifetime ?? 0
                 );
                 return (
                     runtime.plan.definition.looping ||
-                    (simulator !== null
+                    (simulator !== null && !runtime.statelessGPUActive
                         ? simulator.emitterAge >=
                               runtime.plan.definition.startDelay +
                                   runtime.plan.definition.duration &&
                           simulator.state.aliveCount === 0
-                        : gpuController !== null &&
-                          gpuController.emitterAge >=
-                              runtime.plan.definition.startDelay +
-                                  runtime.plan.definition.duration +
-                                  maximumLifetime)
+                        : (gpuController?.emitterAge ??
+                              (runtime.statelessGPUActive
+                                  ? runtime.statelessAge
+                                  : (simulator?.emitterAge ?? 0))) >=
+                          runtime.plan.definition.startDelay +
+                              runtime.plan.definition.duration +
+                              completionLifetime)
                 );
             }) &&
             this.#runtimes.every(runtime => !runtime.plan.definition.looping)
@@ -687,6 +1074,63 @@ class ParticleSystem extends Node {
             this.#playing = false;
             this.fire('complete');
         }
+    }
+
+    private advanceRuntime(
+        runtime: ParticleEmitterRuntime,
+        seconds: number,
+        fixedStep?: number
+    ): void {
+        if (runtime.statelessGPUActive) {
+            runtime.statelessAge = Math.fround(runtime.statelessAge + seconds);
+            return;
+        }
+        const simulator = runtime.simulator;
+        if (simulator === null) {
+            runtime.gpuController?.advance(seconds, this.#context, fixedStep);
+            return;
+        }
+        if (simulator instanceof ParticleStatelessRuntime) {
+            simulator.simulate(
+                seconds,
+                this.#context,
+                fixedStep ?? runtime.plan.definition.fixedStep
+            );
+            return;
+        }
+        simulator.simulate(seconds, this.#context, fixedStep);
+    }
+
+    private materializeStatelessCPU(runtime: ParticleEmitterRuntime): void {
+        if (runtime.plan.kind !== 'stateless') {
+            throw new TypeError('Only stateless GPU emitters can materialize a CPU fallback');
+        }
+        this.updateWorldContext();
+        let simulator = runtime.simulator;
+        if (!(simulator instanceof ParticleStatelessRuntime)) {
+            const materialized = new ParticleStatelessRuntime(
+                runtime.plan,
+                this.seed,
+                this.parameters
+            );
+            materialized.setBudget(
+                runtime.budgetParticleLimit,
+                runtime.budgetSpawnRateScale,
+                runtime.budgetCollision,
+                false
+            );
+            simulator = materialized;
+            runtime.simulator = materialized;
+            runtime.writers = Object.freeze(
+                runtime.plan.definition.renderers.flatMap((renderer, index) =>
+                    createParticleCPUWriters(runtime.plan, materialized.state, renderer, index)
+                )
+            );
+            for (const writer of runtime.writers) this.addChild(writer.mesh);
+        }
+        const remainingAge = Math.max(0, runtime.statelessAge - simulator.emitterAge);
+        simulator.simulate(remainingAge, this.#context, runtime.plan.definition.fixedStep);
+        this.syncWriters();
     }
 
     private findStage(): ParticleStage | null {

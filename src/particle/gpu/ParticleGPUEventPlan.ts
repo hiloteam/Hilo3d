@@ -1,6 +1,7 @@
 import ComputeShader from '../../render/compute/ComputeShader';
 import type { ParticleCompiledEmitterPlan, ParticleCompiledPlan } from '../ParticleCompiledPlan';
-import type { ParticleSubEmitterModule } from '../ParticleTypes';
+import { resolveParticleParameter } from '../ParticleParameter';
+import type { ParticleScalarSource, ParticleSubEmitterModule } from '../ParticleTypes';
 
 /** One GPU-resident event-to-spawn route. No counter or particle data is read by the CPU. */
 export interface ParticleGPUSubEmitterRoutePlan {
@@ -23,11 +24,10 @@ function offset(plan: Readonly<ParticleCompiledEmitterPlan>, name: string): numb
     return attribute ? attribute.byteOffset / 4 : null;
 }
 
-function scalar(
-    value: number | Readonly<{ min: number; max: number }> | undefined,
-    fallback: number
-): number {
-    return typeof value === 'number' ? value : (value?.min ?? fallback);
+function scalar(value: ParticleScalarSource | undefined, fallback: number): number {
+    if (value === undefined) return fallback;
+    const source = resolveParticleParameter(value);
+    return typeof source === 'number' ? source : source.min;
 }
 
 function wgslFloat(value: number): string {
@@ -105,12 +105,14 @@ export function compileParticleGPUSubEmitterRoute(
     const rotation = scalar(target.definition.initialize.rotation, 0);
     const mass = scalar(target.definition.initialize.mass, 1);
     const directionValue = target.definition.initialize.direction;
+    const resolvedDirection =
+        directionValue === undefined ? undefined : resolveParticleParameter(directionValue);
     const direction =
-        directionValue === undefined
+        resolvedDirection === undefined
             ? ([0, 1, 0] as const)
-            : 'min' in directionValue
-              ? directionValue.min
-              : directionValue;
+            : 'min' in resolvedDirection
+              ? resolvedDirection.min
+              : resolvedDirection;
     const directionLength = Math.max(1e-8, Math.hypot(...direction));
     const speed = scalar(target.definition.initialize.speed, 0);
     const initialVelocity = direction.map(component => (component / directionLength) * speed);
@@ -118,12 +120,14 @@ export function compileParticleGPUSubEmitterRoute(
         ? 'source.velocity[component]'
         : `vec3<f32>(${initialVelocity.map(wgslFloat).join(', ')})[component]`;
     const colorValue = target.definition.initialize.color;
+    const resolvedColor =
+        colorValue === undefined ? undefined : resolveParticleParameter(colorValue);
     const color =
-        colorValue === undefined
+        resolvedColor === undefined
             ? ([1, 1, 1, 1] as const)
-            : 'min' in colorValue
-              ? colorValue.min
-              : colorValue;
+            : 'min' in resolvedColor
+              ? resolvedColor.min
+              : resolvedColor;
     const colorAssignments = ['color', 'base-color']
         .flatMap(name => {
             const attribute = offset(target, name);

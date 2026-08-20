@@ -1,4 +1,5 @@
 import type ParticleEmitterDefinition from '../ParticleEmitterDefinition';
+import { ParticleParameterSet } from '../ParticleParameter';
 import type { ParticleRandomKey } from '../ParticleRandom';
 import type { ParticleVector3 } from '../ParticleTypes';
 import {
@@ -39,6 +40,7 @@ export class ParticleGPUSpawnController {
     readonly commands: Float32Array;
     readonly emitterVelocity = new Float32Array(3);
     readonly #seed: number;
+    readonly #parameters: ParticleParameterSet;
     readonly #randomKey: MutableParticleRandomKey;
     readonly #position = new Float32Array(4);
     readonly #direction = new Float32Array(4);
@@ -54,11 +56,22 @@ export class ParticleGPUSpawnController {
     #pendingSpawnCount = 0;
     #pendingDeltaSeconds = 0;
     #hasLastPosition = false;
+    #particleLimit: number;
+    #spawnRateScale = 1;
+    #budgetDirty = false;
+    #maximumObservedLifetime = 0;
 
-    constructor(definition: ParticleEmitterDefinition, seed: number, emitterId: number) {
+    constructor(
+        definition: ParticleEmitterDefinition,
+        seed: number,
+        emitterId: number,
+        parameters = new ParticleParameterSet()
+    ) {
         this.definition = definition;
         this.#seed = seed >>> 0;
+        this.#parameters = parameters;
         this.commands = new Float32Array(definition.capacity * COMMAND_FLOAT_COUNT);
+        this.#particleLimit = definition.capacity;
         this.#randomKey = {
             systemSeed: this.#seed,
             emitterId,
@@ -85,7 +98,32 @@ export class ParticleGPUSpawnController {
     }
 
     get hasPendingWork(): boolean {
-        return this.#pendingDeltaSeconds > 0 || this.#pendingSpawnCount > 0;
+        return this.#pendingDeltaSeconds > 0 || this.#pendingSpawnCount > 0 || this.#budgetDirty;
+    }
+
+    get particleLimit(): number {
+        return this.#particleLimit;
+    }
+
+    get maximumObservedLifetime(): number {
+        return this.#maximumObservedLifetime;
+    }
+
+    /** Apply renderer-local capacity and scheduled-emission scaling. @internal */
+    setBudget(particleLimit: number, spawnRateScale: number): void {
+        if (!Number.isSafeInteger(particleLimit) || particleLimit < 0) {
+            throw new RangeError('Particle budget limit must be a non-negative safe integer');
+        }
+        if (!Number.isFinite(spawnRateScale) || spawnRateScale < 0) {
+            throw new RangeError(
+                'Particle budget spawn-rate scale must be finite and non-negative'
+            );
+        }
+        const nextLimit = Math.min(this.definition.capacity, particleLimit);
+        if (nextLimit !== this.#particleLimit) this.#budgetDirty = true;
+        this.#particleLimit = nextLimit;
+        this.#spawnRateScale = spawnRateScale;
+        this.#pendingSpawnCount = Math.min(this.#pendingSpawnCount, this.#particleLimit);
     }
 
     emit(command: number | Readonly<ParticleManualEmitCommand>): void {
@@ -105,6 +143,8 @@ export class ParticleGPUSpawnController {
         this.#pendingSpawnStart = 0;
         this.#pendingSpawnCount = 0;
         this.#pendingDeltaSeconds = 0;
+        this.#budgetDirty = false;
+        this.#maximumObservedLifetime = 0;
         this.#manualCommands.length = 0;
         this.#hasLastPosition = false;
         this.commands.fill(0);
@@ -159,6 +199,7 @@ export class ParticleGPUSpawnController {
         this.#pendingDeltaSeconds = 0;
         this.#pendingSpawnCount = 0;
         this.#pendingSpawnStart = this.#spawnSequence;
+        this.#budgetDirty = false;
     }
 
     private step(deltaTime: number, context: Readonly<ParticleEmitterFrameContext>): void {
@@ -189,9 +230,10 @@ export class ParticleGPUSpawnController {
         const rate = sampleParticleScalar(
             this.definition.emission.rateOverTime,
             0,
-            this.key(this.#spawnSequence, 0)
+            this.key(this.#spawnSequence, 0),
+            this.#parameters
         );
-        this.#rateAccumulator += Math.max(0, rate) * effectiveDelta;
+        this.#rateAccumulator += Math.max(0, rate) * effectiveDelta * this.#spawnRateScale;
         if (this.definition.emission.rateOverDistance !== undefined) {
             const distance = length3(
                 (this.emitterVelocity[0] ?? 0) * effectiveDelta,
@@ -201,9 +243,10 @@ export class ParticleGPUSpawnController {
             const distanceRate = sampleParticleScalar(
                 this.definition.emission.rateOverDistance,
                 0,
-                this.key(this.#spawnSequence, 1)
+                this.key(this.#spawnSequence, 1),
+                this.#parameters
             );
-            this.#rateAccumulator += Math.max(0, distanceRate) * distance;
+            this.#rateAccumulator += Math.max(0, distanceRate) * distance * this.#spawnRateScale;
         }
         const continuousCount = Math.floor(this.#rateAccumulator);
         this.#rateAccumulator -= continuousCount;
@@ -223,7 +266,7 @@ export class ParticleGPUSpawnController {
                         eventTime <= active &&
                         (eventTime > previousActive || (previousActive === 0 && eventTime === 0))
                     ) {
-                        this.spawnMany(burst.count, context);
+                        this.spawnMany(Math.floor(burst.count * this.#spawnRateScale), context);
                     }
                 }
             }
@@ -236,7 +279,7 @@ export class ParticleGPUSpawnController {
         command?: Readonly<ParticleManualEmitCommand>
     ): void {
         for (let index = 0; index < count; index += 1) {
-            if (this.#pendingSpawnCount >= this.definition.capacity) return;
+            if (this.#pendingSpawnCount >= this.#particleLimit) return;
             this.writeSpawnCommand(context, command);
         }
     }
@@ -253,7 +296,8 @@ export class ParticleGPUSpawnController {
             this.definition.initialize.position,
             ZERO_VECTOR,
             this.key(particleId, 30),
-            this.#temporary
+            this.#temporary,
+            this.#parameters
         );
         this.#position[0] = (this.#position.at(0) ?? 0) + (this.#temporary.at(0) ?? 0);
         this.#position[1] = (this.#position.at(1) ?? 0) + (this.#temporary.at(1) ?? 0);
@@ -269,14 +313,16 @@ export class ParticleGPUSpawnController {
                 this.definition.initialize.direction,
                 UP_VECTOR,
                 this.key(particleId, 40),
-                this.#direction
+                this.#direction,
+                this.#parameters
             );
             normalizeParticleVector(this.#direction);
         }
         const speed = sampleParticleScalar(
             this.definition.initialize.speed,
             0,
-            this.key(particleId, 50)
+            this.key(particleId, 50),
+            this.#parameters
         );
         this.#temporary[0] = Math.fround((this.#direction.at(0) ?? 0) * speed);
         this.#temporary[1] = Math.fround((this.#direction.at(1) ?? 0) * speed);
@@ -284,7 +330,12 @@ export class ParticleGPUSpawnController {
         if (command?.velocity !== undefined) this.#temporary.set(command.velocity);
         let lifetime = Math.max(
             1e-6,
-            sampleParticleScalar(this.definition.initialize.lifetime, 1, this.key(particleId, 60))
+            sampleParticleScalar(
+                this.definition.initialize.lifetime,
+                1,
+                this.key(particleId, 60),
+                this.#parameters
+            )
         );
         for (const module of this.definition.modules) {
             if (module.type === 'inherit-emitter-velocity') {
@@ -315,10 +366,12 @@ export class ParticleGPUSpawnController {
                 );
             }
         }
+        this.#maximumObservedLifetime = Math.max(this.#maximumObservedLifetime, lifetime);
         sampleParticleColor(
             this.definition.initialize.color,
             this.key(particleId, 72),
-            this.#color
+            this.#color,
+            this.#parameters
         );
         const offset = this.#pendingSpawnCount * COMMAND_FLOAT_COUNT;
         this.commands[offset] = this.#position[0];
@@ -331,27 +384,40 @@ export class ParticleGPUSpawnController {
         this.commands[offset + 7] = sampleParticleScalar(
             this.definition.initialize.size,
             1,
-            this.key(particleId, 70)
+            this.key(particleId, 70),
+            this.#parameters
         );
         this.commands.set(this.#color, offset + 8);
         this.commands[offset + 12] = sampleParticleScalar(
             this.definition.initialize.rotation,
             0,
-            this.key(particleId, 71)
+            this.key(particleId, 71),
+            this.#parameters
         );
         this.commands[offset + 13] = Math.max(
             1e-6,
-            sampleParticleScalar(this.definition.initialize.mass, 1, this.key(particleId, 73))
+            sampleParticleScalar(
+                this.definition.initialize.mass,
+                1,
+                this.key(particleId, 73),
+                this.#parameters
+            )
         );
         this.commands[offset + 14] = Math.floor(
             sampleParticleScalar(
                 this.definition.initialize.meshIndex,
                 particleId,
-                this.key(particleId, 74)
+                this.key(particleId, 74),
+                this.#parameters
             )
         );
         this.commands[offset + 15] = Math.floor(
-            sampleParticleScalar(this.definition.initialize.ribbonId, 0, this.key(particleId, 75))
+            sampleParticleScalar(
+                this.definition.initialize.ribbonId,
+                0,
+                this.key(particleId, 75),
+                this.#parameters
+            )
         );
         this.#pendingSpawnCount++;
         this.#spawnSequence = (this.#spawnSequence + 1) >>> 0;

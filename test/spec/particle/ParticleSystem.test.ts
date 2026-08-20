@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
 import ParticleCurve from '../../../src/particle/ParticleCurve';
 import ParticleGradient from '../../../src/particle/ParticleGradient';
+import { ParticleParameter, ParticleParameterSet } from '../../../src/particle/ParticleParameter';
 import ParticleSystem from '../../../src/particle/ParticleSystem';
 import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
 import { compileParticleSystemDefinition } from '../../../src/particle/ParticleCompiler';
@@ -50,6 +51,71 @@ function definition(): ParticleSystemDefinition {
 }
 
 describe('ParticleSystem P0/P1 contracts', () => {
+    it('accepts particle-only construction parameters without invoking subclass setters early', () => {
+        const system = new ParticleSystem({
+            definition: definition(),
+            autoPlay: false,
+            timeScale: 0.5
+        });
+        expect(system.timeScale).toBe(0.5);
+        expect(system.playing).toBe(false);
+    });
+
+    it('resolves live typed spawn parameters without recompiling the immutable plan', () => {
+        const rate = new ParticleParameter('spawn.rate', 'float', 2);
+        const size = new ParticleParameter('spawn.size', 'float', 0.25);
+        const values = new ParticleParameterSet();
+        const parameterized = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'parameterized',
+                    capacity: 16,
+                    execution: 'cpu',
+                    duration: 10,
+                    fixedStep: 0.5,
+                    emission: { rateOverTime: rate },
+                    initialize: { lifetime: 10, size },
+                    bounds: { mode: 'manual', min: [-2, -2, -2], max: [2, 2, 2] },
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        const system = new ParticleSystem({
+            definition: parameterized,
+            parameters: values,
+            autoPlay: false
+        });
+        const plan = system.compiledPlan;
+        system.simulate(0.5);
+        expect(system.aliveCount).toBe(1);
+        values.set(rate, 6).set(size, 0.5);
+        system.simulate(0.5);
+        expect(system.aliveCount).toBe(4);
+        expect(system.compiledPlan).toBe(plan);
+        expect(values.revision).toBe(2);
+        values.set(rate, 6);
+        expect(values.revision).toBe(2);
+
+        const differentDefault = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'parameterized',
+                    capacity: 16,
+                    execution: 'cpu',
+                    duration: 10,
+                    fixedStep: 0.5,
+                    emission: {
+                        rateOverTime: new ParticleParameter('spawn.rate', 'float', 3)
+                    },
+                    initialize: { lifetime: 10, size },
+                    bounds: { mode: 'manual', min: [-2, -2, -2], max: [2, 2, 2] },
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(differentDefault.hash).not.toBe(parameterized.hash);
+    });
+
     it('accepts a full 2π authoring arc after the immutable float32 snapshot', () => {
         const fullArc = ParticleSystemDefinition.create({
             emitters: [
@@ -149,6 +215,156 @@ describe('ParticleSystem P0/P1 contracts', () => {
         expect((mesh as Mesh).instanceCount).toBe(first.aliveCount);
         expect((mesh as Mesh).visible).toBe(true);
         expect((mesh as Mesh).useInstanced).toBe(false);
+    });
+
+    it('keeps CPU sprite stretch relative and screen-size constraints in pixel space', () => {
+        const system = new ParticleSystem({
+            definition: ParticleSystemDefinition.create({
+                emitters: [
+                    {
+                        name: 'sprite-sizing',
+                        capacity: 8,
+                        execution: 'cpu',
+                        initialize: { size: 0.03 },
+                        modules: [{ type: 'screen-space-size', scale: 1.5, range: [2, 24] }],
+                        renderers: [{ type: 'sprite', alignment: 'stretched', stretchScale: 2 }]
+                    }
+                ]
+            }),
+            autoPlay: false
+        });
+        const mesh = system.children[0];
+        expect(mesh).toBeInstanceOf(Mesh);
+        const shader = (mesh as Mesh).material?.definition.getPass('forward')?.shader;
+        expect(shader?.kind).toBe('glsl');
+        if (shader?.kind !== 'glsl') throw new Error('Expected a GLSL CPU sprite shader');
+        expect(shader.vertexSource).toContain(
+            'corner.y *= 1.0 + length(a_particleVelocity) * 2.0;'
+        );
+        expect(shader.vertexSource).toContain(
+            'particlePixelSize = clamp(particleSize * particleWorldToPixels * 1.5, 2.0, 24.0)'
+        );
+        expect(shader.vertexSource).toContain(
+            'particleSize = particlePixelSize / particleWorldToPixels;'
+        );
+        expect(shader.vertexSource).not.toContain('length(a_particleVelocity) / particleSize');
+    });
+
+    it('initializes new CPU particles after the current simulation step', () => {
+        const system = new ParticleSystem({
+            definition: ParticleSystemDefinition.create({
+                emitters: [
+                    {
+                        name: 'spawn-order',
+                        capacity: 2,
+                        execution: 'cpu',
+                        fixedStep: 0.1,
+                        initialize: { lifetime: 0.05 },
+                        emission: { bursts: [{ time: 0, count: 1 }] },
+                        renderers: [{ type: 'sprite' }]
+                    }
+                ]
+            }),
+            autoPlay: false
+        });
+        system.simulate(0.1);
+        expect(system.aliveCount).toBe(1);
+        system.simulate(0.1);
+        expect(system.aliveCount).toBe(0);
+    });
+
+    it('rejects unsupported execution semantics and malformed authoring data', () => {
+        const gpuTrigger = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'gpu-trigger',
+                    capacity: 2,
+                    execution: 'gpu',
+                    modules: [{ type: 'trigger', volumes: [{ type: 'sphere', radius: 1 }] }],
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(() => compileParticleSystemDefinition(gpuTrigger, { backend: 'webgpu' })).toThrow(
+            /trigger modules require CPU/u
+        );
+
+        const automaticTrigger = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'automatic-trigger',
+                    capacity: 2,
+                    modules: [{ type: 'trigger', volumes: [{ type: 'sphere', radius: 1 }] }],
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(
+            compileParticleSystemDefinition(automaticTrigger, {
+                backend: 'webgpu',
+                preferGPUAboveCapacity: 1
+            }).emitters[0]?.kind
+        ).toBe('cpu-stateful');
+
+        const gpuOverflow = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'gpu-overflow',
+                    capacity: 2,
+                    execution: 'gpu',
+                    overflow: 'replace-oldest',
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(() => compileParticleSystemDefinition(gpuOverflow, { backend: 'webgpu' })).toThrow(
+            /does not support replace-oldest/u
+        );
+
+        const invalidBurst = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'invalid-burst',
+                    capacity: 2,
+                    emission: { bursts: [{ time: 0, count: 1, cycles: 2, interval: 0 }] },
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(() => compileParticleSystemDefinition(invalidBurst)).toThrow(
+            /interval must be positive/u
+        );
+
+        const invalidVectorRange = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'invalid-vector-range',
+                    capacity: 2,
+                    initialize: { position: { min: [1, 0, 0], max: [0, 1, 1] } },
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(() => compileParticleSystemDefinition(invalidVectorRange)).toThrow(
+            /component-wise/u
+        );
+
+        const duplicateChannel = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'duplicate-channel',
+                    capacity: 2,
+                    modules: [
+                        { type: 'custom-channel', name: 'data', valueType: 'float', value: 1 },
+                        { type: 'custom-channel', name: 'data', valueType: 'float', value: 2 }
+                    ],
+                    renderers: [{ type: 'sprite' }]
+                }
+            ]
+        });
+        expect(() => compileParticleSystemDefinition(duplicateChannel)).toThrow(
+            /duplicate custom channel/u
+        );
     });
 
     it('supports play, pause, restart, manual emit and completion without exposing particles[]', () => {

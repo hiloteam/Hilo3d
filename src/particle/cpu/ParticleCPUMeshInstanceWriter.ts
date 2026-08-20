@@ -13,6 +13,7 @@ import type {
     ParticleVector3
 } from '../ParticleTypes';
 import type { ParticleCPUState } from './ParticleCPUState';
+import type { ParticleCPUWriterQuality } from './ParticleCPUWriter';
 
 const INSTANCE_FLOAT_STRIDE = 16;
 const INSTANCE_BYTE_STRIDE = INSTANCE_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
@@ -405,8 +406,8 @@ export class ParticleCPUMeshInstanceWriter {
         });
     }
 
-    sync(cameraPosition: ParticleVector3): void {
-        const aliveCount = this.#state.aliveCount;
+    sync(cameraPosition: ParticleVector3, quality: Readonly<ParticleCPUWriterQuality>): void {
+        const aliveCount = quality.enabled ? this.#state.aliveCount : 0;
         const meshIndices = this.#state.u32('mesh-index');
         let count = 0;
         for (let index = 0; index < aliveCount; index += 1) {
@@ -416,7 +417,7 @@ export class ParticleCPUMeshInstanceWriter {
             this.#sortIndices[count++] = index;
         }
         const sort = this.#renderer.sort ?? 'none';
-        if (sort !== 'none') {
+        if (quality.sorting && sort !== 'none') {
             for (let left = 1; left < count; left += 1) {
                 const value = this.#sortIndices[left] ?? 0;
                 let right = left - 1;

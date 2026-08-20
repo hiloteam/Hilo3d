@@ -196,7 +196,8 @@ function collisionModuleSource(module: ParticleModule, moduleIndex: number): str
     if (module.type !== 'collision') return '';
     const bounce = f32(module.bounce ?? 0.5);
     const friction = f32(module.friction ?? 0);
-    const emitEvent = `particleEmitEvent(${String(particleGPUEventType(module.event ?? 'collision'))}u, stableId, position, velocity);`;
+    const radius = `particleSize * 0.5 * ${f32(module.radiusScale ?? 1)}`;
+    const collisionEffects = `age += lifetime * ${f32(module.lifetimeLoss ?? 0)}; particleEmitEvent(${String(particleGPUEventType(module.event ?? 'collision'))}u, stableId, position, velocity);`;
     return module.colliders
         .map((collider, colliderIndex) => {
             const suffix = `${String(moduleIndex)}_${String(colliderIndex)}`;
@@ -204,28 +205,28 @@ function collisionModuleSource(module: ParticleModule, moduleIndex: number): str
                 case 'plane':
                     return `
 let collisionNormal_${suffix} = normalize(vec3<f32>(${collider.normal.map(f32).join(', ')}));
-let collisionPenetration_${suffix} = ${f32(collider.offset ?? 0)} - dot(position, collisionNormal_${suffix});
-if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(collisionNormal_${suffix}, collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+let collisionPenetration_${suffix} = ${radius} + ${f32(collider.offset ?? 0)} - dot(position, collisionNormal_${suffix});
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(collisionNormal_${suffix}, collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${collisionEffects} }`;
                 case 'sphere': {
                     const center = collider.center ?? [0, 0, 0];
                     return `
 let collisionDelta_${suffix} = position - vec3<f32>(${center.map(f32).join(', ')});
 let collisionDistance_${suffix} = length(collisionDelta_${suffix});
-let collisionPenetration_${suffix} = ${f32(collider.radius)} - collisionDistance_${suffix};
-if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+let collisionPenetration_${suffix} = ${f32(collider.radius)} + ${radius} - collisionDistance_${suffix};
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${collisionEffects} }`;
                 }
                 case 'box': {
                     const center = collider.center ?? [0, 0, 0];
                     return `
 let collisionBoxDelta_${suffix} = position - vec3<f32>(${center.map(f32).join(', ')});
-let collisionBoxPenetration_${suffix} = vec3<f32>(${collider.size.map(value => f32(value * 0.5)).join(', ')}) - abs(collisionBoxDelta_${suffix});
+let collisionBoxPenetration_${suffix} = vec3<f32>(${collider.size.map(value => f32(value * 0.5)).join(', ')}) + vec3<f32>(${radius}) - abs(collisionBoxDelta_${suffix});
 if (all(collisionBoxPenetration_${suffix} > vec3<f32>(0.0))) {
     var collisionNormal_${suffix} = vec3<f32>(0.0, 0.0, select(-1.0, 1.0, collisionBoxDelta_${suffix}.z >= 0.0));
     var collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.z;
     if (collisionBoxPenetration_${suffix}.x <= collisionPenetration_${suffix}) { collisionNormal_${suffix} = vec3<f32>(select(-1.0, 1.0, collisionBoxDelta_${suffix}.x >= 0.0), 0.0, 0.0); collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.x; }
     if (collisionBoxPenetration_${suffix}.y <= collisionPenetration_${suffix}) { collisionNormal_${suffix} = vec3<f32>(0.0, select(-1.0, 1.0, collisionBoxDelta_${suffix}.y >= 0.0), 0.0); collisionPenetration_${suffix} = collisionBoxPenetration_${suffix}.y; }
     particleResolveCollision(collisionNormal_${suffix}, collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity);
-    ${emitEvent}
+    ${collisionEffects}
 }`;
                 }
                 case 'capsule': {
@@ -238,8 +239,8 @@ let collisionCapsuleSegment_${suffix} = vec3<f32>(${segment.map(f32).join(', ')}
 let collisionCapsuleAmount_${suffix} = clamp(dot(position - collisionCapsuleStart_${suffix}, collisionCapsuleSegment_${suffix}) / max(dot(collisionCapsuleSegment_${suffix}, collisionCapsuleSegment_${suffix}), 0.000001), 0.0, 1.0);
 let collisionDelta_${suffix} = position - (collisionCapsuleStart_${suffix} + collisionCapsuleSegment_${suffix} * collisionCapsuleAmount_${suffix});
 let collisionDistance_${suffix} = length(collisionDelta_${suffix});
-let collisionPenetration_${suffix} = ${f32(collider.radius)} - collisionDistance_${suffix};
-if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${emitEvent} }`;
+let collisionPenetration_${suffix} = ${f32(collider.radius)} + ${radius} - collisionDistance_${suffix};
+if (collisionPenetration_${suffix} > 0.0) { particleResolveCollision(select(vec3<f32>(0.0, 1.0, 0.0), collisionDelta_${suffix} / collisionDistance_${suffix}, collisionDistance_${suffix} > 0.000001), collisionPenetration_${suffix}, ${bounce}, ${friction}, &position, &velocity); ${collisionEffects} }`;
                 }
             }
         })
@@ -277,6 +278,10 @@ fn particleRandom(stableId: u32, lane: u32) -> f32 {
     value = mix32(value ^ (stableId * 0x85ebca77u));
     value = mix32(value ^ (lane * 0x27d4eb2fu));
     return f32(mix32(value)) / 4294967296.0;
+}
+fn particleReserveAliveSlot(limit: u32) -> u32 {
+    let current = atomicAdd(&counters.outputAliveCount, 1u);
+    return select(current, 0xffffffffu, current >= limit);
 }
 fn noiseLattice(cell: vec3<i32>, seed: u32) -> f32 {
     let hash = mix32(bitcast<u32>(cell.x * i32(0x1f123bb5u)) ^ bitcast<u32>(cell.y * i32(0x5f356495u)) ^ bitcast<u32>(cell.z * i32(0x6c8e9cf5u)) ^ seed);
@@ -410,6 +415,7 @@ function simulateShader(
     const age = attributeOffset(plan, 'age');
     const lifetime = attributeOffset(plan, 'lifetime');
     const stableId = attributeOffset(plan, 'stable-id');
+    const size = attributeOffset(plan, 'size');
     const mass = optionalAttributeOffset(plan, 'mass');
     const moduleSource = plan.definition.modules.map(forceModuleSource).join('\n');
     const collisionSource = plan.definition.modules.map(collisionModuleSource).join('\n');
@@ -518,18 +524,25 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     var age = bitcast<f32>(stateSource[${String(age)}u + particleIndex]) + params.timeDelta.y;
     let lifetime = bitcast<f32>(stateSource[${String(lifetime)}u + particleIndex]);
     let stableId = stateSource[${String(stableId)}u + particleIndex];
+    let particleSize = bitcast<f32>(stateSource[${String(size)}u + particleIndex]);
     let inverseMass = ${mass === null ? '1.0' : `1.0 / max(bitcast<f32>(stateSource[${String(mass)}u + particleIndex]), 0.000001)`};
     let deltaTime = params.timeDelta.y;
     var noiseOffset = vec3<f32>(0.0);
     ${moduleSource}
     position += velocity * deltaTime;
-    ${collisionSource}
-    ${sceneDepthSource}
+    if (params.sort.w != 0u) {
+        ${collisionSource}
+        ${sceneDepthSource}
+    }
     var alive = age < lifetime;
     ${killSource}
+    var outputIndex = 0xffffffffu;
+    if (alive) {
+        outputIndex = particleReserveAliveSlot(params.sort.z);
+        if (outputIndex == 0xffffffffu) { alive = false; }
+    }
     ${storageAssignments(plan, 'stateTarget')}
     if (alive) {
-        let outputIndex = atomicAdd(&counters.outputAliveCount, 1u);
         aliveTarget[outputIndex] = particleIndex;
     } else {
         particleEmitEvent(${String(particleGPUEventType('death'))}u, stableId, position, velocity);
@@ -697,6 +710,13 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (invocation.x >= params.spawn.x) { return; }
     let particleIndex = acquireParticleIndex();
     if (particleIndex == 0xffffffffu) { _ = atomicAdd(&counters.droppedSpawnCount, 1u); return; }
+    let outputIndex = particleReserveAliveSlot(params.sort.z);
+    if (outputIndex == 0xffffffffu) {
+        let deadIndex = atomicAdd(&counters.deadCount, 1u);
+        deadIndices[deadIndex] = particleIndex;
+        _ = atomicAdd(&counters.droppedSpawnCount, 1u);
+        return;
+    }
     let command = spawnCommands[invocation.x];
     ${clearParticleState(plan)}
     let position = command.positionLifetime.xyz;
@@ -719,7 +739,6 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     ${colorAssignments}
     ${topologyAssignments}
     ${customAssignments}
-    let outputIndex = atomicAdd(&counters.outputAliveCount, 1u);
     aliveTarget[outputIndex] = particleIndex;
     particleEmitEvent(${String(particleGPUEventType('birth'))}u, params.spawn.y + invocation.x, position, velocity);
 }`,
@@ -908,19 +927,31 @@ struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>
         label: `${plan.definition.name}:particle-indirect-args`,
         workgroupSize: [1],
         source: `
+struct ParticleParams {
+    timeDelta: vec4<f32>, emitterPosition: vec4<f32>, emitterVelocity: vec4<f32>, spawn: vec4<u32>,
+    cameraPosition: vec4<f32>, sort: vec4<u32>, viewProjection: mat4x4<f32>,
+};
 struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>, deadCount: atomic<u32>, nextIndex: atomic<u32>, droppedSpawnCount: atomic<u32>, };
-@group(0) @binding(0) var<storage, read_write> counters: ParticleCounters;
-@group(0) @binding(1) var<storage, read_write> indirectArguments: array<u32>;
+@group(0) @binding(0) var<uniform> params: ParticleParams;
+@group(0) @binding(1) var<storage, read_write> counters: ParticleCounters;
+@group(0) @binding(2) var<storage, read_write> indirectArguments: array<u32>;
 @compute @workgroup_size(1) fn main() {
-    let alive = atomicLoad(&counters.outputAliveCount);
+    let alive = min(atomicLoad(&counters.outputAliveCount), params.sort.z);
     atomicStore(&counters.aliveCount, alive);
     indirectArguments[0] = alive * 6u; indirectArguments[1] = 1u; indirectArguments[2] = 0u; indirectArguments[3] = 0u;
 }`,
         bindings: [
             {
-                name: 'counters',
+                name: 'params',
                 group: 0,
                 binding: 0,
+                kind: 'uniform-buffer',
+                minBindingSize: buffers.parameterByteLength
+            },
+            {
+                name: 'counters',
+                group: 0,
+                binding: 1,
                 kind: 'storage-buffer',
                 access: 'read-write',
                 minBindingSize: buffers.counterByteLength
@@ -928,7 +959,7 @@ struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>
             {
                 name: 'indirectArguments',
                 group: 0,
-                binding: 1,
+                binding: 2,
                 kind: 'storage-buffer',
                 access: 'write-discard',
                 minBindingSize: buffers.indirectArgumentByteLength
@@ -1231,10 +1262,11 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     });
 }
 
-function storageRenderer(
+/** Compile the shared storage-raster sprite bridge for GPU-owned renderer data. @internal */
+export function compileParticleGPUStorageRenderer(
     plan: Readonly<ParticleCompiledEmitterPlan>,
     renderer: ParticleSpriteRendererDefinition,
-    buffers: ParticleGPUBufferLayout
+    buffers: Pick<ParticleGPUBufferLayout, 'rendererDataByteLength'>
 ): ParticleGPUStorageRendererPlan {
     const sheet = plan.definition.modules.find(module => module.type === 'texture-sheet');
     const rows = sheet?.type === 'texture-sheet' ? sheet.rows : 1;
@@ -1253,7 +1285,9 @@ function storageRenderer(
 bool hasSceneDepth = particleDepthMode > 0.5 ? sceneDepth > 0.000001 : sceneDepth < 0.999999;
 if (hasSceneDepth) {
     ${(renderer.depthTest ?? true) ? 'if (particleDepthMode > 0.5 ? gl_FragCoord.z < sceneDepth : gl_FragCoord.z > sceneDepth) discard;' : ''}
-    color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(renderer.softParticle.distance)}, 0.0, 1.0), ${f32(renderer.softParticle.contrast ?? 1)});
+    if (u_particleAmbient.w > 0.5) {
+        color.a *= pow(clamp(abs(sceneDepth - gl_FragCoord.z) / ${f32(renderer.softParticle.distance)}, 0.0, 1.0), ${f32(renderer.softParticle.contrast ?? 1)});
+    }
 }`
         : '';
     const softVertexOutput = renderer.softParticle ? 'out float particleDepthMode;' : '';
@@ -1262,8 +1296,8 @@ if (hasSceneDepth) {
         : '';
     const softFragmentInput = renderer.softParticle ? 'in float particleDepthMode;' : '';
     const alignment = renderer.alignment ?? 'view';
-    const pivot = renderer.pivot ?? [0, 0];
-    const stretchScale = renderer.stretchScale ?? 1;
+    const pivot = renderer.pivot ?? [0.5, 0.5];
+    const stretchScale = renderer.stretchScale ?? 0;
     const cameraOffset = plan.definition.modules.find(module => module.type === 'camera-offset');
     const cameraFade = plan.definition.modules.find(module => module.type === 'camera-fade');
     const screenSpaceSize = plan.definition.modules.find(
@@ -1279,7 +1313,9 @@ if (hasSceneDepth) {
             : '';
     const screenSizeSource =
         screenSpaceSize?.type === 'screen-space-size'
-            ? `particleSize = clamp(particleSize, ${f32(screenSpaceSize.range?.[0] ?? 0)}, ${f32(screenSpaceSize.range?.[1] ?? Number.MAX_SAFE_INTEGER)}) * max(0.000001, -viewPosition.z) * 2.0 / max(1.0, u_viewport.y * u_projectionMatrix[1][1]) * ${f32(screenSpaceSize.scale ?? 1)};`
+            ? `float particleWorldToPixels = max(0.000001, u_viewport.w * abs(u_projectionMatrix[1][1]) / (2.0 * max(abs((u_projectionMatrix * viewPosition).w), 0.000001)));
+    float particlePixelSize = clamp(particleSize * particleWorldToPixels * ${f32(screenSpaceSize.scale ?? 1)}, ${f32(screenSpaceSize.range?.[0] ?? 0)}, ${f32(screenSpaceSize.range?.[1] ?? Number.MAX_SAFE_INTEGER)});
+    particleSize = particlePixelSize / particleWorldToPixels;`
             : '';
     const alignmentSource =
         alignment === 'world-up'
@@ -1288,7 +1324,7 @@ if (hasSceneDepth) {
             : alignment === 'stretched' || alignment === 'velocity'
               ? `vec2 upAxis = normalize(viewVelocity.xy + vec2(0.000001, 0.0));
     vec2 sideAxis = vec2(upAxis.y, -upAxis.x);
-    ${alignment === 'stretched' ? `corner.y *= 1.0 + length(viewVelocity) * ${f32(stretchScale)} / max(positionSize.w, 0.000001);` : ''}`
+    ${alignment === 'stretched' ? `corner.y *= 1.0 + length(viewVelocity) * ${f32(stretchScale)};` : ''}`
               : `vec2 sideAxis = vec2(1.0, 0.0);
     vec2 upAxis = vec2(0.0, 1.0);`;
     const bindings = [
@@ -1297,7 +1333,7 @@ if (hasSceneDepth) {
             group: 0,
             binding: 0,
             kind: 'uniform-buffer' as const,
-            minBindingSize: 224
+            minBindingSize: 368
         },
         {
             name: 'particleRenderData',
@@ -1355,6 +1391,9 @@ layout(std140) uniform ParticleViewBlock {
     mat4 u_modelMatrix;
     vec4 u_cameraPosition;
     vec4 u_viewport;
+    vec4 u_particleAmbient;
+    vec4 u_particleDirectionalColor[4];
+    vec4 u_particleDirectionalDirection[4];
 };
 layout(std430) readonly buffer ParticleRenderData { vec4 values[]; } particleRenderData;
 out vec2 particleUV; out vec4 particleColor; ${softVertexOutput}
@@ -1371,7 +1410,7 @@ void main() {
     vec4 sourceColor = particleRenderData.values[instanceIndex * 4 + 1];
     vec4 rotationFrame = particleRenderData.values[instanceIndex * 4 + 2];
     vec4 velocityData = particleRenderData.values[instanceIndex * 4 + 3];
-    vec2 corner = particleCorner(localIndex) - vec2(${f32(pivot[0])}, ${f32(pivot[1])});
+    vec2 corner = particleCorner(localIndex) + vec2(0.5) - vec2(${f32(pivot[0])}, ${f32(pivot[1])});
     float sine = sin(rotationFrame.x); float cosine = cos(rotationFrame.x);
     corner = mat2(cosine, sine, -sine, cosine) * corner;
     vec4 worldPosition = u_modelMatrix * vec4(positionSize.xyz, 1.0);
@@ -1392,6 +1431,16 @@ void main() {
             fragmentSource: `#version 310 es
 precision highp float;
 precision highp int;
+layout(std140) uniform ParticleViewBlock {
+    mat4 u_viewMatrix;
+    mat4 u_projectionMatrix;
+    mat4 u_modelMatrix;
+    vec4 u_cameraPosition;
+    vec4 u_viewport;
+    vec4 u_particleAmbient;
+    vec4 u_particleDirectionalColor[4];
+    vec4 u_particleDirectionalDirection[4];
+};
 in vec2 particleUV; in vec4 particleColor; ${softFragmentInput}
 ${textureSource}
 ${softParticleSource}
@@ -1467,7 +1516,7 @@ export function compileParticleGPUPlan(
         renderers: Object.freeze(
             plan.definition.renderers
                 .filter(renderer => renderer.type === 'sprite')
-                .map(renderer => storageRenderer(plan, renderer, buffers))
+                .map(renderer => compileParticleGPUStorageRenderer(plan, renderer, buffers))
         ),
         advancedRenderers: Object.freeze(advancedRenderers),
         workgroupCount: Math.ceil(plan.definition.capacity / WORKGROUP_SIZE),

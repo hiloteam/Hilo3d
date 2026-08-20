@@ -1,6 +1,15 @@
 import ComputeShader from '../../render/compute/ComputeShader';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
-import type { ParticleScalarValue, ParticleVector3Value } from '../ParticleTypes';
+import { ParticleParameter, resolveParticleParameter } from '../ParticleParameter';
+import type {
+    ParticleColorSource,
+    ParticleColorValue,
+    ParticleModule,
+    ParticleScalarSource,
+    ParticleScalarValue,
+    ParticleVector3Source,
+    ParticleVector3Value
+} from '../ParticleTypes';
 
 const WORKGROUP_SIZE = 64;
 
@@ -30,36 +39,108 @@ function f32(value: number): string {
     return Number.isInteger(rounded) ? `${String(rounded)}.0` : String(rounded);
 }
 
-function scalar(value: ParticleScalarValue | undefined, fallback: number, lane: number): string {
+function scalar(value: ParticleScalarSource | undefined, fallback: number, lane: number): string {
     if (value === undefined) return f32(fallback);
-    return typeof value === 'number'
-        ? f32(value)
-        : `mix(${f32(value.min)}, ${f32(value.max)}, particleRandom(stableId, ${String(lane)}u))`;
+    const source: ParticleScalarValue = resolveParticleParameter(value);
+    return typeof source === 'number'
+        ? f32(source)
+        : `mix(${f32(source.min)}, ${f32(source.max)}, particleRandom(stableId, ${String(lane)}u))`;
 }
 
-function vector(value: ParticleVector3Value | undefined, lane: number): string {
+function scalarMaximum(value: ParticleScalarSource | undefined, fallback: number): number {
+    if (value === undefined) return fallback;
+    const source: ParticleScalarValue = resolveParticleParameter(value);
+    return typeof source === 'number' ? source : source.max;
+}
+
+function vector(value: ParticleVector3Source | undefined, lane: number): string {
     if (value === undefined) return 'vec3<f32>(0.0)';
-    if ('min' in value) {
-        return `mix(vec3<f32>(${value.min.map(f32).join(', ')}), vec3<f32>(${value.max.map(f32).join(', ')}), vec3<f32>(particleRandom(stableId, ${String(lane)}u), particleRandom(stableId, ${String(lane + 1)}u), particleRandom(stableId, ${String(lane + 2)}u)))`;
+    const source: ParticleVector3Value = resolveParticleParameter(value);
+    if ('min' in source) {
+        return `mix(vec3<f32>(${source.min.map(f32).join(', ')}), vec3<f32>(${source.max.map(f32).join(', ')}), vec3<f32>(particleRandom(stableId, ${String(lane)}u), particleRandom(stableId, ${String(lane + 1)}u), particleRandom(stableId, ${String(lane + 2)}u)))`;
     }
-    return `vec3<f32>(${value.map(f32).join(', ')})`;
+    return `vec3<f32>(${source.map(f32).join(', ')})`;
+}
+
+function color(value: ParticleColorSource | undefined, lane: number): string {
+    if (value === undefined) return 'vec4<f32>(1.0)';
+    const source: ParticleColorValue = resolveParticleParameter(value);
+    if ('min' in source) {
+        return `mix(vec4<f32>(${source.min.map(f32).join(', ')}), vec4<f32>(${source.max.map(f32).join(', ')}), vec4<f32>(particleRandom(stableId, ${String(lane)}u), particleRandom(stableId, ${String(lane + 1)}u), particleRandom(stableId, ${String(lane + 2)}u), particleRandom(stableId, ${String(lane + 3)}u)))`;
+    }
+    return `vec4<f32>(${source.map(f32).join(', ')})`;
+}
+
+const SUPPORTED_MODULES = new Set<ParticleModule['type']>([
+    'velocity-over-lifetime',
+    'force-over-lifetime',
+    'gravity',
+    'wind',
+    'drag',
+    'camera-offset',
+    'camera-fade',
+    'screen-space-size'
+]);
+
+/** Explain whether the specialized WebGPU renderer-data generator can own this stateless plan. */
+export function particleStatelessGPUBlockingDiagnostics(
+    plan: Readonly<ParticleCompiledEmitterPlan>
+): readonly string[] {
+    const definition = plan.definition;
+    const diagnostics: string[] = [];
+    if (plan.kind !== 'stateless') diagnostics.push('compiled plan is not stateless');
+    if (definition.shape.type !== 'point') diagnostics.push('only point shape is supported');
+    if (definition.emission.rateOverDistance !== undefined) {
+        diagnostics.push('rate-over-distance requires transform history');
+    }
+    if ((definition.emission.bursts?.length ?? 0) > 0) {
+        diagnostics.push('bursts require retained spawn metadata');
+    }
+    if (definition.renderers.some(renderer => renderer.type !== 'sprite')) {
+        diagnostics.push('only sprite renderers are supported');
+    }
+    if (
+        definition.renderers.some(
+            renderer =>
+                renderer.type === 'sprite' &&
+                ((renderer.sort ?? 'none') !== 'none' || renderer.softParticle !== undefined)
+        )
+    ) {
+        diagnostics.push('distance sorting and soft particles require stateful renderer passes');
+    }
+    if (definition.modules.some(module => !SUPPORTED_MODULES.has(module.type))) {
+        diagnostics.push(
+            'one or more modules are not implemented by the GPU reconstruction kernel'
+        );
+    }
+    if (
+        Object.values(definition.initialize).some(value => value instanceof ParticleParameter) ||
+        definition.emission.rateOverTime instanceof ParticleParameter
+    ) {
+        diagnostics.push('runtime-bound spawn parameters require the CPU stateless runtime');
+    }
+    if (
+        definition.initialize.mass !== undefined ||
+        definition.initialize.meshIndex !== undefined ||
+        definition.initialize.ribbonId !== undefined
+    ) {
+        diagnostics.push('unused topology or mass initialization is not supported');
+    }
+    return Object.freeze(diagnostics);
 }
 
 function motionSource(plan: Readonly<ParticleCompiledEmitterPlan>): string {
     const statements: string[] = [];
     for (const [index, module] of plan.definition.modules.entries()) {
-        const lane = 100 + index * 8;
         switch (module.type) {
             case 'velocity-over-lifetime':
-                statements.push(`position += ${vector(module.velocity, lane)} * age;`);
+                statements.push(`extraVelocity += ${vector(module.velocity, 100)};`);
                 break;
             case 'force-over-lifetime':
             case 'gravity':
             case 'wind': {
-                const force = vector(module.force, lane);
-                statements.push(
-                    `position += 0.5 * ${force} * age * age; velocity += ${force} * age;`
-                );
+                const force = vector(module.force, 110);
+                statements.push(`velocity += ${force} * age;`);
                 break;
             }
             case 'drag':
@@ -81,6 +162,12 @@ export function compileParticleStatelessGPUPlan(
     if (plan.kind !== 'stateless') {
         throw new TypeError('Particle stateless GPU compiler requires a stateless emitter plan');
     }
+    const diagnostics = particleStatelessGPUBlockingDiagnostics(plan);
+    if (diagnostics.length > 0) {
+        throw new TypeError(
+            `Particle stateless GPU plan is unsupported: ${diagnostics.join(', ')}`
+        );
+    }
     const buffers: ParticleStatelessGPUBufferLayout = Object.freeze({
         parameterByteLength: 64,
         rendererDataByteLength: align(plan.definition.capacity * 64, 16),
@@ -88,17 +175,22 @@ export function compileParticleStatelessGPUPlan(
         persistentStateByteLength: 0
     });
     const authoredRate = plan.definition.emission.rateOverTime;
+    const resolvedRate =
+        authoredRate === undefined ? undefined : resolveParticleParameter(authoredRate);
     const rate =
-        typeof authoredRate === 'number'
-            ? f32(authoredRate)
-            : authoredRate === undefined
+        typeof resolvedRate === 'number'
+            ? f32(resolvedRate)
+            : resolvedRate === undefined
               ? '0.0'
-              : f32((authoredRate.min + authoredRate.max) * 0.5);
+              : f32((resolvedRate.min + resolvedRate.max) * 0.5);
     const lifetime = scalar(plan.definition.initialize.lifetime, 1, 60);
+    const maximumLifetime = scalarMaximum(plan.definition.initialize.lifetime, 1);
     const size = scalar(plan.definition.initialize.size, 1, 70);
     const speed = scalar(plan.definition.initialize.speed, 0, 50);
     const initialPosition = vector(plan.definition.initialize.position, 30);
     const initialDirection = vector(plan.definition.initialize.direction, 40);
+    const initialColor = color(plan.definition.initialize.color, 72);
+    const rotation = scalar(plan.definition.initialize.rotation, 0, 71);
     const motion = motionSource(plan);
     const generate = new ComputeShader({
         label: `${plan.definition.name}:particle-stateless-generate`,
@@ -130,19 +222,22 @@ fn particleRandom(stableId: u32, lane: u32) -> f32 {
 @compute @workgroup_size(${String(WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let index = invocation.x;
-    let rate = max(0.0, ${rate});
+    let rate = max(0.0, ${rate} * bitcast<f32>(params.output.y));
     let activeTime = max(0.0, params.timing.x - params.timing.y);
     let emissionTime = select(min(activeTime, params.timing.z), activeTime, params.identity.z != 0u);
     let totalSpawned = u32(floor(rate * emissionTime));
-    let count = min(totalSpawned, params.output.x);
+    let oldestTime = max(0.0, activeTime - ${f32(maximumLifetime)});
+    let firstOrdinal = max(1u, u32(floor(oldestTime * rate)));
+    let candidateCount = select(0u, totalSpawned - firstOrdinal + 1u, totalSpawned >= firstOrdinal);
+    let count = min(candidateCount, params.output.x);
     if (index == 0u) {
-        indirectArguments[0] = 6u;
-        indirectArguments[1] = count;
+        indirectArguments[0] = count * 6u;
+        indirectArguments[1] = 1u;
         indirectArguments[2] = 0u;
         indirectArguments[3] = 0u;
     }
     if (index >= count || rate <= 0.0) { return; }
-    let stableId = totalSpawned - count + index;
+    let stableId = ${plan.definition.overflow === 'replace-oldest' ? 'totalSpawned - count + index' : 'firstOrdinal - 1u + index'};
     let spawnTime = f32(stableId + 1u) / rate;
     let age = max(0.0, activeTime - spawnTime);
     let particleLifetime = max(0.000001, ${lifetime});
@@ -151,12 +246,13 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     var direction = ${initialDirection};
     if (length(direction) <= 0.000001) { direction = vec3<f32>(0.0, 1.0, 0.0); }
     var velocity = normalize(direction) * ${speed};
-    position += velocity * age;
+    var extraVelocity = vec3<f32>(0.0);
     ${motion}
+    position += (velocity + extraVelocity) * age;
     let visibleSize = select(${size}, 0.0, age >= particleLifetime);
     rendererData[index * 4u] = vec4<f32>(position, visibleSize);
-    rendererData[index * 4u + 1u] = vec4<f32>(1.0);
-    rendererData[index * 4u + 2u] = vec4<f32>(0.0, normalizedAge, 0.0, 0.0);
+    rendererData[index * 4u + 1u] = ${initialColor};
+    rendererData[index * 4u + 2u] = vec4<f32>(${rotation}, 0.0, 0.0, 0.0);
     rendererData[index * 4u + 3u] = vec4<f32>(velocity, 0.0);
 }`,
         workgroupSize: [WORKGROUP_SIZE],

@@ -11,9 +11,11 @@ import type {
     ParticleSortMode,
     ParticleSpriteAlignment,
     ParticleSpriteRendererDefinition,
+    ParticleModule,
     ParticleVector3
 } from '../ParticleTypes';
 import type { ParticleCPUState } from './ParticleCPUState';
+import type { ParticleCPUWriterQuality } from './ParticleCPUWriter';
 
 const INSTANCE_FLOAT_STRIDE = 16;
 const INSTANCE_BYTE_STRIDE = INSTANCE_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
@@ -88,11 +90,29 @@ function glslFloat(value: number): string {
 function createVertexSource(
     renderer: ParticleSpriteRendererDefinition,
     simulationSpace: 'local' | 'world',
+    modules: readonly ParticleModule[],
     rows: number,
     columns: number
 ): string {
     const pivot = renderer.pivot ?? [0.5, 0.5];
     const stretchScale = renderer.stretchScale ?? 0;
+    const cameraOffset = modules.find(module => module.type === 'camera-offset');
+    const cameraFade = modules.find(module => module.type === 'camera-fade');
+    const screenSpaceSize = modules.find(module => module.type === 'screen-space-size');
+    const cameraOffsetSource =
+        cameraOffset?.type === 'camera-offset'
+            ? `viewPosition.z += ${glslFloat(cameraOffset.scale ?? 0)};`
+            : '';
+    const cameraFadeSource =
+        cameraFade?.type === 'camera-fade'
+            ? `particleColor.a *= smoothstep(${glslFloat(cameraFade.range?.[0] ?? 0)}, ${glslFloat(cameraFade.range?.[1] ?? 1)}, distance(worldPosition.xyz, u_cameraPositionNear.xyz));`
+            : '';
+    const screenSizeSource =
+        screenSpaceSize?.type === 'screen-space-size'
+            ? `float particleWorldToPixels = max(0.000001, u_viewport.w * abs(u_projectionMatrix[1][1]) / (2.0 * max(abs((u_projectionMatrix * viewPosition).w), 0.000001)));
+    float particlePixelSize = clamp(particleSize * particleWorldToPixels * ${glslFloat(screenSpaceSize.scale ?? 1)}, ${glslFloat(screenSpaceSize.range?.[0] ?? 0)}, ${glslFloat(screenSpaceSize.range?.[1] ?? Number.MAX_SAFE_INTEGER)});
+    particleSize = particlePixelSize / particleWorldToPixels;`
+            : '';
     return `#version 300 es
 precision highp float;
 in vec2 a_particleCorner;
@@ -109,6 +129,21 @@ layout(std140) uniform CameraBlock {
     mat4 u_viewMatrix;
     mat4 u_projectionMatrix;
     mat4 u_viewProjectionMatrix;
+    mat4 u_previousViewMatrix;
+    mat4 u_previousProjectionMatrix;
+    mat4 u_previousViewProjectionMatrix;
+    mat4 u_viewInverseMatrix;
+    mat4 u_previousViewInverseMatrix;
+    mat4 u_projectionInverseMatrix;
+    mat3 u_viewInverseNormalMatrix;
+    vec4 u_cameraPositionNear;
+    vec4 u_cameraParams;
+    vec4 u_renderOrigin;
+    vec4 u_previousRenderOrigin;
+    vec4 u_historyParams;
+    vec4 u_viewport;
+    mat4 u_nonJitteredProjectionMatrix;
+    mat4 u_nonJitteredViewProjectionMatrix;
 };
 
 layout(std140) uniform ModelBlock {
@@ -119,6 +154,11 @@ void main(void) {
     vec3 position = a_particlePositionSize.xyz + a_particleNoiseOffset;
     vec4 worldPosition = ${simulationSpace === 'local' ? 'u_modelMatrix * vec4(position, 1.0)' : 'vec4(position, 1.0)'};
     vec4 viewPosition = u_viewMatrix * worldPosition;
+    vec4 particleColor = a_particleColor;
+    float particleSize = a_particlePositionSize.w;
+    ${cameraOffsetSource}
+    ${screenSizeSource}
+    ${cameraFadeSource}
     vec2 corner = a_particleCorner + vec2(0.5) - vec2(${glslFloat(pivot[0])}, ${glslFloat(pivot[1])});
     float sine = sin(a_particleRotationFrame.x);
     float cosine = cos(a_particleRotationFrame.x);
@@ -134,9 +174,11 @@ void main(void) {
         vec2 viewVelocity = (u_viewMatrix * vec4(a_particleVelocity, 0.0)).xy;
         axis = length(viewVelocity) > 0.000001 ? normalize(viewVelocity) : axis;
         side = vec2(axis.y, -axis.x);
-        corner.y *= 1.0 + length(a_particleVelocity) * ${glslFloat(stretchScale)};
+        if (${String(alignmentId(renderer.alignment))} == 2) {
+            corner.y *= 1.0 + length(a_particleVelocity) * ${glslFloat(stretchScale)};
+        }
     }
-    vec2 billboardOffset = (side * corner.x + axis * corner.y) * a_particlePositionSize.w;
+    vec2 billboardOffset = (side * corner.x + axis * corner.y) * particleSize;
     gl_Position = u_projectionMatrix * vec4(viewPosition.xyz + vec3(billboardOffset, 0.0), 1.0);
 
     float frameCount = ${String(rows * columns)}.0;
@@ -145,7 +187,7 @@ void main(void) {
     float row = floor(frame / ${String(columns)}.0);
     vec2 sheetSize = vec2(${String(columns)}.0, ${String(rows)}.0);
     v_particleUV = (a_particleUV + vec2(column, row)) / sheetSize;
-    v_particleColor = a_particleColor;
+    v_particleColor = particleColor;
 }`;
 }
 
@@ -272,7 +314,13 @@ export class ParticleCPUInstanceWriter {
         const [rows, columns] = textureSheet(plan);
         const material = new ShaderMaterial({
             sourceRevision: `particle-cpu-sprite:${plan.layoutHash}:${String(rendererIndex)}`,
-            vs: createVertexSource(renderer, plan.definition.simulationSpace, rows, columns),
+            vs: createVertexSource(
+                renderer,
+                plan.definition.simulationSpace,
+                plan.definition.modules,
+                rows,
+                columns
+            ),
             fs: createFragmentSource(renderer),
             compositing: compositing(renderer),
             cullMode: 'none',
@@ -313,11 +361,11 @@ export class ParticleCPUInstanceWriter {
         });
     }
 
-    sync(cameraPosition: ParticleVector3): void {
-        const count = this.#state.aliveCount;
+    sync(cameraPosition: ParticleVector3, quality: Readonly<ParticleCPUWriterQuality>): void {
+        const count = quality.enabled ? this.#state.aliveCount : 0;
         for (let index = 0; index < count; index += 1) this.#sortIndices[index] = index;
         const sort = this.#renderer.sort ?? 'none';
-        if (sort !== 'none') this.sort(count, sort, cameraPosition);
+        if (quality.sorting && sort !== 'none') this.sort(count, sort, cameraPosition);
         const positions = this.#state.f32('position');
         const sizes = this.#state.f32('size');
         const colors = this.#state.f32('color');

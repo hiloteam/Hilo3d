@@ -7,9 +7,6 @@ import { ParticleParameter } from './ParticleParameter';
 function opaqueIdentity(value: object): string | null {
     if (value instanceof Texture) return `Texture(${value.id})`;
     if (value instanceof Geometry) return `Geometry(${value.id})`;
-    if (value instanceof ParticleParameter) {
-        return `Parameter(${value.name}:${value.type})`;
-    }
     return null;
 }
 
@@ -25,6 +22,9 @@ function canonicalValue(value: unknown, seen: Set<object>): string {
     if (typeof value === 'boolean') return value ? 'b:1' : 'b:0';
     if (typeof value !== 'object') {
         throw new TypeError(`Particle definitions cannot contain ${typeof value} values`);
+    }
+    if (value instanceof ParticleParameter) {
+        return `Parameter(${value.name}:${value.type}:${canonicalValue(value.defaultValue, seen)})`;
     }
     const opaque = opaqueIdentity(value);
     if (opaque !== null) return opaque;

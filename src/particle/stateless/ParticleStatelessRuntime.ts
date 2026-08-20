@@ -1,8 +1,9 @@
 import type ParticleCurve from '../ParticleCurve';
 import type ParticleGradient from '../ParticleGradient';
+import { ParticleParameterSet, resolveParticleParameter } from '../ParticleParameter';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type { ParticleRandomKey } from '../ParticleRandom';
-import type { ParticleModule, ParticleScalarValue, ParticleVector3 } from '../ParticleTypes';
+import type { ParticleModule, ParticleScalarSource, ParticleVector3 } from '../ParticleTypes';
 import {
     normalizeParticleVector,
     sampleParticleColor,
@@ -20,6 +21,7 @@ const UP_VECTOR: ParticleVector3 = Object.freeze([0, 1, 0]);
 const ONE_VECTOR: ParticleVector3 = Object.freeze([1, 1, 1]);
 const UNIT_RANGE = Object.freeze([0, 1] as const);
 const MANUAL_ID_BASE = 0x8000_0000;
+const BURST_ID_BASE = 0x4000_0000;
 
 interface MutableParticleRandomKey {
     systemSeed: number;
@@ -38,14 +40,23 @@ interface ParticleStatelessManualBatch {
     readonly emitterPosition: ParticleVector3;
 }
 
-function maximumScalar(value: ParticleScalarValue | undefined, fallback: number): number {
+function maximumScalar(
+    value: ParticleScalarSource | undefined,
+    fallback: number,
+    parameters: ParticleParameterSet
+): number {
     if (value === undefined) return fallback;
-    return typeof value === 'number' ? value : value.max;
+    const source = resolveParticleParameter(value, parameters);
+    return typeof source === 'number' ? source : source.max;
 }
 
-function scalarRate(value: ParticleScalarValue | undefined): number {
+function scalarRate(
+    value: ParticleScalarSource | undefined,
+    parameters: ParticleParameterSet
+): number {
     if (value === undefined) return 0;
-    return Math.max(0, typeof value === 'number' ? value : (value.min + value.max) * 0.5);
+    const source = resolveParticleParameter(value, parameters);
+    return Math.max(0, typeof source === 'number' ? source : (source.min + source.max) * 0.5);
 }
 
 function length3(x: number, y: number, z: number): number {
@@ -68,6 +79,7 @@ export class ParticleStatelessRuntime {
     readonly plan: Readonly<ParticleCompiledEmitterPlan>;
     readonly state: ParticleCPUState;
     readonly #seed: number;
+    readonly #parameters: ParticleParameterSet;
     readonly #curveLUTs = new Map<ParticleCurve, Float32Array>();
     readonly #gradientLUTs = new Map<ParticleGradient, Float32Array>();
     readonly #temporaryA = new Float32Array(4);
@@ -79,14 +91,22 @@ export class ParticleStatelessRuntime {
     readonly #emitterPosition: [number, number, number] = [0, 0, 0];
     #emitterAge = 0;
     #manualSequence = MANUAL_ID_BASE;
+    #particleLimit: number;
+    #spawnRateScale = 1;
 
-    constructor(plan: Readonly<ParticleCompiledEmitterPlan>, seed: number) {
+    constructor(
+        plan: Readonly<ParticleCompiledEmitterPlan>,
+        seed: number,
+        parameters = new ParticleParameterSet()
+    ) {
         if (plan.kind !== 'stateless') {
             throw new TypeError('ParticleStatelessRuntime requires a stateless compiled plan');
         }
         this.plan = plan;
         this.state = new ParticleCPUState(plan);
+        this.#particleLimit = this.state.capacity;
         this.#seed = seed >>> 0;
+        this.#parameters = parameters;
         this.#keyValue = {
             systemSeed: this.#seed,
             emitterId: plan.emitterId,
@@ -104,6 +124,26 @@ export class ParticleStatelessRuntime {
 
     /** Stateless emitters have no fixed-step remainder because absolute time is authoritative. */
     readonly accumulator = 0;
+
+    /** Apply renderer-local capacity and scheduled-emission scaling. @internal */
+    setBudget(
+        particleLimit: number,
+        spawnRateScale: number,
+        _collision: boolean,
+        materialize = true
+    ): void {
+        if (!Number.isSafeInteger(particleLimit) || particleLimit < 0) {
+            throw new RangeError('Particle budget limit must be a non-negative safe integer');
+        }
+        if (!Number.isFinite(spawnRateScale) || spawnRateScale < 0) {
+            throw new RangeError(
+                'Particle budget spawn-rate scale must be finite and non-negative'
+            );
+        }
+        this.#particleLimit = Math.min(this.state.capacity, particleLimit);
+        this.#spawnRateScale = spawnRateScale;
+        if (materialize) this.rebuild();
+    }
 
     emit(command: number | Readonly<ParticleManualEmitCommand>): void {
         const normalized = typeof command === 'number' ? { count: command } : command;
@@ -128,7 +168,8 @@ export class ParticleStatelessRuntime {
     simulate(
         deltaTime: number,
         context: Readonly<ParticleEmitterFrameContext>,
-        fixedStep = this.plan.definition.fixedStep
+        fixedStep = this.plan.definition.fixedStep,
+        materialize = true
     ): number {
         if (!Number.isFinite(deltaTime) || deltaTime < 0) {
             throw new RangeError('Particle simulation deltaTime must be finite and non-negative');
@@ -141,7 +182,7 @@ export class ParticleStatelessRuntime {
         this.#emitterPosition[2] = context.position[2];
         this.flushManualCommands();
         this.#emitterAge = Math.fround(this.#emitterAge + deltaTime);
-        this.rebuild();
+        if (materialize) this.rebuild();
         return deltaTime === 0 ? 0 : 1;
     }
 
@@ -166,10 +207,11 @@ export class ParticleStatelessRuntime {
     private rebuild(): void {
         this.state.aliveCount = 0;
         const definition = this.plan.definition;
-        const maximumLifetime = maximumScalar(definition.initialize.lifetime, 1);
+        const maximumLifetime = maximumScalar(definition.initialize.lifetime, 1, this.#parameters);
         const activeTime = Math.max(0, this.#emitterAge - definition.startDelay);
         const oldestTime = Math.max(0, activeTime - maximumLifetime);
-        const rate = scalarRate(definition.emission.rateOverTime);
+        const rate =
+            scalarRate(definition.emission.rateOverTime, this.#parameters) * this.#spawnRateScale;
         if (rate > 0) {
             const emissionEnd = definition.looping
                 ? activeTime
@@ -181,24 +223,33 @@ export class ParticleStatelessRuntime {
                 this.generateParticle(ordinal - 1, Math.max(0, activeTime - spawnTime));
             }
         }
+        const bursts = definition.emission.bursts ?? [];
         const maximumLoop = definition.looping ? Math.floor(activeTime / definition.duration) : 0;
-        let burstSequenceBase = Math.floor(rate * Math.max(0, activeTime));
-        for (let loop = 0; loop <= maximumLoop; loop += 1) {
+        const maximumBurstTime = bursts.reduce(
+            (maximum, burst) =>
+                Math.max(maximum, burst.time + ((burst.cycles ?? 1) - 1) * (burst.interval ?? 0)),
+            0
+        );
+        const minimumLoop = definition.looping
+            ? Math.max(0, Math.floor((oldestTime - maximumBurstTime) / definition.duration))
+            : 0;
+        const burstIdsPerLoop = bursts.reduce(
+            (total, burst) => total + burst.count * (burst.cycles ?? 1),
+            0
+        );
+        let burstSequenceBase = (BURST_ID_BASE + Math.imul(minimumLoop, burstIdsPerLoop)) >>> 0;
+        for (let loop = minimumLoop; loop <= maximumLoop; loop += 1) {
             const loopBase = loop * definition.duration;
-            for (const [burstIndex, burst] of (definition.emission.bursts ?? []).entries()) {
+            for (const burst of bursts) {
                 for (let cycle = 0; cycle < (burst.cycles ?? 1); cycle += 1) {
                     const spawnTime = loopBase + burst.time + cycle * (burst.interval ?? 0);
                     if (spawnTime > activeTime || spawnTime < oldestTime) {
                         burstSequenceBase += burst.count;
                         continue;
                     }
-                    for (let index = 0; index < burst.count; index += 1) {
-                        const id =
-                            (burstSequenceBase +
-                                Math.imul(loop + 1, 4099) +
-                                Math.imul(burstIndex + 1, 257) +
-                                index) >>>
-                            0;
+                    const scaledBurstCount = Math.floor(burst.count * this.#spawnRateScale);
+                    for (let index = 0; index < scaledBurstCount; index += 1) {
+                        const id = (burstSequenceBase + index) >>> 0;
                         this.generateParticle(id, Math.max(0, activeTime - spawnTime));
                     }
                     burstSequenceBase += burst.count;
@@ -231,12 +282,14 @@ export class ParticleStatelessRuntime {
             sampleParticleScalar(
                 this.plan.definition.initialize.lifetime,
                 1,
-                this.key(particleId, 60)
+                this.key(particleId, 60),
+                this.#parameters
             )
         );
         if (age >= lifetime) return;
         let index = this.state.aliveCount;
-        if (index >= this.state.capacity) {
+        if (index >= this.#particleLimit) {
+            if (this.#particleLimit === 0) return;
             if (this.plan.definition.overflow === 'drop-new') return;
             index = this.oldestParticleIndex();
         } else {
@@ -254,7 +307,8 @@ export class ParticleStatelessRuntime {
             this.plan.definition.initialize.position,
             ZERO_VECTOR,
             this.key(particleId, 30),
-            this.#temporaryC
+            this.#temporaryC,
+            this.#parameters
         );
         position[0] = (position[0] ?? 0) + (this.#temporaryC[0] ?? 0);
         position[1] = (position[1] ?? 0) + (this.#temporaryC[1] ?? 0);
@@ -271,14 +325,16 @@ export class ParticleStatelessRuntime {
                 this.plan.definition.initialize.direction,
                 UP_VECTOR,
                 this.key(particleId, 40),
-                direction
+                direction,
+                this.#parameters
             );
             normalizeParticleVector(direction);
         }
         const speed = sampleParticleScalar(
             this.plan.definition.initialize.speed,
             0,
-            this.key(particleId, 50)
+            this.key(particleId, 50),
+            this.#parameters
         );
         const offset = index * 3;
         const positions = this.state.f32('position');
@@ -314,7 +370,8 @@ export class ParticleStatelessRuntime {
             const size = sampleParticleScalar(
                 this.plan.definition.initialize.size,
                 1,
-                this.key(particleId, 70)
+                this.key(particleId, 70),
+                this.#parameters
             );
             this.state.f32('size')[index] = size;
             if (this.state.has('base-size')) this.state.f32('base-size')[index] = size;
@@ -323,7 +380,8 @@ export class ParticleStatelessRuntime {
             const rotation = sampleParticleScalar(
                 this.plan.definition.initialize.rotation,
                 0,
-                this.key(particleId, 71)
+                this.key(particleId, 71),
+                this.#parameters
             );
             this.state.f32('rotation')[index] = rotation;
             if (this.state.has('base-rotation')) this.state.f32('base-rotation')[index] = rotation;
@@ -332,7 +390,8 @@ export class ParticleStatelessRuntime {
             sampleParticleColor(
                 this.plan.definition.initialize.color,
                 this.key(particleId, 72),
-                this.#temporaryA
+                this.#temporaryA,
+                this.#parameters
             );
             this.state.f32('color').set(this.#temporaryA, index * 4);
             if (this.state.has('base-color')) {
@@ -345,7 +404,8 @@ export class ParticleStatelessRuntime {
                 sampleParticleScalar(
                     this.plan.definition.initialize.meshIndex,
                     particleId,
-                    this.key(particleId, 74)
+                    this.key(particleId, 74),
+                    this.#parameters
                 )
             );
         }
@@ -354,7 +414,8 @@ export class ParticleStatelessRuntime {
                 sampleParticleScalar(
                     this.plan.definition.initialize.ribbonId,
                     0,
-                    this.key(particleId, 75)
+                    this.key(particleId, 75),
+                    this.#parameters
                 )
             );
         }
@@ -364,7 +425,8 @@ export class ParticleStatelessRuntime {
                 sampleParticleScalar(
                     this.plan.definition.initialize.mass,
                     1,
-                    this.key(particleId, 73)
+                    this.key(particleId, 73),
+                    this.#parameters
                 )
             );
         }

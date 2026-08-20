@@ -1,19 +1,28 @@
 import type { Bounds } from '../geometry/Geometry';
 import type ParticleEmitterDefinition from './ParticleEmitterDefinition';
-import type { ParticleModule, ParticleScalarValue, ParticleVector3Value } from './ParticleTypes';
+import { ParticleParameter, resolveParticleParameter } from './ParticleParameter';
+import type {
+    ParticleModule,
+    ParticleScalarSource,
+    ParticleScalarValue,
+    ParticleVector3Source,
+    ParticleVector3Value
+} from './ParticleTypes';
 
-function scalarMaximum(value: ParticleScalarValue | undefined, fallback: number): number {
+function scalarMaximum(value: ParticleScalarSource | undefined, fallback: number): number {
     if (value === undefined) return fallback;
-    return typeof value === 'number'
-        ? Math.abs(value)
-        : Math.max(Math.abs(value.min), Math.abs(value.max));
+    const source: ParticleScalarValue = resolveParticleParameter(value);
+    return typeof source === 'number'
+        ? Math.abs(source)
+        : Math.max(Math.abs(source.min), Math.abs(source.max));
 }
 
-function vectorMaximum(value: ParticleVector3Value | undefined): number {
+function vectorMaximum(value: ParticleVector3Source | undefined): number {
     if (value === undefined) return 0;
+    const source: ParticleVector3Value = resolveParticleParameter(value);
     const maximum = (vector: readonly number[]): number => Math.hypot(...vector);
-    if ('min' in value) return Math.max(maximum(value.min), maximum(value.max));
-    return maximum(value);
+    if ('min' in source) return Math.max(maximum(source.min), maximum(source.max));
+    return maximum(source);
 }
 
 function moduleAcceleration(module: ParticleModule): number {
@@ -86,7 +95,17 @@ function rendererRadius(emitter: ParticleEmitterDefinition): number {
 
 /** Return whether conservative automatic bounds are impossible for this emitter. */
 export function particleEmitterRequiresManualBounds(emitter: ParticleEmitterDefinition): boolean {
-    return emitter.modules.some(module => module.type === 'vector-field');
+    const initialize = emitter.initialize;
+    return (
+        emitter.modules.some(module => module.type === 'vector-field') ||
+        [
+            initialize.lifetime,
+            initialize.position,
+            initialize.speed,
+            initialize.size,
+            initialize.mass
+        ].some(value => value instanceof ParticleParameter)
+    );
 }
 
 /** Derive conservative local bounds for analytic fixed modules. */
@@ -111,7 +130,7 @@ export function deriveParticleEmitterBounds(emitter: ParticleEmitterDefinition):
     }
     if (particleEmitterRequiresManualBounds(emitter)) {
         throw new TypeError(
-            `Particle emitter ${emitter.name} requires manual bounds because vector-field sampling is not conservatively bounded`
+            `Particle emitter ${emitter.name} requires manual bounds because runtime-bound initialization or vector-field sampling is not conservatively bounded`
         );
     }
     const extent = shapeExtent(emitter);

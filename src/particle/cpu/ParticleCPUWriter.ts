@@ -7,10 +7,16 @@ import { ParticleCPUInstanceWriter } from './ParticleCPUInstanceWriter';
 import { ParticleCPUMeshInstanceWriter } from './ParticleCPUMeshInstanceWriter';
 import { ParticleCPURibbonWriter } from './ParticleCPURibbonWriter';
 
+export interface ParticleCPUWriterQuality {
+    readonly enabled: boolean;
+    readonly sorting: boolean;
+    readonly ribbons: boolean;
+}
+
 /** Renderer-neutral CPU particle output bridge used by the shared scene collector. @internal */
 export interface ParticleCPUWriter {
     readonly mesh: Mesh;
-    sync(cameraPosition: ParticleVector3): void;
+    sync(cameraPosition: ParticleVector3, quality: Readonly<ParticleCPUWriterQuality>): void;
     destroy(renderer: Renderer): void;
 }
 

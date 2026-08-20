@@ -1,10 +1,7 @@
-import Color from '../math/Color';
-import Vector2 from '../math/Vector2';
-import Vector3 from '../math/Vector3';
-import Vector4 from '../math/Vector4';
 import Texture from '../texture/Texture';
 import ParticleCurve from './ParticleCurve';
 import ParticleGradient from './ParticleGradient';
+import type { ParticleVector2, ParticleVector3, ParticleVector4 } from './ParticleTypes';
 
 /** Closed value-kind set accepted by typed particle parameters. */
 export type ParticleParameterType =
@@ -23,15 +20,18 @@ export type ParticleParameterType =
 export type ParticleParameterValue =
     | number
     | boolean
-    | Vector2
-    | Vector3
-    | Vector4
-    | Color
+    | ParticleVector2
+    | ParticleVector3
+    | ParticleVector4
     | Texture<unknown>
     | ParticleCurve
     | ParticleGradient;
 
 function validateValue(type: ParticleParameterType, value: ParticleParameterValue): void {
+    const finiteVector = (length: number): boolean =>
+        Array.isArray(value) &&
+        value.length === length &&
+        value.every(component => typeof component === 'number' && Number.isFinite(component));
     const valid =
         (type === 'float' && typeof value === 'number' && Number.isFinite(value)) ||
         (type === 'uint' &&
@@ -39,14 +39,31 @@ function validateValue(type: ParticleParameterType, value: ParticleParameterValu
             Number.isSafeInteger(value) &&
             value >= 0) ||
         (type === 'boolean' && typeof value === 'boolean') ||
-        (type === 'vector2' && value instanceof Vector2) ||
-        (type === 'vector3' && value instanceof Vector3 && !(value instanceof Color)) ||
-        (type === 'vector4' && value instanceof Vector4 && !(value instanceof Color)) ||
-        (type === 'color' && value instanceof Color) ||
+        (type === 'vector2' && finiteVector(2)) ||
+        (type === 'vector3' && finiteVector(3)) ||
+        (type === 'vector4' && finiteVector(4)) ||
+        (type === 'color' && finiteVector(4)) ||
         (type === 'texture' && value instanceof Texture) ||
         (type === 'curve' && value instanceof ParticleCurve) ||
         (type === 'gradient' && value instanceof ParticleGradient);
     if (!valid) throw new TypeError(`Particle parameter value does not match type ${type}`);
+}
+
+function snapshotValue<T extends ParticleParameterValue>(value: T): T {
+    return (Array.isArray(value) ? Object.freeze([...value]) : value) as T;
+}
+
+function parameterValuesEqual(
+    left: ParticleParameterValue,
+    right: ParticleParameterValue
+): boolean {
+    if (Object.is(left, right)) return true;
+    return (
+        Array.isArray(left) &&
+        Array.isArray(right) &&
+        left.length === right.length &&
+        left.every((component, index) => Object.is(component, right[index]))
+    );
 }
 
 /** Typed identity token for runtime parameter updates that do not change plan topology. */
@@ -62,7 +79,7 @@ export class ParticleParameter<T extends ParticleParameterValue = ParticleParame
         validateValue(type, defaultValue);
         this.name = name;
         this.type = type;
-        this.defaultValue = defaultValue;
+        this.defaultValue = snapshotValue(defaultValue);
         Object.freeze(this);
     }
 }
@@ -82,8 +99,8 @@ export class ParticleParameterSet {
 
     set<T extends ParticleParameterValue>(parameter: ParticleParameter<T>, value: T): this {
         validateValue(parameter.type, value);
-        if (Object.is(this.get(parameter), value)) return this;
-        this.#values.set(parameter, value);
+        if (parameterValuesEqual(this.get(parameter), value)) return this;
+        this.#values.set(parameter, snapshotValue(value));
         this.#revision++;
         return this;
     }
@@ -98,4 +115,14 @@ export class ParticleParameterSet {
         this.#revision++;
         return this;
     }
+}
+
+/** Resolve a bindable value against a parameter set, falling back to the token default. @internal */
+export function resolveParticleParameter<T>(
+    value: T | ParticleParameter<T & ParticleParameterValue>,
+    parameters?: ParticleParameterSet
+): T {
+    return value instanceof ParticleParameter
+        ? (parameters?.get(value) ?? value.defaultValue)
+        : value;
 }

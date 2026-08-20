@@ -1,3 +1,6 @@
+import type Camera from '../camera/Camera';
+import ParticleSystem from './ParticleSystem';
+
 /** Renderer-local particle quality and capacity budget. */
 export interface ParticleBudgetProfile {
     readonly maxSystems?: number;
@@ -109,6 +112,32 @@ export class ParticleBudgetManager {
         });
     }
 
+    /** Resolve and immediately apply one complete frame-wide budget to live systems. */
+    apply(
+        systems: readonly ParticleSystem[],
+        camera?: Camera
+    ): readonly Readonly<ParticleBudgetDecision>[] {
+        const identifiers = new Set<string>();
+        for (const system of systems) {
+            if (!(system instanceof ParticleSystem)) {
+                throw new TypeError('ParticleBudgetManager.apply accepts ParticleSystem instances');
+            }
+            if (identifiers.has(system.budgetId)) {
+                throw new TypeError(`Particle budgetId ${system.budgetId} is duplicated`);
+            }
+            identifiers.add(system.budgetId);
+        }
+        const decisions = this.resolve(
+            systems.flatMap(system => system.createBudgetRequests(camera))
+        );
+        for (const system of systems) {
+            system.applyBudgetDecisions(
+                decisions.filter(decision => decision.systemId === system.budgetId)
+            );
+        }
+        return decisions;
+    }
+
     /** Resolve a complete frame at once so request order cannot alter the result. */
     resolve(
         requests: readonly Readonly<ParticleBudgetRequest>[]
@@ -156,14 +185,14 @@ export class ParticleBudgetManager {
             );
             const remainingParticles = Math.max(0, this.profile.maxParticles - particleCount);
             const particleLimit = enabled ? Math.min(scaledCapacity, remainingParticles) : 0;
-            if (particleLimit < Math.min(request.capacity, request.estimatedAlive)) {
+            if (particleLimit < request.capacity) {
                 reasons.push('particle-budget');
             }
-            if (particleLimit === 0 && request.estimatedAlive > 0) enabled = false;
+            if (particleLimit === 0 && request.capacity > 0) enabled = false;
             if (enabled) {
                 activeSystems.add(request.systemId);
                 emitterCount++;
-                particleCount += Math.min(request.estimatedAlive, particleLimit);
+                particleCount += particleLimit;
             }
             decisions[index] = Object.freeze({
                 systemId: request.systemId,

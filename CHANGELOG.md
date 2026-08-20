@@ -2,6 +2,13 @@
 
 ### Breaking changes
 
+- Integrate typed particle parameters into emission and spawn initialization across CPU, stateless,
+  and stateful WebGPU command generation; runtime value changes no longer require recompilation.
+  Apply `ParticleBudgetManager` decisions directly to live capacity, spawn rate, sorting, soft
+  particles, collision, and ribbon work. Connect the bounded stateless WebGPU generator to Render
+  Graph compute, indirect storage raster, and device-loss regeneration, with explicit CPU fallback
+  for unsupported definitions and manual emission. Explicit stateful GPU emitters now reject
+  `replace-oldest`; unsupported module/backend pairs fail compilation instead of doing nothing.
 - Replace the mutable `Material` monolith with immutable `MaterialDefinition` plus
   `MaterialInstance`. Remove legacy topology mutation, WebGL-style blend/side fields, material-owned
   render order and shadow participation, material display transforms, shared UV matrices, shadow
@@ -38,7 +45,7 @@
   Graph. Keep the existing specialized compute-particle showcase unchanged until the remaining
   particle phases are complete. Add stateless eligibility metadata and asset-level diagnostics,
   absolute-time CPU reconstruction, a no-state Naga-validated WebGPU renderer-data generator,
-  deterministic budget/quality decisions, and reusable short-effect system pooling.
+  deterministic live budget/quality application, and reusable short-effect system pooling.
 - Extend the particle runtime through P4 with analytic collision and triggers, WebGPU scene-depth
   collision, sampled-depth soft sprites with fragment depth comparison, compact bounded CPU events,
   typed `ParticleEventChannel`, asynchronous aggregate reads, and GPU-resident event

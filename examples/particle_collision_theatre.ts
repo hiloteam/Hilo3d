@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createExampleContext } from './shared/init';
+import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 import {
     createParticleTexture,
     installExampleDisposal,
@@ -11,6 +11,8 @@ type RainPayload = Readonly<{
     velocity: Hilo3d.ParticleVector3;
 }>;
 
+type ColliderFinish = 'anisotropy' | 'clearcoat' | 'gem' | 'lacquer';
+
 type CollisionLane = Readonly<{
     emitter: string;
     event: string;
@@ -21,47 +23,98 @@ type CollisionLane = Readonly<{
     collider: Hilo3d.ParticleAnalyticCollider;
 }>;
 
+const compactViewport = window.matchMedia('(max-width: 720px)').matches;
 const context = await createExampleContext({
-    camera: { fov: 40, near: 0.1, far: 60, x: 0.15, y: 2.5, z: 11.8 },
+    camera: {
+        fov: compactViewport ? 48 : 38,
+        near: 0.1,
+        far: 60,
+        x: 0.1,
+        y: compactViewport ? 3.8 : 2.7,
+        z: compactViewport ? 22.5 : 12.6
+    },
     stage: {
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
-            bloom: { threshold: 0.95, knee: 0.2, intensity: 0.24, scatter: 0.3, maxLevels: 3 },
+            bloom: { threshold: 0.82, knee: 0.24, intensity: 0.26, scatter: 0.36, maxLevels: 4 },
             colorUber: {
-                exposure: -0.18,
-                contrast: 0.13,
-                saturation: 0.1,
+                exposure: -0.12,
+                contrast: 0.14,
+                saturation: 0.04,
                 toneMapping: 'pbr-neutral',
-                vignetteIntensity: 0.58,
-                vignetteSmoothness: 0.6,
-                vignetteColor: new Hilo3d.Color(0.004, 0.006, 0.018, 0.62)
+                vignetteIntensity: 0.34,
+                vignetteSmoothness: 0.78,
+                vignetteColor: new Hilo3d.Color(0.012, 0.009, 0.014, 0.46)
             }
         })
     },
     controls: {
-        target: new Hilo3d.Vector3(0.15, 0.55, 0),
-        minDistance: 8,
-        maxDistance: 17,
+        target: new Hilo3d.Vector3(0.1, 0.64, -0.05),
+        minDistance: compactViewport ? 14 : 9,
+        maxDistance: compactViewport ? 28 : 18,
         minPolarAngle: 0.62,
         maxPolarAngle: 2.05
     }
 });
 const { stage, renderer, directionLight, ambientLight } = context;
 
-renderer.clearColor.set(0.002, 0.004, 0.012, 1);
-directionLight.amount = 3.8;
-directionLight.color.set(0.66, 0.82, 1, 1);
-directionLight.direction.set(-0.35, -1, -0.24);
-ambientLight.amount = 0.28;
-ambientLight.color.set(0.28, 0.34, 0.72, 1);
+renderer.clearColor.set(0.016, 0.014, 0.019, 1);
+directionLight.amount = 1.8;
+directionLight.color.set(1, 0.88, 0.74, 1);
+directionLight.direction.set(-0.65, -1, -0.4);
+ambientLight.amount = 0.08;
+
+const areaLight = new Hilo3d.AreaLight({
+    color: new Hilo3d.Color(1, 0.55, 0.3),
+    amount: 3.6,
+    width: 4.5,
+    height: 2.5,
+    x: -1.5,
+    y: 4,
+    z: 3
+}).addTo(stage);
+areaLight.lookAt(new Hilo3d.Vector3(0, 0.2, 0));
+new Hilo3d.PointLight({
+    color: new Hilo3d.Color(0.2, 0.75, 1),
+    amount: 5,
+    range: 10,
+    x: 3.2,
+    y: 1.6,
+    z: 2.4
+}).addTo(stage);
+
+const environmentMaps = await loadEnvironmentMaps();
+const { brdfLUT, diffuseEnvMap, specularEnvMap } = environmentMaps;
+const studioEnvironment = Object.freeze({
+    brdfLUT,
+    diffuseEnvMap: Object.freeze({ texture: diffuseEnvMap, encoding: 'srgb' as const }),
+    specularEnvMap: Object.freeze({ texture: specularEnvMap, encoding: 'srgb' as const }),
+    diffuseEnvIntensity: 1,
+    specularEnvIntensity: 1
+});
 
 const floorY = -1.24;
+const planeY = floorY + 0.32;
 new Hilo3d.Mesh({
-    y: floorY - 0.1,
-    geometry: new Hilo3d.BoxGeometry({ width: 8.8, height: 0.2, depth: 5.6 }),
+    y: floorY - 0.18,
+    geometry: new Hilo3d.BoxGeometry({ width: 9.5, height: 0.36, depth: 6.1 }),
     material: new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.018, 0.04, 0.095),
-        metallic: 0.84,
-        roughness: 0.24
+        ...studioEnvironment,
+        baseColor: new Hilo3d.Color(0.038, 0.036, 0.043),
+        metallic: 0.2,
+        roughness: 0.48
+    }),
+    receiveShadows: true
+}).addTo(stage);
+
+new Hilo3d.Mesh({
+    y: 0.78,
+    z: -2.72,
+    geometry: new Hilo3d.BoxGeometry({ width: 9.5, height: 4.35, depth: 0.12 }),
+    material: new Hilo3d.PBRMaterial({
+        ...studioEnvironment,
+        baseColor: new Hilo3d.Color(0.038, 0.038, 0.047),
+        metallic: 0.12,
+        roughness: 0.78
     }),
     receiveShadows: true
 }).addTo(stage);
@@ -106,35 +159,196 @@ const lanes: readonly CollisionLane[] = Object.freeze([
         phase: 1.6,
         burstCounts: [3, 1, 2],
         color: [0.34, 1, 0.46],
-        collider: { type: 'plane', normal: [0, 1, 0], offset: floorY }
+        collider: { type: 'plane', normal: [0, 1, 0], offset: planeY }
     }
 ]);
 
-function laneMaterial(color: readonly [number, number, number]): Hilo3d.PBRMaterial {
+function laneMaterial(
+    color: readonly [number, number, number],
+    metallic: number,
+    roughness: number,
+    finish: ColliderFinish
+): Hilo3d.PBRMaterial {
+    const finishParameters =
+        finish === 'anisotropy'
+            ? {
+                  anisotropyStrength: 0.82,
+                  anisotropyRotation: Math.PI * 0.18,
+                  clearcoatFactor: 0.22,
+                  clearcoatRoughnessFactor: 0.1
+              }
+            : finish === 'gem'
+              ? {
+                    clearcoatFactor: 0.96,
+                    clearcoatRoughnessFactor: 0.055,
+                    iridescenceFactor: 0.2,
+                    iridescenceIor: 1.36,
+                    iridescenceThicknessMinimum: 180,
+                    iridescenceThicknessMaximum: 520
+                }
+              : finish === 'lacquer'
+                ? {
+                      clearcoatFactor: 0.9,
+                      clearcoatRoughnessFactor: 0.1,
+                      iridescenceFactor: 0.07,
+                      iridescenceIor: 1.32,
+                      iridescenceThicknessMinimum: 240,
+                      iridescenceThicknessMaximum: 420
+                  }
+                : {
+                      clearcoatFactor: 1,
+                      clearcoatRoughnessFactor: 0.065
+                  };
     return new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(color[0] * 0.1, color[1] * 0.1, color[2] * 0.1),
-        metallic: 0.68,
-        roughness: 0.32,
-        emissionFactor: new Hilo3d.Color(color[0] * 0.016, color[1] * 0.016, color[2] * 0.016)
+        ...studioEnvironment,
+        ...finishParameters,
+        baseColor: new Hilo3d.Color(
+            0.04 + color[0] * 0.22,
+            0.042 + color[1] * 0.22,
+            0.05 + color[2] * 0.22
+        ),
+        metallic,
+        roughness,
+        emissionFactor: new Hilo3d.Color(color[0] * 0.002, color[1] * 0.002, color[2] * 0.002)
     });
 }
 
-function laneWireMaterial(color: readonly [number, number, number]): Hilo3d.BasicMaterial {
-    return new Hilo3d.BasicMaterial({
-        lightType: 'NONE',
-        diffuse: new Hilo3d.Color(color[0] * 0.9, color[1] * 0.9, color[2] * 0.9),
-        compositing: { mode: 'alpha-blend', premultiplied: false },
-        opacity: 0.78,
-        state: { wireframe: true, depthWrite: false }
+function accentMaterial(
+    color: readonly [number, number, number],
+    intensity = 0.28
+): Hilo3d.PBRMaterial {
+    return new Hilo3d.PBRMaterial({
+        ...studioEnvironment,
+        baseColor: new Hilo3d.Color(0.04, 0.038, 0.046),
+        metallic: 0.76,
+        roughness: 0.26,
+        emissionFactor: new Hilo3d.Color(
+            color[0] * intensity,
+            color[1] * intensity,
+            color[2] * intensity
+        )
     });
 }
+
+const nicheMaterial = new Hilo3d.PBRMaterial({
+    ...studioEnvironment,
+    baseColor: new Hilo3d.Color(0.048, 0.047, 0.058),
+    metallic: 0.1,
+    roughness: 0.82
+});
+const plinthMaterial = new Hilo3d.PBRMaterial({
+    ...studioEnvironment,
+    baseColor: new Hilo3d.Color(0.075, 0.072, 0.084),
+    metallic: 0.36,
+    roughness: 0.38
+});
+const sourceHousingMaterial = new Hilo3d.PBRMaterial({
+    ...studioEnvironment,
+    baseColor: new Hilo3d.Color(0.16, 0.112, 0.07),
+    metallic: 0.68,
+    roughness: 0.3
+});
+const stageEdgeMaterial = new Hilo3d.PBRMaterial({
+    ...studioEnvironment,
+    baseColor: new Hilo3d.Color(0.18, 0.105, 0.055),
+    metallic: 0.76,
+    roughness: 0.24,
+    emissionFactor: new Hilo3d.Color(0.01, 0.004, 0.001)
+});
+const colliderTrimMaterial = new Hilo3d.PBRMaterial({
+    ...studioEnvironment,
+    baseColor: new Hilo3d.Color(0.42, 0.22, 0.072),
+    metallic: 0.88,
+    roughness: 0.18,
+    emissionFactor: new Hilo3d.Color(0.018, 0.007, 0.0015)
+});
+
+new Hilo3d.Mesh({
+    y: floorY - 0.01,
+    z: 3.035,
+    geometry: new Hilo3d.BoxGeometry({ width: 9.2, height: 0.028, depth: 0.035 }),
+    material: stageEdgeMaterial,
+    castShadows: false
+}).addTo(stage);
+
+function addLaneArchitecture(lane: CollisionLane): void {
+    new Hilo3d.Mesh({
+        x: lane.x,
+        y: 0.52,
+        z: -2.63,
+        geometry: new Hilo3d.BoxGeometry({ width: 1.28, height: 3.28, depth: 0.1 }),
+        material: nicheMaterial,
+        receiveShadows: true
+    }).addTo(stage);
+    new Hilo3d.Mesh({
+        x: lane.x,
+        y: floorY + 0.032,
+        z: -0.03,
+        geometry: new Hilo3d.BoxGeometry({ width: 1.5, height: 0.064, depth: 1.78 }),
+        material: plinthMaterial,
+        castShadows: false
+    }).addTo(stage);
+    if (lane.emitter === 'plane-stream') {
+        new Hilo3d.Mesh({
+            x: lane.x,
+            y: floorY + 0.16,
+            z: -0.02,
+            geometry: new Hilo3d.BoxGeometry({ width: 1.08, height: 0.32, depth: 1.08 }),
+            material: plinthMaterial,
+            castShadows: false,
+            receiveShadows: true
+        }).addTo(stage);
+    }
+    new Hilo3d.Mesh({
+        x: lane.x,
+        y: floorY + 0.042,
+        z: 0.78,
+        geometry: new Hilo3d.BoxGeometry({ width: 0.62, height: 0.015, depth: 0.028 }),
+        material: accentMaterial(lane.color, 0.22),
+        castShadows: false
+    }).addTo(stage);
+    new Hilo3d.Mesh({
+        x: lane.x,
+        y: 2.94,
+        z: -0.04,
+        geometry: new Hilo3d.BoxGeometry({ width: 0.64, height: 0.1, depth: 0.36 }),
+        material: sourceHousingMaterial,
+        castShadows: false
+    }).addTo(stage);
+    new Hilo3d.Mesh({
+        x: lane.x,
+        y: 2.865,
+        z: 0.02,
+        geometry: new Hilo3d.SphereGeometry({
+            radius: 0.13,
+            widthSegments: 18,
+            heightSegments: 10
+        }),
+        material: accentMaterial(lane.color, 0.4),
+        scaleY: 0.22,
+        castShadows: false
+    }).addTo(stage);
+}
+
+for (const lane of lanes) addLaneArchitecture(lane);
+
+const stageAccent = accentMaterial([0.96, 0.62, 0.28], 0.035);
+new Hilo3d.Mesh({
+    y: floorY + 0.06,
+    z: -2.63,
+    geometry: new Hilo3d.BoxGeometry({ width: 9.05, height: 0.02, depth: 0.035 }),
+    material: stageAccent,
+    castShadows: false
+}).addTo(stage);
 
 function addColliderMesh(
     geometry: Hilo3d.Geometry,
-    wireGeometry: Hilo3d.Geometry,
     position: Hilo3d.ParticleVector3,
     color: readonly [number, number, number],
-    rotationZ = 0
+    rotationZ = 0,
+    metallic = 0.5,
+    roughness = 0.24,
+    finish: ColliderFinish = 'clearcoat'
 ): Hilo3d.Node {
     const root = new Hilo3d.Node({
         x: position[0],
@@ -142,26 +356,240 @@ function addColliderMesh(
         z: position[2],
         rotationZ
     }).addTo(stage);
-    new Hilo3d.Mesh({ geometry, material: laneMaterial(color), castShadows: false }).addTo(root);
     new Hilo3d.Mesh({
-        geometry: wireGeometry,
-        material: laneWireMaterial(color),
-        castShadows: false
+        geometry,
+        material: laneMaterial(color, metallic, roughness, finish),
+        castShadows: true
     }).addTo(root);
     return root;
 }
 
+function createCapsuleGeometry(radius: number, segmentLength: number): Hilo3d.Geometry {
+    const radialSegments = 24;
+    const hemisphereSegments = 8;
+    const halfSegment = segmentLength * 0.5;
+    const profiles: Readonly<{ y: number; radius: number; normalY: number }>[] = [];
+    profiles.push({ y: -halfSegment - radius, radius: 0, normalY: -1 });
+    for (let index = 1; index <= hemisphereSegments; index += 1) {
+        const angle = -Math.PI * 0.5 + (index / hemisphereSegments) * Math.PI * 0.5;
+        profiles.push({
+            y: -halfSegment + Math.sin(angle) * radius,
+            radius: Math.cos(angle) * radius,
+            normalY: Math.sin(angle)
+        });
+    }
+    profiles.push({ y: halfSegment, radius, normalY: 0 });
+    for (let index = 1; index <= hemisphereSegments; index += 1) {
+        const angle = (index / hemisphereSegments) * Math.PI * 0.5;
+        profiles.push({
+            y: halfSegment + Math.sin(angle) * radius,
+            radius: Math.cos(angle) * radius,
+            normalY: Math.sin(angle)
+        });
+    }
+
+    const ringStride = radialSegments + 1;
+    const vertices = new Float32Array(profiles.length * ringStride * 3);
+    const normals = new Float32Array(vertices.length);
+    const tangents = new Float32Array(profiles.length * ringStride * 4);
+    for (let profileIndex = 0; profileIndex < profiles.length; profileIndex += 1) {
+        const profile = profiles[profileIndex];
+        if (!profile) throw new Error('Capsule profile generation failed');
+        const radialNormal = Math.sqrt(Math.max(0, 1 - profile.normalY * profile.normalY));
+        for (let radialIndex = 0; radialIndex <= radialSegments; radialIndex += 1) {
+            const angle = (radialIndex / radialSegments) * Math.PI * 2;
+            const offset = (profileIndex * ringStride + radialIndex) * 3;
+            const cosine = Math.cos(angle);
+            const sine = Math.sin(angle);
+            vertices[offset] = cosine * profile.radius;
+            vertices[offset + 1] = profile.y;
+            vertices[offset + 2] = sine * profile.radius;
+            normals[offset] = cosine * radialNormal;
+            normals[offset + 1] = profile.normalY;
+            normals[offset + 2] = sine * radialNormal;
+            const tangentOffset = (profileIndex * ringStride + radialIndex) * 4;
+            tangents[tangentOffset] = -sine;
+            tangents[tangentOffset + 1] = 0;
+            tangents[tangentOffset + 2] = cosine;
+            tangents[tangentOffset + 3] = 1;
+        }
+    }
+
+    const indices = new Uint16Array((profiles.length - 1) * radialSegments * 6);
+    let indexOffset = 0;
+    for (let profileIndex = 0; profileIndex + 1 < profiles.length; profileIndex += 1) {
+        for (let radialIndex = 0; radialIndex < radialSegments; radialIndex += 1) {
+            const current = profileIndex * ringStride + radialIndex;
+            const next = current + ringStride;
+            indices[indexOffset++] = current;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = next + 1;
+        }
+    }
+    return new Hilo3d.Geometry({
+        vertices: new Hilo3d.GeometryData(vertices, 3),
+        normals: new Hilo3d.GeometryData(normals, 3),
+        tangents: new Hilo3d.GeometryData(tangents, 4),
+        indices: new Hilo3d.GeometryData(indices, 1)
+    });
+}
+
+function createTorusGeometry(majorRadius: number, tubeRadius: number): Hilo3d.Geometry {
+    const radialSegments = 48;
+    const tubeSegments = 8;
+    const ringStride = tubeSegments + 1;
+    const vertices = new Float32Array((radialSegments + 1) * ringStride * 3);
+    const normals = new Float32Array(vertices.length);
+    for (let radialIndex = 0; radialIndex <= radialSegments; radialIndex += 1) {
+        const radialAngle = (radialIndex / radialSegments) * Math.PI * 2;
+        const radialCosine = Math.cos(radialAngle);
+        const radialSine = Math.sin(radialAngle);
+        for (let tubeIndex = 0; tubeIndex <= tubeSegments; tubeIndex += 1) {
+            const tubeAngle = (tubeIndex / tubeSegments) * Math.PI * 2;
+            const tubeCosine = Math.cos(tubeAngle);
+            const tubeSine = Math.sin(tubeAngle);
+            const radius = majorRadius + tubeCosine * tubeRadius;
+            const offset = (radialIndex * ringStride + tubeIndex) * 3;
+            vertices[offset] = radialCosine * radius;
+            vertices[offset + 1] = tubeSine * tubeRadius;
+            vertices[offset + 2] = radialSine * radius;
+            normals[offset] = radialCosine * tubeCosine;
+            normals[offset + 1] = tubeSine;
+            normals[offset + 2] = radialSine * tubeCosine;
+        }
+    }
+    const indices = new Uint16Array(radialSegments * tubeSegments * 6);
+    let indexOffset = 0;
+    for (let radialIndex = 0; radialIndex < radialSegments; radialIndex += 1) {
+        for (let tubeIndex = 0; tubeIndex < tubeSegments; tubeIndex += 1) {
+            const current = radialIndex * ringStride + tubeIndex;
+            const next = current + ringStride;
+            indices[indexOffset++] = current;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = next + 1;
+        }
+    }
+    return new Hilo3d.Geometry({
+        vertices: new Hilo3d.GeometryData(vertices, 3),
+        normals: new Hilo3d.GeometryData(normals, 3),
+        indices: new Hilo3d.GeometryData(indices, 1)
+    });
+}
+
+function signedPower(value: number, exponent: number): number {
+    return Math.sign(value) * Math.pow(Math.abs(value), exponent);
+}
+
+function createRoundedBoxGeometry(size: number): Hilo3d.Geometry {
+    const widthSegments = 40;
+    const heightSegments = 24;
+    const exponent = 0.3;
+    const gradientExponent = 2 / exponent - 1;
+    const half = size * 0.5;
+    const rowStride = widthSegments + 1;
+    const vertices = new Float32Array((heightSegments + 1) * rowStride * 3);
+    const normals = new Float32Array(vertices.length);
+    for (let yIndex = 0; yIndex <= heightSegments; yIndex += 1) {
+        const latitude = -Math.PI * 0.5 + (yIndex / heightSegments) * Math.PI;
+        const latitudeCosine = Math.cos(latitude);
+        const latitudeSine = Math.sin(latitude);
+        for (let xIndex = 0; xIndex <= widthSegments; xIndex += 1) {
+            const longitude = (xIndex / widthSegments) * Math.PI * 2;
+            const x =
+                signedPower(latitudeCosine, exponent) * signedPower(Math.cos(longitude), exponent);
+            const y = signedPower(latitudeSine, exponent);
+            const z =
+                signedPower(latitudeCosine, exponent) * signedPower(Math.sin(longitude), exponent);
+            const offset = (yIndex * rowStride + xIndex) * 3;
+            vertices[offset] = x * half;
+            vertices[offset + 1] = y * half;
+            vertices[offset + 2] = z * half;
+            const normalX = signedPower(x, gradientExponent);
+            const normalY = signedPower(y, gradientExponent);
+            const normalZ = signedPower(z, gradientExponent);
+            const normalLength = Math.hypot(normalX, normalY, normalZ) || 1;
+            normals[offset] = normalX / normalLength;
+            normals[offset + 1] = normalY / normalLength;
+            normals[offset + 2] = normalZ / normalLength;
+        }
+    }
+    const indices = new Uint16Array(widthSegments * heightSegments * 6);
+    let indexOffset = 0;
+    for (let yIndex = 0; yIndex < heightSegments; yIndex += 1) {
+        for (let xIndex = 0; xIndex < widthSegments; xIndex += 1) {
+            const current = yIndex * rowStride + xIndex;
+            const next = current + rowStride;
+            indices[indexOffset++] = current;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = current + 1;
+            indices[indexOffset++] = next;
+            indices[indexOffset++] = next + 1;
+        }
+    }
+    return new Hilo3d.Geometry({
+        vertices: new Hilo3d.GeometryData(vertices, 3),
+        normals: new Hilo3d.GeometryData(normals, 3),
+        indices: new Hilo3d.GeometryData(indices, 1)
+    });
+}
+
+function addPlateTrim(root: Hilo3d.Node, size: number): void {
+    const half = size * 0.5;
+    const thickness = 0.018;
+    const elevation = 0.052;
+    for (const z of [-half, half]) {
+        new Hilo3d.Mesh({
+            y: elevation,
+            z,
+            geometry: new Hilo3d.BoxGeometry({
+                width: size + thickness,
+                height: thickness,
+                depth: thickness
+            }),
+            material: colliderTrimMaterial,
+            castShadows: false
+        }).addTo(root);
+    }
+    for (const x of [-half, half]) {
+        new Hilo3d.Mesh({
+            x,
+            y: elevation,
+            geometry: new Hilo3d.BoxGeometry({
+                width: thickness,
+                height: thickness,
+                depth: size + thickness
+            }),
+            material: colliderTrimMaterial,
+            castShadows: false
+        }).addTo(root);
+    }
+}
+
 addColliderMesh(
-    new Hilo3d.SphereGeometry({ radius: 0.68, widthSegments: 22, heightSegments: 14 }),
-    new Hilo3d.SphereGeometry({ radius: 0.695, widthSegments: 22, heightSegments: 14 }),
+    new Hilo3d.SphereGeometry({ radius: 0.68, widthSegments: 48, heightSegments: 32 }),
     [-2.7, -0.4, 0],
-    lanes[0]?.color ?? [0, 1, 1]
+    lanes[0]?.color ?? [0, 1, 1],
+    0,
+    0.12,
+    0.2,
+    'clearcoat'
 );
+
 addColliderMesh(
-    new Hilo3d.BoxGeometry({ width: 1.08, height: 1.08, depth: 1.08 }),
-    new Hilo3d.BoxGeometry({ width: 1.1, height: 1.1, depth: 1.1 }),
+    createRoundedBoxGeometry(1.08),
     [-0.88, -0.5, 0],
-    lanes[1]?.color ?? [1, 0, 1]
+    lanes[1]?.color ?? [1, 0, 1],
+    0,
+    0.1,
+    0.24,
+    'gem'
 );
 
 const capsuleStart = lanes[2]?.collider;
@@ -175,50 +603,55 @@ const capsuleCenter: Hilo3d.ParticleVector3 = [
     0
 ];
 const capsuleColor = lanes[2]?.color ?? [1, 0.5, 0];
-addColliderMesh(
-    new Hilo3d.BoxGeometry({ width: 0.5, height: capsuleLength, depth: 0.5 }),
-    new Hilo3d.BoxGeometry({ width: 0.515, height: capsuleLength + 0.015, depth: 0.515 }),
+const capsuleColliderMesh = addColliderMesh(
+    createCapsuleGeometry(capsuleStart.radius, capsuleLength),
     capsuleCenter,
     capsuleColor,
-    -(Math.atan2(capsuleDx, capsuleDy) * 180) / Math.PI
+    -(Math.atan2(capsuleDx, capsuleDy) * 180) / Math.PI,
+    0.78,
+    0.3,
+    'anisotropy'
 );
-for (const endpoint of [capsuleStart.start, capsuleStart.end]) {
-    addColliderMesh(
-        new Hilo3d.SphereGeometry({
-            radius: capsuleStart.radius,
-            widthSegments: 16,
-            heightSegments: 10
-        }),
-        new Hilo3d.SphereGeometry({
-            radius: capsuleStart.radius + 0.012,
-            widthSegments: 16,
-            heightSegments: 10
-        }),
-        endpoint,
-        capsuleColor
-    );
-}
-
-addColliderMesh(
-    new Hilo3d.BoxGeometry({ width: 1.35, height: 0.08, depth: 1.35 }),
-    new Hilo3d.BoxGeometry({ width: 1.38, height: 0.095, depth: 1.38 }),
-    [3, floorY + 0.04, 0],
-    lanes[3]?.color ?? [0.3, 1, 0.5]
-);
-
-for (const lane of lanes) {
-    const sourcePort = new Hilo3d.Mesh({
-        x: lane.x,
-        y: 2.92,
-        geometry: new Hilo3d.SphereGeometry({ radius: 0.16, widthSegments: 14, heightSegments: 6 }),
-        material: laneWireMaterial(lane.color),
+for (const y of [-capsuleLength * 0.5, capsuleLength * 0.5]) {
+    new Hilo3d.Mesh({
+        y,
+        geometry: createTorusGeometry(capsuleStart.radius + 0.006, 0.011),
+        material: colliderTrimMaterial,
         castShadows: false
-    }).addTo(stage);
-    sourcePort.scale.set(1.2, 0.1, 1.2);
+    }).addTo(capsuleColliderMesh);
 }
+
+const planeColliderMesh = addColliderMesh(
+    new Hilo3d.BoxGeometry({ width: 1.35, height: 0.08, depth: 1.35 }),
+    [3, planeY + 0.04, 0],
+    lanes[3]?.color ?? [0.3, 1, 0.5],
+    0,
+    0.08,
+    0.3,
+    'lacquer'
+);
+new Hilo3d.Mesh({
+    y: 0.057,
+    geometry: new Hilo3d.BoxGeometry({ width: 1.08, height: 0.022, depth: 1.08 }),
+    material: new Hilo3d.PBRMaterial({
+        ...studioEnvironment,
+        baseColor: new Hilo3d.Color(0.048, 0.25, 0.13),
+        metallic: 0.12,
+        roughness: 0.17,
+        clearcoatFactor: 1,
+        clearcoatRoughnessFactor: 0.055,
+        iridescenceFactor: 0.09,
+        iridescenceThicknessMinimum: 220,
+        iridescenceThicknessMaximum: 460
+    }),
+    castShadows: false
+}).addTo(planeColliderMesh);
+addPlateTrim(planeColliderMesh, 1.35);
 
 const meteorTexture = createParticleTexture({ style: 'comet' });
 const glowTexture = createParticleTexture({ style: 'disc' });
+const sparkTexture = createParticleTexture({ style: 'spark' });
+const shockwaveTexture = createParticleTexture({ style: 'ring' });
 const fadeCurve = new Hilo3d.ParticleCurve(
     [
         { time: 0, value: 0.12 },
@@ -232,6 +665,23 @@ const sparkFadeCurve = new Hilo3d.ParticleCurve(
         { time: 0, value: 0.72 },
         { time: 0.08, value: 1 },
         { time: 0.62, value: 0.68 },
+        { time: 1, value: 0 }
+    ],
+    { interpolation: 'smooth' }
+);
+const shockwaveSizeCurve = new Hilo3d.ParticleCurve(
+    [
+        { time: 0, value: 0.35 },
+        { time: 0.18, value: 2.4 },
+        { time: 1, value: 6.2 }
+    ],
+    { interpolation: 'smooth' }
+);
+const shockwaveFadeCurve = new Hilo3d.ParticleCurve(
+    [
+        { time: 0, value: 0 },
+        { time: 0.08, value: 1 },
+        { time: 0.5, value: 0.52 },
         { time: 1, value: 0 }
     ],
     { interpolation: 'smooth' }
@@ -290,7 +740,14 @@ function collisionEmitter(lane: CollisionLane): Hilo3d.ParticleEmitterDefinition
                 type: 'sub-emitter',
                 event: lane.event,
                 emitter: 'impact-sparks',
-                count: 96,
+                count: 72,
+                inheritVelocity: false
+            },
+            {
+                type: 'sub-emitter',
+                event: lane.event,
+                emitter: 'impact-shockwaves',
+                count: 1,
                 inheritVelocity: false
             },
             { type: 'size-by-speed', speedRange: [0, 4], curve: fadeCurve },
@@ -361,11 +818,11 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'drag', coefficient: 0.025 },
                 {
                     type: 'collision',
-                    colliders: [{ type: 'plane', normal: [0, 1, 0], offset: floorY }],
-                    bounce: 0.12,
-                    friction: 0.04,
+                    colliders: lanes.map(lane => lane.collider),
+                    bounce: 0.28,
+                    friction: 0.08,
                     radiusScale: 0.7,
-                    lifetimeLoss: 0.9,
+                    lifetimeLoss: 0.62,
                     event: 'impact-rain'
                 },
                 {
@@ -399,7 +856,7 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
                 },
                 {
                     type: 'sprite',
-                    texture: glowTexture,
+                    texture: sparkTexture,
                     alignment: 'view',
                     blend: 'additive',
                     depthWrite: false,
@@ -440,11 +897,56 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
             renderers: [
                 {
                     type: 'sprite',
+                    texture: meteorTexture,
+                    alignment: 'stretched',
+                    stretchScale: 0.72,
+                    pivot: [0.5, 1],
+                    blend: 'additive',
+                    depthWrite: false,
+                    renderOrder: 5
+                },
+                {
+                    type: 'sprite',
                     texture: glowTexture,
                     alignment: 'view',
                     blend: 'additive',
                     depthWrite: false,
-                    renderOrder: 5
+                    renderOrder: 6
+                }
+            ]
+        },
+        {
+            name: 'impact-shockwaves',
+            capacity: 640,
+            execution: 'cpu',
+            overflow: 'replace-oldest',
+            bounds: { mode: 'dynamic' },
+            initialize: {
+                lifetime: { min: 0.32, max: 0.48 },
+                speed: 0,
+                size: { min: 0.105, max: 0.15 }
+            },
+            modules: [
+                { type: 'size-over-lifetime', curve: shockwaveSizeCurve },
+                { type: 'alpha-over-lifetime', curve: shockwaveFadeCurve },
+                {
+                    type: 'color-over-lifetime',
+                    gradient: new Hilo3d.ParticleGradient([
+                        { time: 0, color: [1.8, 1.05, 0.46, 0.9] },
+                        { time: 0.4, color: [1.2, 0.58, 0.18, 0.62] },
+                        { time: 1, color: [0.52, 0.18, 0.06, 0] }
+                    ])
+                }
+            ],
+            renderers: [
+                {
+                    type: 'sprite',
+                    texture: shockwaveTexture,
+                    alignment: 'view',
+                    blend: 'additive',
+                    depthWrite: false,
+                    sort: 'distance',
+                    renderOrder: 4
                 }
             ]
         }
@@ -481,16 +983,22 @@ function rainRandom(index: number, channel: number): number {
 
 function launchMeteorRain(): void {
     const rainCount = 144;
+    const guidedCount = 48;
     const sequenceBase = rainBurstIndex * rainCount;
     rainBurstIndex += 1;
     for (let index = 0; index < rainCount; index += 1) {
         const sequence = sequenceBase + index;
+        const guidedLane = index < guidedCount ? lanes[index % lanes.length] : undefined;
+        const spawnX =
+            guidedLane === undefined
+                ? -4.15 + rainRandom(sequence, 0) * 8.3
+                : guidedLane.x + (rainRandom(sequence, 0) - 0.5) * 0.42;
+        const spawnZ =
+            guidedLane === undefined
+                ? -1.4 + rainRandom(sequence, 2) * 2.8
+                : (rainRandom(sequence, 2) - 0.5) * 0.34;
         rainChannel.submit({
-            position: [
-                -4.15 + rainRandom(sequence, 0) * 8.3,
-                3.05 + rainRandom(sequence, 1) * 1.55,
-                -1.4 + rainRandom(sequence, 2) * 2.8
-            ],
+            position: [spawnX, 3.05 + rainRandom(sequence, 1) * 1.55, spawnZ],
             velocity: [
                 (rainRandom(sequence, 3) - 0.5) * 0.24,
                 -(2.45 + rainRandom(sequence, 4) * 1.75),
@@ -569,7 +1077,7 @@ particles.onUpdate = () => {
             `trigger    ${String(totals['gate-enter'] ?? 0).padStart(5)}`,
             `dropped    ${String(aggregate.droppedCount + rainChannel.droppedCount).padStart(5)}`,
             '',
-            'click canvas · full-field meteor rain'
+            'click field · four-body meteor rain'
         ].join('\n');
         readingEvents = false;
     });
@@ -577,5 +1085,9 @@ particles.onUpdate = () => {
 
 document.body.dataset['particleExampleReady'] = 'true';
 installExampleDisposal(() => {
+    brdfLUT.destroy();
+    diffuseEnvMap.destroy();
+    specularEnvMap.destroy();
+    environmentMaps.skyboxMap.destroy();
     context.dispose();
 });
