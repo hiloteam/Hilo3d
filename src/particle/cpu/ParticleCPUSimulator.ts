@@ -3,18 +3,23 @@ import type ParticleCurve from '../ParticleCurve';
 import type ParticleEmitterDefinition from '../ParticleEmitterDefinition';
 import type ParticleGradient from '../ParticleGradient';
 import {
+    ParticleParameter,
+    ParticleParameterSet,
+    resolveParticleParameter
+} from '../ParticleParameter';
+import {
     particleRandomFloat,
     particleRandomFloatLane,
     type ParticleRandomKey
 } from '../ParticleRandom';
 import type {
-    ParticleColorValue,
+    ParticleColorSource,
     ParticleModule,
     ParticleRange,
-    ParticleScalarValue,
+    ParticleScalarSource,
     ParticleShapeDefinition,
     ParticleVector3,
-    ParticleVector3Value
+    ParticleVector3Source
 } from '../ParticleTypes';
 import { ParticleCPUState } from './ParticleCPUState';
 import { ParticleCPUEventBuffer } from './ParticleCPUEventBuffer';
@@ -194,23 +199,31 @@ function isRange<T>(value: T | ParticleRange<T>): value is ParticleRange<T> {
 
 /** @internal Shared deterministic initializer used by CPU and GPU spawn-command generation. */
 export function sampleParticleScalar(
-    value: ParticleScalarValue | undefined,
+    value: ParticleScalarSource | undefined,
     fallback: number,
-    key: ParticleRandomKey
+    key: ParticleRandomKey,
+    parameters?: ParticleParameterSet
 ): number {
     if (value === undefined) return Math.fround(fallback);
-    if (typeof value === 'number') return Math.fround(value);
-    return Math.fround(value.min + (value.max - value.min) * particleRandomFloat(key));
+    const source = resolveParticleParameter(value, parameters);
+    if (typeof source === 'number') return Math.fround(source);
+    return Math.fround(source.min + (source.max - source.min) * particleRandomFloat(key));
 }
 
 /** @internal Shared deterministic initializer used by CPU and GPU spawn-command generation. */
 export function sampleParticleVector(
-    value: ParticleVector3Value | undefined,
+    value: ParticleVector3Source | undefined,
     fallback: ParticleVector3,
     key: ParticleRandomKey,
-    target: Float32Array
+    target: Float32Array,
+    parameters?: ParticleParameterSet
 ): void {
-    const source = value ?? fallback;
+    const source =
+        value === undefined
+            ? fallback
+            : value instanceof ParticleParameter
+              ? resolveParticleParameter(value, parameters)
+              : value;
     if (!isRange(source)) {
         target[0] = source[0];
         target[1] = source[1];
@@ -228,11 +241,17 @@ export function sampleParticleVector(
 
 /** @internal Shared deterministic initializer used by CPU and GPU spawn-command generation. */
 export function sampleParticleColor(
-    value: ParticleColorValue | undefined,
+    value: ParticleColorSource | undefined,
     key: ParticleRandomKey,
-    target: Float32Array
+    target: Float32Array,
+    parameters?: ParticleParameterSet
 ): void {
-    const source = value ?? WHITE_COLOR;
+    const source =
+        value === undefined
+            ? WHITE_COLOR
+            : value instanceof ParticleParameter
+              ? resolveParticleParameter(value, parameters)
+              : value;
     if (!isRange(source)) {
         target.set(source);
         return;
@@ -386,6 +405,7 @@ export class ParticleCPUSimulator {
     readonly state: ParticleCPUState;
     readonly events: ParticleCPUEventBuffer;
     readonly #seed: number;
+    readonly #parameters: ParticleParameterSet;
     readonly #curveLUTs = new Map<ParticleCurve, Float32Array>();
     readonly #gradientLUTs = new Map<ParticleGradient, Float32Array>();
     readonly #temporaryA = new Float32Array(4);
@@ -398,19 +418,28 @@ export class ParticleCPUSimulator {
     #rateAccumulator = 0;
     #spawnSequence = 0;
     #generation = 0;
+    #particleLimit: number;
+    #spawnRateScale = 1;
+    #collisionEnabled = true;
     readonly #lastPosition = new Float32Array(3);
     readonly #emitterVelocity = new Float32Array(3);
     #hasLastPosition = false;
 
-    constructor(plan: Readonly<ParticleCompiledEmitterPlan>, seed: number) {
+    constructor(
+        plan: Readonly<ParticleCompiledEmitterPlan>,
+        seed: number,
+        parameters = new ParticleParameterSet()
+    ) {
         if (plan.kind === 'gpu-stateful') {
             throw new TypeError('ParticleCPUSimulator cannot consume a GPU-owned compiled plan');
         }
         this.plan = plan;
         this.definition = plan.definition;
         this.state = new ParticleCPUState(plan);
+        this.#particleLimit = this.state.capacity;
         this.events = new ParticleCPUEventBuffer(plan.definition);
         this.#seed = seed >>> 0;
+        this.#parameters = parameters;
         this.#randomKey = {
             systemSeed: this.#seed,
             emitterId: plan.emitterId,
@@ -428,6 +457,24 @@ export class ParticleCPUSimulator {
 
     get accumulator(): number {
         return this.#accumulator;
+    }
+
+    /** Apply renderer-local quality limits without reallocating state. @internal */
+    setBudget(particleLimit: number, spawnRateScale: number, collision: boolean): void {
+        if (!Number.isSafeInteger(particleLimit) || particleLimit < 0) {
+            throw new RangeError('Particle budget limit must be a non-negative safe integer');
+        }
+        if (!Number.isFinite(spawnRateScale) || spawnRateScale < 0) {
+            throw new RangeError(
+                'Particle budget spawn-rate scale must be finite and non-negative'
+            );
+        }
+        this.#particleLimit = Math.min(this.state.capacity, particleLimit);
+        this.#spawnRateScale = spawnRateScale;
+        this.#collisionEnabled = collision;
+        while (this.state.aliveCount > this.#particleLimit) {
+            this.state.removeParticle(this.state.aliveCount - 1);
+        }
     }
 
     emit(command: number | Readonly<ParticleManualEmitCommand>): void {
@@ -502,9 +549,9 @@ export class ParticleCPUSimulator {
         this.#emitterAge = Math.fround(this.#emitterAge + deltaTime);
         const previousActive = Math.max(0, previousAge - this.definition.startDelay);
         const active = Math.max(0, this.#emitterAge - this.definition.startDelay);
+        this.updateParticles(deltaTime);
         if (active > previousActive) this.emitScheduled(previousActive, active, deltaTime, context);
         this.emitManual(context);
-        this.updateParticles(deltaTime);
         this.state.markChanged();
     }
 
@@ -521,9 +568,10 @@ export class ParticleCPUSimulator {
         const rate = sampleParticleScalar(
             this.definition.emission.rateOverTime,
             0,
-            this.key(this.#spawnSequence, 0)
+            this.key(this.#spawnSequence, 0),
+            this.#parameters
         );
-        this.#rateAccumulator += Math.max(0, rate) * effectiveDelta;
+        this.#rateAccumulator += Math.max(0, rate) * effectiveDelta * this.#spawnRateScale;
         if (this.definition.emission.rateOverDistance !== undefined) {
             const distance = length3(
                 (this.#emitterVelocity[0] ?? 0) * effectiveDelta,
@@ -533,9 +581,10 @@ export class ParticleCPUSimulator {
             const distanceRate = sampleParticleScalar(
                 this.definition.emission.rateOverDistance,
                 0,
-                this.key(this.#spawnSequence, 1)
+                this.key(this.#spawnSequence, 1),
+                this.#parameters
             );
-            this.#rateAccumulator += Math.max(0, distanceRate) * distance;
+            this.#rateAccumulator += Math.max(0, distanceRate) * distance * this.#spawnRateScale;
         }
         const continuousCount = Math.floor(this.#rateAccumulator);
         this.#rateAccumulator -= continuousCount;
@@ -555,7 +604,7 @@ export class ParticleCPUSimulator {
                         eventTime <= active &&
                         (eventTime > previousActive || (previousActive === 0 && eventTime === 0));
                     if (crossed) {
-                        this.spawnMany(burst.count, context);
+                        this.spawnMany(Math.floor(burst.count * this.#spawnRateScale), context);
                     }
                 }
             }
@@ -581,7 +630,8 @@ export class ParticleCPUSimulator {
         command?: Readonly<ParticleManualEmitCommand>
     ): void {
         let index = this.state.aliveCount;
-        if (index >= this.state.capacity) {
+        if (index >= this.#particleLimit) {
+            if (this.#particleLimit === 0) return;
             if (this.definition.overflow === 'drop-new') return;
             index = this.oldestParticleIndex();
             this.#generation = (this.#generation + 1) >>> 0;
@@ -603,7 +653,8 @@ export class ParticleCPUSimulator {
             this.definition.initialize.position,
             ZERO_VECTOR,
             this.key(particleId, 30),
-            this.#temporaryC
+            this.#temporaryC,
+            this.#parameters
         );
         position[0] = (position.at(0) ?? 0) + (this.#temporaryC.at(0) ?? 0);
         position[1] = (position.at(1) ?? 0) + (this.#temporaryC.at(1) ?? 0);
@@ -619,14 +670,16 @@ export class ParticleCPUSimulator {
                 this.definition.initialize.direction,
                 UP_VECTOR,
                 this.key(particleId, 40),
-                direction
+                direction,
+                this.#parameters
             );
             normalizeParticleVector(direction);
         }
         const speed = sampleParticleScalar(
             this.definition.initialize.speed,
             0,
-            this.key(particleId, 50)
+            this.key(particleId, 50),
+            this.#parameters
         );
         const positionOffset = index * 3;
         positions[positionOffset] = position[0];
@@ -642,7 +695,12 @@ export class ParticleCPUSimulator {
         ages[index] = 0;
         lifetimes[index] = Math.max(
             1e-6,
-            sampleParticleScalar(this.definition.initialize.lifetime, 1, this.key(particleId, 60))
+            sampleParticleScalar(
+                this.definition.initialize.lifetime,
+                1,
+                this.key(particleId, 60),
+                this.#parameters
+            )
         );
         normalizedAges[index] = 0;
         this.state.u32('stable-id')[index] = particleId;
@@ -666,7 +724,8 @@ export class ParticleCPUSimulator {
             const size = sampleParticleScalar(
                 this.definition.initialize.size,
                 1,
-                this.key(key.particleId, 70)
+                this.key(key.particleId, 70),
+                this.#parameters
             );
             this.state.f32('size')[index] = size;
             if (this.state.has('base-size')) this.state.f32('base-size')[index] = size;
@@ -675,7 +734,8 @@ export class ParticleCPUSimulator {
             const rotation = sampleParticleScalar(
                 this.definition.initialize.rotation,
                 0,
-                this.key(key.particleId, 71)
+                this.key(key.particleId, 71),
+                this.#parameters
             );
             this.state.f32('rotation')[index] = rotation;
             if (this.state.has('base-rotation')) this.state.f32('base-rotation')[index] = rotation;
@@ -684,7 +744,8 @@ export class ParticleCPUSimulator {
             sampleParticleColor(
                 this.definition.initialize.color,
                 this.key(key.particleId, 72),
-                this.#temporaryA
+                this.#temporaryA,
+                this.#parameters
             );
             this.state.f32('color').set(this.#temporaryA, index * 4);
             if (this.state.has('base-color'))
@@ -696,7 +757,8 @@ export class ParticleCPUSimulator {
                 sampleParticleScalar(
                     this.definition.initialize.meshIndex,
                     key.particleId,
-                    this.key(key.particleId, 74)
+                    this.key(key.particleId, 74),
+                    this.#parameters
                 )
             );
         }
@@ -705,7 +767,8 @@ export class ParticleCPUSimulator {
                 sampleParticleScalar(
                     this.definition.initialize.ribbonId,
                     0,
-                    this.key(key.particleId, 75)
+                    this.key(key.particleId, 75),
+                    this.#parameters
                 )
             );
         }
@@ -715,7 +778,8 @@ export class ParticleCPUSimulator {
                 sampleParticleScalar(
                     this.definition.initialize.mass,
                     1,
-                    this.key(key.particleId, 73)
+                    this.key(key.particleId, 73),
+                    this.#parameters
                 )
             );
         }
@@ -1156,6 +1220,7 @@ export class ParticleCPUSimulator {
         const radius = this.state.has('size') ? (this.state.f32('size')[index] ?? 0) * 0.5 : 0;
         for (const module of this.definition.modules) {
             if (module.type === 'collision') {
+                if (!this.#collisionEnabled) continue;
                 for (const collider of module.colliders) {
                     const penetration = colliderContact(
                         collider,

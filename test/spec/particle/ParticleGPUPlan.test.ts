@@ -115,6 +115,63 @@ describe('ParticleSystem P2 GPU artifacts', () => {
         if (!sort) throw new Error('Large distance sort shader is unavailable');
         expect(() => computeCompiler.compile(sort)).not.toThrow();
     });
+
+    it('uses shared sprite pivot/stretch semantics and hierarchical GPU visibility', () => {
+        const definition = ParticleSystemDefinition.create({
+            emitters: [
+                {
+                    name: 'visible-sprite',
+                    capacity: 8,
+                    execution: 'gpu',
+                    bounds: { mode: 'manual', min: [-1, -1, -1], max: [1, 1, 1] },
+                    renderers: [
+                        {
+                            type: 'sprite',
+                            pivot: [0.25, 0.75],
+                            alignment: 'stretched',
+                            stretchScale: 2
+                        }
+                    ],
+                    modules: [{ type: 'screen-space-size', scale: 1.5, range: [2, 24] }]
+                }
+            ]
+        });
+        const plan = compileParticleSystemDefinition(definition, { backend: 'webgpu' }).emitters[0];
+        if (!plan) throw new Error('Expected a GPU sprite plan');
+        const renderer = compileParticleGPUPlan(plan).renderers[0];
+        if (!renderer) throw new Error('Expected a GPU sprite renderer');
+        expect(renderer.shader.vertexSource).toContain(
+            'particleCorner(localIndex) + vec2(0.5) - vec2(0.25, 0.75)'
+        );
+        expect(renderer.shader.vertexSource).toContain(
+            'corner.y *= 1.0 + length(viewVelocity) * 2.0;'
+        );
+        expect(renderer.shader.vertexSource).toContain(
+            'particlePixelSize = clamp(particleSize * particleWorldToPixels * 1.5, 2.0, 24.0)'
+        );
+        expect(renderer.shader.vertexSource).toContain(
+            'particleSize = particlePixelSize / particleWorldToPixels;'
+        );
+        expect(renderer.shader.vertexSource).not.toContain('length(viewVelocity) / particleSize');
+
+        const parent = new Node({ visible: false });
+        const system = new ParticleSystem({
+            definition,
+            autoPlay: false,
+            compilationEnvironment: { backend: 'webgpu' }
+        });
+        parent.addChild(system);
+        const camera = new PerspectiveCamera({ aspect: 1, near: 0.1, far: 20 });
+        camera.z = 5;
+        parent.updateMatrixWorld(true);
+        expect(system.isGPUVisible(camera)).toBe(false);
+        parent.visible = true;
+        parent.updateMatrixWorld(true);
+        expect(system.isGPUVisible(camera)).toBe(true);
+        system.x = 100;
+        parent.updateMatrixWorld(true);
+        expect(system.isGPUVisible(camera)).toBe(false);
+    });
 });
 
 describe('ParticleSystem P2 GPU Render Graph integration', () => {

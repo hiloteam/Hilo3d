@@ -64,6 +64,7 @@ describe('ParticleSystem P4 CPU interaction and events', () => {
         system.on('impact', callback);
         system
             .emit({ emitter: 'source', count: 1, position: [0, 0.05, 0], velocity: [0, -1, 0] })
+            .simulate(0.1)
             .simulate(0.1);
 
         const aggregate = await system.readEvents();
@@ -104,6 +105,7 @@ describe('ParticleSystem P4 CPU interaction and events', () => {
         system
             .emit({ count: 1, velocity: [1, 0, 0] })
             .simulate(0.1)
+            .simulate(0.1)
             .simulate(0.1);
 
         const aggregate = await system.readEvents();
@@ -118,6 +120,7 @@ describe('ParticleSystem P4 CPU interaction and events', () => {
         });
         system
             .emit({ emitter: 'source', count: 1, position: [0, 0.05, 0], velocity: [0, -1, 0] })
+            .simulate(0.1)
             .simulate(0.1);
 
         const first = await system.readEvents();
@@ -185,7 +188,9 @@ describe('ParticleSystem P4 WebGPU depth artifacts', () => {
                                 { type: 'sphere', radius: 1 },
                                 { type: 'box', size: [1, 1, 1] },
                                 { type: 'capsule', start: [0, -1, 0], end: [0, 1, 0], radius: 0.25 }
-                            ]
+                            ],
+                            radiusScale: 1.5,
+                            lifetimeLoss: 0.25
                         },
                         { type: 'scene-depth-collision', thickness: 0.01 }
                     ],
@@ -203,6 +208,8 @@ describe('ParticleSystem P4 WebGPU depth artifacts', () => {
         if (!emitter) throw new Error('Expected a GPU interaction plan');
         const gpu = compileParticleGPUPlan(emitter);
         expect(() => computeCompiler.compile(gpu.shaders.simulate)).not.toThrow();
+        expect(gpu.shaders.simulate.source).toContain('particleSize * 0.5 * 1.5');
+        expect(gpu.shaders.simulate.source).toContain('age += lifetime * 0.25');
         const renderer = gpu.renderers[0];
         if (!renderer) throw new Error('Expected a soft-particle renderer');
         expect(() => graphicsCompiler.compile(renderer.shader, 'webgpu')).not.toThrow();

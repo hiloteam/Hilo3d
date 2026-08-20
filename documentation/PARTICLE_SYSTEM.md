@@ -76,13 +76,13 @@ The example gallery groups particle coverage by the behavior an author is trying
 than by implementation phase. Together the five pages exercise the complete P0-P5 rendering and
 interaction surface while keeping each source file readable:
 
-| Example                                                                      | Primary coverage                                                                                                                                                                                                                                                                   |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`particle_elemental_forge.ts`](../examples/particle_elemental_forge.ts)     | Point/line/box/disc/sphere/hemisphere/cone/torus distributions, time and burst emission, lifetime curves, gradients, by-speed values, SubUV animation, sprite alignments, sorting, blending, camera modifiers, custom channels, and kill conditions.                               |
-| [`particle_noise_fields.ts`](../examples/particle_noise_fields.ts)           | Vector and curl noise, position-offset and force modes, one to four octaves, frequency, lacunarity, persistence, scroll velocity, damping, deterministic seeds, and stateless versus CPU stateful execution.                                                                       |
-| [`particle_orbital_weave.ts`](../examples/particle_orbital_weave.ts)         | Mesh buckets, opaque motion-vector eligibility, coherent world-space ribbon/trail sampling, view/world-up facing, repeat UVs, topology-safe ordering, conform/orbit motion, and portable instanced draws.                                                                          |
-| [`particle_collision_theatre.ts`](../examples/particle_collision_theatre.ts) | Four color-coded, staggered low-frequency plane/sphere/box/capsule streams, slender projectile trails, short rebounds, dense fire-spark impacts, triggers, bounded event aggregates, batched sub-emitters, typed application channels, and click-triggered full-field meteor rain. |
-| [`particle_gpu_nebula.ts`](../examples/particle_gpu_nebula.ts)               | Explicit WebGPU stateful simulation, stateless reconstruction, large capacities, distance sorting, soft particles, scene-depth and analytic collision, GPU-resident sub-emitter routing, fixed bounds, and readback-free runtime diagnostics.                                      |
+| Example                                                                      | Primary coverage                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`particle_elemental_forge.ts`](../examples/particle_elemental_forge.ts)     | Point/line/box/disc/sphere/hemisphere/cone/torus distributions, time and burst emission, lifetime curves, gradients, by-speed values, SubUV animation, sprite alignments, sorting, blending, camera modifiers, custom channels, and kill conditions.                                                                           |
+| [`particle_noise_fields.ts`](../examples/particle_noise_fields.ts)           | Vector and curl noise, position-offset and force modes, one to four octaves, frequency, lacunarity, persistence, scroll velocity, damping, deterministic seeds, and stateless versus CPU stateful execution.                                                                                                                   |
+| [`particle_orbital_weave.ts`](../examples/particle_orbital_weave.ts)         | Mesh buckets, opaque motion-vector eligibility, coherent world-space ribbon/trail sampling, view/world-up facing, repeat UVs, topology-safe ordering, conform/orbit motion, and portable instanced draws.                                                                                                                      |
+| [`particle_collision_theatre.ts`](../examples/particle_collision_theatre.ts) | Four color-coded, staggered low-frequency plane/sphere/box/capsule streams, slender projectile trails, short rebounds, dense fire-spark impacts, triggers, bounded event aggregates, batched sub-emitters, typed application channels, and click-triggered full-field meteor rain that collides with every analytic primitive. |
+| [`particle_gpu_nebula.ts`](../examples/particle_gpu_nebula.ts)               | Explicit WebGPU stateful simulation, stateless reconstruction, large capacities, distance sorting, soft particles, scene-depth and analytic collision, GPU-resident sub-emitter routing, fixed bounds, and readback-free runtime diagnostics.                                                                                  |
 
 The pages use procedural textures so their presentation does not depend on a network service or an
 unreviewed binary asset. They are part of the recursively discovered WebGL 2/WebGPU example release
@@ -102,7 +102,11 @@ raster, sampled depth, and indirect draws.
 Definitions and their emitter/module/renderer records are immutable snapshots. Changing input
 objects after `ParticleSystemDefinition.create()` cannot mutate an existing compiled runtime. Create
 a new definition when topology changes. `ParticleCurve`, `ParticleGradient`, and typed
-`ParticleParameter` tokens are immutable as well.
+`ParticleParameter` tokens are immutable as well. Bind a shared `ParticleParameterSet` through the
+`ParticleSystem` constructor; changing emission-rate or spawn-initialization values affects later
+spawns on CPU, stateless, and stateful WebGPU command paths without recompiling the plan. Because
+runtime-bound motion/size can invalidate conservative culling, parameterized initialization requires
+manual bounds.
 
 ## Execution policy
 
@@ -138,6 +142,11 @@ counts, sort keys, state, or indirect arguments back to JavaScript in the produc
 - Kill: age/capacity plus speed, distance, plane, box, and sphere conditions.
 - Interaction: CPU/WebGPU analytic plane, sphere, axis-aligned box, and capsule collision; CPU
   trigger enter/inside/exit state; and WebGPU scene-depth collision.
+
+The compiler rejects backend combinations without an implementation. Vector fields and scene-depth
+interaction require explicit GPU execution, triggers require CPU execution, and GPU emitters support
+`drop-new` overflow only. Camera offset/fade/screen-size modules are renderer operations and require
+sprite-only emitters.
 
 The sprite renderer supports view, world-up, velocity, and stretched alignment; alpha,
 premultiplied-alpha, and additive composition; depth test/write; pivot and texture sheets; render
@@ -215,15 +224,26 @@ rate-over-distance remain stateful-only and identify their reason in the compila
 
 The CPU stateless runtime retains only emitter time, seed, parameters, and bounded manual-spawn
 metadata. It rebuilds the dense renderer input for the active lifetime interval and reports zero
-`persistentStateByteLength`; it does not retain position/velocity arrays as simulation history. The
-WebGPU stateless compiler produces a Naga-validated renderer-data/indirect generator with a
-`regenerate` recovery policy and no state/alive/dead recovery buffers.
+`persistentStateByteLength`; it does not retain position/velocity arrays as simulation history. On
+WebGPU, point-shaped, continuous-rate, sprite-only stateless definitions using the supported
+analytic motion subset run a Render Graph compute generator that writes renderer data and indirect
+arguments without allocating CPU particle arrays, CPU writer meshes, or a persistent GPU
+particle-state buffer. The generator is rerun from absolute time after device recovery. Definitions
+outside that bounded subset remain on the portable CPU path; manual emission lazily materializes CPU
+reconstruction at the current emitter age until `stop()`/`restart()` clears its retained manual
+metadata and restores GPU-only execution.
 
-`ParticleBudgetManager` resolves a complete request set in stable priority/distance/identity order,
-so visibility, distance, system, emitter, particle, spawn-rate, sorting, soft-particle, collision,
-and ribbon quality decisions are deterministic and carry explicit degradation reasons.
-`ParticleSystemPool` reuses stopped instances by immutable definition and seed for short-lived
-effects without changing public identity while an instance is active.
+`ParticleBudgetManager.apply()` resolves all supplied systems together and immediately applies the
+result to their live runtimes. Particle limits and scheduled spawn-rate scaling are enforced on CPU,
+stateless GPU, and stateful GPU paths; stateful WebGPU uses bounded atomic output slots. Sorting,
+soft-particle fading, analytic collision, and ribbon construction/drawing follow the selected
+quality flags. Stable `budgetId` and `budgetPriority` values provide deterministic cross-system
+ordering, and each decision retains explicit degradation reasons.
+
+`ParticleSystemPool` reuses stopped instances only when their complete construction parameters
+match. A failed over-capacity release leaves the instance active; successful reuse resets simulation
+and authored node state and restores the authored autoplay state. Pooled construction does not
+accept `parent`; attach each leased system explicitly after acquisition.
 
 ## Runtime and renderer contract
 

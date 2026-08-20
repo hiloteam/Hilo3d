@@ -272,6 +272,10 @@ class Camera extends Node {
         tempSphere.radius = 0;
         return this._frustum.intersectsSphere(tempSphere);
     }
+    /** Return whether a world-space bounding sphere intersects the stable camera frustum. */
+    isSphereVisible(sphere: Sphere): boolean {
+        return this._frustum.intersectsSphere(sphere);
+    }
     /**
      * mesh 是否摄像机可见
      * @param mesh -

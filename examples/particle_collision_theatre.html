@@ -11,26 +11,20 @@
         <link rel="stylesheet" href="./example.css" />
         <link rel="stylesheet" href="./particle_showcase.css" />
     </head>
-    <body>
+    <body class="collision-theatre-page">
         <div id="container"></div>
         <header class="particle-hero">
-            <div class="particle-kicker">Particle studies · 03 / interaction</div>
-            <h1>Collision Theatre</h1>
-            <p>
-                Four staggered streams strike four analytic primitives. Click the canvas to release
-                a full-field meteor rain with dense fire-spark impacts.
-            </p>
-            <div class="particle-chips">
-                <span>4 colliders</span><span>random cadence</span><span>trigger enter/exit</span
-                ><span>sub-emitter</span><span>typed channel</span><span>full-field rain</span>
-            </div>
+            <div class="particle-kicker">Hilo3D · Particle Study 03</div>
+            <h1><span>Collision</span> Theatre</h1>
+            <p>A study of momentum, material and light across four analytic bodies.</p>
         </header>
-        <div class="collision-direction"><span>↓</span> downward test streams</div>
-        <output class="particle-readout" id="particle-readout">events warming up…</output>
+        <output class="particle-readout" id="particle-readout" aria-live="polite"
+            >events warming up…</output
+        >
         <div class="particle-controls">
-            <button id="burst-button" type="button">Meteor rain</button>
+            <button id="burst-button" type="button">Release rain</button>
             <button id="pause-button" type="button">Pause</button>
-            <button id="restart-button" type="button">Restart</button>
+            <button id="restart-button" type="button">Reset</button>
         </div>
         <nav class="particle-nav" aria-label="Particle example collection">
             <a href="./particle_elemental_forge.html">Elemental</a>

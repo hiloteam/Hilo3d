@@ -26,7 +26,13 @@ class ParticleGPUForwardFeatureRuntime implements ForwardRenderPipelineFeatureRu
     requiresSampledDepth(context: RenderPipelineContext): boolean {
         let required = false;
         context.scene.traverse(node => {
-            if (node instanceof ParticleSystem && node.requiresGPUSampledDepth) required = true;
+            if (
+                node instanceof ParticleSystem &&
+                node.requiresGPUSampledDepth &&
+                (node.hasPendingGPUWork || node.isGPUVisible(context.camera))
+            ) {
+                required = true;
+            }
         });
         return required;
     }
@@ -38,8 +44,7 @@ class ParticleGPUForwardFeatureRuntime implements ForwardRenderPipelineFeatureRu
             if (
                 node instanceof ParticleSystem &&
                 node.hasGPUOpaqueRenderers &&
-                node.visible &&
-                context.camera.isLayerVisible(node)
+                node.isGPUVisible(context.camera)
             ) {
                 required = true;
             }
@@ -52,7 +57,7 @@ class ParticleGPUForwardFeatureRuntime implements ForwardRenderPipelineFeatureRu
         context.pipeline.scene.traverse(node => {
             if (!(node instanceof ParticleSystem) || !node.hasGPUEmitters) return;
             if (this.phase === 'opaque' && !node.hasGPUOpaqueRenderers) return;
-            const drawVisible = node.visible && context.pipeline.camera.isLayerVisible(node);
+            const drawVisible = node.isGPUVisible(context.pipeline.camera);
             node.recordGPU(
                 context.pipeline,
                 context.resources.color as NonNullable<typeof context.resources.color>,

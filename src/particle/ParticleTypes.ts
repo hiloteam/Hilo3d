@@ -2,6 +2,7 @@ import type Texture from '../texture/Texture';
 import type Geometry from '../geometry/Geometry';
 import type ParticleCurve from './ParticleCurve';
 import type ParticleGradient from './ParticleGradient';
+import type { ParticleParameter } from './ParticleParameter';
 
 /** Current serialized particle-definition schema version. */
 export const PARTICLE_DEFINITION_VERSION = 1 as const;
@@ -29,6 +30,15 @@ export type ParticleVector3Value = ParticleVector3 | ParticleRange<ParticleVecto
 
 /** Color authoring value accepted by fixed particle modules. */
 export type ParticleColorValue = ParticleColor | ParticleRange<ParticleColor>;
+
+/** Runtime-bindable scalar source used only where plan topology remains unchanged. */
+export type ParticleScalarSource = ParticleScalarValue | ParticleParameter<number>;
+
+/** Runtime-bindable vector source used only by spawn-time data evaluated on the CPU. */
+export type ParticleVector3Source = ParticleVector3Value | ParticleParameter<ParticleVector3>;
+
+/** Runtime-bindable color source used only by spawn-time data evaluated on the CPU. */
+export type ParticleColorSource = ParticleColorValue | ParticleParameter<ParticleColor>;
 
 /** Requested emitter execution policy. `auto` remains portable and capability driven. */
 export type ParticleExecutionMode = 'auto' | 'cpu' | 'gpu' | 'stateless';
@@ -76,8 +86,8 @@ export interface ParticleBurstDefinition {
 
 /** Fixed emission sources evaluated before initialize modules. */
 export interface ParticleEmissionDefinition {
-    readonly rateOverTime?: ParticleScalarValue;
-    readonly rateOverDistance?: ParticleScalarValue;
+    readonly rateOverTime?: ParticleScalarSource;
+    readonly rateOverDistance?: ParticleScalarSource;
     readonly bursts?: readonly ParticleBurstDefinition[];
 }
 
@@ -146,19 +156,19 @@ export type ParticleShapeDefinition =
 
 /** Initial attributes evaluated once for every spawn. */
 export interface ParticleInitializeDefinition {
-    readonly lifetime?: ParticleScalarValue;
-    readonly position?: ParticleVector3Value;
-    readonly direction?: ParticleVector3Value;
-    readonly speed?: ParticleScalarValue;
-    readonly color?: ParticleColorValue;
-    readonly size?: ParticleScalarValue;
+    readonly lifetime?: ParticleScalarSource;
+    readonly position?: ParticleVector3Source;
+    readonly direction?: ParticleVector3Source;
+    readonly speed?: ParticleScalarSource;
+    readonly color?: ParticleColorSource;
+    readonly size?: ParticleScalarSource;
     /** Rotation in radians. */
-    readonly rotation?: ParticleScalarValue;
-    readonly mass?: ParticleScalarValue;
+    readonly rotation?: ParticleScalarSource;
+    readonly mass?: ParticleScalarSource;
     /** Integer mesh bucket selected at spawn. Omit to distribute by stable particle id. */
-    readonly meshIndex?: ParticleScalarValue;
+    readonly meshIndex?: ParticleScalarSource;
     /** Integer ribbon group selected at spawn. Particles only link inside the same group. */
-    readonly ribbonId?: ParticleScalarValue;
+    readonly ribbonId?: ParticleScalarSource;
 }
 
 /** Constant velocity added before integration. */
@@ -475,6 +485,7 @@ export interface ParticleSpriteRendererDefinition {
     readonly sort?: ParticleSortMode;
     readonly renderOrder?: number;
     readonly pivot?: ParticleVector2;
+    /** Relative elongation per world-space velocity unit for stretched alignment. */
     readonly stretchScale?: number;
     /** WebGPU storage-raster depth fade. Depth write must remain disabled. */
     readonly softParticle?: Readonly<{

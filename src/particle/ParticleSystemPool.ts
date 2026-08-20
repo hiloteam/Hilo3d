@@ -4,8 +4,8 @@ import type ParticleSystemDefinition from './ParticleSystemDefinition';
 
 /** Reuses stopped ParticleSystem nodes for large numbers of short-lived effects. */
 export class ParticleSystemPool {
-    readonly #available = new Map<ParticleSystemDefinition, ParticleSystem[]>();
-    readonly #active = new Set<ParticleSystem>();
+    readonly #available = new Map<ParticleSystemDefinition, ParticlePoolEntry[]>();
+    readonly #active = new Map<ParticleSystem, Readonly<ParticleSystemParameters>>();
     readonly #capacity: number;
 
     constructor(capacity = 64) {
@@ -26,44 +26,74 @@ export class ParticleSystemPool {
     }
 
     acquire(parameters: Readonly<ParticleSystemParameters>): ParticleSystem {
-        const systems = this.#available.get(parameters.definition);
-        const system = systems?.pop();
-        if (system?.seed === (parameters.seed ?? 0)) {
-            system.restart();
-            this.#active.add(system);
+        if (parameters.parent !== undefined && parameters.parent !== null) {
+            throw new TypeError(
+                'ParticleSystemPool acquire does not accept parent; attach the leased system explicitly'
+            );
+        }
+        const entries = this.#available.get(parameters.definition);
+        const entryIndex = entries?.findIndex(entry =>
+            parametersMatch(entry.parameters, parameters)
+        );
+        const entry =
+            entryIndex === undefined || entryIndex < 0
+                ? undefined
+                : entries?.splice(entryIndex, 1)[0];
+        const system = entry?.system;
+        if (system) {
+            system.resetForPool(parameters);
+            this.#active.set(system, Object.freeze({ ...parameters }));
             return system;
         }
-        if (system) systems?.push(system);
         const created = new ParticleSystem(parameters);
-        this.#active.add(created);
+        this.#active.set(created, Object.freeze({ ...parameters }));
         return created;
     }
 
     release(system: ParticleSystem, renderer?: Renderer): void {
-        if (!this.#active.delete(system)) {
+        const parameters = this.#active.get(system);
+        if (!parameters) {
             throw new RangeError('ParticleSystemPool cannot release an inactive system');
         }
-        system.stop().removeFromParent();
         if (this.pooledCount >= this.#capacity) {
             if (!renderer) {
                 throw new Error(
                     'A renderer is required when ParticleSystemPool releases beyond its capacity'
                 );
             }
+            this.#active.delete(system);
+            system.stop().removeFromParent();
             system.destroy(renderer);
             return;
         }
-        const systems = this.#available.get(system.definition) ?? [];
-        systems.push(system);
-        this.#available.set(system.definition, systems);
+        this.#active.delete(system);
+        system.stop().removeFromParent();
+        const entries = this.#available.get(system.definition) ?? [];
+        entries.push({ system, parameters });
+        this.#available.set(system.definition, entries);
     }
 
     destroy(renderer: Renderer): void {
-        for (const system of this.#active) system.destroy(renderer);
-        for (const systems of this.#available.values()) {
-            for (const system of systems) system.destroy(renderer);
+        for (const system of this.#active.keys()) system.destroy(renderer);
+        for (const entries of this.#available.values()) {
+            for (const entry of entries) entry.system.destroy(renderer);
         }
         this.#active.clear();
         this.#available.clear();
     }
+}
+
+interface ParticlePoolEntry {
+    readonly system: ParticleSystem;
+    readonly parameters: Readonly<ParticleSystemParameters>;
+}
+
+function parametersMatch(
+    left: Readonly<ParticleSystemParameters>,
+    right: Readonly<ParticleSystemParameters>
+): boolean {
+    const leftKeys = Object.keys(left) as (keyof ParticleSystemParameters)[];
+    const rightKeys = Object.keys(right) as (keyof ParticleSystemParameters)[];
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every(key => Object.hasOwn(right, key) && Object.is(left[key], right[key]));
 }

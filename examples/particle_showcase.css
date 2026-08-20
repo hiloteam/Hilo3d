@@ -187,29 +187,186 @@ body {
     content: '';
 }
 
-.collision-direction {
-    position: fixed;
-    z-index: 100001;
-    top: 14%;
-    left: 48%;
-    transform: translateX(-50%);
-    color: rgba(190, 229, 255, 0.72);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-shadow: 0 0 14px rgba(80, 200, 255, 0.82);
-    text-transform: uppercase;
-    pointer-events: none;
+.collision-theatre-page {
+    --theatre-ink: #f0eae1;
+    --theatre-muted: rgba(211, 202, 191, 0.58);
+    --theatre-line: rgba(202, 153, 96, 0.2);
+    --theatre-glass: rgba(18, 15, 18, 0.62);
+    background:
+        radial-gradient(circle at 24% 30%, rgba(91, 73, 64, 0.13), transparent 40%),
+        radial-gradient(circle at 80% 58%, rgba(55, 63, 82, 0.1), transparent 38%), #0d0b0e;
 }
 
-.collision-direction span {
+.collision-theatre-page::before,
+.collision-theatre-page::after {
+    position: fixed;
+    z-index: 99990;
+    inset: 0;
+    pointer-events: none;
+    content: '';
+}
+
+.collision-theatre-page::before {
+    background:
+        radial-gradient(circle at 50% 42%, transparent 28%, rgba(0, 0, 0, 0.18) 82%),
+        linear-gradient(110deg, rgba(255, 225, 193, 0.018), transparent 34%);
+}
+
+.collision-theatre-page::after {
+    inset: 18px;
+    border: 1px solid rgba(216, 166, 108, 0.09);
+    border-radius: 2px;
+    box-shadow: inset 0 0 100px rgba(12, 8, 10, 0.12);
+}
+
+.collision-theatre-page .particle-hero {
+    top: 42px;
+    right: auto;
+    left: 48px;
+    width: min(330px, calc(100vw - 96px));
+}
+
+.collision-theatre-page .particle-kicker {
+    color: rgba(211, 159, 101, 0.78);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 8px;
+    font-weight: 620;
+    letter-spacing: 0.26em;
+}
+
+.collision-theatre-page .particle-hero h1 {
+    margin: 12px 0 12px;
+    color: var(--theatre-ink);
+    font-family: 'Iowan Old Style', Baskerville, 'Times New Roman', serif;
+    font-size: clamp(38px, 4.5vw, 66px);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.82;
+}
+
+.collision-theatre-page .particle-hero h1 span {
     display: block;
-    margin-bottom: 3px;
-    color: #9eeaff;
-    font-size: 24px;
+    margin-bottom: 7px;
+    color: rgba(218, 205, 191, 0.54);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 0.22em;
+    font-weight: 580;
+    letter-spacing: 0.42em;
     line-height: 1;
-    text-align: center;
+    text-transform: uppercase;
+}
+
+.collision-theatre-page .particle-hero p {
+    max-width: 290px;
+    color: var(--theatre-muted);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 10px;
+    line-height: 1.7;
+}
+
+.collision-theatre-page .particle-readout {
+    top: 44px;
+    right: 48px;
+    min-width: 166px;
+    padding: 34px 0 8px 17px;
+    border: 0;
+    border-left: 1px solid var(--theatre-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: rgba(205, 197, 187, 0.58);
+    font-size: 8px;
+    line-height: 1.56;
+    backdrop-filter: none;
+}
+
+.collision-theatre-page .particle-readout::before {
+    position: absolute;
+    top: 7px;
+    right: 0;
+    left: 17px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(202, 153, 96, 0.1);
+    color: rgba(211, 159, 101, 0.68);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 7px;
+    font-weight: 620;
+    letter-spacing: 0.24em;
+    content: 'IMPACT REGISTER';
+}
+
+.collision-theatre-page .hilo3dStats {
+    display: none;
+}
+
+.collision-theatre-page .particle-controls {
+    left: 48px;
+    bottom: 42px;
+    align-items: center;
+}
+
+.collision-theatre-page .particle-controls button {
+    border-color: rgba(208, 189, 169, 0.14);
+    border-radius: 2px;
+    background: rgba(23, 19, 22, 0.62);
+    color: rgba(218, 207, 194, 0.62);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 7px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition:
+        border-color 180ms ease,
+        background 180ms ease,
+        color 180ms ease,
+        transform 180ms ease;
+}
+
+.collision-theatre-page .particle-controls button:first-child {
+    padding: 11px 17px;
+    border-color: rgba(211, 159, 101, 0.42);
+    background: rgba(104, 67, 43, 0.42);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
+    color: rgba(244, 226, 205, 0.88);
+}
+
+.collision-theatre-page .particle-controls button:hover {
+    border-color: rgba(222, 171, 112, 0.7);
+    background: rgba(111, 72, 47, 0.72);
+    color: #fff8ee;
+    transform: translateY(-2px);
+}
+
+.collision-theatre-page .particle-nav {
+    right: 48px;
+    bottom: 42px;
+    gap: 2px;
+}
+
+.collision-theatre-page .particle-nav a {
+    padding: 7px 9px;
+    border-color: transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(197, 187, 176, 0.4);
+    font-family: 'Avenir Next', Inter, sans-serif;
+    font-size: 7px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    backdrop-filter: none;
+}
+
+.collision-theatre-page .particle-nav a:hover,
+.collision-theatre-page .particle-nav a[aria-current='page'] {
+    border-color: rgba(211, 159, 101, 0.18);
+    background: rgba(75, 53, 39, 0.26);
+    color: rgba(235, 213, 187, 0.86);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .collision-theatre-page .particle-controls button,
+    .collision-theatre-page .particle-nav a {
+        transition: none;
+    }
 }
 
 @media (max-width: 720px) {
@@ -240,16 +397,43 @@ body {
         bottom: 72px;
     }
     .particle-readout {
-        top: auto;
-        right: 16px;
-        bottom: 70px;
+        display: none;
     }
     .particle-hint {
         display: none;
     }
     .particle-legend,
-    .collision-direction,
     .noise-label {
         display: none;
+    }
+    .collision-theatre-page::after {
+        inset: 8px;
+        border-radius: 12px;
+    }
+    .collision-theatre-page .particle-hero {
+        top: 24px;
+        right: 22px;
+        left: 22px;
+        width: auto;
+    }
+    .collision-theatre-page .particle-hero h1 {
+        font-size: 42px;
+    }
+    .collision-theatre-page .particle-hero p {
+        max-width: 280px;
+    }
+    .collision-theatre-page .particle-controls {
+        bottom: 58px;
+        left: 22px;
+    }
+    .collision-theatre-page .particle-nav {
+        right: 18px;
+        bottom: 14px;
+        left: 18px;
+        justify-content: center;
+    }
+    .collision-theatre-page .particle-nav a {
+        padding: 7px 6px;
+        font-size: 7px;
     }
 }

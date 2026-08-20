@@ -90,7 +90,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
             prewarm: !testMode,
             fixedStep: 1 / 60,
             maxCatchUpSteps: 4,
-            overflow: 'replace-oldest',
+            overflow: 'drop-new',
             eventCapacity: 4_096,
             bounds: { mode: 'manual', min: [-6, -4, -6], max: [6, 6, 6] },
             emission: {
@@ -254,7 +254,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
             capacity: sparkCapacity,
             execution: 'gpu',
             bounds: { mode: 'manual', min: [-7, -5, -7], max: [7, 7, 7] },
-            overflow: 'replace-oldest',
+            overflow: 'drop-new',
             initialize: {
                 lifetime: { min: 0.18, max: 0.6 },
                 speed: { min: 0.4, max: 1.6 },

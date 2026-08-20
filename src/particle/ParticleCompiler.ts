@@ -13,17 +13,21 @@ import ParticleCurve from './ParticleCurve';
 import { hashParticleDefinition } from './ParticleDefinitionHash';
 import type ParticleEmitterDefinition from './ParticleEmitterDefinition';
 import ParticleGradient from './ParticleGradient';
+import { ParticleParameter, resolveParticleParameter } from './ParticleParameter';
 import {
     analyzeParticleStatelessEligibility,
     particleStatelessBlockingDiagnostics
 } from './ParticleStateless';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
 import type {
+    ParticleColorSource,
     ParticleColorValue,
     ParticleModule,
     ParticleRange,
+    ParticleScalarSource,
     ParticleScalarValue,
     ParticleShapeDefinition,
+    ParticleVector3Source,
     ParticleVector3Value
 } from './ParticleTypes';
 
@@ -91,40 +95,70 @@ function isRange<T>(value: T | ParticleRange<T>): value is ParticleRange<T> {
     return typeof value === 'object' && value !== null && !Array.isArray(value) && 'min' in value;
 }
 
-function validateScalar(value: ParticleScalarValue | undefined, label: string): void {
+function validateScalar(value: ParticleScalarSource | undefined, label: string): void {
     if (value === undefined) return;
-    if (typeof value === 'number') {
-        requireFinite(value, label);
+    if (value instanceof ParticleParameter && value.type !== 'float' && value.type !== 'uint') {
+        throw new TypeError(`${label} parameter must have float or uint type`);
+    }
+    const source: ParticleScalarValue = resolveParticleParameter(value);
+    if (typeof source === 'number') {
+        requireFinite(source, label);
         return;
     }
-    requireFinite(value.min, `${label}.min`);
-    requireFinite(value.max, `${label}.max`);
-    if (value.min > value.max) throw new RangeError(`${label}.min must not exceed max`);
+    requireFinite(source.min, `${label}.min`);
+    requireFinite(source.max, `${label}.max`);
+    if (source.min > source.max) throw new RangeError(`${label}.min must not exceed max`);
 }
 
-function validateVectorValue(value: ParticleVector3Value | undefined, label: string): void {
+function validateVectorValue(value: ParticleVector3Source | undefined, label: string): void {
     if (value === undefined) return;
-    if (isRange(value)) {
-        validateVector(value.min, 3, `${label}.min`);
-        validateVector(value.max, 3, `${label}.max`);
+    if (value instanceof ParticleParameter && value.type !== 'vector3') {
+        throw new TypeError(`${label} parameter must have vector3 type`);
+    }
+    const source: ParticleVector3Value = resolveParticleParameter(value);
+    if (isRange(source)) {
+        validateVector(source.min, 3, `${label}.min`);
+        validateVector(source.max, 3, `${label}.max`);
+        validateVectorRange(source.min, source.max, label);
     } else {
-        validateVector(value, 3, label);
+        validateVector(source, 3, label);
     }
 }
 
-function validateColorValue(value: ParticleColorValue | undefined, label: string): void {
+function validateColorValue(value: ParticleColorSource | undefined, label: string): void {
     if (value === undefined) return;
-    if (isRange(value)) {
-        validateVector(value.min, 4, `${label}.min`);
-        validateVector(value.max, 4, `${label}.max`);
+    if (value instanceof ParticleParameter && value.type !== 'color' && value.type !== 'vector4') {
+        throw new TypeError(`${label} parameter must have color or vector4 type`);
+    }
+    const source: ParticleColorValue = resolveParticleParameter(value);
+    if (isRange(source)) {
+        validateVector(source.min, 4, `${label}.min`);
+        validateVector(source.max, 4, `${label}.max`);
+        validateVectorRange(source.min, source.max, label);
     } else {
-        validateVector(value, 4, label);
+        validateVector(source, 4, label);
     }
 }
 
-function validateIntegerScalar(value: ParticleScalarValue | undefined, label: string): void {
+function validateVectorRange(
+    minimum: readonly number[],
+    maximum: readonly number[],
+    label: string
+): void {
+    for (let component = 0; component < minimum.length; component += 1) {
+        if ((minimum[component] ?? 0) > (maximum[component] ?? 0)) {
+            throw new RangeError(`${label}.min must not exceed max component-wise`);
+        }
+    }
+}
+
+function validateIntegerScalar(value: ParticleScalarSource | undefined, label: string): void {
     if (value === undefined) return;
-    const values = typeof value === 'number' ? [value] : [value.min, value.max];
+    if (value instanceof ParticleParameter && value.type !== 'uint') {
+        throw new TypeError(`${label} parameter must have uint type`);
+    }
+    const source: ParticleScalarValue = resolveParticleParameter(value);
+    const values = typeof source === 'number' ? [source] : [source.min, source.max];
     for (const candidate of values) {
         if (!Number.isSafeInteger(candidate) || candidate < 0) {
             throw new RangeError(`${label} must contain non-negative safe integers`);
@@ -380,6 +414,22 @@ function validateModule(module: ParticleModule, label: string): void {
             if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(module.name)) {
                 throw new TypeError(`${label}.name is invalid`);
             }
+            {
+                const components =
+                    module.valueType === 'float'
+                        ? 1
+                        : module.valueType === 'vec2'
+                          ? 2
+                          : module.valueType === 'vec3'
+                            ? 3
+                            : 4;
+                const valueComponents = typeof module.value === 'number' ? 1 : module.value.length;
+                if (valueComponents !== components) {
+                    throw new TypeError(
+                        `${label}.value must contain ${String(components)} component(s) for ${module.valueType}`
+                    );
+                }
+            }
             return;
         case 'vector-field':
             requireFinite(module.strength, `${label}.strength`);
@@ -606,6 +656,7 @@ function selectPlanKind(
         return 'gpu-stateful';
     }
     if (emitter.execution === 'cpu') return 'cpu-stateful';
+    if (emitter.modules.some(module => module.type === 'trigger')) return 'cpu-stateful';
     if (statelessDiagnostics.length === 0) return 'stateless';
     if (
         environment.backend === 'webgpu' &&
@@ -627,6 +678,19 @@ function validateEmitter(
         if (burst.time < 0 || !Number.isSafeInteger(burst.count) || burst.count < 0) {
             throw new RangeError(`${emitter.name}.bursts[${String(index)}] is invalid`);
         }
+        const cycles = burst.cycles ?? 1;
+        const interval = burst.interval ?? 0;
+        if (!Number.isSafeInteger(cycles) || cycles < 1 || cycles > 65_536) {
+            throw new RangeError(
+                `${emitter.name}.bursts[${String(index)}].cycles must be between 1 and 65536`
+            );
+        }
+        requireFinite(interval, `${emitter.name}.bursts[${String(index)}].interval`);
+        if (interval < 0 || (cycles > 1 && interval === 0)) {
+            throw new RangeError(
+                `${emitter.name}.bursts[${String(index)}].interval must be positive when cycles exceeds one`
+            );
+        }
     }
     validateShape(emitter.shape, `${emitter.name}.shape`);
     validateScalar(emitter.initialize.lifetime, `${emitter.name}.initialize.lifetime`);
@@ -642,11 +706,29 @@ function validateEmitter(
     for (const [index, module] of emitter.modules.entries()) {
         validateModule(module, `${emitter.name}.modules[${String(index)}]`);
     }
+    const customChannels = new Set<string>();
+    for (const module of emitter.modules) {
+        if (module.type !== 'custom-channel') continue;
+        if (customChannels.has(module.name)) {
+            throw new TypeError(
+                `Particle emitter ${emitter.name} has duplicate custom channel ${module.name}`
+            );
+        }
+        customChannels.add(module.name);
+    }
     if (emitter.modules.filter(module => module.type === 'trigger').length > 1) {
         throw new RangeError(`${emitter.name} supports one trigger module with up to 32 volumes`);
     }
     const usesSceneDepthCollision = emitter.modules.some(
         module => module.type === 'scene-depth-collision'
+    );
+    const usesVectorField = emitter.modules.some(module => module.type === 'vector-field');
+    const usesTrigger = emitter.modules.some(module => module.type === 'trigger');
+    const usesCameraRendering = emitter.modules.some(
+        module =>
+            module.type === 'camera-offset' ||
+            module.type === 'camera-fade' ||
+            module.type === 'screen-space-size'
     );
     const usesSoftParticles = emitter.renderers.some(
         renderer =>
@@ -658,6 +740,26 @@ function validateEmitter(
     if ((usesSceneDepthCollision || usesSoftParticles) && emitter.execution !== 'gpu') {
         throw new TypeError(
             `Particle emitter ${emitter.name} scene-depth interaction requires explicit GPU execution`
+        );
+    }
+    if (usesVectorField && emitter.execution !== 'gpu') {
+        throw new TypeError(
+            `Particle emitter ${emitter.name} vector-field sampling requires explicit GPU execution`
+        );
+    }
+    if (usesTrigger && emitter.execution === 'gpu') {
+        throw new TypeError(
+            `Particle emitter ${emitter.name} trigger modules require CPU execution`
+        );
+    }
+    if (emitter.execution === 'gpu' && emitter.overflow === 'replace-oldest') {
+        throw new TypeError(
+            `Particle emitter ${emitter.name} GPU execution does not support replace-oldest overflow`
+        );
+    }
+    if (usesCameraRendering && emitter.renderers.some(renderer => renderer.type !== 'sprite')) {
+        throw new TypeError(
+            `Particle emitter ${emitter.name} camera rendering modules require sprite-only renderers`
         );
     }
     for (const [index, renderer] of emitter.renderers.entries()) {
@@ -696,12 +798,14 @@ function validateEmitter(
                 );
             });
             const meshIndex = emitter.initialize.meshIndex;
+            const resolvedMeshIndex =
+                meshIndex === undefined ? undefined : resolveParticleParameter(meshIndex);
             const maximumIndex =
-                meshIndex === undefined
+                resolvedMeshIndex === undefined
                     ? 0
-                    : typeof meshIndex === 'number'
-                      ? meshIndex
-                      : meshIndex.max;
+                    : typeof resolvedMeshIndex === 'number'
+                      ? resolvedMeshIndex
+                      : resolvedMeshIndex.max;
             if (maximumIndex >= renderer.meshes.length) {
                 throw new RangeError(
                     `${emitter.name}.initialize.meshIndex exceeds renderer mesh buckets`
@@ -839,6 +943,15 @@ export function compileParticleSystemDefinition(
             if (target?.kind !== 'gpu-stateful') {
                 throw new TypeError(
                     `GPU particle emitter ${source.definition.name} cannot route ${module.event} through CPU emitter ${module.emitter}`
+                );
+            }
+            if (
+                Object.values(target.definition.initialize).some(
+                    value => value instanceof ParticleParameter
+                )
+            ) {
+                throw new TypeError(
+                    `GPU particle sub-emitter ${module.emitter} cannot use runtime-bound initialization because event routing is GPU-resident`
                 );
             }
         }

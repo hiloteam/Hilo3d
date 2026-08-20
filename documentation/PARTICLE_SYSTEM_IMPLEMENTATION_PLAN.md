@@ -449,8 +449,9 @@ snapshot 必须是调试用途的异步 readback，并且不能参与同帧 simu
 ### 6.4 Typed parameter
 
 公共参数使用带类型的 `ParticleParameter<T>` token，而不是 shader
-binding 字符串。definition 序列化保存稳定 name/type/default，运行时使用 token
-identity 和单调 revision。首版类型：
+binding 字符串。definition 保存稳定的 token identity/type/default，`ParticleParameterSet`
+提供单调 revision。当前参数已接入连续生成率与 spawn initialization 的 CPU、stateless 和 stateful
+WebGPU command 路径；改变 module、renderer 或 attribute topology 仍需创建新 definition。类型：
 
 - `float`、`uint`、`boolean`；
 - `Vector2`、`Vector3`、`Vector4`、`Color`；
@@ -894,13 +895,15 @@ pass。默认关闭 diagnostics 时不能引入逐粒子计数、GPU query 或 r
 交付：
 
 - [x] stateless eligibility checker；
-- [x] CPU/WebGPU stateless
-      generator，覆盖 P1 可解析子集以及 gravity/drag/orbit/noise-offset 等有明确解析式或 LUT
-      approximation 的 P2 模块；
+- [x] CPU stateless
+      generator 覆盖 P1 可解析子集以及 gravity/drag/orbit/noise-offset 等有明确解析式或有界重建的模块；WebGPU 无状态路径覆盖 point
+      shape、连续生成、sprite 渲染，以及 velocity/force/gravity/wind/drag 和 camera
+      renderer 模块，其余定义明确回退到 CPU stateless；
+- [x] WebGPU stateless generator 接入 Render Graph、indirect draw 和 regeneration recovery；
 - [x] 每个 module 的 `exact`、`approximated`、`stateful-only` metadata 和资产级诊断；
 - [x] renderer-local renderer-data/cache recovery contract；
-- [x] distance/visibility/instance/budget culling；
-- [x] `ParticleBudgetProfile`、pooling 和大量短促 effect 的 service/data-channel 基线。
+- [x] bounds、layer、hierarchical visibility 与 pool；
+- [x] renderer-local budget/profile 及其对 spawn/render quality 的实际应用；
 
 门禁：
 

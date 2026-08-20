@@ -22,6 +22,8 @@ import {
     ParticleCurve,
     ParticleEventChannel,
     ParticleGradient,
+    ParticleParameter,
+    ParticleParameterSet,
     ParticleSystem,
     ParticleSystemDefinition,
     ParticleSystemPool,
@@ -52,8 +54,8 @@ import {
     type NodeParameters,
     type OrbitControlsOptions,
     type ParticleModule,
-    type ParticleBudgetProfile,
     type ParticleAdvancedQualityPlan,
+    type ParticleBudgetProfile,
     type ParticleMeshRendererDefinition,
     type ParticleRibbonRendererDefinition,
     type ParticleStatelessSupport,
@@ -164,6 +166,8 @@ const particleModules = [
         event: 'impact'
     }
 ] satisfies readonly ParticleModule[];
+const particleRate = new ParticleParameter('type.spawn-rate', 'float', 8);
+const particleParameters = new ParticleParameterSet().set(particleRate, 12);
 const particleDefinitionInput = {
     emitters: [
         {
@@ -171,8 +175,9 @@ const particleDefinitionInput = {
             capacity: 64,
             execution: 'cpu',
             eventCapacity: 32,
-            emission: { rateOverTime: 8 },
+            emission: { rateOverTime: particleRate },
             initialize: { lifetime: 1, size: 0.1 },
+            bounds: { mode: 'manual', min: [-2, -2, -2], max: [2, 2, 2] },
             modules: particleModules,
             renderers: [{ type: 'sprite', blend: 'additive' }]
         }
@@ -203,7 +208,9 @@ void particleAdvancedQuality;
 const particleSystemParameters = {
     definition: particleDefinition,
     seed: 42,
-    autoPlay: false
+    autoPlay: false,
+    parameters: particleParameters,
+    budgetId: 'type-consumer'
 } satisfies ParticleSystemParameters;
 const particleSystem = new ParticleSystem(particleSystemParameters);
 particleSystem
@@ -229,14 +236,7 @@ const particleBudgetProfile = {
     sorting: false
 } satisfies ParticleBudgetProfile;
 const particleBudgetManager = new ParticleBudgetManager(particleBudgetProfile);
-particleBudgetManager.resolve([
-    {
-        systemId: particleDefinition.hash,
-        emitterId: 0,
-        capacity: 64,
-        estimatedAlive: particleSystem.aliveCount
-    }
-]);
+particleBudgetManager.apply([particleSystem]);
 const particleEmitter = particleDefinition.emitters[0];
 if (!particleEmitter) throw new Error('Particle type fixture requires an emitter');
 const statelessSupport: ParticleStatelessSupport =

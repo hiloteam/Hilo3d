@@ -10,6 +10,7 @@ import type { Renderer } from '../../render/Renderer';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type { ParticleRibbonRendererDefinition, ParticleVector3 } from '../ParticleTypes';
 import type { ParticleCPUState } from './ParticleCPUState';
+import type { ParticleCPUWriterQuality } from './ParticleCPUWriter';
 
 const SEGMENT_FLOAT_STRIDE = 16;
 const SEGMENT_BYTE_STRIDE = SEGMENT_FLOAT_STRIDE * Float32Array.BYTES_PER_ELEMENT;
@@ -244,8 +245,8 @@ export class ParticleCPURibbonWriter {
         });
     }
 
-    sync(_cameraPosition: ParticleVector3): void {
-        const aliveCount = this.#state.aliveCount;
+    sync(_cameraPosition: ParticleVector3, quality: Readonly<ParticleCPUWriterQuality>): void {
+        const aliveCount = quality.enabled && quality.ribbons ? this.#state.aliveCount : 0;
         for (let index = 0; index < aliveCount; index += 1) this.#topologyIndices[index] = index;
         for (let root = Math.floor(aliveCount / 2) - 1; root >= 0; root -= 1) {
             this.siftDown(root, aliveCount);
