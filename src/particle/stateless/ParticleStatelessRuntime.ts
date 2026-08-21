@@ -40,6 +40,45 @@ interface ParticleStatelessManualBatch {
     readonly emitterPosition: ParticleVector3;
 }
 
+/** @internal */
+export interface ParticleStatelessRuntimeSnapshot {
+    readonly manualBatches: readonly Readonly<ParticleStatelessManualBatch>[];
+    readonly pendingCommands: readonly Readonly<ParticleManualEmitCommand>[];
+    readonly emitterPosition: ParticleVector3;
+    readonly emitterAge: number;
+    readonly manualSequence: number;
+    readonly particleLimit: number;
+    readonly spawnRateScale: number;
+    readonly byteLength: number;
+}
+
+function snapshotVector(value: ParticleVector3): ParticleVector3 {
+    return Object.freeze([...value] as ParticleVector3);
+}
+
+function snapshotManualCommand(
+    command: Readonly<ParticleManualEmitCommand>
+): Readonly<ParticleManualEmitCommand> {
+    return Object.freeze({
+        count: command.count,
+        ...(command.position === undefined ? {} : { position: snapshotVector(command.position) }),
+        ...(command.velocity === undefined ? {} : { velocity: snapshotVector(command.velocity) })
+    });
+}
+
+function snapshotManualBatch(
+    batch: Readonly<ParticleStatelessManualBatch>
+): Readonly<ParticleStatelessManualBatch> {
+    return Object.freeze({
+        time: batch.time,
+        firstId: batch.firstId,
+        count: batch.count,
+        ...(batch.position === undefined ? {} : { position: snapshotVector(batch.position) }),
+        ...(batch.velocity === undefined ? {} : { velocity: snapshotVector(batch.velocity) }),
+        emitterPosition: snapshotVector(batch.emitterPosition)
+    });
+}
+
 function maximumScalar(
     value: ParticleScalarSource | undefined,
     fallback: number,
@@ -163,6 +202,44 @@ export class ParticleStatelessRuntime {
         this.clear();
         this.#emitterAge = 0;
         this.#manualSequence = MANUAL_ID_BASE;
+    }
+
+    /** Copy absolute-time reconstruction and queued manual-emission metadata. @internal */
+    capture(): Readonly<ParticleStatelessRuntimeSnapshot> {
+        return Object.freeze({
+            manualBatches: Object.freeze(
+                this.#manualBatches.map(batch => snapshotManualBatch(batch))
+            ),
+            pendingCommands: Object.freeze(
+                this.#pendingCommands.map(command => snapshotManualCommand(command))
+            ),
+            emitterPosition: snapshotVector(this.#emitterPosition),
+            emitterAge: this.#emitterAge,
+            manualSequence: this.#manualSequence,
+            particleLimit: this.#particleLimit,
+            spawnRateScale: this.#spawnRateScale,
+            byteLength: 0
+        });
+    }
+
+    /** Restore and deterministically rematerialize one stateless snapshot. @internal */
+    restore(snapshot: Readonly<ParticleStatelessRuntimeSnapshot>): void {
+        this.#manualBatches.length = 0;
+        for (const batch of snapshot.manualBatches) {
+            this.#manualBatches.push(snapshotManualBatch(batch));
+        }
+        this.#pendingCommands.length = 0;
+        for (const command of snapshot.pendingCommands) {
+            this.#pendingCommands.push(snapshotManualCommand(command));
+        }
+        this.#emitterPosition[0] = snapshot.emitterPosition[0];
+        this.#emitterPosition[1] = snapshot.emitterPosition[1];
+        this.#emitterPosition[2] = snapshot.emitterPosition[2];
+        this.#emitterAge = snapshot.emitterAge;
+        this.#manualSequence = snapshot.manualSequence;
+        this.#particleLimit = snapshot.particleLimit;
+        this.#spawnRateScale = snapshot.spawnRateScale;
+        this.rebuild();
     }
 
     simulate(

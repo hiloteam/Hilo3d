@@ -58,6 +58,25 @@
   supported portable opaque/masked mesh output. Add fail-closed advanced quality gates instead of
   silently degrading unsupported tiers. Allow the built-in opaque GPU particle boundary to request
   opaque/transparent Forward splitting only on frames that actually draw eligible particles.
+- Add the first particle P6 authoring slice with normalized versioned JSON serialization, strict
+  parsing and compiler validation, sequential application-owned upgrades, document-local shared
+  parameter identities, and stable application-resolved Texture/Geometry references. Reject future
+  versions, missing or skipped upgrades, unknown schema fields/tags, and unresolved or wrong-kind
+  resources before runtime construction.
+- Add versioned reusable in-memory particle simulation checkpoints. Capture and restore CPU SoA,
+  fixed-step scheduler, pending manual emission, bounded events, playback/budget/culling state, and
+  stateless GPU absolute time without production-loop readback. Bind checkpoints to definition,
+  compiled plan, seed, parameter identity/revision, and event capacity; reject stateful GPU capture
+  until an explicit asynchronous device-state transfer contract exists.
+- Add bounded deterministic particle baking APIs. Export stable-ID/generation-sorted frame-major
+  mesh instance caches with motion/orientation inputs and bounds, and pack application-rendered,
+  tightly packed render-target readbacks into native-format flipbook atlases. Restore the caller's
+  simulation checkpoint after success or failure, bound frame/particle/atlas work, and reject
+  stateful GPU baking rather than introducing synchronous device-state readback.
+- Complete particle P6 external authoring with a published fixed-module graph JSON Schema,
+  deterministic definition-to-graph conversion, strict ownership/compiler validation,
+  node-addressable diagnostics, normalized inspector IR, and a versioned preview controller for
+  compile/play/pause/restart/seek/step/inspect/dispose without GPU particle readback.
 - Allow a Forward feature runtime to request sampled single-sample scene depth per frame before
   attachment allocation, so scene-dependent effects do not force unrelated RenderTarget frames
   through an intermediate depth path.

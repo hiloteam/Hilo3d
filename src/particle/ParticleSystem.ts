@@ -5,6 +5,7 @@ import Sphere from '../math/Sphere';
 import Vector3 from '../math/Vector3';
 import type { Renderer } from '../render/Renderer';
 import type { RendererContract } from '../render/RendererCore';
+import type { RenderTargetColorAttachmentReadback } from '../render/RenderTarget';
 import type { RenderPipelineContext } from '../render/pipeline/RenderPipeline';
 import type { RenderGraphTextureHandle } from '../render/pipeline/ScriptableRenderGraph';
 import {
@@ -13,8 +14,25 @@ import {
 } from './ParticleCompiler';
 import type { ParticleCompiledEmitterPlan, ParticleCompiledPlan } from './ParticleCompiledPlan';
 import type { ParticleBudgetDecision, ParticleBudgetRequest } from './ParticleBudget';
+import {
+    createParticleBakeTimeline,
+    createParticleFlipbook,
+    createParticleMeshCache,
+    ParticleMeshCacheBuilder,
+    type ParticleFlipbook,
+    type ParticleFlipbookOptions,
+    type ParticleMeshCache,
+    type ParticleMeshCacheOptions
+} from './ParticleBaking';
 import type ParticleSystemDefinition from './ParticleSystemDefinition';
 import { ParticleParameterSet, resolveParticleParameter } from './ParticleParameter';
+import {
+    createParticleSimulationCache,
+    readParticleSimulationCache,
+    type ParticleEmitterSimulationSnapshot,
+    type ParticleSimulationCache,
+    type ParticleSystemSimulationSnapshot
+} from './ParticleSimulationCache';
 import type { ParticleScalarSource, ParticleVector3 } from './ParticleTypes';
 import { createParticleCPUWriters, type ParticleCPUWriter } from './cpu/ParticleCPUWriter';
 import {
@@ -128,6 +146,18 @@ function particleNodeParameters(
     return nodeParameters;
 }
 
+function snapshotParticleEvent(
+    event: Readonly<ParticleEventRecord>
+): Readonly<ParticleEventRecord> {
+    return Object.freeze({
+        name: event.name,
+        emitter: event.emitter,
+        stableId: event.stableId,
+        position: Object.freeze([...event.position] as ParticleVector3),
+        velocity: Object.freeze([...event.velocity] as ParticleVector3)
+    });
+}
+
 /** Runtime scene node for immutable compiled particle-system definitions. */
 class ParticleSystem extends Node {
     static override readonly typeName = 'ParticleSystem';
@@ -153,6 +183,7 @@ class ParticleSystem extends Node {
     #completed = false;
     #gpuRenderer: RendererContract | null = null;
     #eventDroppedCount = 0;
+    #baking = false;
 
     constructor(parameters: Readonly<ParticleSystemParameters>) {
         const input: unknown = parameters;
@@ -584,7 +615,355 @@ class ParticleSystem extends Node {
             .join(':');
     }
 
+    /**
+     * Bake stable-ID-sorted frame-major instance streams for authored mesh emitters.
+     *
+     * The system is restored to its exact simulation checkpoint after the synchronous bake.
+     */
+    bakeMeshCache(options: Readonly<ParticleMeshCacheOptions>): ParticleMeshCache {
+        if (this.#baking) throw new Error('ParticleSystem already has an active bake');
+        const timeline = createParticleBakeTimeline(options);
+        const maxSampledParticles = options.maxSampledParticles ?? 1_048_576;
+        if (
+            !Number.isSafeInteger(maxSampledParticles) ||
+            maxSampledParticles <= 0 ||
+            maxSampledParticles > 0xffff_ffff
+        ) {
+            throw new RangeError(
+                'Particle mesh cache maximum sampled particle count must fit uint32 offsets'
+            );
+        }
+        const checkpoint = this.captureSimulation();
+        this.#baking = true;
+        try {
+            this.restart().pause();
+            const selected =
+                options.emitter === undefined
+                    ? this.#runtimes.filter(runtime =>
+                          runtime.plan.definition.renderers.some(
+                              renderer => renderer.type === 'mesh'
+                          )
+                      )
+                    : this.#runtimes.filter(
+                          runtime => runtime.plan.definition.name === options.emitter
+                      );
+            if (selected.length === 0) {
+                throw new RangeError(
+                    options.emitter === undefined
+                        ? 'Particle system has no mesh emitter to bake'
+                        : `Particle emitter ${options.emitter} is unavailable`
+                );
+            }
+            const builders = selected.map(runtime => {
+                if (runtime.statelessGPUActive) {
+                    runtime.statelessGPUActive = false;
+                    this.materializeStatelessCPU(runtime);
+                }
+                if (runtime.simulator === null) {
+                    throw new TypeError(
+                        `Particle mesh cache requires CPU-readable emitter ${runtime.plan.definition.name}`
+                    );
+                }
+                return Object.freeze({
+                    runtime,
+                    builder: new ParticleMeshCacheBuilder(runtime.plan)
+                });
+            });
+            let currentTime = 0;
+            let sampledParticles = 0;
+            for (const time of timeline.times) {
+                this.simulate(Math.max(0, time - currentTime));
+                currentTime = time;
+                for (const entry of builders) {
+                    const simulator = entry.runtime.simulator;
+                    if (simulator === null) {
+                        throw new Error('Validated particle bake runtime is unavailable');
+                    }
+                    sampledParticles += simulator.state.aliveCount;
+                    if (sampledParticles > maxSampledParticles) {
+                        throw new RangeError(
+                            `Particle mesh cache sampled particle count exceeds ${String(maxSampledParticles)}`
+                        );
+                    }
+                    entry.builder.append(simulator.state);
+                }
+            }
+            return createParticleMeshCache(
+                this.definition.hash,
+                this.seed,
+                timeline,
+                builders.map(entry => entry.builder.finish())
+            );
+        } finally {
+            try {
+                this.restoreSimulation(checkpoint);
+            } finally {
+                this.#baking = false;
+            }
+        }
+    }
+
+    /**
+     * Bake real render-target readbacks into a tightly packed flipbook atlas.
+     *
+     * The callback owns rendering and asynchronous readback; the system owns deterministic timeline
+     * advancement and restores its exact checkpoint after completion or failure.
+     */
+    async bakeFlipbook(options: Readonly<ParticleFlipbookOptions>): Promise<ParticleFlipbook> {
+        if (this.#baking) throw new Error('ParticleSystem already has an active bake');
+        const timeline = createParticleBakeTimeline(options);
+        const checkpoint = this.captureSimulation();
+        this.#baking = true;
+        try {
+            this.restart().pause();
+            const frames: RenderTargetColorAttachmentReadback[] = [];
+            let currentTime = 0;
+            for (let frameIndex = 0; frameIndex < timeline.times.length; frameIndex += 1) {
+                const time = timeline.times[frameIndex];
+                if (time === undefined) throw new Error('Particle flipbook time is unavailable');
+                this.simulate(Math.max(0, time - currentTime));
+                currentTime = time;
+                const captured = await options.captureFrame(
+                    Object.freeze({ system: this, frameIndex, timeSeconds: time })
+                );
+                frames.push(
+                    Object.freeze({
+                        data: captured.data.slice(),
+                        format: captured.format,
+                        width: captured.width,
+                        height: captured.height,
+                        bytesPerPixel: captured.bytesPerPixel,
+                        bytesPerRow: captured.bytesPerRow
+                    })
+                );
+            }
+            return createParticleFlipbook(
+                this.definition.hash,
+                this.seed,
+                timeline,
+                frames,
+                options
+            );
+        } finally {
+            try {
+                this.restoreSimulation(checkpoint);
+            } finally {
+                this.#baking = false;
+            }
+        }
+    }
+
+    /**
+     * Capture one reusable deterministic replay checkpoint without GPU readback.
+     *
+     * Stateful GPU emitters are rejected because their authoritative state is device-resident.
+     * Stateless GPU emitters capture only absolute reconstruction time.
+     */
+    captureSimulation(): ParticleSimulationCache {
+        const gpuStateful = this.#runtimes.find(runtime => runtime.gpuController !== null);
+        if (gpuStateful !== undefined) {
+            throw new Error(
+                `Particle simulation capture does not support stateful GPU emitter ${gpuStateful.plan.definition.name}`
+            );
+        }
+        let storageByteLength = 0;
+        const emitters: Readonly<ParticleEmitterSimulationSnapshot>[] = this.#runtimes.map(
+            runtime => {
+                const common = {
+                    emitterId: runtime.plan.emitterId,
+                    definitionHash: runtime.plan.definition.hash,
+                    layoutHash: runtime.plan.layoutHash,
+                    statelessAge: runtime.statelessAge,
+                    budgetEnabled: runtime.budgetEnabled,
+                    budgetParticleLimit: runtime.budgetParticleLimit,
+                    budgetSpawnRateScale: runtime.budgetSpawnRateScale,
+                    budgetSorting: runtime.budgetSorting,
+                    budgetSoftParticles: runtime.budgetSoftParticles,
+                    budgetCollision: runtime.budgetCollision,
+                    budgetRibbons: runtime.budgetRibbons,
+                    culledSeconds: runtime.culledSeconds,
+                    stoppedByCulling: runtime.stoppedByCulling
+                } as const;
+                if (runtime.statelessGPUActive) {
+                    return Object.freeze({
+                        ...common,
+                        runtimeKind: 'stateless-gpu',
+                        simulation: null,
+                        storageByteLength: 0
+                    });
+                }
+                const simulator = runtime.simulator;
+                if (simulator instanceof ParticleCPUSimulator) {
+                    const simulation = simulator.capture();
+                    storageByteLength += simulation.byteLength;
+                    return Object.freeze({
+                        ...common,
+                        runtimeKind: 'cpu-stateful',
+                        simulation,
+                        storageByteLength: simulation.byteLength
+                    });
+                }
+                if (simulator instanceof ParticleStatelessRuntime) {
+                    const simulation = simulator.capture();
+                    storageByteLength += simulation.byteLength;
+                    return Object.freeze({
+                        ...common,
+                        runtimeKind: 'stateless-cpu',
+                        simulation,
+                        storageByteLength: simulation.byteLength
+                    });
+                }
+                throw new Error(
+                    `Particle emitter ${runtime.plan.definition.name} has no capturable runtime`
+                );
+            }
+        );
+        const snapshot: Readonly<ParticleSystemSimulationSnapshot> = Object.freeze({
+            definition: this.definition,
+            parameters: this.parameters,
+            definitionHash: this.definition.hash,
+            compiledPlanHash: this.compiledPlan.hash,
+            seed: this.seed,
+            parameterRevision: this.parameters.revision,
+            eventReadbackCapacity: this.#eventReadbackCapacity,
+            playing: this.#playing,
+            timeScale: this.#timeScale,
+            elapsedSeconds: this.#elapsedSeconds,
+            completed: this.#completed,
+            eventQueue: Object.freeze(this.#eventQueue.map(event => snapshotParticleEvent(event))),
+            eventDroppedCount: this.#eventDroppedCount,
+            emitters: Object.freeze(emitters),
+            storageByteLength
+        });
+        return createParticleSimulationCache(snapshot);
+    }
+
+    /** Restore a compatible checkpoint and make its simulation state current. */
+    restoreSimulation(cache: ParticleSimulationCache): this {
+        const snapshot = readParticleSimulationCache(cache);
+        if (snapshot === undefined) {
+            throw new TypeError('ParticleSystem restore requires a captured simulation cache');
+        }
+        if (snapshot.definition !== this.definition) {
+            throw new TypeError(
+                'Particle simulation cache requires the same immutable definition identity'
+            );
+        }
+        if (
+            snapshot.definitionHash !== this.definition.hash ||
+            snapshot.compiledPlanHash !== this.compiledPlan.hash
+        ) {
+            throw new TypeError('Particle simulation cache compiled plan is incompatible');
+        }
+        if (snapshot.seed !== this.seed) {
+            throw new TypeError('Particle simulation cache seed is incompatible');
+        }
+        if (snapshot.parameters !== this.parameters) {
+            throw new TypeError(
+                'Particle simulation cache requires the same parameter-set identity'
+            );
+        }
+        if (snapshot.parameterRevision !== this.parameters.revision) {
+            throw new TypeError('Particle simulation cache parameter revision is stale');
+        }
+        if (snapshot.eventReadbackCapacity !== this.#eventReadbackCapacity) {
+            throw new TypeError('Particle simulation cache event capacity is incompatible');
+        }
+        if (snapshot.emitters.length !== this.#runtimes.length) {
+            throw new TypeError('Particle simulation cache emitter count is incompatible');
+        }
+        for (let index = 0; index < this.#runtimes.length; index += 1) {
+            const runtime = this.#runtimes[index];
+            if (runtime === undefined) {
+                throw new Error('Particle runtime is unavailable');
+            }
+            const emitter = snapshot.emitters[index];
+            if (
+                emitter?.emitterId !== runtime.plan.emitterId ||
+                emitter.definitionHash !== runtime.plan.definition.hash ||
+                emitter.layoutHash !== runtime.plan.layoutHash
+            ) {
+                throw new TypeError('Particle simulation cache emitter layout is incompatible');
+            }
+            if (
+                (emitter.runtimeKind === 'cpu-stateful' &&
+                    !(runtime.simulator instanceof ParticleCPUSimulator)) ||
+                (emitter.runtimeKind !== 'cpu-stateful' && runtime.plan.kind !== 'stateless') ||
+                (emitter.runtimeKind === 'stateless-gpu' && !runtime.statelessGPUCapable)
+            ) {
+                throw new TypeError('Particle simulation cache execution mode is incompatible');
+            }
+        }
+        for (let index = 0; index < this.#runtimes.length; index += 1) {
+            const runtime = this.#runtimes[index];
+            const emitter = snapshot.emitters[index];
+            if (runtime === undefined || emitter === undefined) {
+                throw new Error('Validated particle simulation cache emitter is unavailable');
+            }
+            runtime.statelessAge = emitter.statelessAge;
+            runtime.budgetEnabled = emitter.budgetEnabled;
+            runtime.budgetParticleLimit = emitter.budgetParticleLimit;
+            runtime.budgetSpawnRateScale = emitter.budgetSpawnRateScale;
+            runtime.budgetSorting = emitter.budgetSorting;
+            runtime.budgetSoftParticles = emitter.budgetSoftParticles;
+            runtime.budgetCollision = emitter.budgetCollision;
+            runtime.budgetRibbons = emitter.budgetRibbons;
+            runtime.culledSeconds = emitter.culledSeconds;
+            runtime.stoppedByCulling = emitter.stoppedByCulling;
+            switch (emitter.runtimeKind) {
+                case 'cpu-stateful': {
+                    const simulator = runtime.simulator;
+                    if (!(simulator instanceof ParticleCPUSimulator)) {
+                        throw new Error('Validated particle CPU runtime is unavailable');
+                    }
+                    runtime.statelessGPUActive = false;
+                    simulator.restore(emitter.simulation);
+                    break;
+                }
+                case 'stateless-cpu': {
+                    runtime.statelessGPUActive = false;
+                    this.materializeStatelessCPU(runtime);
+                    const simulator = runtime.simulator;
+                    if (!(simulator instanceof ParticleStatelessRuntime)) {
+                        throw new Error('Validated particle stateless runtime is unavailable');
+                    }
+                    simulator.restore(emitter.simulation);
+                    break;
+                }
+                case 'stateless-gpu':
+                    runtime.statelessGPUActive = true;
+                    runtime.statelessGPURuntime?.invalidate();
+                    break;
+            }
+            runtime.statelessGPURuntime?.setBudget({
+                systemId: this.budgetId,
+                emitterId: runtime.plan.emitterId,
+                enabled: runtime.budgetEnabled,
+                particleLimit: runtime.budgetParticleLimit,
+                spawnRateScale: runtime.budgetSpawnRateScale,
+                sorting: runtime.budgetSorting,
+                softParticles: runtime.budgetSoftParticles,
+                collision: runtime.budgetCollision,
+                ribbons: runtime.budgetRibbons,
+                reasons: Object.freeze([])
+            });
+        }
+        this.#playing = snapshot.playing;
+        this.#timeScale = snapshot.timeScale;
+        this.#elapsedSeconds = snapshot.elapsedSeconds;
+        this.#completed = snapshot.completed;
+        this.#eventQueue.length = 0;
+        this.#eventQueue.push(...snapshot.eventQueue.map(event => snapshotParticleEvent(event)));
+        this.#eventDroppedCount = snapshot.eventDroppedCount;
+        this.syncWriters();
+        return this;
+    }
+
     override update(deltaTimeMilliseconds: number): void {
+        if (this.#baking) {
+            this.syncWriters();
+            return;
+        }
         if (!this.#playing || this.#completed || this.#timeScale === 0) {
             this.syncWriters();
             return;
@@ -1070,9 +1449,10 @@ class ParticleSystem extends Node {
             }) &&
             this.#runtimes.every(runtime => !runtime.plan.definition.looping)
         ) {
+            const wasCompleted = this.#completed;
             this.#completed = true;
             this.#playing = false;
-            this.fire('complete');
+            if (!wasCompleted && !this.#baking) this.fire('complete');
         }
     }
 

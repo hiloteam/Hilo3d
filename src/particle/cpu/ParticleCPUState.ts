@@ -7,6 +7,22 @@ import type {
 
 type ParticleAttributeArray = Float32Array | Uint32Array;
 
+/** @internal */
+export interface ParticleCPUStateSnapshotAttribute {
+    readonly name: ParticleAttributeName;
+    readonly storage: 'f32' | 'u32';
+    readonly components: 1 | 2 | 3 | 4;
+    readonly values: Float32Array | Uint32Array;
+}
+
+/** @internal */
+export interface ParticleCPUStateSnapshot {
+    readonly capacity: number;
+    readonly aliveCount: number;
+    readonly attributes: readonly Readonly<ParticleCPUStateSnapshotAttribute>[];
+    readonly byteLength: number;
+}
+
 /** Dense alive SoA storage used by the portable CPU execution plan. */
 export class ParticleCPUState {
     readonly capacity: number;
@@ -82,6 +98,72 @@ export class ParticleCPUState {
     }
 
     markChanged(): void {
+        this.revision++;
+    }
+
+    /** Copy all dense storage, including dead slots needed by exact replay. @internal */
+    capture(): Readonly<ParticleCPUStateSnapshot> {
+        let byteLength = 0;
+        const attributes = this.#layout.map(attribute => {
+            const values = this.#arrays.get(attribute.name);
+            if (!values)
+                throw new Error(`Particle attribute ${attribute.name} storage is unavailable`);
+            const snapshot = values.slice();
+            byteLength += snapshot.byteLength;
+            return Object.freeze({
+                name: attribute.name,
+                storage: attribute.storage,
+                components: attribute.components,
+                values: snapshot
+            });
+        });
+        return Object.freeze({
+            capacity: this.capacity,
+            aliveCount: this.aliveCount,
+            attributes: Object.freeze(attributes),
+            byteLength
+        });
+    }
+
+    /** Replace dense storage from one compatible deterministic snapshot. @internal */
+    restore(snapshot: Readonly<ParticleCPUStateSnapshot>): void {
+        if (snapshot.capacity !== this.capacity) {
+            throw new TypeError('Particle CPU state snapshot capacity is incompatible');
+        }
+        if (
+            !Number.isSafeInteger(snapshot.aliveCount) ||
+            snapshot.aliveCount < 0 ||
+            snapshot.aliveCount > this.capacity
+        ) {
+            throw new RangeError('Particle CPU state snapshot alive count is invalid');
+        }
+        if (snapshot.attributes.length !== this.#layout.length) {
+            throw new TypeError('Particle CPU state snapshot layout is incompatible');
+        }
+        for (let index = 0; index < this.#layout.length; index += 1) {
+            const layout = this.#layout[index];
+            if (layout === undefined) {
+                throw new Error('Particle CPU state layout is unavailable');
+            }
+            const attribute = snapshot.attributes[index];
+            if (
+                attribute?.name !== layout.name ||
+                attribute.storage !== layout.storage ||
+                attribute.components !== layout.components
+            ) {
+                throw new TypeError('Particle CPU state snapshot layout is incompatible');
+            }
+            const target = this.#arrays.get(layout.name);
+            const expectedFloat = layout.storage === 'f32';
+            if (
+                target?.length !== attribute.values.length ||
+                attribute.values instanceof Float32Array !== expectedFloat
+            ) {
+                throw new TypeError('Particle CPU state snapshot storage is incompatible');
+            }
+            target.set(attribute.values);
+        }
+        this.aliveCount = snapshot.aliveCount;
         this.revision++;
     }
 

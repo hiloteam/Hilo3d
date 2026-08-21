@@ -21,8 +21,11 @@ import type {
     ParticleVector3,
     ParticleVector3Source
 } from '../ParticleTypes';
-import { ParticleCPUState } from './ParticleCPUState';
-import { ParticleCPUEventBuffer } from './ParticleCPUEventBuffer';
+import { ParticleCPUState, type ParticleCPUStateSnapshot } from './ParticleCPUState';
+import {
+    ParticleCPUEventBuffer,
+    type ParticleCPUEventBufferSnapshot
+} from './ParticleCPUEventBuffer';
 import { particleCurlNoise, particleVectorNoise } from './ParticleNoise';
 
 const ZERO_VECTOR: ParticleVector3 = Object.freeze([0, 0, 0]);
@@ -191,6 +194,39 @@ export interface ParticleManualEmitCommand {
     readonly count: number;
     readonly position?: ParticleVector3;
     readonly velocity?: ParticleVector3;
+}
+
+/** @internal */
+export interface ParticleCPUSimulatorSnapshot {
+    readonly state: Readonly<ParticleCPUStateSnapshot>;
+    readonly events: Readonly<ParticleCPUEventBufferSnapshot>;
+    readonly pendingCommands: readonly Readonly<ParticleManualEmitCommand>[];
+    readonly emitterAge: number;
+    readonly accumulator: number;
+    readonly rateAccumulator: number;
+    readonly spawnSequence: number;
+    readonly generation: number;
+    readonly particleLimit: number;
+    readonly spawnRateScale: number;
+    readonly collisionEnabled: boolean;
+    readonly lastPosition: Float32Array;
+    readonly emitterVelocity: Float32Array;
+    readonly hasLastPosition: boolean;
+    readonly byteLength: number;
+}
+
+function snapshotManualEmitCommand(
+    command: Readonly<ParticleManualEmitCommand>
+): Readonly<ParticleManualEmitCommand> {
+    return Object.freeze({
+        count: command.count,
+        ...(command.position === undefined
+            ? {}
+            : { position: Object.freeze([...command.position] as ParticleVector3) }),
+        ...(command.velocity === undefined
+            ? {}
+            : { velocity: Object.freeze([...command.velocity] as ParticleVector3) })
+    });
 }
 
 function isRange<T>(value: T | ParticleRange<T>): value is ParticleRange<T> {
@@ -500,6 +536,64 @@ export class ParticleCPUSimulator {
         this.#spawnSequence = 0;
         this.#generation = 0;
         this.#hasLastPosition = false;
+    }
+
+    /** Copy all fixed-step scheduler, dense state, event, and pending-command data. @internal */
+    capture(): Readonly<ParticleCPUSimulatorSnapshot> {
+        const state = this.state.capture();
+        const events = this.events.capture();
+        const lastPosition = this.#lastPosition.slice();
+        const emitterVelocity = this.#emitterVelocity.slice();
+        return Object.freeze({
+            state,
+            events,
+            pendingCommands: Object.freeze(
+                this.#pendingCommands.map(command => snapshotManualEmitCommand(command))
+            ),
+            emitterAge: this.#emitterAge,
+            accumulator: this.#accumulator,
+            rateAccumulator: this.#rateAccumulator,
+            spawnSequence: this.#spawnSequence,
+            generation: this.#generation,
+            particleLimit: this.#particleLimit,
+            spawnRateScale: this.#spawnRateScale,
+            collisionEnabled: this.#collisionEnabled,
+            lastPosition,
+            emitterVelocity,
+            hasLastPosition: this.#hasLastPosition,
+            byteLength:
+                state.byteLength +
+                events.byteLength +
+                lastPosition.byteLength +
+                emitterVelocity.byteLength
+        });
+    }
+
+    /** Restore one compatible fixed-step simulator snapshot. @internal */
+    restore(snapshot: Readonly<ParticleCPUSimulatorSnapshot>): void {
+        if (
+            snapshot.lastPosition.length !== this.#lastPosition.length ||
+            snapshot.emitterVelocity.length !== this.#emitterVelocity.length
+        ) {
+            throw new TypeError('Particle CPU simulator vector snapshot is incompatible');
+        }
+        this.state.restore(snapshot.state);
+        this.events.restore(snapshot.events);
+        this.#pendingCommands.length = 0;
+        for (const command of snapshot.pendingCommands) {
+            this.#pendingCommands.push(snapshotManualEmitCommand(command));
+        }
+        this.#emitterAge = snapshot.emitterAge;
+        this.#accumulator = snapshot.accumulator;
+        this.#rateAccumulator = snapshot.rateAccumulator;
+        this.#spawnSequence = snapshot.spawnSequence;
+        this.#generation = snapshot.generation;
+        this.#particleLimit = snapshot.particleLimit;
+        this.#spawnRateScale = snapshot.spawnRateScale;
+        this.#collisionEnabled = snapshot.collisionEnabled;
+        this.#lastPosition.set(snapshot.lastPosition);
+        this.#emitterVelocity.set(snapshot.emitterVelocity);
+        this.#hasLastPosition = snapshot.hasLastPosition;
     }
 
     /** Advance seconds through a bounded fixed-step accumulator. */

@@ -1,6 +1,6 @@
 # Hilo3D 粒子系统实现计划
 
-状态：P0、P1、P2、P3、P4 运行时已实现；示例迁移延后；P5-P6 规划中
+状态：P0-P5 运行时与 P6 的序列化、capture/cache、baking、外部创作协议均已实现；示例迁移延后
 
 调研基线：2026-08-14
 
@@ -13,7 +13,19 @@ absolute-time reconstruction、无持久 state 的 WebGPU generator artifact、�
 manager 与短促 effect pool；实现边界见
 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)。P4 已加入解析碰撞/trigger、WebGPU scene-depth
 collision、只读深度 Soft Particle、CPU 紧凑事件、GPU 常驻 sub-emitter route、typed
-`ParticleEventChannel` 与有界异步 aggregate readback。
+`ParticleEventChannel` 与有界异步 aggregate readback。P5 已完成 mesh
+bucket、ribbon/trail、受控 Lambert 光照、per-view ordering、时域合成和受限 motion
+vector。P6 已加入带 schema/version 的规范 JSON、逐版本 application-owned upgrade、共享 parameter
+identity table、稳定资源引用回调和反序列化后的 compiler
+validation，并加入绑定 definition/plan/seed/parameter revision 的可复用内存 checkpoint。CPU
+cache 复制完整 SoA、调度器和事件；stateless GPU 只保存绝对时间；stateful
+GPU 因无同步 readback 合同而 fail-closed。P6 baking 复用同一 checkpoint/timeline：mesh
+cache 输出 stable ID/generation 排序的 frame-major instance streams；flipbook 由应用在离线 frame
+boundary 提供真实 RenderTarget
+readback，核心只验证并打包 atlas，不伪造软件材质渲染。外部创作使用固定 system/emitter/module/renderer
+ownership graph、可发布 JSON Schema、规范化 inspector IR、node-addressable
+diagnostics 和版本化 deterministic preview command
+protocol；它不会引入任意可执行 graph，也不会在 runtime 解释编辑器 metadata。
 
 ## 结论先行
 
@@ -948,18 +960,41 @@ pass。默认关闭 diagnostics 时不能引入逐粒子计数、GPU query 或 r
 
 交付：
 
-- versioned JSON definition 与 upgrade pipeline；
-- deterministic capture/simulation cache；
-- flipbook/mesh cache baking 接口；
-- 外部 graph authoring 所需的 schema、IR、compile diagnostics 和 preview protocol。
+- [x] versioned JSON definition 与逐版本 upgrade pipeline；
+- [x] deterministic capture/simulation cache；
+- [x] flipbook/mesh cache baking 接口；
+- [x] 外部 graph authoring 所需的 schema、IR、compile diagnostics 和 preview protocol。
 
-只有 P0-P5 的 IR、错误和版本合同稳定后，才单独立项可视化编辑器。编辑器应输出同一
-`ParticleSystemDefinition`，运行时不解释 UI graph。
+已实现的 JSON 合同保留共享 `ParticleParameter` identity，以应用提供的稳定 ID 引用
+`Texture`/`Geometry`，不持久化运行时对象 ID；未知字段/tag、未来版本、缺失/跳级 upgrade、资源类型不匹配和 compiler
+validation 失败均 fail-closed。JSON upgrade 只处理 plain data，不解释 UI graph，也不承担 simulation
+cache 或 baking 职责。Simulation cache 是独立的版本化内存对象：绑定相同 immutable
+definition/compiled plan、seed、parameter set identity/revision 和 event capacity；捕获 CPU
+fixed-step/SoA/event/manual queue 以及系统 playback/budget/culling 状态；纯 stateless
+GPU 仅捕获绝对时间；stateful GPU 明确拒绝，不引入生产循环同步 readback。
+
+Baking 同样拒绝 stateful GPU，以保证结束或失败时能恢复调用者 checkpoint。Mesh
+cache 面向 CPU/CPU-materialized stateless mesh
+emitter，输出 position、previous-position、velocity、size、rotation、color、mesh-index、stable
+identity、frame offsets 与 bounds；flipbook
+callback 返回公共 RenderTarget 紧凑 readback，所有帧 extent/format 一致后打包 atlas。两者使用 half-open
+fixed-rate timeline，并以 frame/particle/texture/byte limits 限制离线内存和工作量。
+
+外部 authoring contract 已完成：versioned JSON Schema 限定 system/emitter/module/renderer
+node 与有序 ownership edge，compiler 重建并验证同一 `ParticleSystemDefinition`，normalized
+IR 暴露 plan/layout/hash，diagnostics 定位 graph path/node，preview protocol 提供 deterministic
+compile/play/pause/restart/seek/step/inspect/dispose。可视化编辑器仍单独立项；运行时不解释 UI
+metadata，也不支持任意可执行 graph。
 
 ## 16. 建议目录
 
 ```text
 src/particle/
+  ParticleAuthoring.ts
+  ParticleAuthoringPreview.ts
+  ParticleBaking.ts
+  ParticleDefinitionSerialization.ts
+  ParticleSimulationCache.ts
   ParticleSystem.ts
   ParticleSystemDefinition.ts
   ParticleEmitterDefinition.ts

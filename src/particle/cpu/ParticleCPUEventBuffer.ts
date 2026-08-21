@@ -18,6 +18,19 @@ export interface ParticleEventAggregate {
     readonly remainingCount: number;
 }
 
+/** @internal */
+export interface ParticleCPUEventBufferSnapshot {
+    readonly names: readonly string[];
+    readonly nameIds: Uint16Array;
+    readonly stableIds: Uint32Array;
+    readonly positions: Float32Array;
+    readonly velocities: Float32Array;
+    readonly start: number;
+    readonly count: number;
+    readonly droppedCount: number;
+    readonly byteLength: number;
+}
+
 /** Compact ring storage; no per-event object is allocated during particle simulation. */
 export class ParticleCPUEventBuffer {
     readonly #definition: ParticleEmitterDefinition;
@@ -51,6 +64,70 @@ export class ParticleCPUEventBuffer {
         this.#start = 0;
         this.#count = 0;
         this.#droppedCount = 0;
+    }
+
+    /** Copy the compact ring without materializing application event objects. @internal */
+    capture(): Readonly<ParticleCPUEventBufferSnapshot> {
+        const nameIds = this.#nameIds.slice();
+        const stableIds = this.#stableIds.slice();
+        const positions = this.#positions.slice();
+        const velocities = this.#velocities.slice();
+        return Object.freeze({
+            names: Object.freeze([...this.#names]),
+            nameIds,
+            stableIds,
+            positions,
+            velocities,
+            start: this.#start,
+            count: this.#count,
+            droppedCount: this.#droppedCount,
+            byteLength:
+                nameIds.byteLength +
+                stableIds.byteLength +
+                positions.byteLength +
+                velocities.byteLength
+        });
+    }
+
+    /** Restore one compatible compact event ring. @internal */
+    restore(snapshot: Readonly<ParticleCPUEventBufferSnapshot>): void {
+        if (
+            snapshot.nameIds.length !== this.#nameIds.length ||
+            snapshot.stableIds.length !== this.#stableIds.length ||
+            snapshot.positions.length !== this.#positions.length ||
+            snapshot.velocities.length !== this.#velocities.length
+        ) {
+            throw new TypeError('Particle event snapshot capacity is incompatible');
+        }
+        const capacity = this.#definition.eventCapacity;
+        if (
+            !Number.isSafeInteger(snapshot.start) ||
+            snapshot.start < 0 ||
+            snapshot.start > Math.max(0, capacity - 1) ||
+            !Number.isSafeInteger(snapshot.count) ||
+            snapshot.count < 0 ||
+            snapshot.count > capacity ||
+            !Number.isSafeInteger(snapshot.droppedCount) ||
+            snapshot.droppedCount < 0
+        ) {
+            throw new RangeError('Particle event snapshot ring metadata is invalid');
+        }
+        this.#names.length = 0;
+        this.#nameToId.clear();
+        for (const name of snapshot.names) {
+            if (this.#nameToId.has(name)) {
+                throw new TypeError('Particle event snapshot name table is invalid');
+            }
+            this.#nameToId.set(name, this.#names.length);
+            this.#names.push(name);
+        }
+        this.#nameIds.set(snapshot.nameIds);
+        this.#stableIds.set(snapshot.stableIds);
+        this.#positions.set(snapshot.positions);
+        this.#velocities.set(snapshot.velocities);
+        this.#start = snapshot.start;
+        this.#count = snapshot.count;
+        this.#droppedCount = snapshot.droppedCount;
     }
 
     push(
