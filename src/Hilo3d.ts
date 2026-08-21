@@ -70,6 +70,64 @@ export {
     type ParticleAdvancedQualityPlan,
     type ParticleCompilationEnvironment
 } from './particle/ParticleCompiler';
+export {
+    compileParticleAuthoringGraph,
+    createParticleAuthoringGraph,
+    PARTICLE_AUTHORING_JSON_SCHEMA,
+    PARTICLE_AUTHORING_SCHEMA,
+    PARTICLE_AUTHORING_VERSION,
+    type ParticleAuthoringCompileFailure,
+    type ParticleAuthoringCompileOptions,
+    type ParticleAuthoringCompileResult,
+    type ParticleAuthoringCompileSuccess,
+    type ParticleAuthoringDiagnostic,
+    type ParticleAuthoringEdge,
+    type ParticleAuthoringEmitterIR,
+    type ParticleAuthoringGraph,
+    type ParticleAuthoringIR,
+    type ParticleAuthoringNode,
+    type ParticleAuthoringNodeKind,
+    type ParticleAuthoringPort
+} from './particle/ParticleAuthoring';
+export {
+    PARTICLE_PREVIEW_PROTOCOL_VERSION,
+    ParticleAuthoringPreviewController,
+    type ParticleAuthoringPreviewCommand,
+    type ParticleAuthoringPreviewCompileRequest,
+    type ParticleAuthoringPreviewControllerOptions,
+    type ParticleAuthoringPreviewControlRequest,
+    type ParticleAuthoringPreviewRequest,
+    type ParticleAuthoringPreviewResponse,
+    type ParticleAuthoringPreviewSeekRequest,
+    type ParticleAuthoringPreviewState,
+    type ParticleAuthoringPreviewStepRequest,
+    type ParticleAuthoringPreviewSystemFactory
+} from './particle/ParticleAuthoringPreview';
+export {
+    PARTICLE_BAKE_VERSION,
+    type ParticleBakedMeshEmitter,
+    type ParticleBakeTimelineOptions,
+    type ParticleFlipbook,
+    type ParticleFlipbookFrameContext,
+    type ParticleFlipbookOptions,
+    type ParticleMeshCache,
+    type ParticleMeshCacheOptions
+} from './particle/ParticleBaking';
+export {
+    deserializeParticleSystemDefinition,
+    parseParticleSystemDefinitionJSON,
+    PARTICLE_DEFINITION_SCHEMA,
+    serializeParticleSystemDefinition,
+    type ParticleDefinitionDeserializationOptions,
+    type ParticleDefinitionJSONParameter,
+    type ParticleDefinitionJSONRecord,
+    type ParticleDefinitionJSONValue,
+    type ParticleDefinitionResource,
+    type ParticleDefinitionResourceKind,
+    type ParticleDefinitionSerializationOptions,
+    type ParticleDefinitionUpgrade,
+    type ParticleSystemDefinitionJSON
+} from './particle/ParticleDefinitionSerialization';
 export type {
     ParticleAttributeLayout,
     ParticleAttributeName,
@@ -107,6 +165,10 @@ export {
     type ParticleParameterType,
     type ParticleParameterValue
 } from './particle/ParticleParameter';
+export {
+    PARTICLE_SIMULATION_CACHE_VERSION,
+    type ParticleSimulationCache
+} from './particle/ParticleSimulationCache';
 export {
     default as ParticleSystem,
     type ParticleSystemEmitCommand,

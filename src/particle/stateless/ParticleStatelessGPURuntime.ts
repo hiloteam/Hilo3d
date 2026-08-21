@@ -168,6 +168,11 @@ export class ParticleStatelessGPUEmitterRuntime {
         if (this.#generatedFrame === frameIndex) this.#generatedFrame = -1;
     }
 
+    /** Invalidate renderer data after an absolute-time cache restore. @internal */
+    invalidate(): void {
+        this.#generatedFrame = -1;
+    }
+
     record(
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,

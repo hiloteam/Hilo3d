@@ -18,6 +18,7 @@ import {
     MeshPicker,
     Node,
     OrbitControls,
+    ParticleAuthoringPreviewController,
     ParticleBudgetManager,
     ParticleCurve,
     ParticleEventChannel,
@@ -27,6 +28,18 @@ import {
     ParticleSystem,
     ParticleSystemDefinition,
     ParticleSystemPool,
+    compileParticleAuthoringGraph,
+    createParticleAuthoringGraph,
+    deserializeParticleSystemDefinition,
+    parseParticleSystemDefinitionJSON,
+    PARTICLE_DEFINITION_SCHEMA,
+    PARTICLE_AUTHORING_JSON_SCHEMA,
+    PARTICLE_AUTHORING_SCHEMA,
+    PARTICLE_AUTHORING_VERSION,
+    PARTICLE_BAKE_VERSION,
+    PARTICLE_PREVIEW_PROTOCOL_VERSION,
+    PARTICLE_SIMULATION_CACHE_VERSION,
+    serializeParticleSystemDefinition,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -55,9 +68,22 @@ import {
     type OrbitControlsOptions,
     type ParticleModule,
     type ParticleAdvancedQualityPlan,
+    type ParticleAuthoringCompileResult,
+    type ParticleAuthoringGraph,
+    type ParticleAuthoringPreviewRequest,
+    type ParticleAuthoringPreviewResponse,
     type ParticleBudgetProfile,
+    type ParticleFlipbook,
+    type ParticleFlipbookOptions,
+    type ParticleMeshCache,
+    type ParticleMeshCacheOptions,
     type ParticleMeshRendererDefinition,
+    type ParticleDefinitionDeserializationOptions,
+    type ParticleDefinitionSerializationOptions,
+    type ParticleDefinitionUpgrade,
+    type ParticleSystemDefinitionJSON,
     type ParticleRibbonRendererDefinition,
+    type ParticleSimulationCache,
     type ParticleStatelessSupport,
     type ParticleSystemDefinitionInput,
     type ParticleSystemParameters,
@@ -184,6 +210,45 @@ const particleDefinitionInput = {
     ]
 } satisfies ParticleSystemDefinitionInput;
 const particleDefinition = ParticleSystemDefinition.create(particleDefinitionInput);
+const particleSerializationOptions = {} satisfies ParticleDefinitionSerializationOptions;
+const particleDefinitionJSON: Readonly<ParticleSystemDefinitionJSON> =
+    serializeParticleSystemDefinition(particleDefinition, particleSerializationOptions);
+const particleUpgrade = {
+    fromVersion: 0,
+    upgrade: document => ({ ...document, version: 1, parameters: [] })
+} satisfies ParticleDefinitionUpgrade;
+const particleDeserializationOptions = {
+    upgrades: [particleUpgrade]
+} satisfies ParticleDefinitionDeserializationOptions;
+const decodedParticleDefinition = deserializeParticleSystemDefinition(particleDefinitionJSON);
+const parsedParticleDefinition = parseParticleSystemDefinitionJSON(
+    JSON.stringify(particleDefinitionJSON)
+);
+const particleAuthoringGraph: Readonly<ParticleAuthoringGraph> =
+    createParticleAuthoringGraph(particleDefinition);
+const particleAuthoringResult: ParticleAuthoringCompileResult =
+    compileParticleAuthoringGraph(particleAuthoringGraph);
+const particlePreviewRequest = {
+    protocolVersion: PARTICLE_PREVIEW_PROTOCOL_VERSION,
+    requestId: 'package-type-preview',
+    command: 'compile',
+    graph: particleAuthoringGraph,
+    seed: 42
+} satisfies ParticleAuthoringPreviewRequest;
+const particlePreview = new ParticleAuthoringPreviewController();
+const particlePreviewResponse: Readonly<ParticleAuthoringPreviewResponse> =
+    particlePreview.handle(particlePreviewRequest);
+void PARTICLE_AUTHORING_JSON_SCHEMA;
+void PARTICLE_AUTHORING_SCHEMA;
+void PARTICLE_AUTHORING_VERSION;
+void particleAuthoringResult;
+void particlePreviewResponse;
+void PARTICLE_DEFINITION_SCHEMA;
+void PARTICLE_BAKE_VERSION;
+void PARTICLE_SIMULATION_CACHE_VERSION;
+void particleDeserializationOptions;
+void decodedParticleDefinition;
+void parsedParticleDefinition;
 const particleMeshRenderer = {
     type: 'mesh',
     meshes: [{ geometry: new BoxGeometry() }],
@@ -213,6 +278,29 @@ const particleSystemParameters = {
     budgetId: 'type-consumer'
 } satisfies ParticleSystemParameters;
 const particleSystem = new ParticleSystem(particleSystemParameters);
+const particleSimulationCache: ParticleSimulationCache = particleSystem.captureSimulation();
+particleSystem.restoreSimulation(particleSimulationCache);
+const particleMeshCacheOptions = {
+    duration: 1,
+    frameRate: 30
+} satisfies ParticleMeshCacheOptions;
+const particleMeshCache: ParticleMeshCache = particleSystem.bakeMeshCache(particleMeshCacheOptions);
+const particleFlipbookOptions = {
+    duration: 1,
+    frameRate: 30,
+    captureFrame: () => ({
+        data: new Uint8Array(4),
+        format: 'rgba8unorm' as const,
+        width: 1,
+        height: 1,
+        bytesPerPixel: 4,
+        bytesPerRow: 4
+    })
+} satisfies ParticleFlipbookOptions;
+const particleFlipbook: Promise<ParticleFlipbook> =
+    particleSystem.bakeFlipbook(particleFlipbookOptions);
+void particleMeshCache;
+void particleFlipbook;
 particleSystem
     .emit(4)
     .simulate(1 / 60)

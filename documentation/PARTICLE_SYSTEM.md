@@ -1,14 +1,18 @@
 # Particle system
 
 Hilo3D exposes one versioned particle asset model for portable CPU simulation, stateful WebGPU
-simulation, and lightweight stateless reconstruction. P0-P5 are implemented: immutable definitions
-compile to a liveness-based SoA plan, CPU emitters render through one instanced `Mesh`, WebGPU
-stateful emitters record persistent simulation and storage raster through the Render Graph, and
-stateless emitters rebuild renderer attributes from absolute time without cross-frame particle
-state. P4 adds analytic/depth interaction, soft particles, bounded events, typed channels, and
-GPU-resident sub-emitter routing. P5 adds mesh buckets, ribbon/trail topology, controlled Lambert
-scene lighting, per-view ordering, temporal composition rules, and opt-in opaque/masked mesh motion
-vectors.
+simulation, and lightweight stateless reconstruction. The P0-P5 runtime and P6 authoring workflow
+are implemented: immutable definitions compile to a liveness-based SoA plan, CPU emitters render
+through one instanced `Mesh`, WebGPU stateful emitters record persistent simulation and storage
+raster through the Render Graph, and stateless emitters rebuild renderer attributes from absolute
+time without cross-frame particle state. P4 adds analytic/depth interaction, soft particles, bounded
+events, typed channels, and GPU-resident sub-emitter routing. P5 adds mesh buckets, ribbon/trail
+topology, controlled Lambert scene lighting, per-view ordering, temporal composition rules, and
+opt-in opaque/masked mesh motion vectors. P6 now adds versioned JSON and external fixed-module graph
+documents, sequential application-owned upgrades, shared parameter identity, stable resource
+references, addressable compile diagnostics, normalized inspector IR, and a deterministic preview
+protocol. It also provides reusable in-memory simulation checkpoints for deterministic
+branching/replay and offline flipbook/mesh-cache output.
 
 ## Public workflow
 
@@ -69,6 +73,172 @@ particles
     .simulate(1 / 60)
     .play();
 ```
+
+## Versioned JSON and upgrades
+
+`serializeParticleSystemDefinition()` emits a deeply frozen, normalized document identified by
+`PARTICLE_DEFINITION_SCHEMA` and `PARTICLE_DEFINITION_VERSION`. Defaults materialized by the
+immutable definition are included, ordinary record keys are canonicalized, curves and gradients use
+explicit tagged values, and shared `ParticleParameter` tokens are declared once in a document-local
+parameter table. Deserialization recreates the same shared token identity before it constructs and
+compiles the definition, so a parameter used by multiple spawn fields remains one runtime binding.
+
+`Texture` and `Geometry` objects are deliberately not embedded and their generated runtime IDs are
+not asset identities. Definitions containing either resource require `getResourceId` during
+serialization and `resolveResource` during deserialization:
+
+```ts
+import { parseParticleSystemDefinitionJSON, serializeParticleSystemDefinition } from 'hilo3d';
+
+const document = serializeParticleSystemDefinition(definition, {
+    getResourceId: (resource, kind) => assetRegistry.idFor(resource, kind)
+});
+const source = JSON.stringify(document);
+
+const restored = parseParticleSystemDefinitionJSON(source, {
+    resolveResource: (kind, id) => assetRegistry.resolve(kind, id),
+    upgrades: particleDefinitionUpgrades
+});
+```
+
+Each `ParticleDefinitionUpgrade` advances exactly one integer version. Missing transitions,
+duplicate upgrade sources, version skips, future versions, unknown schema fields/tags, unresolved or
+wrong-kind resources, and definitions rejected by the normal compiler all fail before a runtime
+system is created. Upgrade callbacks receive and return deeply frozen/plain JSON documents; they do
+not receive engine objects or run in the particle loop.
+
+## External authoring and preview
+
+`createParticleAuthoringGraph()` converts the ordinary immutable definition into a deeply frozen,
+pure-JSON document identified by `PARTICLE_AUTHORING_SCHEMA` and `PARTICLE_AUTHORING_VERSION`.
+`PARTICLE_AUTHORING_JSON_SCHEMA` lets an external tool validate the transport shape before sending
+it to the engine. Nodes are limited to system, emitter, fixed module, and renderer payloads. Edges
+only express ordered ownership through `emitters`, `modules`, and `renderers`; they are not an
+executable data-flow language. Opaque graph/node metadata may store editor layout without entering
+the runtime definition or hash.
+
+```ts
+import {
+    compileParticleAuthoringGraph,
+    createParticleAuthoringGraph,
+    ParticleAuthoringPreviewController
+} from 'hilo3d';
+
+const graph = createParticleAuthoringGraph(definition);
+const compiled = compileParticleAuthoringGraph(graph, {
+    resolveResource: (kind, id) => assetRegistry.resolve(kind, id),
+    compilationEnvironment: { backend: 'webgpu' }
+});
+
+if (!compiled.success) {
+    showDiagnostics(compiled.diagnostics);
+}
+
+const preview = new ParticleAuthoringPreviewController();
+preview.handle({
+    protocolVersion: 1,
+    requestId: 'compile-1',
+    command: 'compile',
+    graph,
+    seed: 42
+});
+```
+
+`compileParticleAuthoringGraph()` rejects unknown fields, malformed or multiply owned topology,
+non-contiguous child ordering, invalid module payloads, unresolved resources, and backend-ineligible
+definitions before exposing a runtime object. Successful results include the normal immutable
+definition/compiled plan and a normalized IR with hashes, plan kinds, layouts, node ownership, and
+stateless eligibility. Diagnostics include stable codes and graph paths plus a node ID whenever the
+compiler can address the failure to one submitted node.
+
+`ParticleAuthoringPreviewController` accepts the versioned `compile`, `play`, `pause`, `restart`,
+`seek`, `step`, `inspect`, and `dispose` requests. It owns deterministic simulation time but does
+not create a second renderer or read GPU particle state. A host attaches `controller.system` to its
+ordinary scene and renders it through `Renderer`/`Stage`; custom construction and release hooks
+connect that lifecycle to the host. Failed replacement compilation keeps the previous preview alive,
+and every response carries compact hashes/counts plus structured diagnostics.
+
+## Deterministic simulation checkpoints
+
+`captureSimulation()` returns a frozen, reusable `ParticleSimulationCache`. `restoreSimulation()`
+reinstates the playback state and time scale, system clock, completion state, frame-wide quality
+budget, culling clock, pending manual emission, CPU fixed-step scheduler, dense particle storage,
+and bounded application/CPU event queues. Restoring the same cache repeatedly therefore creates the
+same simulation branch:
+
+```ts
+const checkpoint = particles.captureSimulation();
+
+particles.simulate(0.5);
+const firstResult = particles.stateHash();
+
+particles.restoreSimulation(checkpoint).simulate(0.5);
+console.assert(particles.stateHash() === firstResult);
+```
+
+A cache can restore another system only when it shares the exact immutable definition and
+`ParticleParameterSet` identities, compiled-plan hash, seed, parameter revision, and event-readback
+capacity. Changing a parameter after capture makes the checkpoint stale and fails closed. The cache
+does not capture the particle node transform; restoring at another transform intentionally creates a
+new world-space continuation from the restored scheduler state.
+
+This contract stays off the production GPU readback path. CPU emitters copy their complete SoA
+storage, while a pure stateless WebGPU emitter records only its authoritative absolute time and
+invalidates generated renderer data on restore. A system containing a stateful GPU emitter rejects
+capture because its authoritative storage is device-resident. `ParticleSimulationCache` is an
+in-memory runtime checkpoint, not a JSON/persistent asset or flipbook/mesh bake.
+
+## Flipbook and mesh-cache baking
+
+Both baking APIs own a deterministic fixed-rate timeline and restore the system's exact simulation
+checkpoint in `finally`, including when validation or an asynchronous capture fails. The default
+timeline samples the half-open interval `[startTime, startTime + duration)`; `includeEnd` adds one
+exact terminal sample. `maxFrames`, `maxSampledParticles`, `maxTextureSize`, and
+`maxAtlasByteLength` bound offline work before an artifact is returned.
+
+`bakeMeshCache()` restarts authored simulation, honors prewarm, and records each mesh emitter as
+stable-ID/generation-sorted frame-major instance streams. Frame offsets delimit variable live
+ranges; position, previous position, velocity, size, rotation, color, mesh bucket, and conservative
+frame bounds preserve the inputs required by the current rotation/velocity orientation and motion
+vector contracts:
+
+```ts
+const meshCache = particles.bakeMeshCache({
+    duration: 2,
+    frameRate: 30,
+    includeEnd: true,
+    maxSampledParticles: 500_000
+});
+```
+
+CPU and CPU-materialized stateless emitters use the same artifact. A named emitter must contain a
+mesh renderer; omitting `emitter` bakes every mesh emitter. The result contains typed-array payloads
+and stable definition/seed/timeline metadata, but deliberately does not embed `Geometry` or texture
+resources.
+
+`bakeFlipbook()` advances the same timeline and delegates only actual rendering/readback to an
+asynchronous `captureFrame` callback. The callback returns the public, tightly packed
+`RenderTargetColorAttachmentReadback`; all frames must share one extent, native color format, and
+bytes-per-pixel contract. The baker copies every callback buffer before packing a row-major atlas,
+so capture implementations may safely reuse staging memory:
+
+```ts
+const flipbook = await particles.bakeFlipbook({
+    duration: 2,
+    frameRate: 24,
+    columns: 8,
+    captureFrame: async () => {
+        renderer.renderToTarget(target, scene, camera, false);
+        return target.readColorAttachment();
+    }
+});
+```
+
+The application still owns the camera, scene, renderer, target, color encoding, and readback
+synchronization, so the engine never substitutes a software approximation for authored particle
+materials. Stateful GPU systems remain rejected because baking begins with a restorable checkpoint;
+pure stateless GPU flipbooks remain valid because absolute time is authoritative and rendering stays
+on the normal Render Graph path.
 
 ## Maintained visual examples
 
@@ -272,11 +442,13 @@ contains no sampled-depth/attachment feedback edge.
 
 ## Current boundary
 
-P6 remains outside this implementation. In particular, there is no serialization upgrade pipeline,
-capture cache, baking API, or graph editor yet. GPU event observation is intentionally limited to
-resident routing; application-visible GPU diagnostics remain aggregate and asynchronous rather than
-a production-loop particle readback. The public fixed module union rejects arbitrary callbacks and
-arbitrary shader source by design.
+P6 serialization, upgrades, external graph schema/IR/diagnostics/preview, deterministic in-memory
+simulation checkpoints, and flipbook/mesh-cache baking are implemented. A visual graph editor
+remains a separate application project. GPU event observation is intentionally limited to resident
+routing; application-visible GPU diagnostics remain aggregate and asynchronous rather than a
+production-loop particle readback. The public fixed module union rejects arbitrary simulation
+callbacks and arbitrary shader source by design; the offline flipbook capture callback operates only
+at bounded frame/readback boundaries.
 
 The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
 its specialized implementation for now. It will be migrated only after the remaining particle
