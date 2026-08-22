@@ -101,6 +101,8 @@ const legacySyntaxRules: readonly (readonly [string, RegExp])[] = [
 
 const classicUniformDeclaration =
     /\buniform\s+(?:(?:lowp|mediump|highp)\s+)?([A-Za-z_]\w*)\s+([A-Za-z_]\w*)(?:\s*\[[^\]]+\])?\s*;/g;
+const unnormalizedParticleTextureSample =
+    /\btexture(?:Lod)?\s*\(\s*u_particleTexture\s*,(?!\s*hiloTextureUV\s*\()/gu;
 
 function sourceLine(source: string, offset: number): { line: number; source: string } {
     const line = source.slice(0, offset).split('\n').length;
@@ -178,6 +180,19 @@ describe('WebGL 2 shader contract', () => {
 
     it('keeps hand-authored history uniform blocks on canonical ABI prefixes', () => {
         expect(collectBuiltInBlockViolations()).toEqual([]);
+    });
+
+    it('normalizes every managed particle texture sample through the portable UV boundary', () => {
+        const violations = Object.entries(engineShaderContainerSources).flatMap(
+            ([path, source]) => {
+                unnormalizedParticleTextureSample.lastIndex = 0;
+                return [...source.matchAll(unnormalizedParticleTextureSample)].map(match => ({
+                    path,
+                    ...sourceLine(source, match.index)
+                }));
+            }
+        );
+        expect(violations).toEqual([]);
     });
 
     it('uses the canonical CameraBlock source for viewport ABI diagnostics', () => {

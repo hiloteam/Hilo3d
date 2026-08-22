@@ -6,6 +6,7 @@ import { ParticleParameter, ParticleParameterSet } from '../../../src/particle/P
 import ParticleSystem from '../../../src/particle/ParticleSystem';
 import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
 import { compileParticleSystemDefinition } from '../../../src/particle/ParticleCompiler';
+import Texture from '../../../src/texture/Texture';
 
 function definition(): ParticleSystemDefinition {
     return ParticleSystemDefinition.create({
@@ -217,7 +218,7 @@ describe('ParticleSystem P0/P1 contracts', () => {
         expect((mesh as Mesh).useInstanced).toBe(false);
     });
 
-    it('keeps CPU sprite stretch relative and screen-size constraints in pixel space', () => {
+    it('keeps CPU sprite sizing and managed-texture UVs portable', () => {
         const system = new ParticleSystem({
             definition: ParticleSystemDefinition.create({
                 emitters: [
@@ -227,7 +228,14 @@ describe('ParticleSystem P0/P1 contracts', () => {
                         execution: 'cpu',
                         initialize: { size: 0.03 },
                         modules: [{ type: 'screen-space-size', scale: 1.5, range: [2, 24] }],
-                        renderers: [{ type: 'sprite', alignment: 'stretched', stretchScale: 2 }]
+                        renderers: [
+                            {
+                                type: 'sprite',
+                                texture: new Texture(),
+                                alignment: 'stretched',
+                                stretchScale: 2
+                            }
+                        ]
                     }
                 ]
             }),
@@ -248,6 +256,10 @@ describe('ParticleSystem P0/P1 contracts', () => {
             'particleSize = particlePixelSize / particleWorldToPixels;'
         );
         expect(shader.vertexSource).not.toContain('length(a_particleVelocity) / particleSize');
+        expect(shader.fragmentSource).toContain('vec2 hiloTextureUV(vec2 uv)');
+        expect(shader.fragmentSource).toContain(
+            'texture(u_particleTexture, hiloTextureUV(v_particleUV))'
+        );
     });
 
     it('initializes new CPU particles after the current simulation step', () => {

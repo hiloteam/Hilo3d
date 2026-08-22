@@ -39,11 +39,10 @@ void main() {
     v_texcoord = i_uvRect.xy + a_texcoord0 * i_uvRect.zw;
 #ifdef HILO_WEBGPU
     // PlaneGeometry carries WebGL's bottom-left V convention. Texture uploads with flipY=true
-    // retain that convention in WebGL2, while WebGPU samples from a top-left texture origin.
-    // A negative frame height already represents a non-flipped, top-left source.
-    if (i_uvRect.w > 0.0) {
-        v_texcoord.y = 1.0 - v_texcoord.y;
-    }
+    // and SpriteFrame's negative-height rectangles both resolve in that convention on WebGL2.
+    // WebGPU samples from a top-left texture origin, so every Sprite frame crosses this one
+    // backend-native normalization boundary regardless of the texture's authored flipY policy.
+    v_texcoord.y = 1.0 - v_texcoord.y;
 #endif
     v_tint = i_tint;
 }
@@ -101,7 +100,7 @@ class SpriteMaterial extends ShaderMaterial {
         const { texture, ...materialParameters } = params;
         super({
             ...materialParameters,
-            sourceRevision: 'Hilo3d.SpriteMaterial:1',
+            sourceRevision: 'Hilo3d.SpriteMaterial:2',
             compositing: {
                 mode: 'alpha-blend',
                 premultiplied: texture.premultiplyAlpha

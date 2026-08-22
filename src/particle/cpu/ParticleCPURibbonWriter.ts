@@ -7,6 +7,7 @@ import type { MaterialBindingInfo } from '../../material/MaterialInstance';
 import type { MaterialCompositing } from '../../material/MaterialDefinition';
 import { TRIANGLES } from '../../constants/webgl';
 import type { Renderer } from '../../render/Renderer';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type { ParticleRibbonRendererDefinition, ParticleVector3 } from '../ParticleTypes';
 import type { ParticleCPUState } from './ParticleCPUState';
@@ -138,9 +139,10 @@ in vec4 v_particleColor;
 in vec3 v_particleNormal;
 ${textured ? 'uniform sampler2D u_particleTexture;' : ''}
 ${lightBlock}
+${textured ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 void main(void) {
-    vec4 color = ${textured ? 'texture(u_particleTexture, v_particleUV)' : 'vec4(1.0)'} * v_particleColor;
+    vec4 color = ${textured ? 'texture(u_particleTexture, hiloTextureUV(v_particleUV))' : 'vec4(1.0)'} * v_particleColor;
     if (color.a <= 0.00001) discard;
     ${lighting}
     ${premultiply}

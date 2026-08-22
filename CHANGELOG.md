@@ -36,6 +36,10 @@
 
 ### Changes
 
+- Normalize managed particle textures through the shared top-left UV boundary for CPU and WebGPU
+  sprite, mesh, motion-vector, ribbon, and trail shaders. Fix WebGPU 2D Sprite orientation when
+  `Texture.flipY` is false, and extend the asymmetric row-direction fixture across WebGL 2/WebGPU
+  render targets, ordinary materials, 2D Sprites, particles, and cube textures.
 - Add the versioned public `ParticleSystemDefinition`/`ParticleSystem` API through P0-P3. Compile
   immutable fixed modules into liveness-based SoA layouts with deterministic counter RNG and shared
   curve/gradient LUTs; provide portable CPU fixed-step simulation with one interleaved instanced

@@ -112,6 +112,20 @@ const managedCube = renderer.createRenderTarget({
     ...targetParameters,
     label: 'orientation.managed-cube'
 });
+const particleTarget = renderer.createRenderTarget({
+    width: 8,
+    height: 8,
+    sampleCount: 1,
+    depthStencilAttachment: false,
+    label: 'orientation.particle'
+});
+const spriteTarget = renderer.createRenderTarget({
+    width: 8,
+    height: 8,
+    sampleCount: 1,
+    depthStencilAttachment: false,
+    label: 'orientation.sprite'
+});
 const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
 if (!portableCoordinateShader) {
     throw new Error('Portable coordinate shader helpers are unavailable');
@@ -191,24 +205,93 @@ const renderManagedCube = createManagedMaterialPass(
     }),
     new Float32Array([-1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1])
 );
+const particleTexture = new Hilo3d.Texture({
+    image: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255]),
+    width: 2,
+    height: 2,
+    internalFormat: Hilo3d.constants.RGBA8,
+    format: Hilo3d.constants.RGBA,
+    type: Hilo3d.constants.UNSIGNED_BYTE,
+    minFilter: Hilo3d.constants.webgl.NEAREST,
+    magFilter: Hilo3d.constants.webgl.NEAREST,
+    wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
+    wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
+});
+const particleScene = new Hilo3d.Node();
+const particleCamera = new Hilo3d.OrthographicCamera({
+    left: -1,
+    right: 1,
+    bottom: -1,
+    top: 1,
+    near: 0.1,
+    far: 10,
+    z: 3
+});
+particleCamera.lookAt(new Hilo3d.Vector3(0, 0, 0));
+const particleSystem = new Hilo3d.ParticleSystem({
+    definition: Hilo3d.ParticleSystemDefinition.create({
+        emitters: [
+            {
+                name: 'orientation-sprite',
+                capacity: 1,
+                execution: 'cpu',
+                bounds: { mode: 'manual', min: [-1, -1, -1], max: [1, 1, 1] },
+                initialize: { lifetime: 10, speed: 0, size: 1.5 },
+                renderers: [
+                    {
+                        type: 'sprite',
+                        texture: particleTexture,
+                        depthTest: false,
+                        depthWrite: false
+                    }
+                ]
+            }
+        ]
+    }),
+    autoPlay: false,
+    compilationEnvironment: { backend }
+}).addTo(particleScene);
+particleSystem.emit(1).simulate(1 / 60);
+const spriteScene = new Hilo3d.Node();
+const spriteCamera = new Hilo3d.Camera2D({ width: 8, height: 8 });
+new Hilo3d.Sprite({
+    texture: particleTexture,
+    x: 4,
+    y: 4,
+    width: 6,
+    height: 6
+}).addTo(spriteScene);
 
 renderSource(source);
 renderCopy(copied);
 renderManaged2D(managed2D);
 renderManagedCube(managedCube);
+renderer.renderToTarget(particleTarget, particleScene, particleCamera, false);
+renderer.renderToTarget(spriteTarget, spriteScene, spriteCamera, false);
 renderer.present(copied);
-const [sourceReadback, copiedReadback, managed2DReadback, managedCubeReadback] = await Promise.all([
+const [
+    sourceReadback,
+    copiedReadback,
+    managed2DReadback,
+    managedCubeReadback,
+    particleReadback,
+    spriteReadback
+] = await Promise.all([
     source.readColorAttachment(),
     copied.readColorAttachment(),
     managed2D.readColorAttachment(),
-    managedCube.readColorAttachment()
+    managedCube.readColorAttachment(),
+    particleTarget.readColorAttachment(),
+    spriteTarget.readColorAttachment()
 ]);
 window.__HILO3D_FULLSCREEN_ORIENTATION_RESULT__ = {
     backend,
     source: [...sourceReadback.data],
     copied: [...copiedReadback.data],
     managed2D: [...managed2DReadback.data],
-    managedCube: [...managedCubeReadback.data]
+    managedCube: [...managedCubeReadback.data],
+    particle: [...particleReadback.data],
+    sprite: [...spriteReadback.data]
 };
 document.body.dataset['fullscreenOrientationComplete'] = 'true';
 
@@ -220,6 +303,8 @@ declare global {
             readonly copied: readonly number[];
             readonly managed2D: readonly number[];
             readonly managedCube: readonly number[];
+            readonly particle: readonly number[];
+            readonly sprite: readonly number[];
         };
     }
 }
