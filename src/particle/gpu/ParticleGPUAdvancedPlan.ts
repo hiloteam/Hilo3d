@@ -1,5 +1,6 @@
 import ComputeShader from '../../render/compute/ComputeShader';
 import StorageGraphicsShader from '../../render/compute/StorageGraphicsShader';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type GeometryData from '../../geometry/GeometryData';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type {
@@ -192,9 +193,10 @@ in vec2 particleUV;
 in vec4 particleColor;
 in vec3 particleNormal;
 ${textured ? 'uniform sampler2D u_particleTexture;' : ''}
+${textured ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 void main() {
-    vec4 color = ${textured ? 'texture(u_particleTexture, particleUV)' : 'vec4(1.0)'} * particleColor;
+    vec4 color = ${textured ? 'texture(u_particleTexture, hiloTextureUV(particleUV))' : 'vec4(1.0)'} * particleColor;
     if (color.a <= ${f32(masked ? (renderer.alphaCutoff ?? 0.5) : 0.00001)}) discard;
     ${lightingSource(renderer.lighting === 'lambert')}
     ${premultiply}
@@ -522,9 +524,10 @@ in vec3 particleNormal;
 ${soft === undefined ? '' : 'in float particleDepthMode;'}
 ${textured ? 'uniform sampler2D u_particleTexture;' : ''}
 ${soft === undefined ? '' : 'uniform sampler2D u_particleSceneDepth;'}
+${textured ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 void main() {
-    vec4 color = ${textured ? 'texture(u_particleTexture, particleUV)' : 'vec4(1.0)'} * particleColor;
+    vec4 color = ${textured ? 'texture(u_particleTexture, hiloTextureUV(particleUV))' : 'vec4(1.0)'} * particleColor;
     ${
         soft === undefined
             ? ''

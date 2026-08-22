@@ -327,6 +327,10 @@ shader, perform their depth comparison in the fragment stage, and omit a depth a
 pass. `softParticle.distance` and optional `contrast` control the fade; `depthWrite: true` is
 rejected before graph compilation.
 
+Sprite, mesh, ribbon, and trail color textures use the renderer-wide top-left logical UV contract
+and sample through `hiloTextureUV()`. This applies equally to portable CPU-generated draws and
+WebGPU storage-raster draws; asymmetric texture rows must not change direction between backends.
+
 ## Mesh, ribbon/trail, and advanced composition
 
 `type: 'mesh'` accepts 1–16 immutable triangle-list `Geometry` assets. CPU/stateless plans create

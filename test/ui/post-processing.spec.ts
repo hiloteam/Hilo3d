@@ -212,7 +212,7 @@ for (const backend of backends) {
         }
     });
 
-    test(`fullscreen render-target copy preserves row orientation on ${backend} @${backend}`, async ({
+    test(`managed textures preserve row orientation on ${backend} @${backend}`, async ({
         page
     }) => {
         await installRenderHealthProbe(page);
@@ -248,6 +248,44 @@ for (const backend of backends) {
             expect(result?.managedCube.slice(-16)).toEqual([
                 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255
             ]);
+            const particle = result?.particle ?? [];
+            let upperRed = 0;
+            let upperBlue = 0;
+            let lowerRed = 0;
+            let lowerBlue = 0;
+            for (let y = 0; y < 8; y += 1) {
+                for (let x = 0; x < 8; x += 1) {
+                    const offset = (y * 8 + x) * 4;
+                    if (y < 4) {
+                        upperRed += particle[offset] ?? 0;
+                        upperBlue += particle[offset + 2] ?? 0;
+                    } else {
+                        lowerRed += particle[offset] ?? 0;
+                        lowerBlue += particle[offset + 2] ?? 0;
+                    }
+                }
+            }
+            expect(upperRed).toBeGreaterThan(upperBlue + 1_000);
+            expect(lowerBlue).toBeGreaterThan(lowerRed + 1_000);
+            const sprite = result?.sprite ?? [];
+            let spriteUpperRed = 0;
+            let spriteUpperBlue = 0;
+            let spriteLowerRed = 0;
+            let spriteLowerBlue = 0;
+            for (let y = 0; y < 8; y += 1) {
+                for (let x = 0; x < 8; x += 1) {
+                    const offset = (y * 8 + x) * 4;
+                    if (y < 4) {
+                        spriteUpperRed += sprite[offset] ?? 0;
+                        spriteUpperBlue += sprite[offset + 2] ?? 0;
+                    } else {
+                        spriteLowerRed += sprite[offset] ?? 0;
+                        spriteLowerBlue += sprite[offset + 2] ?? 0;
+                    }
+                }
+            }
+            expect(spriteUpperRed).toBeGreaterThan(spriteUpperBlue + 1_000);
+            expect(spriteLowerBlue).toBeGreaterThan(spriteLowerRed + 1_000);
             await assertFinalGraphicsHealth(
                 page,
                 backend,
@@ -426,6 +464,8 @@ declare global {
             readonly copied: readonly number[];
             readonly managed2D: readonly number[];
             readonly managedCube: readonly number[];
+            readonly particle: readonly number[];
+            readonly sprite: readonly number[];
         };
     }
 }

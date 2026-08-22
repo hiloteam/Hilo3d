@@ -11,6 +11,7 @@ import { compileParticleGPUPlan } from '../../../src/particle/gpu/ParticleGPUPla
 import { WgslComputeShaderCompiler } from '../../../src/render/shader/WgslComputeCompiler';
 import { StorageGraphicsShaderCompiler } from '../../../src/render/shader/StorageGraphicsShaderCompiler';
 import Renderer from '../../../src/render/Renderer';
+import Texture from '../../../src/texture/Texture';
 
 declare const __HILO3D_GITHUB_ACTIONS_COVERAGE__: boolean;
 
@@ -22,6 +23,7 @@ const bounds = {
 
 describe('ParticleSystem P5 portable topology', () => {
     it('buckets CPU mesh particles into one instanced draw per mesh', () => {
+        const texture = new Texture();
         const system = new ParticleSystem({
             definition: ParticleSystemDefinition.create({
                 emitters: [
@@ -37,6 +39,7 @@ describe('ParticleSystem P5 portable topology', () => {
                                     { geometry: new BoxGeometry() },
                                     { geometry: new SphereGeometry() }
                                 ],
+                                texture,
                                 coverage: 'opaque',
                                 lighting: 'lambert',
                                 motionVectors: true
@@ -59,9 +62,26 @@ describe('ParticleSystem P5 portable topology', () => {
         expect(system.children.every(child => child instanceof Mesh && !child.useInstanced)).toBe(
             true
         );
+        for (const child of system.children) {
+            if (!(child instanceof Mesh)) throw new Error('Expected a CPU particle mesh bridge');
+            const forward = child.material?.definition.getPass('forward')?.shader;
+            const motion = child.material?.definition.getPass('motion-vector')?.shader;
+            expect(forward?.kind).toBe('glsl');
+            expect(motion?.kind).toBe('glsl');
+            if (forward?.kind !== 'glsl' || motion?.kind !== 'glsl') {
+                throw new Error('Expected textured particle mesh GLSL passes');
+            }
+            expect(forward.fragmentSource).toContain(
+                'texture(u_particleTexture, hiloTextureUV(v_particleUV))'
+            );
+            expect(motion.fragmentSource).toContain(
+                'texture(u_particleTexture, hiloTextureUV(v_motionUV)).a'
+            );
+        }
     });
 
     it('compacts CPU ribbon members into one segment-instanced draw', () => {
+        const texture = new Texture();
         const system = new ParticleSystem({
             definition: ParticleSystemDefinition.create({
                 emitters: [
@@ -71,7 +91,7 @@ describe('ParticleSystem P5 portable topology', () => {
                         execution: 'cpu',
                         bounds,
                         initialize: { ribbonId: 0 },
-                        renderers: [{ type: 'trail', widthScale: 0.5 }]
+                        renderers: [{ type: 'trail', texture, widthScale: 0.5 }]
                     }
                 ]
             }),
@@ -84,6 +104,12 @@ describe('ParticleSystem P5 portable topology', () => {
         if (!(output instanceof Mesh)) throw new Error('Expected a ribbon mesh bridge');
         expect(output.instanceCount).toBe(4);
         expect(system.children).toHaveLength(1);
+        const shader = output.material?.definition.getPass('forward')?.shader;
+        expect(shader?.kind).toBe('glsl');
+        if (shader?.kind !== 'glsl') throw new Error('Expected a textured CPU trail GLSL pass');
+        expect(shader.fragmentSource).toContain(
+            'texture(u_particleTexture, hiloTextureUV(v_particleUV))'
+        );
     });
 
     it('fails unsupported ordering and motion-vector combinations before a frame', () => {
@@ -255,6 +281,7 @@ describe('ParticleSystem P5 WebGPU plans', () => {
     });
 
     it('compiles mesh buckets and ribbon compact/indirect stages to validated GPU artifacts', () => {
+        const texture = new Texture();
         const definition = ParticleSystemDefinition.create({
             emitters: [
                 {
@@ -270,11 +297,13 @@ describe('ParticleSystem P5 WebGPU plans', () => {
                                 { geometry: new BoxGeometry() },
                                 { geometry: new SphereGeometry() }
                             ],
+                            texture,
                             coverage: 'opaque',
                             lighting: 'lambert'
                         },
                         {
                             type: 'ribbon',
+                            texture,
                             lighting: 'lambert',
                             softParticle: { distance: 0.1 }
                         }
@@ -295,11 +324,17 @@ describe('ParticleSystem P5 WebGPU plans', () => {
                     expect(() => computeCompiler.compile(shader)).not.toThrow();
                 }
                 for (const asset of renderer.assets) {
+                    expect(asset.shader.fragmentSource).toContain(
+                        'texture(u_particleTexture, hiloTextureUV(particleUV))'
+                    );
                     expect(() => graphicsCompiler.compile(asset.shader, 'webgpu')).not.toThrow();
                 }
             } else {
                 expect(renderer.topologyCapacity).toBe(32);
                 expect(renderer.shader.fragmentSource).toContain('bool hasSceneDepth');
+                expect(renderer.shader.fragmentSource).toContain(
+                    'texture(u_particleTexture, hiloTextureUV(particleUV))'
+                );
                 for (const shader of [
                     renderer.reset,
                     renderer.initializeTopology,

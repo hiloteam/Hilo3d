@@ -6,6 +6,7 @@ import ShaderMaterial from '../../material/ShaderMaterial';
 import type { MaterialBindingInfo } from '../../material/MaterialInstance';
 import type { MaterialCompositing, MaterialCoverage } from '../../material/MaterialDefinition';
 import type { Renderer } from '../../render/Renderer';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type {
     ParticleMeshRendererDefinition,
@@ -130,7 +131,7 @@ void main(void) {
 function fragmentSource(renderer: ParticleMeshRendererDefinition, hasTexture: boolean): string {
     const textureDeclaration = hasTexture ? 'uniform sampler2D u_particleTexture;' : '';
     const textureSample = hasTexture
-        ? 'vec4 texel = texture(u_particleTexture, v_particleUV);'
+        ? 'vec4 texel = texture(u_particleTexture, hiloTextureUV(v_particleUV));'
         : 'vec4 texel = vec4(1.0);';
     const lighting =
         renderer.lighting === 'lambert'
@@ -163,6 +164,7 @@ in vec4 v_particleColor;
 in vec3 v_particleNormal;
 ${textureDeclaration}
 ${lightBlock}
+${hasTexture ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 void main(void) {
     ${textureSample}
@@ -228,12 +230,13 @@ flat in float v_motionHistoryValid;
 in vec2 v_motionUV;
 in float v_motionAlpha;
 ${hasTexture ? 'uniform sampler2D u_particleTexture;' : ''}
+${hasTexture ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 #ifdef HILO_TEMPORAL_REACTIVE_MASK
 layout(location = 1) out float hilo_ReactiveMask;
 #endif
 void main(void) {
-    float coverageAlpha = v_motionAlpha * ${hasTexture ? 'texture(u_particleTexture, v_motionUV).a' : '1.0'};
+    float coverageAlpha = v_motionAlpha * ${hasTexture ? 'texture(u_particleTexture, hiloTextureUV(v_motionUV)).a' : '1.0'};
     ${renderer.coverage === 'masked' ? `if (coverageAlpha <= ${String(renderer.alphaCutoff ?? 0.5)}) discard;` : ''}
     float currentLogDepth = log2(1.0 + max(v_currentViewDepth, 0.0));
     if (v_motionHistoryValid < 0.5 || v_currentClipPosition.w <= 0.000001 || v_previousClipPosition.w <= 0.000001) {

@@ -1,5 +1,6 @@
 import ComputeShader from '../../render/compute/ComputeShader';
 import StorageGraphicsShader from '../../render/compute/StorageGraphicsShader';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type {
     ParticleModule,
@@ -1273,7 +1274,7 @@ export function compileParticleGPUStorageRenderer(
     const columns = sheet?.type === 'texture-sheet' ? sheet.columns : 1;
     const textureSource = renderer.texture ? 'uniform sampler2D u_particleTexture;' : '';
     const textureSample = renderer.texture
-        ? 'vec4 texel = texture(u_particleTexture, particleUV);'
+        ? 'vec4 texel = texture(u_particleTexture, hiloTextureUV(particleUV));'
         : 'vec4 texel = vec4(1.0);';
     const textureBinding = 1;
     const depthBinding = renderer.texture ? textureBinding + 2 : textureBinding;
@@ -1444,6 +1445,7 @@ layout(std140) uniform ParticleViewBlock {
 in vec2 particleUV; in vec4 particleColor; ${softFragmentInput}
 ${textureSource}
 ${softParticleSource}
+${renderer.texture ? portableCoordinatesSource : ''}
 layout(location = 0) out vec4 fragmentColor;
 void main() { ${textureSample} vec4 color = texel * particleColor; ${softParticleFade} ${renderer.blend === 'alpha' || renderer.blend === undefined ? '' : 'color.rgb *= color.a;'} if (color.a <= 0.00001) discard; fragmentColor = color; }`
         })

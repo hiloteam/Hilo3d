@@ -6,6 +6,7 @@ import ShaderMaterial from '../../material/ShaderMaterial';
 import type { MaterialBindingInfo } from '../../material/MaterialInstance';
 import { TRIANGLES } from '../../constants/webgl';
 import type { Renderer } from '../../render/Renderer';
+import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan';
 import type {
     ParticleSortMode,
@@ -199,7 +200,7 @@ function createFragmentSource(renderer: ParticleSpriteRendererDefinition): strin
     const textureSample =
         renderer.texture === undefined || renderer.texture === null
             ? 'vec4 texel = vec4(1.0);'
-            : 'vec4 texel = texture(u_particleTexture, v_particleUV);';
+            : 'vec4 texel = texture(u_particleTexture, hiloTextureUV(v_particleUV));';
     const premultiply =
         renderer.blend === 'premultiplied-alpha' || renderer.blend === 'additive'
             ? 'color.rgb *= color.a;'
@@ -209,6 +210,7 @@ precision highp float;
 in vec2 v_particleUV;
 in vec4 v_particleColor;
 ${textureDeclaration}
+${renderer.texture === undefined || renderer.texture === null ? '' : portableCoordinatesSource}
 layout(location = 0) out vec4 fragmentColor;
 void main(void) {
     ${textureSample}

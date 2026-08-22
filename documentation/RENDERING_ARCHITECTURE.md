@@ -658,7 +658,13 @@ pass，不创建这些原生对象。
 - 普通材质采样通过 `hiloTextureUV()` 把 top-left logical UV 转成 native sampler UV；WebGL 2 在 cube
   face 上传与拷贝边界适配行方向，cube 环境采样因此通过 `hiloTextureCubeDirection()`
   保持连续的原始方向，避免破坏跨 face 的 seamless filtering。base
-  color、normal、metallic/roughness、anisotropy、clearcoat、BRDF LUT 与 LTC lookup 都服从这一规则。
+  color、normal、metallic/roughness、anisotropy、clearcoat、BRDF LUT、LTC
+  lookup、Sprite、粒子、ribbon/trail 与贴图 mesh 都服从这一规则。任何直接接收 logical UV 的
+  `texture()`/`textureLod()`
+  调用都是合同违规；只有明确记录为 backend-native 的坐标可以跳过 helper，并且必须由上下不对称的 WebGL
+  2/WebGPU 方向性 fixture 证明行方向一致。2D Sprite 因共享 PlaneGeometry 与 atlas
+  rect 的正负高度语义，在 vertex 阶段完成且只完成一次 WebGPU native V 归一化；`Texture.flipY`
+  两种策略都必须进入同一个方向性 fixture。
 - fullscreen quad 自身仍以 bottom-left geometry UV 表达，因此 scene/render-target
   sampling 使用不同的
   `hiloRenderTargetUV()`；不能在 vertex、fragment、present 和单个 effect 中重复翻转。

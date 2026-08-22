@@ -77,6 +77,12 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
 - Portable non-sampler data belongs in registered std140 uniform blocks. GLSL samplers are the only
   values outside blocks; both backends reject classic numeric uniforms. The constrained
   storage-aware raster contract is the only std430 exception.
+- All engine-managed 2D textures use top-left logical UVs and must cross exactly one normalization
+  boundary. Use `hiloTextureUV()` for managed image textures and `hiloRenderTargetUV()` for scene
+  color, depth, shadow atlases, and other Render Graph/RenderTarget attachments. Do not call
+  `texture()` or `textureLod()` with an unconverted logical UV. Pre-normalizing in a vertex stage or
+  using another backend-native coordinate is an exception only when the shader documents the
+  boundary and a directional, asymmetric WebGL2/WebGPU fixture proves row parity.
 - A shader change is complete only after the relevant WebGL2 compile/link, Naga translation, and
   real WebGPU pipeline or browser coverage passes.
 

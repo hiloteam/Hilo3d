@@ -127,6 +127,7 @@ describe('ParticleSystem P2 GPU artifacts', () => {
                     renderers: [
                         {
                             type: 'sprite',
+                            texture: new Texture(),
                             pivot: [0.25, 0.75],
                             alignment: 'stretched',
                             stretchScale: 2
@@ -153,6 +154,10 @@ describe('ParticleSystem P2 GPU artifacts', () => {
             'particleSize = particlePixelSize / particleWorldToPixels;'
         );
         expect(renderer.shader.vertexSource).not.toContain('length(viewVelocity) / particleSize');
+        expect(renderer.shader.fragmentSource).toContain('vec2 hiloTextureUV(vec2 uv)');
+        expect(renderer.shader.fragmentSource).toContain(
+            'texture(u_particleTexture, hiloTextureUV(particleUV))'
+        );
 
         const parent = new Node({ visible: false });
         const system = new ParticleSystem({
