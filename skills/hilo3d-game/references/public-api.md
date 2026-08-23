@@ -75,7 +75,9 @@ child.off(type, listener);
 Use `Node` containers to group transforms and game entities. Share render resources across many
 `Mesh` or `Sprite` instances.
 
-`Mesh` combines a `Geometry` and `Material`:
+`Mesh` combines a `Geometry` and `MaterialInstance`. Built-in material classes create and retain an
+immutable `MaterialDefinition`; application code normally constructs `PBRMaterial`, `BasicMaterial`,
+or another built-in instance rather than authoring a definition directly:
 
 ```ts
 const mesh = new Hilo3d.Mesh({
@@ -83,6 +85,9 @@ const mesh = new Hilo3d.Mesh({
     material,
     useInstanced: false,
     frustumTest: true,
+    castShadows: true,
+    receiveShadows: true,
+    renderOrder: 0,
     layer: 1
 });
 ```
@@ -192,9 +197,7 @@ Use `PBRMaterial` for physically based 3D:
 const material = new Hilo3d.PBRMaterial({
     baseColor: new Hilo3d.Color(0.2, 0.65, 1),
     metallic: 0.2,
-    roughness: 0.55,
-    castShadows: true,
-    receiveShadows: true
+    roughness: 0.55
 });
 ```
 
@@ -207,12 +210,19 @@ Use `BasicMaterial` for unlit, Lambert, Phong, or Blinn-Phong rendering:
 new Hilo3d.BasicMaterial({
     lightType: 'NONE',
     diffuse: new Hilo3d.Color(1, 0.4, 0.1),
-    transparent: true
+    compositing: { mode: 'alpha-blend', premultiplied: true }
 });
 ```
 
-Material controls include `renderOrder`, `transparent`, `transparency`, `alphaCutoff`, `depthTest`,
-`depthMask`, `cullFace`, `side`, `blend`, `castShadows`, and `receiveShadows`.
+Runtime values such as `opacity`, `metallic`, `roughness`, and `temporalReactiveFactor` are mutable
+and advance the instance revision. Texture bindings can be changed with `setTextureSlot(...)` when
+the immutable definition already declares that slot. Shader topology and pipeline choices are
+construction-time inputs: use `coverage` for opaque/alpha-mask coverage, `compositing` for
+opaque/alpha/additive blending, `cullMode`/`frontFace` for raster orientation, and `state` for fixed
+pipeline state. Construct a new material when those choices or enabled texture features change.
+
+Object ordering and shadow participation belong to `Mesh.renderOrder`, `Mesh.castShadows`, and
+`Mesh.receiveShadows`, not to the material.
 
 Use `ShaderMaterial` only when built-in materials cannot express the effect. Portable raster shaders
 use GLSL ES 3.00 and registered std140 uniform blocks; classic numeric uniforms are not a portable
@@ -276,6 +286,14 @@ The result exposes `node`, `scene`, `meshes`, `cameras`, `lights`, `textures`, `
 
 Core 2D types are `Camera2D`, `Sprite`, `SpriteFrame`, `SpriteMaterial`, and `Text2D`. See
 [2D games](2d-games.md) for complete patterns.
+
+## Particles
+
+Create immutable particle assets with `ParticleSystemDefinition.create(...)`, then attach a
+`ParticleSystem` to the ordinary scene. The same definition can select portable CPU, stateful
+WebGPU, or stateless reconstruction according to its `execution` contract and modules. See
+[Particle effects](particle-effects.md) for a minimal runtime pattern and the fail-closed backend
+rules.
 
 ## Math
 

@@ -214,6 +214,48 @@ describe('StorageGraphicsShaderCompiler', () => {
         );
     });
 
+    it('preserves comparison samplers that Naga already translates as WGSL depth textures', () => {
+        const shader = new StorageGraphicsShader({
+            label: 'shadow-comparison',
+            vertexSource,
+            fragmentSource: fragmentSource
+                .replace('uniform sampler2D albedo;', 'uniform sampler2DShadow albedo;')
+                .replace(
+                    'color = texture(albedo, uv) * lightGrid.lights[0];',
+                    'color = vec4(texture(albedo, vec3(uv, 0.5))) * lightGrid.lights[0];'
+                ),
+            bindings: [
+                { name: 'CameraBlock', group: 0, binding: 0, kind: 'uniform-buffer' },
+                {
+                    name: 'albedo',
+                    group: 1,
+                    binding: 4,
+                    kind: 'sampled-texture',
+                    sampleType: 'depth'
+                },
+                { name: 'albedo', group: 1, binding: 5, kind: 'comparison-sampler' },
+                {
+                    name: 'particles',
+                    group: 2,
+                    binding: 3,
+                    kind: 'read-only-storage-buffer',
+                    minBindingSize: 16
+                },
+                {
+                    name: 'lightGrid',
+                    group: 3,
+                    binding: 1,
+                    kind: 'read-only-storage-buffer'
+                }
+            ]
+        });
+
+        const compiled = compiler.compile(shader, 'webgpu');
+        expect(compiled.fragment.code).toContain('texture_depth_2d');
+        expect(compiled.fragment.code).toContain('sampler_comparison');
+        expect(compiled.fragment.code).toContain('textureSampleCompare');
+    });
+
     it('preserves the primary Naga failure when shader-module cleanup also runs', () => {
         const source = vertexSource.replace(
             'vec4 world = particles.positions[gl_VertexID];',

@@ -1,6 +1,6 @@
 {
   "name": "hilo3d",
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "description": "A TypeScript-first 3D engine with explicit WebGL 2 and WebGPU backends.",
   "type": "module",
   "types": "./dist/Hilo3d.d.ts",

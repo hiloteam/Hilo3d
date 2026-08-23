@@ -829,7 +829,9 @@ export class StorageGraphicsShaderCompiler {
                 samplers: prepared.samplers
             },
             prepared.samplers.filter(
-                sampler => textureDescriptors.get(sampler.name)?.sampleType === 'depth'
+                sampler =>
+                    textureDescriptors.get(sampler.name)?.sampleType === 'depth' &&
+                    !sampler.type.endsWith('Shadow')
             )
         );
         const metadata = snapshotMetadata(prepared, storageBuffers);

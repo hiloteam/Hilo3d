@@ -21,6 +21,7 @@ Preferred stack:
 - Hilo3D 2D composition for scene-integrated UI and effects
 - DOM overlays for text-heavy HUD, menus, settings, and accessibility
 - glTF or GLB for shipped 3D assets
+- `ParticleSystemDefinition` and `ParticleSystem` for scalable authored effects
 - `cannon-es` when meaningful 3D physics is required
 - `backend: 'auto'` unless the task explicitly targets WebGPU or WebGL2
 
@@ -176,6 +177,8 @@ Load only what the task requires:
   hybrid composition
 - [3D games](references/3d-games.md): scale, meshes, materials, lighting, glTF, cameras, picking,
   animation, and `cannon-es`
+- [Particle effects](references/particle-effects.md): portable definitions, runtime selection,
+  lifecycle, and authoring boundaries
 - [Rendering and performance](references/rendering-performance.md): backend policy, draw calls,
   shaders, render targets, diagnostics, and WebGPU compute
 

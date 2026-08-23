@@ -199,6 +199,8 @@ async function checkStructure(): Promise<void> {
 async function checkDocumentationContracts(): Promise<void> {
     const twoDimensional = await readFile(join(skillRoot, 'references', '2d-games.md'), 'utf8');
     const threeDimensional = await readFile(join(skillRoot, 'references', '3d-games.md'), 'utf8');
+    const publicApi = await readFile(join(skillRoot, 'references', 'public-api.md'), 'utf8');
+    const particles = await readFile(join(skillRoot, 'references', 'particle-effects.md'), 'utf8');
     const rendering = await readFile(
         join(skillRoot, 'references', 'rendering-performance.md'),
         'utf8'
@@ -208,6 +210,11 @@ async function checkDocumentationContracts(): Promise<void> {
     assert(threeDimensional.includes('event.hitPoint instanceof Hilo3d.Vector3'));
     assert(rendering.includes('renderer.renderToTarget(target, scene, camera);'));
     assert(!rendering.includes('renderer.renderToTarget(scene, camera, target);'));
+    assert(threeDimensional.includes("coverage: { mode: 'mask', cutoff: 0.5 }"));
+    assert(threeDimensional.includes('relevant `Mesh` objects'));
+    assert(!publicApi.includes('transparent: true'));
+    assert(!publicApi.includes('castShadows: true,\n    receiveShadows: true\n});'));
+    assert(particles.includes('ParticleSystemDefinition.create'));
 }
 
 function checkStrictPublicApiSnippets(): void {
@@ -221,6 +228,42 @@ declare const interactable: Hilo3d.Mesh;
 declare const renderer: Hilo3d.Renderer;
 declare const scene: Hilo3d.Node;
 declare const camera: Hilo3d.Camera;
+
+const material = new Hilo3d.PBRMaterial({
+    baseColor: new Hilo3d.Color(0.2, 0.65, 1),
+    metallic: 0.2,
+    roughness: 0.55,
+    coverage: { mode: 'mask', cutoff: 0.5 }
+});
+const mesh = new Hilo3d.Mesh({
+    material,
+    castShadows: true,
+    receiveShadows: true,
+    renderOrder: 0
+});
+void mesh;
+
+const particleDefinition = Hilo3d.ParticleSystemDefinition.create({
+    emitters: [{
+        name: 'spark-burst',
+        capacity: 512,
+        execution: 'auto',
+        emission: { rateOverTime: 0, bursts: [{ time: 0, count: 80 }] },
+        shape: { type: 'sphere', radius: 0.12, distribution: 'volume' },
+        initialize: {
+            lifetime: { min: 0.35, max: 0.8 },
+            speed: { min: 1.5, max: 4 },
+            size: { min: 0.025, max: 0.07 },
+            color: [1, 0.45, 0.08, 1]
+        },
+        modules: [
+            { type: 'gravity', force: [0, -4, 0] },
+            { type: 'drag', coefficient: 0.2 }
+        ],
+        renderers: [{ type: 'sprite', blend: 'additive', depthWrite: false }]
+    }]
+});
+new Hilo3d.ParticleSystem({ definition: particleDefinition, seed: 42, autoPlay: false });
 
 button.on('click', event => {
     if ('stopPropagation' in event && typeof event.stopPropagation === 'function') {

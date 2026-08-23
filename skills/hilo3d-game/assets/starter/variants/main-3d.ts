@@ -48,8 +48,7 @@ async function main(): Promise<void> {
         material: new Hilo3d.PBRMaterial({
             baseColor: new Hilo3d.Color(0.05, 0.12, 0.2),
             metallic: 0.05,
-            roughness: 0.85,
-            receiveShadows: true
+            roughness: 0.85
         }),
         rotationX: -90
     }).addTo(stage);

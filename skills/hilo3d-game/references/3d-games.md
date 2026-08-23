@@ -89,9 +89,11 @@ Use `BasicMaterial` with `lightType: 'NONE'` for:
 - stylized unlit surfaces;
 - UI-like 3D markers.
 
-Avoid using transparency when alpha cutout is sufficient. For foliage or fences, prefer
-`alphaCutoff` so depth writing and sorting remain stable. For real transparency, use explicit
-`renderOrder` only when depth sorting is insufficient.
+Avoid using transparency when alpha cutout is sufficient. For foliage or fences, construct the
+material with `coverage: { mode: 'mask', cutoff: 0.5 }` so depth writing and sorting remain stable.
+For real transparency, use `compositing: { mode: 'alpha-blend', premultiplied: true }` and set
+`Mesh.renderOrder` only when depth sorting is insufficient. Coverage, compositing, culling, and
+other topology choices are immutable; construct a new material when one changes.
 
 ## Add shadows sparingly
 
@@ -108,8 +110,8 @@ const sun = new Hilo3d.DirectionalLight({
 });
 ```
 
-Enable `castShadows` and `receiveShadows` only on relevant materials. One high-quality key shadow
-usually gives better performance and visual consistency than many shadow-casting lights.
+Enable `castShadows` and `receiveShadows` only on relevant `Mesh` objects. One high-quality key
+shadow usually gives better performance and visual consistency than many shadow-casting lights.
 
 ## Load glTF assets
 
