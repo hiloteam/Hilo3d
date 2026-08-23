@@ -14,7 +14,8 @@ const MAXIMUM_PROJECT_NAME_LENGTH = 214;
 const MINIMUM_NODE_VERSION = [20, 19, 0];
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 const HILO_STABLE_VERSION = '2.0.0';
-const HILO_ALPHA_PATTERN = /^2\.0\.0-alpha\.(\d+)$/u;
+const HILO_PRERELEASE_PATTERN =
+    /^2\.0\.0-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const execFileAsync = promisify(execFile);
 
 function usage() {
@@ -24,7 +25,7 @@ Usage:
   node create-hilo3d-game.mjs --type <2d|3d|hybrid> --name <name> --output <directory> [options]
 
 Options:
-  --hilo-version <version|auto>  Exact 2.0.0/2.0.0-alpha.N, or stable-first lookup (default: auto)
+  --hilo-version <version|auto>  Exact 2.0.0/2.0.0-* prerelease, or resolve npm's next tag (default: auto)
   --registry <url>               Registry used for automatic lookup (default: npmjs.org)
 
 Example:
@@ -83,30 +84,18 @@ function validateRegistry(value) {
     }
 }
 
-function selectPublishedHiloVersion(versions) {
-    if (versions.includes(HILO_STABLE_VERSION)) return HILO_STABLE_VERSION;
-
-    const alphas = versions
-        .map(version => {
-            const match = HILO_ALPHA_PATTERN.exec(version);
-            return match ? { number: Number(match[1]), version } : undefined;
-        })
-        .filter(candidate => candidate !== undefined)
-        .sort((left, right) => right.number - left.number);
-
-    if (alphas[0]) return alphas[0].version;
+function validateResolvedHiloVersion(version) {
+    if (version === HILO_STABLE_VERSION || HILO_PRERELEASE_PATTERN.test(version)) return version;
     throw new Error(
-        'No compatible hilo3d release is published: expected 2.0.0 or 2.0.0-alpha.N. ' +
-            'Use --hilo-version with an exact prerelease only when it is available from your registry.'
+        'The hilo3d next dist-tag must point to 2.0.0 or a 2.0.0-* prerelease. ' +
+            'Refusing other release lines or malformed versions.'
     );
 }
 
 async function resolveHiloVersion(requested, registry) {
     if (requested && requested !== 'auto') {
-        if (requested !== HILO_STABLE_VERSION && !HILO_ALPHA_PATTERN.test(requested)) {
-            throw new Error(
-                '--hilo-version must be auto, 2.0.0, or an exact 2.0.0-alpha.N version'
-            );
+        if (requested !== HILO_STABLE_VERSION && !HILO_PRERELEASE_PATTERN.test(requested)) {
+            throw new Error('--hilo-version must be auto, 2.0.0, or an exact 2.0.0-* prerelease');
         }
         return requested;
     }
@@ -115,7 +104,7 @@ async function resolveHiloVersion(requested, registry) {
     try {
         ({ stdout } = await execFileAsync(
             process.platform === 'win32' ? 'npm.cmd' : 'npm',
-            ['view', 'hilo3d', 'versions', '--json', '--tag=latest', `--registry=${registry}`],
+            ['view', 'hilo3d@next', 'version', '--json', `--registry=${registry}`],
             { maxBuffer: 1024 * 1024 }
         ));
     } catch (error) {
@@ -124,7 +113,7 @@ async function resolveHiloVersion(requested, registry) {
                 ? String(error.stderr).trim()
                 : '';
         throw new Error(
-            `Could not query published hilo3d versions from ${registry}.` +
+            `Could not resolve hilo3d@next from ${registry}.` +
                 (detail ? `\n${detail}` : '') +
                 '\nRetry online or pass --hilo-version with an exact published version.'
         );
@@ -134,10 +123,12 @@ async function resolveHiloVersion(requested, registry) {
     try {
         result = JSON.parse(stdout);
     } catch {
-        throw new Error(`Registry ${registry} returned invalid JSON for hilo3d versions`);
+        throw new Error(`Registry ${registry} returned invalid JSON for hilo3d@next`);
     }
-    const versions = Array.isArray(result) ? result : [result];
-    return selectPublishedHiloVersion(versions.filter(value => typeof value === 'string'));
+    if (typeof result !== 'string') {
+        throw new Error(`Registry ${registry} did not return one version for hilo3d@next`);
+    }
+    return validateResolvedHiloVersion(result);
 }
 
 async function directoryExists(path) {

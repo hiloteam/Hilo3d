@@ -36,6 +36,8 @@
 
 ### Changes
 
+- Resolve the `hilo3d-game` starter dependency from the npm `next` dist-tag, validate its supported
+  2.0 release shape, and pin the resolved concrete version for reproducible installs.
 - Update the standalone `hilo3d-game` skill for immutable material topology, Mesh-owned ordering and
   shadow participation, and the completed portable/WebGPU particle authoring workflow.
 - Normalize managed particle textures through the shared top-left UV boundary for CPU and WebGPU

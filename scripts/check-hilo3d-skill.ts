@@ -47,7 +47,10 @@ async function closeServer(server: Server): Promise<void> {
     });
 }
 
-async function startRegistry(versions: readonly string[]): Promise<TestRegistry> {
+async function startRegistry(
+    versions: readonly string[],
+    nextVersion: string = versions.at(-1) ?? '1.19.1'
+): Promise<TestRegistry> {
     let registryUrl = '';
     const server = createServer((request, response) => {
         if (request.url !== '/hilo3d') {
@@ -75,7 +78,7 @@ async function startRegistry(versions: readonly string[]): Promise<TestRegistry>
         response.end(
             JSON.stringify({
                 name: 'hilo3d',
-                'dist-tags': { latest },
+                'dist-tags': { latest, next: nextVersion },
                 versions: packageVersions
             })
         );
@@ -339,20 +342,17 @@ target.destroy();
     );
 }
 
-async function checkAlphaSelection(): Promise<void> {
-    const registry = await startRegistry([
-        '1.19.1',
-        '2.0.0-alpha.1',
-        '2.0.0-alpha.9',
-        '2.0.0-beta.1',
-        '2.0.0-rc.1'
-    ]);
+async function checkNextPrereleaseSelection(): Promise<void> {
+    const registry = await startRegistry(
+        ['1.19.1', '2.0.0-alpha.1', '2.0.0-alpha.9', '2.0.0-beta.1', '2.0.0-rc.1'],
+        '2.0.0-beta.1'
+    );
     try {
-        const output = join(await makeTemporaryDirectory('skill-alpha'), 'game');
+        const output = join(await makeTemporaryDirectory('skill-prerelease'), 'game');
         await generate(output, registry.url);
         assert.equal(
             parseHilo3dDependency(await readFile(join(output, 'package.json'), 'utf8')),
-            '2.0.0-alpha.9'
+            '2.0.0-beta.1'
         );
     } finally {
         await registry.close();
@@ -378,11 +378,11 @@ async function checkStableSelectionAndVariants(): Promise<void> {
     }
 }
 
-async function checkMissingVersionFailure(): Promise<void> {
-    const registry = await startRegistry(['1.19.1', '2.0.0-beta.1']);
+async function checkInvalidNextTagFailure(): Promise<void> {
+    const registry = await startRegistry(['1.19.1'], '1.19.1');
     try {
-        const output = join(await makeTemporaryDirectory('skill-missing-version'), 'game');
-        const cache = await makeTemporaryDirectory('skill-missing-version-cache');
+        const output = join(await makeTemporaryDirectory('skill-invalid-next'), 'game');
+        const cache = await makeTemporaryDirectory('skill-invalid-next-cache');
         let failure: unknown;
         try {
             await execFileAsync(
@@ -407,7 +407,7 @@ async function checkMissingVersionFailure(): Promise<void> {
             failure = error;
         }
         assert(failure && typeof failure === 'object' && 'stderr' in failure);
-        assert(String(failure.stderr).includes('No compatible hilo3d release is published'));
+        assert(String(failure.stderr).includes('next dist-tag must point to'));
         await assert.rejects(stat(output), { code: 'ENOENT' });
     } finally {
         await registry.close();
@@ -447,9 +447,9 @@ async function main(): Promise<void> {
         await checkStructure();
         await checkDocumentationContracts();
         checkStrictPublicApiSnippets();
-        await checkAlphaSelection();
+        await checkNextPrereleaseSelection();
         await checkStableSelectionAndVariants();
-        await checkMissingVersionFailure();
+        await checkInvalidNextTagFailure();
         await checkInvalidProjectNameFailure();
         process.stdout.write('Hilo3D skill checks passed.\n');
     } finally {

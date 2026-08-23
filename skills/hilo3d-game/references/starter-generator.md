@@ -1,8 +1,8 @@
 # Starter generator
 
 Use `scripts/create-hilo3d-game.mjs` to create a standalone strict TypeScript and Vite project. The
-generated project queries published Hilo3D versions, prefers exact `2.0.0`, and otherwise uses the
-highest exact `2.0.0-alpha.N`. It does not read from a Hilo3D repository checkout.
+generated project resolves the registry's `hilo3d@next` dist-tag and pins the resulting exact
+`2.0.0` or `2.0.0-*` prerelease version. It does not read from a Hilo3D repository checkout.
 
 ## Commands
 
@@ -15,18 +15,19 @@ node <skill-root>/scripts/create-hilo3d-game.mjs \
 
 Options:
 
-| Option           | Required | Values                                              |
-| ---------------- | -------- | --------------------------------------------------- |
-| `--type`         | Yes      | `2d`, `3d`, or `hybrid`                             |
-| `--name`         | Yes      | npm-compatible project name                         |
-| `--output`       | Yes      | New or empty destination directory                  |
-| `--hilo-version` | No       | `auto` (default), `2.0.0`, or exact `2.0.0-alpha.N` |
-| `--registry`     | No       | Registry URL for automatic version lookup           |
+| Option           | Required | Values                                        |
+| ---------------- | -------- | --------------------------------------------- |
+| `--type`         | Yes      | `2d`, `3d`, or `hybrid`                       |
+| `--name`         | Yes      | npm-compatible project name                   |
+| `--output`       | Yes      | New or empty destination directory            |
+| `--hilo-version` | No       | `auto` (default), `2.0.0`, or exact `2.0.0-*` |
+| `--registry`     | No       | Registry URL for automatic version lookup     |
 
-In `auto` mode, the generator queries `https://registry.npmjs.org/`. It uses stable `2.0.0` as soon
-as that version exists; before then it selects the numbered alpha with the highest numeric suffix.
-It deliberately ignores 1.x, beta, and release-candidate versions. Use `--registry` for a compatible
-private or mirrored registry, or `--hilo-version` to skip lookup and pin an exact known release.
+In `auto` mode, the generator resolves `hilo3d@next` from `https://registry.npmjs.org/`, validates
+that the tag points to `2.0.0` or a `2.0.0-*` prerelease such as alpha, beta, or rc, and writes that
+concrete version rather than the moving tag into the generated `package.json`. It rejects other
+release lines and malformed targets. Use `--registry` for a compatible private or mirrored registry,
+or `--hilo-version` to skip lookup and pin an exact known release.
 
 The generator copies the shared starter files, selects one variant as `src/main.ts`, and omits the
 unused variant sources. It refuses a non-empty destination so it cannot silently overwrite user

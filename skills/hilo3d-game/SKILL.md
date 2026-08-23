@@ -25,9 +25,9 @@ Preferred stack:
 - `cannon-es` when meaningful 3D physics is required
 - `backend: 'auto'` unless the task explicitly targets WebGPU or WebGL2
 
-For greenfield projects, use exact `2.0.0` when published; otherwise use the highest exact
-`2.0.0-alpha.N`. Never substitute 1.x, beta, or release-candidate builds. Keep the dependency exact
-and use Node.js 20.19.0 or newer for the bundled starter.
+For greenfield projects, resolve `hilo3d@next`, require it to be `2.0.0` or a `2.0.0-*` prerelease,
+and pin that concrete version. Never leave a moving dist-tag in the generated dependency or
+substitute another release line. Use Node.js 20.19.0 or newer for the bundled starter.
 
 Import public API only from `hilo3d`; inspect `node_modules/hilo3d/dist/Hilo3d.d.ts` when a
 signature is uncertain. Never copy private engine internals, generated docs, or repository examples
@@ -104,8 +104,9 @@ npm run dev
 ```
 
 Valid types are `2d`, `3d`, and `hybrid`. The generator refuses to overwrite a non-empty directory
-and prefers stable `2.0.0` over the latest numbered alpha. Pass `--hilo-version` only to reproduce
-or test an exact published release. Keep generated games independent from the skill itself.
+and pins the concrete `2.0.0` release selected by the registry's `next` dist-tag. Pass
+`--hilo-version` only to reproduce or test an exact published release. Keep generated games
+independent from the skill itself.
 
 ## Implementation Workflow
 
