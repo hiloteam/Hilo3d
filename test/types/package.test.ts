@@ -2,6 +2,7 @@ import {
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
+    ClusteredForwardPlusPipelineFactory,
     ComputeKernel,
     ComputeRenderPass,
     ComputeSampler,
@@ -28,6 +29,7 @@ import {
     ParticleSystem,
     ParticleSystemDefinition,
     ParticleSystemPool,
+    PBRMaterial,
     compileParticleAuthoringGraph,
     createParticleAuthoringGraph,
     deserializeParticleSystemDefinition,
@@ -45,6 +47,7 @@ import {
     SCENE_STORAGE_BIND_GROUP,
     SceneRenderPass,
     Stage,
+    SpotLight,
     StorageGraphicsShader,
     TemporalAA,
     Texture,
@@ -90,6 +93,7 @@ import {
     type CullingResultsHandle,
     type ComputeTextureSampleType,
     type ComputeTextureViewDimension,
+    type ClusteredMaterialVariantManifest,
     type RendererBackend,
     type RendererResourceDiagnostics,
     type RendererRenderingProfile,
@@ -114,6 +118,8 @@ import {
     type RendererListHandle,
     type StorageBuffer,
     type StorageBufferReadback,
+    type SpotLightCookie,
+    type SpotLightIESProfile,
     type TemporalAAOptions,
     type DynamicResolutionOptions,
     type ShaderTextureSampleType,
@@ -129,6 +135,36 @@ import {
     type TextureParameters,
     type TweenParameters
 } from 'hilo3d';
+
+const clusteredGeometry = new BoxGeometry();
+const clusteredMaterial = new PBRMaterial({ clearcoatFactor: 0.5 });
+const clusteredExemplar = new Mesh({
+    geometry: clusteredGeometry,
+    material: clusteredMaterial
+});
+const clusteredManifest = {
+    entries: [{ mesh: clusteredExemplar, shadowed: true }],
+    maxVariants: 8,
+    warmupBatchSize: 2
+} satisfies ClusteredMaterialVariantManifest;
+const clusteredFactory = new ClusteredForwardPlusPipelineFactory({
+    buckets: [{ geometry: new BoxGeometry(), material: new PBRMaterial() }],
+    variantManifest: clusteredManifest
+});
+const spotCookie = {
+    scale: [0.8, 0.6],
+    offset: [0.1, -0.1],
+    intensity: 0.9,
+    softness: 0.2
+} as const satisfies SpotLightCookie;
+const spotIES = { intensity: 1.1, exponent: 1.5 } satisfies SpotLightIESProfile;
+const clusteredSpot = new SpotLight({
+    lightLayerMask: 3,
+    cookie: spotCookie,
+    iesProfile: spotIES
+});
+void clusteredFactory;
+void clusteredSpot;
 
 const orderedNodeParameters = {
     sortingLayer: 100,

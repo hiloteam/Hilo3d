@@ -99,6 +99,7 @@ import { StorageBufferResourceCache } from '../renderer/StorageBufferResourceCac
 import { prepareWebGPUMipmapShaderArtifacts } from '../renderer/WebGPUMipmapShader';
 import { WgslComputeShaderCompiler } from '../shader/WgslComputeCompiler';
 import { StorageGraphicsShaderCompiler } from '../shader/StorageGraphicsShaderCompiler';
+import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
 import { cameraCompositionRequiresSingleSample } from './CameraCompositionPolicy';
 import { depthClearValue } from '../renderer/DepthConvention';
@@ -933,6 +934,36 @@ class SharedRendererDriver
         const buffer = new RendererStorageBuffer(this, descriptor);
         this.#storageBuffers.add(buffer);
         return buffer;
+    }
+
+    async warmupStorageGraphicsShaders(
+        shaders: readonly StorageGraphicsShader[],
+        batchSize = 4
+    ): Promise<void> {
+        if (this.#destroyed) throw new Error('Renderer is destroyed');
+        if (this.#pipelineHost.recording) {
+            throw new Error(
+                'Storage graphics warmup is allowed only during pipeline initialization'
+            );
+        }
+        if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+            throw new RangeError('Storage graphics warmup batchSize must be a positive integer');
+        }
+        const features = this.requireDevice().capabilities.features;
+        if (
+            this.backend !== 'webgpu' ||
+            !features.has('storage-buffers') ||
+            !features.has('compute-pipelines')
+        ) {
+            throw new Error('Storage graphics warmup requires a compute-capable WebGPU renderer');
+        }
+        const pipelines = this.requireResources().gpuDrivenPipelines;
+        for (let index = 0; index < shaders.length; index += 1) {
+            const shader = shaders[index];
+            if (shader === undefined) throw new Error('Storage graphics warmup shader is missing');
+            pipelines.resolveCompiledShader(shader);
+            if ((index + 1) % batchSize === 0) await Promise.resolve();
+        }
     }
 
     override createRenderTarget(parameters: RenderTargetParameters): RHIRenderTarget {

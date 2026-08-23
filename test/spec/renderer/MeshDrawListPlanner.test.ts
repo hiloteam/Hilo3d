@@ -427,6 +427,24 @@ describe('MeshDrawListPlanner', () => {
         expect(plan.transparentMeshes).toEqual([far, near]);
     });
 
+    it('keeps transparent sorting back-to-front with reversed camera depth', () => {
+        const planner = new MeshDrawListPlanner();
+        const transparent = material('transparent', 0, true);
+        const sharedGeometry = geometry('reversed-depth');
+        const near = mesh('near-reversed', transparent, sharedGeometry);
+        const far = mesh('far-reversed', transparent, sharedGeometry);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        far.setPosition(0, 0, -10).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera({ near: 0.1, far: 100, aspect: 1 });
+        camera.depthMode = 'reversed';
+        camera.setPosition(0, 0, 0).lookAt(new Vector3(0, 0, -1));
+        camera.updateViewProjectionMatrix();
+
+        const plan = planner.build([near, far], null, true, camera);
+
+        expect(plan.transparentMeshes).toEqual([far, near]);
+    });
+
     it('detaches owners, prunes omitted meshes, and resets without replacing the result', () => {
         const planner = new MeshDrawListPlanner();
         const direct = mesh('direct', material('direct'), geometry('direct'));

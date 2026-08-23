@@ -639,7 +639,7 @@ function executeStorageMeshPreparationFrame(
         scope => {
             fixture.processor.beginFrame(scope.context, scope.uploads);
             const preparation: StorageScenePreparationState = {
-                globalBindGroupLayout: null
+                globalBindGroupLayouts: []
             };
             prepared = fixture.processor.prepareStorageScene(
                 mesh,
@@ -650,7 +650,7 @@ function executeStorageMeshPreparationFrame(
                 null,
                 plannerInstancedFallback
             );
-            expect(preparation.globalBindGroupLayout).not.toBeNull();
+            expect(preparation.globalBindGroupLayouts).toHaveLength(1);
         }
     );
     void fixture.processor.trackSubmission(frameIndex, result.submission);
@@ -1944,6 +1944,12 @@ describe('MeshDrawProcessor cache and failure boundaries', () => {
             vertexSource: STORAGE_VERTEX_SOURCE,
             fragmentSource: STORAGE_FRAGMENT_SOURCE,
             bindings: [
+                {
+                    name: 'LightBlock',
+                    group: 0,
+                    binding: 3,
+                    kind: 'uniform-buffer'
+                },
                 {
                     name: 'lightGrid',
                     group: 3,

@@ -13,6 +13,10 @@ interface SourceLiteral {
 
 const shaderGuardFixturePath = 'test/spec/shader/ShaderModernityGuardrails.test.ts';
 const shaderGuardImplementationPath = 'scripts/shader-modernity.ts';
+const storageGraphicsBoundaryImplementationPath = 'src/render/compute/StorageGraphicsShader.ts';
+const controlledStorageGraphicsChunkPaths: ReadonlySet<string> = new Set([
+    'src/shader/chunk/clusteredForward.frag'
+]);
 const controlledComputeFixturePaths: ReadonlySet<string> = new Set([
     'test/spec/renderer/ComputeKernel.test.ts',
     'test/spec/renderer/ComputePipelineResourceCache.test.ts',
@@ -277,7 +281,11 @@ function hasExactReadonlyStorageBlocks(source: string): boolean {
 }
 
 function isShaderGuardExempt(path: string): boolean {
-    return path === shaderGuardFixturePath || path === shaderGuardImplementationPath;
+    return (
+        path === shaderGuardFixturePath ||
+        path === shaderGuardImplementationPath ||
+        path === storageGraphicsBoundaryImplementationPath
+    );
 }
 
 /**
@@ -298,6 +306,18 @@ export function collectShaderModernityViolations(
     const isTypeScript = new Set(['.ts', '.tsx', '.mts', '.cts']).has(extension);
     if (!isTypeScript) {
         const violations: ShaderModernityViolation[] = [];
+        if (controlledStorageGraphicsChunkPaths.has(path)) {
+            if (!hasExactReadonlyStorageBlocks(source)) {
+                violations.push({
+                    label: 'StorageGraphicsShader storage block is not readonly std430',
+                    line: 1
+                });
+            }
+            if (glslComputeDialectPattern.test(source)) {
+                violations.push({ label: 'GLSL compute dialect', line: 1 });
+            }
+            return violations;
+        }
         const version = glslVersionPattern.exec(source);
         if (version && (version[1] !== '300' || version[2] !== 'es')) {
             violations.push({ label: 'graphics shader source is not GLSL ES 3.00', line: 1 });

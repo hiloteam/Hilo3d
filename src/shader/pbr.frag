@@ -9,6 +9,7 @@
 #include "./chunk/lightFog.frag"
 #include "./chunk/pbr.frag"
 #include "./chunk/light.frag"
+#include "./chunk/clusteredForward.frag"
 #include "./chunk/transparency.frag"
 #include "./chunk/fog.frag"
 #include "./chunk/logDepth.frag"

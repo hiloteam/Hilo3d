@@ -589,7 +589,12 @@ export {
     type SpotLightInfo
 } from './light/LightManager';
 export { default as PointLight, type PointLightParameters } from './light/PointLight';
-export { default as SpotLight, type SpotLightParameters } from './light/SpotLight';
+export {
+    default as SpotLight,
+    type SpotLightCookie,
+    type SpotLightIESProfile,
+    type SpotLightParameters
+} from './light/SpotLight';
 
 export { default as AxisHelper, type AxisHelperParameters } from './helper/AxisHelper';
 export { default as AxisNetHelper, type AxisNetHelperParameters } from './helper/AxisNetHelper';

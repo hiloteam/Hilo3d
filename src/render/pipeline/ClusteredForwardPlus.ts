@@ -1,5 +1,6 @@
 import type Camera from '../../camera/Camera';
 import PerspectiveCamera from '../../camera/PerspectiveCamera';
+import type Fog from '../../core/Fog';
 import Mesh from '../../core/Mesh';
 import Node from '../../core/Node';
 import { getTransformHistoryRevision } from '../../core/TransformHistory';
@@ -10,6 +11,7 @@ import AreaLight from '../../light/AreaLight';
 import DirectionalLight from '../../light/DirectionalLight';
 import PointLight from '../../light/PointLight';
 import SpotLight from '../../light/SpotLight';
+import LightManager from '../../light/LightManager';
 import PBRMaterial from '../../material/PBRMaterial';
 import {
     DEFAULT_MATERIAL_PIPELINE_STATE,
@@ -29,6 +31,7 @@ import encodingSource from '../../shader/method/encoding.glsl';
 import getAreaLightSource from '../../shader/method/getAreaLight.glsl';
 import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type Texture from '../../texture/Texture';
+import ParticleSystem from '../../particle/ParticleSystem';
 import {
     CLAMP_TO_EDGE,
     LINEAR,
@@ -52,7 +55,18 @@ import ComputeShader, {
     type ComputeShaderBinding,
     type ShaderReadBinding
 } from '../compute/ComputeShader';
-import StorageGraphicsShader from '../compute/StorageGraphicsShader';
+import StorageGraphicsShader, {
+    createStorageGraphicsShaderFromPortable
+} from '../compute/StorageGraphicsShader';
+import {
+    prepareGLSLForNaga,
+    type GlslSamplerType,
+    type WebGPUSamplerBinding
+} from '../shader/GlslToWgsl';
+import {
+    getWebGPUSceneTextureBinding,
+    getWebGPUUniformBlockBinding
+} from '../shader/WebGPUBindingLayout';
 import {
     GPUDrivenRenderBatchPass,
     type GPUDrivenRenderBatchPassParameters
@@ -99,6 +113,8 @@ import {
     type GPUDrivenRenderPassParameters,
     type GPUDrivenVertexBufferLayout,
     type SceneRenderPassParameters,
+    type SceneStorageBufferBinding,
+    type SceneStorageShaderVariant,
     type TextureCopyPassParameters
 } from './passes';
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from './passes/internal/PortableFullscreenShader';
@@ -123,6 +139,7 @@ import {
     type TemporalAAOptions,
     type TemporalAASettings
 } from '../postprocessing/TemporalAA';
+import { TransparentTemporalController } from '../postprocessing/TransparentTemporal';
 import {
     SCREEN_SPACE_REFLECTION_COLOR_LEVELS,
     SCREEN_SPACE_REFLECTION_TRACE_HIZ_LEVELS,
@@ -171,7 +188,8 @@ const OBJECT_RECORD_BYTES = 208;
 const LIGHT_RECORD_FLOATS = 28;
 const LIGHT_RECORD_BYTES = LIGHT_RECORD_FLOATS * 4;
 const BUCKET_RECORD_BYTES = 48;
-const FRAME_BASE_VEC4_COUNT = 32;
+const FRAME_OUTPUT_MAPPING_VEC4 = 32;
+const FRAME_BASE_VEC4_COUNT = FRAME_OUTPUT_MAPPING_VEC4 + 1;
 const SHADOW_ATLAS_SIZE_VEC4 = FRAME_BASE_VEC4_COUNT;
 const SHADOW_METADATA_VEC4 = SHADOW_ATLAS_SIZE_VEC4 + 1;
 const SHADOW_ATLAS_RECTS_VEC4 = SHADOW_METADATA_VEC4 + 1;
@@ -203,6 +221,8 @@ const OBJECT_HIZ_STABLE_FLAG = 4;
 const OBJECT_MOTION_HISTORY_FLAG = 8;
 const OBJECT_MOTION_CHANGED_FLAG = 16;
 const OBJECT_RECEIVE_SHADOW_FLAG = 32;
+const LIGHT_COOKIE_FLAG = 1;
+const LIGHT_IES_FLAG = 2;
 const CULL_WORKGROUP_SIZE = 64;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
@@ -226,6 +246,170 @@ const CLUSTERED_AREA_LIGHT_SOURCE = getAreaLightSource
         'texture(areaLightsLtcTexture2, hiloTextureUV(uv))',
         'textureLod(areaLightsLtcTexture2, hiloTextureUV(uv), 0.0)'
     );
+const CLUSTERED_SCENE_LIGHT_MANAGER = new LightManager();
+const CLUSTERED_TRANSPARENT_SHADER_CACHE = new WeakMap<Shader, StorageGraphicsShader>();
+
+function clusteredTransparentFragmentSource(source: string): string {
+    return source
+        .replace(
+            'texture(areaLightsLtcTexture1, hiloTextureUV(uv))',
+            'textureLod(areaLightsLtcTexture1, hiloTextureUV(uv), 0.0)'
+        )
+        .replace(
+            'texture(areaLightsLtcTexture2, hiloTextureUV(uv))',
+            'textureLod(areaLightsLtcTexture2, hiloTextureUV(uv), 0.0)'
+        );
+}
+
+function sampledTextureViewDimension(type: GlslSamplerType): '2d' | '2d-array' | '3d' | 'cube' {
+    if (type.includes('2DArray')) return '2d-array';
+    if (type.includes('3D')) return '3d';
+    if (type.includes('Cube')) return 'cube';
+    return '2d';
+}
+
+function sampledTextureSampleType(
+    name: string,
+    type: GlslSamplerType
+): 'float' | 'unfilterable-float' | 'depth' | 'sint' | 'uint' {
+    if (type.endsWith('Shadow')) return 'depth';
+    if (type.startsWith('isampler')) return 'sint';
+    if (type.startsWith('usampler')) return 'uint';
+    if (name === 'u_areaLightsLtcTexture1' || name === 'u_areaLightsLtcTexture2') {
+        return 'unfilterable-float';
+    }
+    return 'float';
+}
+
+function appendStorageSamplerBindings(
+    bindings: ShaderReadBinding[],
+    sampler: Readonly<WebGPUSamplerBinding>
+): void {
+    if (sampler.arrayIndex !== 0) {
+        throw new TypeError(
+            `Clustered transparent sampler arrays are unsupported (${sampler.name}[${String(sampler.arrayIndex)}])`
+        );
+    }
+    bindings.push({
+        name: sampler.name,
+        group: sampler.group,
+        binding: sampler.textureBinding,
+        kind: 'sampled-texture',
+        sampleType: sampledTextureSampleType(sampler.name, sampler.type),
+        viewDimension: sampledTextureViewDimension(sampler.type)
+    });
+    bindings.push({
+        name: sampler.name,
+        group: sampler.group,
+        binding: sampler.samplerBinding,
+        kind: sampler.type.endsWith('Shadow') ? 'comparison-sampler' : 'sampler'
+    });
+}
+
+function clusteredTransparentShader(
+    mesh: Mesh,
+    material: PBRMaterial,
+    fog: Fog | null,
+    withShadows: boolean
+): StorageGraphicsShader {
+    let header = Shader.getHeader(
+        mesh,
+        material,
+        CLUSTERED_SCENE_LIGHT_MANAGER,
+        fog,
+        false,
+        'forward'
+    );
+    header += '#define HILO_CLUSTERED_FORWARD 1\n';
+    if (withShadows && mesh.receiveShadows) {
+        header += '#define HILO_CLUSTERED_SHADOWS 1\n';
+    }
+    const baseShader = Shader.getBasicShader(material, false, header, undefined, 'forward');
+    const cached = CLUSTERED_TRANSPARENT_SHADER_CACHE.get(baseShader);
+    if (cached !== undefined) return cached;
+    const prepared = prepareGLSLForNaga(
+        baseShader.vs,
+        baseShader.fs,
+        getWebGPUUniformBlockBinding,
+        { resolveSamplerBinding: getWebGPUSceneTextureBinding }
+    );
+    const bindings: ShaderReadBinding[] = prepared.uniformBlocks.map(block => ({
+        name: block.name,
+        group: block.group,
+        binding: block.binding,
+        kind: 'uniform-buffer'
+    }));
+    for (const sampler of prepared.samplers) appendStorageSamplerBindings(bindings, sampler);
+    bindings.push(
+        {
+            name: 'clusterFrameData',
+            group: 3,
+            binding: 0,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: FRAME_RECORD_BYTES
+        },
+        {
+            name: 'clusterLights',
+            group: 3,
+            binding: 1,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: LIGHT_RECORD_BYTES
+        },
+        {
+            name: 'clusterLightGrid',
+            group: 3,
+            binding: 2,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 8
+        },
+        {
+            name: 'clusterLightIndices',
+            group: 3,
+            binding: 3,
+            kind: 'read-only-storage-buffer',
+            minBindingSize: 4
+        }
+    );
+    const result = createStorageGraphicsShaderFromPortable({
+        label: `Clustered transparent PBR (${material.definition.id})`,
+        portableVertexSource: baseShader.vs,
+        portableFragmentSource: clusteredTransparentFragmentSource(baseShader.fs),
+        bindings
+    });
+    CLUSTERED_TRANSPARENT_SHADER_CACHE.set(baseShader, result);
+    return result;
+}
+
+function clusteredTransparentMaterial(mesh: Mesh): PBRMaterial | null {
+    const material = mesh.material;
+    if (
+        !(material instanceof PBRMaterial) ||
+        mesh.geometry === null ||
+        material.lightType !== 'PBR' ||
+        !material.isTransparent ||
+        material.requiresOpaqueSceneTexture ||
+        material.forwardQueue !== 'transparent' ||
+        mesh.useInstanced
+    ) {
+        return null;
+    }
+    return material;
+}
+
+function clusteredOpaqueMaterial(mesh: Mesh): PBRMaterial | null {
+    const material = mesh.material;
+    if (
+        !(material instanceof PBRMaterial) ||
+        mesh.geometry === null ||
+        material.lightType !== 'PBR' ||
+        material.forwardQueue !== 'opaque' ||
+        material.requiresOpaqueSceneTexture ||
+        mesh.useInstanced
+    ) {
+        return null;
+    }
+    return material;
+}
 
 /** One lower-detail geometry selected when its projected bounding radius is small enough. */
 export interface GPUSceneLOD {
@@ -251,6 +435,24 @@ export interface GPUSceneBucket {
     readonly lods?: readonly GPUSceneLOD[];
 }
 
+/** One concrete scene shader topology requested before the first application frame. */
+export interface ClusteredMaterialVariantManifestEntry {
+    /** Exemplar carrying the exact geometry deformation and PBR material topology. */
+    readonly mesh: Mesh;
+    /** Also warm the receive-shadow variant. Defaults to the exemplar's current setting. */
+    readonly shadowed?: boolean;
+}
+
+/** Bounded startup manifest for clustered scene shader translation and diagnostics. */
+export interface ClusteredMaterialVariantManifest {
+    /** Exact mesh/material exemplars whose native clustered variants are required at startup. */
+    readonly entries: readonly Readonly<ClusteredMaterialVariantManifestEntry>[];
+    /** Maximum unique native scene variants, including runtime discoveries. Defaults to 64. */
+    readonly maxVariants?: number;
+    /** Variants translated before yielding back to renderer initialization. Defaults to 4. */
+    readonly warmupBatchSize?: number;
+}
+
 /** Construction options for the WebGPU high-end GPU Scene and Clustered Forward+ pipeline. */
 export interface ClusteredForwardPlusPipelineOptions {
     /**
@@ -258,7 +460,10 @@ export interface ClusteredForwardPlusPipelineOptions {
      * other scene meshes remain renderable through the shared Forward compatibility path.
      */
     readonly buckets: readonly GPUSceneBucket[];
-    /** Stable GPU Scene object capacity. Excess meshes use the Forward fallback. Defaults to 16,384. */
+    /**
+     * Stable fixed-bucket GPU Scene object capacity. Compatible excess PBR uses the direct native
+     * clustered lane; unsupported content uses Forward compatibility. Defaults to 16,384.
+     */
     readonly maxObjects?: number;
     /** GPU light-database capacity. Extra traversal-order lights are deterministically dropped. */
     readonly maxLights?: number;
@@ -311,6 +516,8 @@ export interface ClusteredForwardPlusPipelineOptions {
      * This WebGPU path uses the complete 3D cluster light grid and submission-aware history.
      */
     readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
+    /** Optional bounded material/deformation topology manifest translated during async creation. */
+    readonly variantManifest?: Readonly<ClusteredMaterialVariantManifest>;
 }
 
 /** On-demand GPU counters plus current CPU database occupancy. */
@@ -319,6 +526,10 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly objectCount: number;
     /** Visible-layer meshes routed through the shared Forward compatibility fallback. */
     readonly fallbackObjectCount: number;
+    /** Alpha-blended PBR meshes shaded from the Clustered Forward+ light database. */
+    readonly clusteredTransparentObjectCount: number;
+    /** Non-bucket opaque PBR meshes using native clustered lighting with shared deformation. */
+    readonly clusteredDeformedObjectCount: number;
     /** Enabled supported lights uploaded to the current GPU light database. */
     readonly lightCount: number;
     /** Enabled supported lights rejected by the configured light capacity. */
@@ -347,6 +558,16 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly autoExposureEV: number;
     /** Latest histogram-derived target exposure in EV stops, or zero when disabled. */
     readonly autoExposureTargetEV: number;
+    /** Unique manifest variants translated before renderer creation completed. */
+    readonly warmedMaterialVariantCount: number;
+    /** Unique native variants admitted by the configured runtime budget. */
+    readonly activeMaterialVariantCount: number;
+    /** Runtime candidates rejected after the unique variant budget was exhausted. */
+    readonly materialVariantBudgetExceededCount: number;
+    /** Configured unique clustered scene-variant ceiling. */
+    readonly materialVariantBudget: number;
+    /** CPU translation wall time spent in asynchronous warmup. */
+    readonly materialVariantWarmupTimeMs: number;
 }
 
 interface NormalizedLOD {
@@ -384,6 +605,16 @@ interface NormalizedOptions {
     readonly screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
     readonly volumetricLighting: VolumetricLightingSettings | null;
+    readonly variantManifest: Readonly<{
+        readonly entries: readonly Readonly<ClusteredMaterialVariantManifestEntry>[];
+        readonly maxVariants: number;
+        readonly warmupBatchSize: number;
+    }>;
+}
+
+interface MaterialVariantWarmupDiagnostics {
+    readonly shaders: ReadonlySet<StorageGraphicsShader>;
+    readonly durationMs: number;
 }
 
 interface ClusterCapacityPlan {
@@ -1095,6 +1326,60 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
             'Clustered Forward+ screen-space global illumination requires temporalAA'
         );
     }
+    const rawManifestInput: unknown = input.variantManifest;
+    if (
+        rawManifestInput !== undefined &&
+        (typeof rawManifestInput !== 'object' ||
+            rawManifestInput === null ||
+            Array.isArray(rawManifestInput))
+    ) {
+        throw new TypeError('Clustered Forward+ variantManifest must be an object');
+    }
+    const rawManifest = rawManifestInput as Readonly<ClusteredMaterialVariantManifest> | undefined;
+    const manifestEntriesInput: unknown = rawManifest?.entries ?? [];
+    if (!Array.isArray(manifestEntriesInput)) {
+        throw new TypeError('Clustered Forward+ variantManifest entries must be an array');
+    }
+    const manifestEntries = manifestEntriesInput.map(
+        (entry: unknown, index): Readonly<ClusteredMaterialVariantManifestEntry> => {
+            if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+                throw new TypeError(
+                    `Material variant manifest entry ${String(index)} must be an object`
+                );
+            }
+            const candidate = entry as Partial<ClusteredMaterialVariantManifestEntry>;
+            if (!(candidate.mesh instanceof Mesh)) {
+                throw new TypeError(
+                    `Material variant manifest entry ${String(index)} requires Mesh`
+                );
+            }
+            if (
+                clusteredOpaqueMaterial(candidate.mesh) === null &&
+                clusteredTransparentMaterial(candidate.mesh) === null
+            ) {
+                throw new TypeError(
+                    `Material variant manifest entry ${String(index)} must use native clustered PBR`
+                );
+            }
+            if (candidate.shadowed !== undefined && typeof candidate.shadowed !== 'boolean') {
+                throw new TypeError(
+                    `Material variant manifest entry ${String(index)} shadowed must be boolean`
+                );
+            }
+            return Object.freeze({
+                mesh: candidate.mesh,
+                shadowed: candidate.shadowed ?? candidate.mesh.receiveShadows
+            });
+        }
+    );
+    const materialVariantBudget = positiveInteger(
+        rawManifest?.maxVariants ?? 64,
+        'Clustered Forward+ variantManifest maxVariants'
+    );
+    const warmupBatchSize = positiveInteger(
+        rawManifest?.warmupBatchSize ?? 4,
+        'Clustered Forward+ variantManifest warmupBatchSize'
+    );
     return Object.freeze({
         buckets: Object.freeze(buckets),
         maxObjects: positiveInteger(
@@ -1133,7 +1418,12 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         groundTruthAmbientOcclusion,
         screenSpaceGlobalIllumination,
         screenSpaceReflections,
-        volumetricLighting
+        volumetricLighting,
+        variantManifest: Object.freeze({
+            entries: Object.freeze(manifestEntries),
+            maxVariants: materialVariantBudget,
+            warmupBatchSize
+        })
     });
 }
 
@@ -2756,6 +3046,7 @@ out vec3 v_viewPosition;
 out vec3 v_viewNormal;
 flat out uint v_materialIndex;
 flat out uint v_objectFlags;
+flat out uint v_objectLayer;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 ${GPU_SCENE_VISIBLE_INDEX_SOURCE}
 mat3 readObjectNormalMatrix(uint base) {
@@ -2773,6 +3064,7 @@ void main() {
     v_viewNormal = viewNormal;
     v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     v_objectFlags = floatBitsToUint(objects.values[objectBase + 12u].z);
+    v_objectLayer = floatBitsToUint(objects.values[objectBase + 12u].y);
     ${vertexUVWrites}
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
@@ -2799,6 +3091,7 @@ in vec3 v_viewNormal;
 ${fragmentUVDeclarations}
 flat in uint v_materialIndex;
 flat in uint v_objectFlags;
+flat in uint v_objectLayer;
 layout(location=0) out vec4 color;
 ${withMaterialAttributes ? 'layout(location=1) out vec4 materialAttributes;' : ''}
 ${encodingSource}
@@ -2832,6 +3125,37 @@ ${pbrSurfaceSource}
 ${pbrBrdfSource}
 ${CLUSTERED_AREA_LIGHT_SOURCE}
 ${withShadows ? gpuSceneShadowSource() : ''}
+float hiloClusteredPhotometricAttenuation(
+    vec3 viewPosition,
+    vec3 lightPosition,
+    vec3 lightAxis,
+    vec4 cookieParameters,
+    vec4 photometricParameters,
+    uint featureFlags
+) {
+    vec3 axis = normalize(lightAxis);
+    vec3 delta = viewPosition - lightPosition;
+    vec3 reference = abs(axis.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 right = normalize(cross(reference, axis));
+    vec3 up = cross(axis, right);
+    float axialDistance = max(dot(delta, axis), 1e-5);
+    float attenuation = 1.0;
+    if ((featureFlags & ${String(LIGHT_COOKIE_FLAG)}u) != 0u) {
+        vec2 projected = vec2(dot(delta, right), dot(delta, up)) / axialDistance;
+        vec2 coordinate = (projected - cookieParameters.zw) / cookieParameters.xy;
+        float edge = 1.0 - max(abs(coordinate.x), abs(coordinate.y));
+        attenuation *= photometricParameters.x * smoothstep(
+            0.0,
+            max(photometricParameters.y, 1e-5),
+            edge
+        );
+    }
+    if ((featureFlags & ${String(LIGHT_IES_FLAG)}u) != 0u) {
+        float axialCosine = max(dot(normalize(delta), axis), 0.0);
+        attenuation *= photometricParameters.z * pow(axialCosine, photometricParameters.w);
+    }
+    return attenuation;
+}
 vec3 hiloEvaluateClusteredLight(
     uint lightIndex,
     vec3 viewPosition,
@@ -2846,6 +3170,8 @@ vec3 hiloEvaluateClusteredLight(
     vec4 directionOuter = lights.values[lightBase + 2u];
     vec4 attenuationInner = lights.values[lightBase + 3u];
     vec4 shadowMetadata = lights.values[lightBase + 4u];
+    uint lightLayerMask = floatBitsToUint(shadowMetadata.z);
+    if ((v_objectLayer & lightLayerMask) == 0u) return vec3(0.0);
     vec3 areaWidth = lights.values[lightBase + 5u].xyz;
     vec3 areaHeight = lights.values[lightBase + 6u].xyz;
     uint lightType = uint(colorType.w + 0.5);
@@ -2892,6 +3218,14 @@ vec3 hiloEvaluateClusteredLight(
         if (lightType == 1u) {
             float theta = dot(lightDirection, normalize(-directionOuter.xyz));
             radiance *= smoothstep(directionOuter.w, attenuationInner.w, theta);
+            radiance *= hiloClusteredPhotometricAttenuation(
+                viewPosition,
+                positionRange.xyz,
+                directionOuter.xyz,
+                lights.values[lightBase + 5u],
+                lights.values[lightBase + 6u],
+                floatBitsToUint(shadowMetadata.w)
+            );
         }
     }
     vec3 lightDiffuse;
@@ -3538,6 +3872,7 @@ class MutableFallbackSceneParameters implements SceneRenderPassParameters {
     depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
     opaqueTexture?: RenderGraphTextureHandle;
     ambientOcclusionTexture?: RenderGraphTextureHandle;
+    storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST;
@@ -3545,6 +3880,7 @@ class MutableFallbackSceneParameters implements SceneRenderPassParameters {
         delete this.depthStencilAttachment;
         delete this.opaqueTexture;
         delete this.ambientOcclusionTexture;
+        delete this.storageShaderVariant;
     }
 }
 
@@ -3572,6 +3908,16 @@ class MutableFallbackTextureCopyParameters implements TextureCopyPassParameters 
 interface MutableFallbackRendererListDescriptor extends RendererListDescriptor {
     cullingResults: CullingResultsHandle;
     excludeMeshes: readonly Mesh[];
+}
+
+interface MutableSceneStorageBufferBinding extends SceneStorageBufferBinding {
+    buffer: RenderGraphBufferHandle;
+}
+
+interface MutableClusteredSceneShaderVariant extends SceneStorageShaderVariant {
+    shader: StorageGraphicsShader;
+    readonly shaderByMesh: Map<Mesh, StorageGraphicsShader>;
+    readonly buffers: readonly MutableSceneStorageBufferBinding[];
 }
 
 function gpuSceneVertexLayouts(
@@ -3817,11 +4163,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #logicalBucketByGeometry = new Map<Geometry, Map<PBRMaterial, number>>();
     readonly #logicalGPUCompatible: Uint8Array;
     readonly #gpuManagedMeshes: Mesh[] = [];
+    readonly #fallbackOpaqueMeshes: Mesh[] = [];
+    readonly #clusteredOpaqueMeshes: Mesh[] = [];
+    readonly #fallbackOpaqueExcludedMeshes: Mesh[] = [];
+    readonly #clusteredOpaqueExcludedMeshes: Mesh[] = [];
+    readonly #clusteredOpaqueShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
+    readonly #fallbackTransparentMeshes: Mesh[] = [];
+    readonly #clusteredTransparentMeshes: Mesh[] = [];
+    readonly #fallbackTransparentExcludedMeshes: Mesh[] = [];
+    readonly #clusteredTransparentExcludedMeshes: Mesh[] = [];
+    readonly #clusteredTransparentShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
+    readonly #clusteredSceneStorageBuffers: readonly MutableSceneStorageBufferBinding[] = [
+        { buffer: INVALID_BUFFER },
+        { buffer: INVALID_BUFFER },
+        { buffer: INVALID_BUFFER },
+        { buffer: INVALID_BUFFER }
+    ];
     readonly #collectedLights: (PointLight | SpotLight | DirectionalLight | AreaLight)[] = [];
     readonly #fallbackWithoutMaterialAttributes: Mesh[] = [];
     readonly #materialAttributeExcludedMeshes: Mesh[] = [];
     readonly #fallbackTemporalParticipation = new WeakMap<Mesh, number>();
     readonly #pendingFallbackTemporalMeshes = new Set<Mesh>();
+    readonly #recordedGPUParticleSystems = new Set<ParticleSystem>();
     readonly #objectByMesh = new Map<Mesh, GPUSceneObjectRecord>();
     readonly #freeObjectSlots: number[] = [];
     readonly #objectData: ArrayBuffer;
@@ -3831,12 +4194,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameFloats = new Float32Array(this.#frameBytes);
     readonly #frameUInts = new Uint32Array(this.#frameBytes);
     readonly #lightFloats: Float32Array;
+    readonly #lightUInts: Uint32Array;
     readonly #localLightFloats: Float32Array;
+    readonly #localLightUInts: Uint32Array;
     readonly #directionalLightFloats: Float32Array;
+    readonly #directionalLightUInts: Uint32Array;
     readonly #samplerByTexture = new WeakMap<
         Texture<unknown>,
         Readonly<{ key: string; sampler: ComputeSampler }>
     >();
+    readonly #activeMaterialVariants = new Set<StorageGraphicsShader>();
+    readonly #rejectedMaterialVariants = new WeakSet<StorageGraphicsShader>();
+    readonly #pendingMaterialVariants = new Set<StorageGraphicsShader>();
+    readonly #pendingRejectedMaterialVariants = new Set<StorageGraphicsShader>();
+    readonly #warmedMaterialVariantCount: number;
+    readonly #materialVariantWarmupTimeMs: number;
     readonly #stagedCameraMatrix = new Float32Array(16);
     readonly #committedCameraMatrix = new Float32Array(16);
     readonly #stagedRasterCameraMatrix = new Float32Array(16);
@@ -3857,6 +4229,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #hizDescriptors: readonly Readonly<RenderPipelineHistoryTextureDescriptor>[];
     readonly #hizCullPass: ComputeRenderPass | null;
     readonly #temporal: TemporalResolveController | null;
+    readonly #transparentTemporal: TransparentTemporalController | null;
+    readonly #particleTemporal: TransparentTemporalController | null;
     readonly #temporalInputExtent = { relativeTo: 'output' as const, scale: 1 };
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #temporalReactiveMaskDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
@@ -3987,9 +4361,16 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         'GPU Scene GTAO material attributes'
     );
     readonly #fallbackPass = new SceneRenderPass('Clustered Forward+ compatibility fallback');
+    readonly #clusteredOpaquePass = new SceneRenderPass(
+        'GPU Scene deformed and layered clustered PBR'
+    );
+    readonly #clusteredTransparentPass = new SceneRenderPass('Clustered Forward+ transparent PBR');
     readonly #fallbackDepthPass = new SceneRenderPass('Clustered Forward+ fallback depth prepass');
     readonly #fallbackMotionPass = new SceneRenderPass(
         'Clustered Forward+ fallback temporal motion'
+    );
+    readonly #transparentReactivePass = new SceneRenderPass(
+        'Transparent transmission and particle temporal reactive coverage'
     );
     readonly #fallbackMaterialAttributesPass = new SceneRenderPass(
         'Clustered Forward+ fallback material attributes'
@@ -4001,7 +4382,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         cullingResults: INVALID_CULLING_RESULTS,
         queue: 'opaque',
         sorting: 'material-front-to-back',
-        excludeMeshes: this.#gpuManagedMeshes
+        excludeMeshes: this.#fallbackOpaqueExcludedMeshes
+    };
+    readonly #clusteredOpaqueListDescriptor: MutableFallbackRendererListDescriptor = {
+        cullingResults: INVALID_CULLING_RESULTS,
+        queue: 'opaque',
+        sorting: 'material-front-to-back',
+        excludeMeshes: this.#clusteredOpaqueExcludedMeshes
     };
     readonly #fallbackDepthListDescriptor: MutableFallbackRendererListDescriptor = {
         cullingResults: INVALID_CULLING_RESULTS,
@@ -4014,12 +4401,25 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         cullingResults: INVALID_CULLING_RESULTS,
         queue: 'transparent',
         sorting: 'back-to-front',
-        excludeMeshes: this.#gpuManagedMeshes
+        excludeMeshes: this.#fallbackTransparentExcludedMeshes
+    };
+    readonly #clusteredTransparentListDescriptor: MutableFallbackRendererListDescriptor = {
+        cullingResults: INVALID_CULLING_RESULTS,
+        queue: 'transparent',
+        sorting: 'back-to-front',
+        excludeMeshes: this.#clusteredTransparentExcludedMeshes
     };
     readonly #fallbackMotionListDescriptor: MutableFallbackRendererListDescriptor = {
         cullingResults: INVALID_CULLING_RESULTS,
         queue: 'opaque',
         sorting: 'material-front-to-back',
+        materialPass: 'motion-vector',
+        excludeMeshes: this.#gpuManagedMeshes
+    };
+    readonly #transparentReactiveListDescriptor: MutableFallbackRendererListDescriptor = {
+        cullingResults: INVALID_CULLING_RESULTS,
+        queue: 'transparent',
+        sorting: 'back-to-front',
         materialPass: 'motion-vector',
         excludeMeshes: this.#gpuManagedMeshes
     };
@@ -4041,6 +4441,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     #fallbackObjectCount = 0;
     #fallbackHasOpaque = false;
     #fallbackHasTransparent = false;
+    #fallbackHasCompatibilityTransparent = false;
+    #clusteredDeformedObjectCount = 0;
+    #clusteredTransparentObjectCount = 0;
+    #materialVariantBudgetExceededCount = 0;
+    #clusteredOpaqueShaderVariant: MutableClusteredSceneShaderVariant | null = null;
+    #clusteredTransparentShaderVariant: MutableClusteredSceneShaderVariant | null = null;
     #lightCount = 0;
     #localLightCount = 0;
     #directionalLightCount = 0;
@@ -4060,15 +4466,23 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     constructor(
         options: Readonly<NormalizedOptions>,
         context: RenderPipelineCreateContext,
+        warmup: Readonly<MaterialVariantWarmupDiagnostics>,
         onDestroy: (runtime: ClusteredForwardPlusPipeline) => void
     ) {
         this.#options = options;
         this.#onDestroy = onDestroy;
+        for (const shader of warmup.shaders) this.#activeMaterialVariants.add(shader);
+        this.#warmedMaterialVariantCount = warmup.shaders.size;
+        this.#materialVariantWarmupTimeMs = warmup.durationMs;
         this.usesRenderGraphTimeline =
             options.temporalAA !== null && options.temporalAA.dynamicResolution !== null;
         AreaLight.initializeLtcTexture();
         this.#temporal =
             options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
+        this.#transparentTemporal =
+            options.temporalAA === null ? null : new TransparentTemporalController();
+        this.#particleTemporal =
+            options.temporalAA === null ? null : new TransparentTemporalController();
         this.#temporalMotionDescriptor =
             options.temporalAA === null
                 ? null
@@ -4176,8 +4590,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             packRecord: packPBRGPUMaterialRecord
         });
         this.#lightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
+        this.#lightUInts = new Uint32Array(this.#lightFloats.buffer);
         this.#localLightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
+        this.#localLightUInts = new Uint32Array(this.#localLightFloats.buffer);
         this.#directionalLightFloats = new Float32Array(options.maxLights * LIGHT_RECORD_FLOATS);
+        this.#directionalLightUInts = new Uint32Array(this.#directionalLightFloats.buffer);
         this.#lights = create({
             label: 'Clustered Forward+ light database',
             byteLength: this.#lightFloats.byteLength,
@@ -4383,6 +4800,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.packLights(context, shadowResources);
         this.packShadowFrame(shadowResources);
+        this.prepareClusteredOpaqueMeshes(context, shadowResources !== null);
+        this.prepareClusteredTransparentMeshes(context, shadowResources !== null);
+        this.#fallbackObjectCount = Math.max(
+            0,
+            this.#fallbackObjectCount -
+                this.#clusteredDeformedObjectCount -
+                this.#clusteredTransparentObjectCount
+        );
         this.refreshShadowCompatibility(shadowResources !== null);
         this.#materialDatabase.stage(context);
         this.syncGeometryDatabases(context);
@@ -4423,6 +4848,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       'Clustered Forward+ authored reactive mask',
                       reactiveMaskDescriptor
                   );
+        const transparentTemporalMask =
+            temporalFrame === null || this.#transparentTemporal === null
+                ? null
+                : this.#transparentTemporal.createCurrentMask(context, sceneScale);
         const materialAttributes =
             this.#screenSpaceReflections === null &&
             this.#screenSpaceGlobalIllumination === null &&
@@ -4611,17 +5040,45 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             temporalFrame !== null &&
             temporalMotion !== null &&
             temporalReactiveMask !== null &&
-            fallbackCulling !== null &&
-            this.#fallbackHasOpaque
+            fallbackCulling !== null
         ) {
-            this.recordFallbackMotion(
-                context,
-                fallbackCulling,
-                temporalMotion,
-                temporalReactiveMask,
-                sceneDepth
-            );
+            if (this.#fallbackHasOpaque) {
+                this.recordFallbackMotion(
+                    context,
+                    fallbackCulling,
+                    temporalMotion,
+                    temporalReactiveMask,
+                    sceneDepth
+                );
+            }
+            if (this.#fallbackHasTransparent) {
+                if (transparentTemporalMask === null) {
+                    throw new Error('Transparent temporal coverage mask is unavailable');
+                }
+                this.recordTransparentReactiveCoverage(
+                    context,
+                    fallbackCulling,
+                    temporalMotion,
+                    transparentTemporalMask,
+                    sceneDepth
+                );
+            }
         }
+        const combinedTemporalReactiveMask =
+            temporalReactiveMask === null || transparentTemporalMask === null
+                ? temporalReactiveMask
+                : (() => {
+                      if (this.hasVisibleGPUOpaqueParticles(context)) {
+                          this.#transparentTemporal?.forceReactive(context, temporalReactiveMask);
+                      }
+                      return (
+                          this.#transparentTemporal?.combineReactive(
+                              context,
+                              temporalReactiveMask,
+                              transparentTemporalMask
+                          ) ?? temporalReactiveMask
+                      );
+                  })();
         const ambientOcclusion =
             groundTruthAmbientOcclusion === null ||
             materialAttributes === null ||
@@ -4660,6 +5117,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             cloudShadow: atmospherePrerequisites?.cloudShadow ?? null,
             shadowResources
         });
+        if (fallbackCulling !== null && this.#clusteredDeformedObjectCount !== 0) {
+            this.recordClusteredOpaque(
+                context,
+                fallbackCulling,
+                sceneColor,
+                sceneDepth,
+                frameBuffer,
+                lights,
+                clusterGrid,
+                clusterIndices
+            );
+        }
         if (fallbackCulling !== null && this.#fallbackHasOpaque) {
             this.recordFallbackOpaque(
                 context,
@@ -4669,6 +5138,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ambientOcclusion
             );
         }
+        this.recordGPUParticles(context, sceneColor, sceneDepth, 'opaque');
         if (
             groundTruthAmbientOcclusion === null &&
             materialAttributes !== null &&
@@ -4742,13 +5212,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         let resolvedSceneColor = volumetricSceneColor;
         let resolvedSceneDepth = sceneDepth;
-        if (temporalFrame !== null && temporalMotion !== null && temporalReactiveMask !== null) {
+        if (
+            temporalFrame !== null &&
+            temporalMotion !== null &&
+            combinedTemporalReactiveMask !== null
+        ) {
             const resolved = this.#temporal?.resolve(
                 context,
                 temporalFrame,
                 volumetricSceneColor,
                 temporalMotion,
-                temporalReactiveMask,
+                combinedTemporalReactiveMask,
                 sceneDepth,
                 'depth32float'
             );
@@ -4760,8 +5234,62 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 context,
                 fallbackCulling,
                 resolvedSceneColor,
-                resolvedSceneDepth
+                resolvedSceneDepth,
+                frameBuffer,
+                lights,
+                clusterGrid,
+                clusterIndices
             );
+        }
+        if (
+            temporalFrame !== null &&
+            transparentTemporalMask !== null &&
+            this.#transparentTemporal !== null
+        ) {
+            resolvedSceneColor = this.#transparentTemporal.resolve(
+                context,
+                resolvedSceneColor,
+                resolvedSceneDepth,
+                transparentTemporalMask,
+                temporalFrame.historyValid && this.#committedCamera === context.camera
+            );
+        }
+        if (this.hasGPUParticleSystems(context)) {
+            if (
+                temporalFrame === null ||
+                this.#transparentTemporal === null ||
+                this.#particleTemporal === null
+            ) {
+                this.recordGPUParticles(
+                    context,
+                    resolvedSceneColor,
+                    resolvedSceneDepth,
+                    'transparent'
+                );
+            } else {
+                const particleOverlay = this.#transparentTemporal.createParticleOverlay(context);
+                const particleDepth = this.#transparentTemporal.createParticleDepth(
+                    context,
+                    resolvedSceneDepth
+                );
+                this.recordGPUParticles(context, particleOverlay, particleDepth, 'transparent');
+                const particleMask = this.#transparentTemporal.createParticleMask(
+                    context,
+                    particleOverlay
+                );
+                const resolvedParticles = this.#particleTemporal.resolve(
+                    context,
+                    particleOverlay,
+                    resolvedSceneDepth,
+                    particleMask,
+                    temporalFrame.historyValid && this.#committedCamera === context.camera
+                );
+                resolvedSceneColor = this.#transparentTemporal.compositeParticles(
+                    context,
+                    resolvedSceneColor,
+                    resolvedParticles
+                );
+            }
         }
         const exposureTexture =
             this.#autoExposure?.record(context, resolvedSceneColor, frame.historyValid) ?? null;
@@ -4783,7 +5311,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
         const committedSubmission = this.#submissionIndex + 1;
+        for (const shader of this.#pendingMaterialVariants) {
+            this.#activeMaterialVariants.add(shader);
+        }
+        this.#pendingMaterialVariants.clear();
+        for (const shader of this.#pendingRejectedMaterialVariants) {
+            this.#rejectedMaterialVariants.add(shader);
+            this.#materialVariantBudgetExceededCount++;
+        }
+        this.#pendingRejectedMaterialVariants.clear();
         this.#materialDatabase.frameSubmitted(frameIndex);
+        for (const system of this.#recordedGPUParticleSystems) {
+            system.gpuFrameSubmitted(frameIndex);
+        }
+        this.#recordedGPUParticleSystems.clear();
         for (const mesh of this.#pendingFallbackTemporalMeshes) {
             this.#fallbackTemporalParticipation.set(mesh, committedSubmission);
         }
@@ -4827,7 +5368,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
 
     frameDiscarded(frameIndex: number): void {
         if (frameIndex !== this.#lastRecordedFrame) return;
+        this.#pendingMaterialVariants.clear();
+        this.#pendingRejectedMaterialVariants.clear();
         this.#materialDatabase.frameDiscarded(frameIndex);
+        for (const system of this.#recordedGPUParticleSystems) {
+            system.gpuFrameDiscarded(frameIndex);
+        }
+        this.#recordedGPUParticleSystems.clear();
         this.#pendingFallbackTemporalMeshes.clear();
         for (const record of this.#objectByMesh.values()) {
             record.pendingWorldVersion = -1;
@@ -4871,6 +5418,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return Object.freeze({
             objectCount: this.#objectCount,
             fallbackObjectCount: this.#fallbackObjectCount,
+            clusteredTransparentObjectCount: this.#clusteredTransparentObjectCount,
+            clusteredDeformedObjectCount: this.#clusteredDeformedObjectCount,
             lightCount: this.#lightCount,
             droppedLightCount: this.#droppedLightCount,
             visibleObjectCount: cullValues[0] ?? 0,
@@ -4885,13 +5434,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             volumetricFroxelCount: this.#volumetricLighting?.froxelCount ?? 0,
             volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false,
             autoExposureEV: exposure.actualEV,
-            autoExposureTargetEV: exposure.targetEV
+            autoExposureTargetEV: exposure.targetEV,
+            warmedMaterialVariantCount: this.#warmedMaterialVariantCount,
+            activeMaterialVariantCount: this.#activeMaterialVariants.size,
+            materialVariantBudgetExceededCount: this.#materialVariantBudgetExceededCount,
+            materialVariantBudget: this.#options.variantManifest.maxVariants,
+            materialVariantWarmupTimeMs: this.#materialVariantWarmupTimeMs
         });
     }
 
     destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
+        this.#recordedGPUParticleSystems.clear();
+        this.#pendingMaterialVariants.clear();
+        this.#pendingRejectedMaterialVariants.clear();
         const buffers: StorageBuffer[] = [
             this.#frameData,
             this.#objects,
@@ -4921,6 +5478,16 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const failures: unknown[] = [];
         try {
             this.#temporal?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#transparentTemporal?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#particleTemporal?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -5289,12 +5856,25 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const cameraVisibility = context.camera.visibility >>> 0;
         const ambient = this.#frameFloats;
         this.#gpuManagedMeshes.length = 0;
+        this.#fallbackOpaqueMeshes.length = 0;
+        this.#clusteredOpaqueMeshes.length = 0;
+        this.#fallbackOpaqueExcludedMeshes.length = 0;
+        this.#clusteredOpaqueExcludedMeshes.length = 0;
+        this.#clusteredOpaqueShaderByMesh.clear();
+        this.#fallbackTransparentMeshes.length = 0;
+        this.#clusteredTransparentMeshes.length = 0;
+        this.#fallbackTransparentExcludedMeshes.length = 0;
+        this.#clusteredTransparentExcludedMeshes.length = 0;
+        this.#clusteredTransparentShaderByMesh.clear();
         this.#collectedLights.length = 0;
         this.#fallbackWithoutMaterialAttributes.length = 0;
         this.#materialAttributeExcludedMeshes.length = 0;
         this.#fallbackObjectCount = 0;
         this.#fallbackHasOpaque = false;
         this.#fallbackHasTransparent = false;
+        this.#fallbackHasCompatibilityTransparent = false;
+        this.#clusteredDeformedObjectCount = 0;
+        this.#clusteredTransparentObjectCount = 0;
         ambient[124] = 0;
         ambient[125] = 0;
         ambient[126] = 0;
@@ -5473,8 +6053,172 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (material.definition.getPass('material-attributes') === null) {
             this.#fallbackWithoutMaterialAttributes.push(mesh);
         }
-        if (material.forwardQueue === 'transparent') this.#fallbackHasTransparent = true;
-        else this.#fallbackHasOpaque = true;
+        if (material.forwardQueue === 'transparent') {
+            this.#fallbackHasTransparent = true;
+            this.#fallbackTransparentMeshes.push(mesh);
+        } else {
+            this.#fallbackHasOpaque = true;
+            this.#fallbackOpaqueMeshes.push(mesh);
+        }
+    }
+
+    private prepareClusteredOpaqueMeshes(
+        context: RenderPipelineContext,
+        withShadows: boolean
+    ): void {
+        // The built-in shader keeps skinning, morphing, UV transforms, and layered glTF PBR on
+        // their canonical shared implementation while group three replaces the fixed light UBO
+        // with the GPU Scene clustered databases. GTAO currently owns that same pass-global group,
+        // so those frames retain the compatibility path until the two resources share one ABI.
+        if (this.#groundTruthAmbientOcclusion === null && this.#atmosphere === null) {
+            const fog = context.scene.fog ?? null;
+            for (const mesh of this.#fallbackOpaqueMeshes) {
+                const material = clusteredOpaqueMaterial(mesh);
+                if (material === null) continue;
+                const shader = clusteredTransparentShader(mesh, material, fog, withShadows);
+                if (!this.admitMaterialVariant(shader)) continue;
+                this.#clusteredOpaqueMeshes.push(mesh);
+                this.#clusteredOpaqueShaderByMesh.set(mesh, shader);
+            }
+        }
+        this.#clusteredDeformedObjectCount = this.#clusteredOpaqueMeshes.length;
+        this.#fallbackOpaqueExcludedMeshes.push(
+            ...this.#gpuManagedMeshes,
+            ...this.#clusteredOpaqueMeshes
+        );
+        this.#clusteredOpaqueExcludedMeshes.push(...this.#gpuManagedMeshes);
+        for (const mesh of this.#fallbackOpaqueMeshes) {
+            if (!this.#clusteredOpaqueShaderByMesh.has(mesh)) {
+                this.#clusteredOpaqueExcludedMeshes.push(mesh);
+            }
+        }
+        const firstMesh = this.#clusteredOpaqueMeshes[0];
+        const firstShader =
+            firstMesh === undefined ? undefined : this.#clusteredOpaqueShaderByMesh.get(firstMesh);
+        if (firstShader === undefined) return;
+        if (this.#clusteredOpaqueShaderVariant === null) {
+            this.#clusteredOpaqueShaderVariant = {
+                shader: firstShader,
+                shaderByMesh: this.#clusteredOpaqueShaderByMesh,
+                buffers: this.#clusteredSceneStorageBuffers
+            };
+        } else {
+            this.#clusteredOpaqueShaderVariant.shader = firstShader;
+        }
+    }
+
+    private prepareClusteredTransparentMeshes(
+        context: RenderPipelineContext,
+        withShadows: boolean
+    ): void {
+        const fog = context.scene.fog ?? null;
+        for (const mesh of this.#fallbackTransparentMeshes) {
+            const material = clusteredTransparentMaterial(mesh);
+            if (material === null) continue;
+            const shader = clusteredTransparentShader(mesh, material, fog, withShadows);
+            if (!this.admitMaterialVariant(shader)) continue;
+            this.#clusteredTransparentMeshes.push(mesh);
+            this.#clusteredTransparentShaderByMesh.set(mesh, shader);
+        }
+        // A renderer list owns the only globally correct back-to-front ordering. Splitting one
+        // transparent queue between native clustered and compatibility passes would reorder draws
+        // at the pass boundary. Until every member is storage-compatible, fail closed to the
+        // ordinary renderer-list path so transmission, particles, and custom materials preserve
+        // their authored ordering with PBR meshes.
+        if (
+            this.#clusteredTransparentMeshes.length !== 0 &&
+            this.#clusteredTransparentMeshes.length !== this.#fallbackTransparentMeshes.length
+        ) {
+            this.#clusteredTransparentMeshes.length = 0;
+            this.#clusteredTransparentShaderByMesh.clear();
+        }
+        this.#clusteredTransparentObjectCount = this.#clusteredTransparentMeshes.length;
+        this.#fallbackHasCompatibilityTransparent =
+            this.#fallbackTransparentMeshes.length !== this.#clusteredTransparentObjectCount;
+        this.#fallbackTransparentExcludedMeshes.push(
+            ...this.#gpuManagedMeshes,
+            ...this.#clusteredTransparentMeshes
+        );
+        this.#clusteredTransparentExcludedMeshes.push(...this.#gpuManagedMeshes);
+        for (const mesh of this.#fallbackTransparentMeshes) {
+            if (!this.#clusteredTransparentShaderByMesh.has(mesh)) {
+                this.#clusteredTransparentExcludedMeshes.push(mesh);
+            }
+        }
+        const firstMesh = this.#clusteredTransparentMeshes[0];
+        const firstShader =
+            firstMesh === undefined
+                ? undefined
+                : this.#clusteredTransparentShaderByMesh.get(firstMesh);
+        if (firstShader === undefined) return;
+        if (this.#clusteredTransparentShaderVariant === null) {
+            this.#clusteredTransparentShaderVariant = {
+                shader: firstShader,
+                shaderByMesh: this.#clusteredTransparentShaderByMesh,
+                buffers: this.#clusteredSceneStorageBuffers
+            };
+        } else {
+            this.#clusteredTransparentShaderVariant.shader = firstShader;
+        }
+    }
+
+    private hasGPUParticleSystems(context: RenderPipelineContext): boolean {
+        let result = false;
+        context.scene.traverse(node => {
+            if (node instanceof ParticleSystem && node.hasGPUEmitters) result = true;
+        });
+        return result;
+    }
+
+    private hasVisibleGPUOpaqueParticles(context: RenderPipelineContext): boolean {
+        let result = false;
+        context.scene.traverse(node => {
+            if (
+                node instanceof ParticleSystem &&
+                node.hasGPUEmitters &&
+                node.hasGPUOpaqueRenderers &&
+                node.isGPUVisible(context.camera)
+            ) {
+                result = true;
+            }
+        });
+        return result;
+    }
+
+    private recordGPUParticles(
+        context: RenderPipelineContext,
+        color: RenderGraphTextureHandle,
+        depth: RenderGraphTextureHandle | null,
+        phase: 'opaque' | 'transparent'
+    ): void {
+        context.scene.traverse(node => {
+            if (!(node instanceof ParticleSystem) || !node.hasGPUEmitters) return;
+            if (phase === 'opaque' && !node.hasGPUOpaqueRenderers) return;
+            // Register before recording so a partial emitter update is rolled back when recording
+            // throws before the Render Graph can be submitted.
+            this.#recordedGPUParticleSystems.add(node);
+            node.recordGPU(context, color, depth, node.isGPUVisible(context.camera), phase);
+        });
+    }
+
+    private admitMaterialVariant(shader: StorageGraphicsShader): boolean {
+        if (this.#activeMaterialVariants.has(shader) || this.#pendingMaterialVariants.has(shader)) {
+            return true;
+        }
+        if (
+            this.#activeMaterialVariants.size + this.#pendingMaterialVariants.size <
+            this.#options.variantManifest.maxVariants
+        ) {
+            this.#pendingMaterialVariants.add(shader);
+            return true;
+        }
+        if (
+            !this.#rejectedMaterialVariants.has(shader) &&
+            !this.#pendingRejectedMaterialVariants.has(shader)
+        ) {
+            this.#pendingRejectedMaterialVariants.add(shader);
+        }
+        return false;
     }
 
     private findLogicalBucket(mesh: Mesh): number | null {
@@ -5635,9 +6379,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         const directionalFloatCount = this.#directionalLightCount * LIGHT_RECORD_FLOATS;
         const localFloatCount = this.#localLightCount * LIGHT_RECORD_FLOATS;
-        this.#lightFloats.set(this.#directionalLightFloats.subarray(0, directionalFloatCount), 0);
-        this.#lightFloats.set(
-            this.#localLightFloats.subarray(0, localFloatCount),
+        this.#lightUInts.set(this.#directionalLightUInts.subarray(0, directionalFloatCount), 0);
+        this.#lightUInts.set(
+            this.#localLightUInts.subarray(0, localFloatCount),
             directionalFloatCount
         );
         const lightBytes = Math.max(1, this.#lightCount) * LIGHT_RECORD_BYTES;
@@ -5705,6 +6449,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         const global = light instanceof DirectionalLight || light instanceof AreaLight;
         const target = global ? this.#directionalLightFloats : this.#localLightFloats;
+        const targetUInts = global ? this.#directionalLightUInts : this.#localLightUInts;
         const lightIndex = global ? this.#directionalLightCount : this.#localLightCount;
         const base = lightIndex * LIGHT_RECORD_FLOATS;
         let type = 0;
@@ -5771,8 +6516,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         target[base + 16] = shadowKind;
         target[base + 17] = shadowKind === 0 ? 0 : shadowIndex;
-        target[base + 18] = 0;
-        target[base + 19] = 0;
+        targetUInts[base + 18] = light.lightLayerMask;
+        const cookie = light instanceof SpotLight ? light.cookie : null;
+        const iesProfile = light instanceof SpotLight ? light.iesProfile : null;
+        targetUInts[base + 19] =
+            (cookie === null ? 0 : LIGHT_COOKIE_FLAG) | (iesProfile === null ? 0 : LIGHT_IES_FLAG);
         if (light instanceof AreaLight) {
             this.#tempMatrix.getRotation(this.#tempQuaternion);
             this.#tempMatrix.fromQuat(this.#tempQuaternion);
@@ -5786,6 +6534,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             target[base + 25] = this.#tempVector.y;
             target[base + 26] = this.#tempVector.z;
             target[base + 27] = 0;
+        } else if (light instanceof SpotLight) {
+            target[base + 20] = cookie?.scale[0] ?? 1;
+            target[base + 21] = cookie?.scale[1] ?? 1;
+            target[base + 22] = cookie?.offset[0] ?? 0;
+            target[base + 23] = cookie?.offset[1] ?? 0;
+            target[base + 24] = cookie?.intensity ?? 1;
+            target[base + 25] = cookie?.softness ?? 0.1;
+            target[base + 26] = iesProfile?.intensity ?? 1;
+            target[base + 27] = iesProfile?.exponent ?? 1;
         } else {
             target.fill(0, base + 20, base + LIGHT_RECORD_FLOATS);
         }
@@ -5953,6 +6710,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameFloats[125] = Math.min(this.#frameFloats[125] ?? 0, 4);
         this.#frameFloats[126] = Math.min(this.#frameFloats[126] ?? 0, 4);
         this.#frameFloats[127] = 0;
+        const outputMapping = FRAME_OUTPUT_MAPPING_VEC4 * 4;
+        this.#frameFloats[outputMapping] = context.output.width;
+        this.#frameFloats[outputMapping + 1] = context.output.height;
+        this.#frameFloats[outputMapping + 2] = renderWidth / context.output.width;
+        this.#frameFloats[outputMapping + 3] = renderHeight / context.output.height;
         matrixElements(camera.viewProjectionMatrix, this.#stagedCameraMatrix, 0);
         matrixElements(camera.jitteredViewProjectionMatrix, this.#stagedRasterCameraMatrix, 0);
         matrixElements(camera.viewMatrix, this.#stagedViewMatrix, 0);
@@ -6559,6 +7321,37 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         );
     }
 
+    private recordClusteredOpaque(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        outputColor: RenderGraphTextureHandle,
+        sceneDepth: RenderGraphTextureHandle,
+        frameBuffer: RenderGraphBufferHandle,
+        lights: RenderGraphBufferHandle,
+        clusterGrid: RenderGraphBufferHandle,
+        clusterIndices: RenderGraphBufferHandle
+    ): void {
+        const variant = this.#clusteredOpaqueShaderVariant;
+        if (variant === null) throw new Error('Clustered opaque shader variant is unavailable');
+        this.bindClusteredSceneStorage(variant, frameBuffer, lights, clusterGrid, clusterIndices);
+        this.#clusteredOpaqueListDescriptor.cullingResults = cullingResults;
+        const rendererList = context.createRendererList(this.#clusteredOpaqueListDescriptor);
+        const parameters = context.acquirePassParameters(this.#fallbackPool);
+        parameters.rendererList = rendererList;
+        const color = parameters.colorAttachments[0];
+        if (color === undefined)
+            throw new Error('Clustered opaque color attachment is unavailable');
+        color.texture = outputColor;
+        parameters.depthStencilAttachment = {
+            texture: sceneDepth,
+            depthLoadOp: 'load',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        parameters.storageShaderVariant = variant;
+        context.graph.addPass(this.#clusteredOpaquePass, parameters);
+    }
+
     private recordFallbackDepthPrepass(
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
@@ -6581,26 +7374,102 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         outputColor: RenderGraphTextureHandle,
-        sceneDepth: RenderGraphTextureHandle
+        sceneDepth: RenderGraphTextureHandle,
+        frameBuffer: RenderGraphBufferHandle,
+        lights: RenderGraphBufferHandle,
+        clusterGrid: RenderGraphBufferHandle,
+        clusterIndices: RenderGraphBufferHandle
     ): void {
-        const opaqueTexture = context.graph.createTexture('Forward fallback opaque scene color', {
-            format: 'rgba16float',
-            extent: { relativeTo: 'output', scale: 1 },
-            sampleCount: 1
-        });
-        const copy = context.acquirePassParameters(this.#fallbackCopyPool);
-        copy.source = outputColor;
-        copy.destination = opaqueTexture;
-        context.graph.addPass(this.#fallbackCopyPass, copy);
-        this.recordFallbackList(
-            context,
-            cullingResults,
-            this.#fallbackTransparentListDescriptor,
-            outputColor,
-            sceneDepth,
-            opaqueTexture,
-            null
-        );
+        let opaqueTexture: RenderGraphTextureHandle | null = null;
+        if (this.#fallbackHasCompatibilityTransparent) {
+            opaqueTexture = context.graph.createTexture('Forward fallback opaque scene color', {
+                format: 'rgba16float',
+                extent: { relativeTo: 'output', scale: 1 },
+                sampleCount: 1
+            });
+            const copy = context.acquirePassParameters(this.#fallbackCopyPool);
+            copy.source = outputColor;
+            copy.destination = opaqueTexture;
+            context.graph.addPass(this.#fallbackCopyPass, copy);
+        }
+        if (this.#clusteredTransparentObjectCount !== 0) {
+            this.recordClusteredTransparent(
+                context,
+                cullingResults,
+                outputColor,
+                sceneDepth,
+                frameBuffer,
+                lights,
+                clusterGrid,
+                clusterIndices
+            );
+        }
+        if (this.#fallbackHasCompatibilityTransparent) {
+            if (opaqueTexture === null) {
+                throw new Error('Forward fallback transparent opaque copy is unavailable');
+            }
+            this.recordFallbackList(
+                context,
+                cullingResults,
+                this.#fallbackTransparentListDescriptor,
+                outputColor,
+                sceneDepth,
+                opaqueTexture,
+                null
+            );
+        }
+    }
+
+    private recordClusteredTransparent(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        outputColor: RenderGraphTextureHandle,
+        sceneDepth: RenderGraphTextureHandle,
+        frameBuffer: RenderGraphBufferHandle,
+        lights: RenderGraphBufferHandle,
+        clusterGrid: RenderGraphBufferHandle,
+        clusterIndices: RenderGraphBufferHandle
+    ): void {
+        const variant = this.#clusteredTransparentShaderVariant;
+        if (variant === null) {
+            throw new Error('Clustered transparent shader variant is unavailable');
+        }
+        this.bindClusteredSceneStorage(variant, frameBuffer, lights, clusterGrid, clusterIndices);
+        this.#clusteredTransparentListDescriptor.cullingResults = cullingResults;
+        const rendererList = context.createRendererList(this.#clusteredTransparentListDescriptor);
+        const parameters = context.acquirePassParameters(this.#fallbackPool);
+        parameters.rendererList = rendererList;
+        const color = parameters.colorAttachments[0];
+        if (color === undefined) {
+            throw new Error('Clustered transparent color attachment is unavailable');
+        }
+        color.texture = outputColor;
+        parameters.depthStencilAttachment = {
+            texture: sceneDepth,
+            depthLoadOp: 'load',
+            depthStoreOp: 'store',
+            depthClearValue: depthClearValue(context.camera.depthMode)
+        };
+        parameters.storageShaderVariant = variant;
+        context.graph.addPass(this.#clusteredTransparentPass, parameters);
+    }
+
+    private bindClusteredSceneStorage(
+        variant: MutableClusteredSceneShaderVariant,
+        frameBuffer: RenderGraphBufferHandle,
+        lights: RenderGraphBufferHandle,
+        clusterGrid: RenderGraphBufferHandle,
+        clusterIndices: RenderGraphBufferHandle
+    ): void {
+        const handles = [frameBuffer, lights, clusterGrid, clusterIndices] as const;
+        for (let index = 0; index < handles.length; index += 1) {
+            const binding = variant.buffers[index];
+            const handle = handles[index];
+            if (binding === undefined || handle === undefined) {
+                throw new Error('Clustered scene storage ABI is incomplete');
+            }
+            binding.buffer = handle;
+        }
     }
 
     private recordFallbackMotion(
@@ -6629,6 +7498,34 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             depthReadOnly: true
         };
         context.graph.addPass(this.#fallbackMotionPass, parameters);
+    }
+
+    private recordTransparentReactiveCoverage(
+        context: RenderPipelineContext,
+        cullingResults: CullingResultsHandle,
+        temporalMotion: RenderGraphTextureHandle,
+        temporalReactiveMask: RenderGraphTextureHandle,
+        sceneDepth: RenderGraphTextureHandle
+    ): void {
+        this.#transparentReactiveListDescriptor.cullingResults = cullingResults;
+        const rendererList = context.createRendererList(this.#transparentReactiveListDescriptor);
+        const parameters = context.acquirePassParameters(this.#fallbackPool);
+        parameters.rendererList = rendererList;
+        const color = parameters.colorAttachments[0];
+        if (color === undefined) {
+            throw new Error('Transparent temporal motion attachment is unavailable');
+        }
+        color.texture = temporalMotion;
+        parameters.colorAttachments[1] = {
+            texture: temporalReactiveMask,
+            loadOp: 'load',
+            storeOp: 'store'
+        };
+        parameters.depthStencilAttachment = {
+            texture: sceneDepth,
+            depthReadOnly: true
+        };
+        context.graph.addPass(this.#transparentReactivePass, parameters);
     }
 
     private recordFallbackMaterialAttributes(
@@ -6690,11 +7587,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
  * WebGPU-only high-end factory combining G0 GPU Scene/Hi-Z and L0 Clustered Forward+.
  *
  * Compatible registered bucket meshes bypass CPU frustum sorting and ordinary PreparedDraw
- * creation. The GPU-driven path intentionally accepts opaque, unskinned, indexed triangle PBR
- * buckets with scalar factors or common opaque PBR maps. Material surface evaluation and the BRDF
- * are shared with ordinary Forward PBR; the clustered variant replaces only light-list selection
- * and iteration. Unregistered meshes, runtime-incompatible bucket state, deformation,
- * transparency, and object-capacity overflow use the shared Forward path in the same frame.
+ * creation. Fixed indirect buckets accept opaque, unskinned, indexed triangle PBR geometry;
+ * eligible deformed, layered, and globally sorted transparent PBR meshes use the native direct
+ * storage-lighting lane. Material surface evaluation and the BRDF are shared with ordinary Forward
+ * PBR; clustered variants replace only light-list selection and iteration. Unregistered meshes,
+ * runtime-incompatible state, mixed compatibility-transparent queues, and object-capacity overflow
+ * use the shared Forward path in the same frame.
  * Invalid initial bucket declarations and unsupported devices still fail closed.
  */
 export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactory {
@@ -6838,16 +7736,41 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     : {}),
                 maxComputeInvocationsPerWorkgroup: PREFIX_WORKGROUP_SIZE,
                 maxComputeWorkgroupsPerDimension: requirements.maxComputeWorkgroupsPerDimension,
-                ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 3 })
+                ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 4 })
             })
         });
     }
 
     /** Create one independent renderer-local GPU Scene and clustered-lighting runtime. */
-    create(context: RenderPipelineCreateContext): RenderPipeline {
-        const runtime = new ClusteredForwardPlusPipeline(this.#options, context, destroyed => {
-            this.#runtimes.delete(destroyed);
-        });
+    async create(context: RenderPipelineCreateContext): Promise<RenderPipeline> {
+        const start = globalThis.performance.now();
+        const shaders = new Set<StorageGraphicsShader>();
+        for (const entry of this.#options.variantManifest.entries) {
+            const material = entry.mesh.material;
+            if (!(material instanceof PBRMaterial)) {
+                throw new TypeError('Material variant manifest PBR material became unavailable');
+            }
+            shaders.add(clusteredTransparentShader(entry.mesh, material, null, false));
+            if (entry.shadowed === true) {
+                shaders.add(clusteredTransparentShader(entry.mesh, material, null, true));
+            }
+        }
+        if (shaders.size > this.#options.variantManifest.maxVariants) {
+            throw new RangeError('Material variant manifest unique shaders exceed maxVariants');
+        }
+        await context.warmupStorageGraphicsShaders(
+            [...shaders],
+            this.#options.variantManifest.warmupBatchSize
+        );
+        const durationMs = Math.max(0, globalThis.performance.now() - start);
+        const runtime = new ClusteredForwardPlusPipeline(
+            this.#options,
+            context,
+            Object.freeze({ shaders, durationMs }),
+            destroyed => {
+                this.#runtimes.delete(destroyed);
+            }
+        );
         this.#runtimes.add(runtime);
         return runtime;
     }

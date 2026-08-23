@@ -5,6 +5,7 @@ import type LightManager from '../../light/LightManager';
 import type Material from '../../material/MaterialInstance';
 import type { MaterialPassRole } from '../../material/MaterialDefinition';
 import Texture from '../../texture/Texture';
+import StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import type { RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
@@ -2035,7 +2036,8 @@ class ScriptablePassSlot {
     #activeGPUDrivenDraw = false;
     #sceneStorageVariant: Readonly<SceneStorageShaderVariant> | null = null;
     #sceneStorageBindingCount = 0;
-    #sceneStorageBindGroup: RHIBindGroup | null = null;
+    readonly #sceneStorageBindGroups: RHIBindGroup[] = [];
+    readonly #sceneStorageLayouts: RHIBindGroupLayout[] = [];
     #activeSceneStorage = false;
     #sceneTextureHandle: RGTextureAccessHandle | null = null;
     #sceneTextureBindGroup: RHIBindGroup | null = null;
@@ -2056,15 +2058,15 @@ class ScriptablePassSlot {
     };
     readonly #sceneStoragePlans: MutableSceneStorageBindingPlan[] = [];
     readonly #sceneStoragePreparation: StorageScenePreparationState = {
-        globalBindGroupLayout: null
+        globalBindGroupLayouts: []
     };
     readonly #sceneStorageEntries: MutableFrameBindGroupEntry[] = [];
-    readonly #sceneStorageDescriptor = {
-        label: 'Scene pass-global readonly storage',
-        lifetime: 'frame' as const,
-        layout: null as RHIBindGroupLayout | null,
-        entries: this.#sceneStorageEntries
-    };
+    readonly #sceneStorageDescriptors: {
+        label: string;
+        lifetime: 'frame';
+        layout: RHIBindGroupLayout | null;
+        entries: MutableFrameBindGroupEntry[];
+    }[] = [];
     #capabilities: RenderPipelineCapabilities | null = null;
     #activeSetupLease: ScriptablePassCallbackLease | null = null;
     #activePrepareLease: ScriptablePassCallbackLease | null = null;
@@ -2139,7 +2141,7 @@ class ScriptablePassSlot {
         this.#sceneTextureHandle = null;
         this.#sceneStorageVariant = null;
         this.#sceneStorageBindingCount = 0;
-        this.#sceneStoragePreparation.globalBindGroupLayout = null;
+        this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
         this.#sceneTexturePreparation.globalBindGroupLayout = null;
         this.#sceneTexturePreparation.bindingName = null;
         this.#copyDeclarationCount = 0;
@@ -2227,7 +2229,7 @@ class ScriptablePassSlot {
             this.#activeSceneTexture = false;
             this.#sceneTextureHandle = null;
             this.#sceneStorageVariant = null;
-            this.#sceneStoragePreparation.globalBindGroupLayout = null;
+            this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
             this.#sceneTexturePreparation.globalBindGroupLayout = null;
             this.#sceneTexturePreparation.bindingName = null;
             this.#computeServices.release();
@@ -2498,6 +2500,44 @@ class ScriptablePassSlot {
         if (!registry.deviceCapabilities.features.has('storage-buffers')) {
             throw new Error('Scene storage shader variants require storage-buffer support');
         }
+        const shaderByMesh = variant.shaderByMesh;
+        if (shaderByMesh !== undefined) {
+            if (!(shaderByMesh instanceof Map)) {
+                throw new TypeError('Scene storage shaderByMesh must be a Map');
+            }
+            const canonicalStorageBindings = variant.shader.bindings.filter(
+                binding => binding.kind === 'read-only-storage-buffer'
+            );
+            for (const [mesh, shader] of shaderByMesh) {
+                if (!(mesh instanceof Mesh)) {
+                    throw new TypeError('Scene storage shaderByMesh keys must be Mesh instances');
+                }
+                if (!(shader instanceof StorageGraphicsShader)) {
+                    throw new TypeError(
+                        'Scene storage shaderByMesh values must be StorageGraphicsShader instances'
+                    );
+                }
+                const storageBindings = shader.bindings.filter(
+                    binding => binding.kind === 'read-only-storage-buffer'
+                );
+                if (
+                    storageBindings.length !== canonicalStorageBindings.length ||
+                    storageBindings.some((binding, index) => {
+                        const canonical = canonicalStorageBindings[index];
+                        if (canonical === undefined) return true;
+                        return (
+                            binding.name !== canonical.name ||
+                            binding.group !== canonical.group ||
+                            binding.binding !== canonical.binding
+                        );
+                    })
+                ) {
+                    throw new TypeError(
+                        `Scene storage shader variant for Mesh ${mesh.id} does not match the canonical readonly-storage ABI`
+                    );
+                }
+            }
+        }
         requireRuntimeArray(variant.buffers, 'Scene storage shader variant buffers');
         let storageCount = 0;
         for (const binding of variant.shader.bindings) {
@@ -2608,15 +2648,16 @@ class ScriptablePassSlot {
 
     private prepareSceneStorage(context: RGPrepareContext): void {
         const owner = this.requireOwner();
-        const layoutHandle = this.#sceneStoragePreparation.globalBindGroupLayout;
-        if (layoutHandle === null) {
+        const layoutHandles = this.#sceneStoragePreparation.globalBindGroupLayouts;
+        if (layoutHandles.length === 0) {
             if (this.draw.drawCount === 0) return;
             throw new Error('Scene storage draw preparation did not produce a global layout');
         }
+        if (layoutHandles.length !== this.draw.drawCount) {
+            throw new Error('Scene storage draw layouts do not match the prepared draw count');
+        }
         this.cleanupSceneStorage(owner.resources);
         const registry = owner.services.getScriptableGPUDrivenPipelineResources().registry;
-        const layout = registry.resolve(layoutHandle);
-        this.#sceneStorageDescriptor.layout = layout;
         for (let index = 0; index < this.#sceneStorageBindingCount; index += 1) {
             const plan = this.#sceneStoragePlans[index];
             if (plan?.handle === null || plan?.handle === undefined) {
@@ -2634,17 +2675,40 @@ class ScriptablePassSlot {
             plan.resource.size = plan.byteLength;
             plan.entry.resource = plan.resource as RHIBindingResource;
         }
-        const bindGroup = registry.createFrameBindGroup(
-            this.#sceneStorageDescriptor as RHIBindGroupDescriptor
-        );
-        this.#sceneStorageBindGroup = bindGroup;
-        owner.resources.trackFrameBindGroup(bindGroup);
-        for (let index = 0; index < this.#rangeCount; index += 1) {
-            const range = this.ranges[index];
-            if (range === undefined) continue;
+        for (let drawIndex = 0; drawIndex < layoutHandles.length; drawIndex += 1) {
+            const layoutHandle = layoutHandles[drawIndex];
+            if (layoutHandle === undefined) {
+                throw new Error(`Scene storage draw ${String(drawIndex)} has no layout`);
+            }
+            const layout = registry.resolve(layoutHandle);
+            let layoutIndex = this.#sceneStorageLayouts.indexOf(layout);
+            if (layoutIndex < 0) {
+                layoutIndex = this.#sceneStorageLayouts.length;
+                this.#sceneStorageLayouts.push(layout);
+                let descriptor = this.#sceneStorageDescriptors[layoutIndex];
+                if (descriptor === undefined) {
+                    descriptor = {
+                        label: 'Scene pass-global readonly storage',
+                        lifetime: 'frame',
+                        layout: null,
+                        entries: this.#sceneStorageEntries
+                    };
+                    this.#sceneStorageDescriptors.push(descriptor);
+                }
+                descriptor.layout = layout;
+                const bindGroup = registry.createFrameBindGroup(
+                    descriptor as RHIBindGroupDescriptor
+                );
+                this.#sceneStorageBindGroups.push(bindGroup);
+                owner.resources.trackFrameBindGroup(bindGroup);
+            }
+            const bindGroup = this.#sceneStorageBindGroups[layoutIndex];
+            if (bindGroup === undefined) {
+                throw new Error(`Scene storage layout ${String(layoutIndex)} has no bind group`);
+            }
             this.draw.setPreparedBindGroupForRange(
-                range.start,
-                range.count,
+                drawIndex,
+                1,
                 SCENE_STORAGE_BIND_GROUP,
                 bindGroup
             );
@@ -2652,10 +2716,12 @@ class ScriptablePassSlot {
     }
 
     private cleanupSceneStorage(resources: ScriptableRenderPipelineResources): void {
-        const bindGroup = this.#sceneStorageBindGroup;
-        this.#sceneStorageBindGroup = null;
-        if (bindGroup !== null) resources.releaseFrameBindGroup(bindGroup);
-        this.#sceneStorageDescriptor.layout = null;
+        for (const bindGroup of this.#sceneStorageBindGroups) {
+            resources.releaseFrameBindGroup(bindGroup);
+        }
+        this.#sceneStorageBindGroups.length = 0;
+        this.#sceneStorageLayouts.length = 0;
+        for (const descriptor of this.#sceneStorageDescriptors) descriptor.layout = null;
         for (let index = 0; index < this.#sceneStorageBindingCount; index += 1) {
             const plan = this.#sceneStoragePlans[index];
             if (plan === undefined) continue;
@@ -5194,6 +5260,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 `Storage scene draws do not support material pass ${list.materialPass}`
             );
         }
+        const storageShader = (mesh: Mesh): StorageGraphicsShader => {
+            if (storageVariant === null) {
+                throw new Error('Scene storage shader variant is unavailable');
+            }
+            return storageVariant.shaderByMesh?.get(mesh) ?? storageVariant.shader;
+        };
         for (const item of plan.opaqueItems) {
             if (item instanceof Mesh) {
                 drawPass.addDrawSnapshot(
@@ -5208,7 +5280,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         : processor.prepareStorageScene(
                               item,
                               target,
-                              storageVariant.shader,
+                              storageShader(item),
                               storagePipelines,
                               storagePreparation,
                               list.overrideMaterial
@@ -5234,7 +5306,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                     processor.prepareStorageScene(
                         mesh,
                         target,
-                        storageVariant.shader,
+                        storageShader(mesh),
                         storagePipelines,
                         storagePreparation,
                         list.overrideMaterial,
@@ -5257,7 +5329,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                         : processor.prepareStorageScene(
                               item,
                               target,
-                              storageVariant.shader,
+                              storageShader(item),
                               storagePipelines,
                               storagePreparation,
                               list.overrideMaterial
@@ -5283,7 +5355,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                     processor.prepareStorageScene(
                         mesh,
                         target,
-                        storageVariant.shader,
+                        storageShader(mesh),
                         storagePipelines,
                         storagePreparation,
                         list.overrideMaterial,

@@ -34,6 +34,7 @@ const tempMatrix3 = new Matrix3();
 const tempMatrix4 = new Matrix4();
 const tempFloat32Array4 = new Float32Array([0.5, 0.5, 0.5, 1]);
 const tempFloat32Array2 = new Float32Array([0, 0]);
+const tempUint32Array4 = new Uint32Array(4);
 const activeViewport = new Float32Array(4);
 const legacyViewport: [number, number, number, number] = [0, 0, 0, 0];
 const materialTextureTransforms = new Float32Array(MATERIAL_TEXTURE_SLOT_COUNT * 9);
@@ -614,6 +615,22 @@ const semantic = {
             _programInfo: ProgramBindingInfo
         ): Float32Array {
             return getMeshPickingIdentity(mesh).color;
+        },
+        isDependMesh: true,
+        notSupportInstanced: true
+    },
+
+    MODELLAYERPARAMS: {
+        get(
+            mesh: SemanticMesh,
+            _material: SemanticMaterial,
+            _programInfo: ProgramBindingInfo
+        ): Uint32Array {
+            tempUint32Array4[0] = mesh.layer >>> 0;
+            tempUint32Array4[1] = 0;
+            tempUint32Array4[2] = 0;
+            tempUint32Array4[3] = 0;
+            return tempUint32Array4;
         },
         isDependMesh: true,
         notSupportInstanced: true

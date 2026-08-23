@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ShaderReadBinding } from '../../../src/render/compute/ComputeShader';
-import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
+import StorageGraphicsShader, {
+    createStorageGraphicsShaderFromPortable
+} from '../../../src/render/compute/StorageGraphicsShader';
 
 const vertexSource = `#version 310 es
 precision highp float;
@@ -82,6 +84,31 @@ describe('StorageGraphicsShader', () => {
         });
 
         expect(shader.bindings.filter(binding => binding.name === 'albedo')).toHaveLength(2);
+    });
+
+    it('promotes preprocessed portable source at the storage-graphics boundary', () => {
+        const shader = createStorageGraphicsShaderFromPortable({
+            portableVertexSource: vertexSource.replace('#version 310 es', '#version 300 es'),
+            portableFragmentSource: fragmentSource.replace('#version 310 es', '#version 300 es'),
+            bindings: [
+                {
+                    name: 'particles',
+                    group: 2,
+                    binding: 3,
+                    kind: 'read-only-storage-buffer'
+                }
+            ]
+        });
+
+        expect(shader.vertexSource).toMatch(/^#version 310 es/u);
+        expect(shader.fragmentSource).toMatch(/^#version 310 es/u);
+        expect(() =>
+            createStorageGraphicsShaderFromPortable({
+                portableVertexSource: vertexSource,
+                portableFragmentSource: fragmentSource,
+                bindings: shader.bindings
+            })
+        ).toThrow(/must use GLSL ES 3\.00/u);
     });
 
     it('rejects writable bindings, duplicate locations, and shaders without storage', () => {

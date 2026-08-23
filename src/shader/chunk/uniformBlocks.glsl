@@ -20,6 +20,7 @@ layout(std140) uniform SceneBlock {
     vec4 u_fogInfo;
 };
 
+#ifndef HILO_CLUSTERED_FORWARD
 layout(std140) uniform LightBlock {
     vec3 u_ambientLightsColor;
     vec3 u_directionalLightsColor[HILO_MAX_DIRECTIONAL_LIGHTS];
@@ -56,6 +57,7 @@ layout(std140) uniform LightBlock {
     vec3 u_areaLightsWidth[HILO_MAX_AREA_LIGHTS];
     vec3 u_areaLightsHeight[HILO_MAX_AREA_LIGHTS];
 };
+#endif
 
 layout(std140) uniform MaterialBlock {
     vec4 u_diffuseColor;
@@ -134,6 +136,7 @@ layout(std140) uniform MaterialTextureBlock {
         mat3 u_normalWorldMatrix;
         vec4 u_objectIdColor;
         vec4 u_modelHistoryParams;
+        uvec4 u_modelLayerParams;
     };
     #define u_modelHistoryValid u_modelHistoryParams.x
 #endif

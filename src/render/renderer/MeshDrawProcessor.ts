@@ -88,7 +88,7 @@ const PASS_GLOBAL_SCENE_TEXTURE_NAMES = new Set(['u_opaqueTexture', 'u_gtaoTextu
 
 /** @internal Reusable pass-owned output populated while scene storage draws are prepared. */
 export interface StorageScenePreparationState {
-    globalBindGroupLayout: ResourceRegistryHandle<RHIBindGroupLayout> | null;
+    readonly globalBindGroupLayouts: ResourceRegistryHandle<RHIBindGroupLayout>[];
 }
 
 /** @internal Reusable pass-owned output for the graph-resolved opaque scene texture. */
@@ -892,7 +892,13 @@ export class MeshDrawProcessor {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
         const materialState = requireMaterialPassState(material, 'forward');
-        this.validateLighting(mesh, material, context);
+        if (
+            shader.bindings.some(
+                binding => binding.kind === 'uniform-buffer' && binding.name === 'LightBlock'
+            )
+        ) {
+            this.validateLighting(mesh, material, context);
+        }
         this.validateSceneStorageShader(shader);
         this.validateDeformation(mesh, geometry);
         geometry.normalizePrimitiveTopology();
@@ -1004,13 +1010,7 @@ export class MeshDrawProcessor {
         this.trackGeometrySources(geometry, vertexPlan.streams);
         this.trackMeshTextures(mesh, this.requireSampledScratchSources(mesh, sampledResources));
         this.#preparedMeshes.add(mesh);
-        if (
-            preparationState.globalBindGroupLayout !== null &&
-            preparationState.globalBindGroupLayout !== globalLayout
-        ) {
-            throw new Error('Scene storage meshes produced incompatible pass-global layouts');
-        }
-        preparationState.globalBindGroupLayout = globalLayout;
+        preparationState.globalBindGroupLayouts.push(globalLayout);
         return prepared;
     }
 

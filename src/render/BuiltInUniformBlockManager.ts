@@ -145,6 +145,7 @@ const MATERIAL_TEXTURE_BLOCK_FIELD_NAMES = Object.freeze(
 );
 const MODEL_HISTORY_INVALID = new Float32Array(4);
 const MODEL_HISTORY_VALID = new Float32Array([1, 0, 0, 0]);
+const MODEL_LAYER_PARAMS = new Uint32Array(4);
 
 function fieldNamesOf(layout: Std140Layout): readonly string[] {
     let names = layoutFieldNames.get(layout);
@@ -373,6 +374,8 @@ function updateModelTransformBlock(
         getMeshPickingIdentity(mesh).color,
         std140WriteResult
     );
+    MODEL_LAYER_PARAMS[0] = mesh.layer >>> 0;
+    modelBlockLayout.writeInto(target, 'u_modelLayerParams', MODEL_LAYER_PARAMS, std140WriteResult);
     if (!bytesEqual(bytesOf(buffer), candidate, 0, candidate.byteLength)) {
         buffer.write(0, candidate);
     }

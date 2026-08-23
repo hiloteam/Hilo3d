@@ -136,7 +136,8 @@ export const modelBlockLayout = createStd140Layout({
     u_previousModelMatrix: 'mat4',
     u_normalWorldMatrix: 'mat3',
     u_objectIdColor: 'vec4',
-    u_modelHistoryParams: 'vec4'
+    u_modelHistoryParams: 'vec4',
+    u_modelLayerParams: 'uvec4'
 });
 
 export const geometryBlockLayout = createStd140Layout({

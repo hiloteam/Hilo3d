@@ -23,6 +23,9 @@ out float v_currentViewDepth;
 out float v_previousViewDepth;
 flat out float v_motionHistoryValid;
 #endif
+#ifdef HILO_CLUSTERED_FORWARD
+flat out uint v_clusterReceiverLayer;
+#endif
 void main(void) {
     vec4 pos = vec4(a_position, 1.0);
     #ifdef HILO_HAS_TEXCOORD0
@@ -52,6 +55,9 @@ void main(void) {
 
     vec4 currentClipPosition = u_viewProjectionMatrix * u_modelMatrix * pos;
     gl_Position = currentClipPosition;
+    #ifdef HILO_CLUSTERED_FORWARD
+        v_clusterReceiverLayer = u_modelLayerParams.x;
+    #endif
 
     #ifdef HILO_MOTION_VECTOR_PASS
         #if defined(HILO_MORPH_TARGET_COUNT) && defined(HILO_MORPH_HAS_POSITION)

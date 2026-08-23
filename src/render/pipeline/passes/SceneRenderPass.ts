@@ -1,5 +1,6 @@
 import type { RendererViewport } from '../../RendererCore';
 import type StorageGraphicsShader from '../../compute/StorageGraphicsShader';
+import type Mesh from '../../../core/Mesh';
 import type { RendererListHandle } from '../RendererList';
 import type {
     RenderGraphBufferHandle,
@@ -37,8 +38,15 @@ export interface SceneStorageBufferBinding {
  * explicit: it does not automatically rewrite built-in Basic/PBR shader source.
  */
 export interface SceneStorageShaderVariant {
-    /** Storage-aware shader used by every direct mesh in this renderer list. */
+    /** Default storage-aware shader and the canonical pass-global storage ABI. */
     readonly shader: StorageGraphicsShader;
+    /**
+     * Optional exact per-mesh variants applied without splitting the renderer list. This preserves
+     * global transparent sorting while allowing geometry/material topology to select its compiled
+     * shader. Every mapped shader must expose the same group-three readonly-storage ABI as
+     * the default shader.
+     */
+    readonly shaderByMesh?: ReadonlyMap<Mesh, StorageGraphicsShader>;
     /** Positional ranges matching the shader's sorted readonly-storage binding order. */
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
 }

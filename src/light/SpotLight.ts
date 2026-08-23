@@ -11,6 +11,30 @@ export interface SpotLightParameters extends ShadowCastingLightParameters {
     direction?: Vector3;
     cutoff?: number;
     outerCutoff?: number;
+    /** Optional analytic projected cookie for native clustered lighting. */
+    cookie?: Readonly<SpotLightCookie> | null;
+    /** Optional normalized axial IES fit for native clustered lighting. */
+    iesProfile?: Readonly<SpotLightIESProfile> | null;
+}
+
+/** Analytic projected cookie carried by the high-end clustered-light ABI. */
+export interface SpotLightCookie {
+    /** Projected half-extent on the light plane. */
+    readonly scale?: readonly [number, number];
+    /** Projected cookie-center offset. */
+    readonly offset?: readonly [number, number];
+    /** Cookie multiplier. Defaults to one. */
+    readonly intensity?: number;
+    /** Edge transition as a fraction of the cookie extent. Defaults to 0.1. */
+    readonly softness?: number;
+}
+
+/** Compact axial fit for an imported IES photometric profile. */
+export interface SpotLightIESProfile {
+    /** Candela multiplier after normalization. Defaults to one. */
+    readonly intensity?: number;
+    /** Axial concentration exponent. Defaults to one. */
+    readonly exponent?: number;
 }
 /**
  * 聚光灯
@@ -20,6 +44,72 @@ class SpotLight extends Light {
     override isSpotLight = true;
     override className = 'SpotLight';
     direction: Vector3;
+    private cookieValue: Readonly<Required<SpotLightCookie>> | null = null;
+    private iesProfileValue: Readonly<Required<SpotLightIESProfile>> | null = null;
+
+    /** Analytic projected cookie used by native clustered Spot lighting. */
+    get cookie(): Readonly<Required<SpotLightCookie>> | null {
+        return this.cookieValue;
+    }
+
+    /** Analytic projected cookie used by native clustered Spot lighting. */
+    set cookie(value: Readonly<SpotLightCookie> | null) {
+        if (value === null) {
+            this.cookieValue = null;
+            return;
+        }
+        const scale = value.scale ?? [1, 1];
+        const offset = value.offset ?? [0, 0];
+        const intensity = value.intensity ?? 1;
+        const softness = value.softness ?? 0.1;
+        if (
+            !Number.isFinite(scale[0]) ||
+            !Number.isFinite(scale[1]) ||
+            scale[0] <= 0 ||
+            scale[1] <= 0
+        ) {
+            throw new RangeError('SpotLight.cookie scale must contain two positive numbers.');
+        }
+        if (!Number.isFinite(offset[0]) || !Number.isFinite(offset[1])) {
+            throw new RangeError('SpotLight.cookie offset must contain two finite numbers.');
+        }
+        if (!Number.isFinite(intensity) || intensity < 0) {
+            throw new RangeError('SpotLight.cookie intensity must be finite and non-negative.');
+        }
+        if (!Number.isFinite(softness) || softness < 0 || softness > 1) {
+            throw new RangeError('SpotLight.cookie softness must be between zero and one.');
+        }
+        const normalizedScale: readonly [number, number] = Object.freeze([scale[0], scale[1]]);
+        const normalizedOffset: readonly [number, number] = Object.freeze([offset[0], offset[1]]);
+        this.cookieValue = Object.freeze({
+            scale: normalizedScale,
+            offset: normalizedOffset,
+            intensity,
+            softness
+        });
+    }
+
+    /** Normalized axial IES fit used by native clustered Spot lighting. */
+    get iesProfile(): Readonly<Required<SpotLightIESProfile>> | null {
+        return this.iesProfileValue;
+    }
+
+    /** Normalized axial IES fit used by native clustered Spot lighting. */
+    set iesProfile(value: Readonly<SpotLightIESProfile> | null) {
+        if (value === null) {
+            this.iesProfileValue = null;
+            return;
+        }
+        const intensity = value.intensity ?? 1;
+        const exponent = value.exponent ?? 1;
+        if (!Number.isFinite(intensity) || intensity < 0) {
+            throw new RangeError('SpotLight.iesProfile intensity must be finite and non-negative.');
+        }
+        if (!Number.isFinite(exponent) || exponent < 0) {
+            throw new RangeError('SpotLight.iesProfile exponent must be finite and non-negative.');
+        }
+        this.iesProfileValue = Object.freeze({ intensity, exponent });
+    }
     private cutoffCosine = Math.cos(math.degToRad(12.5));
     private cutoffDegrees = 12.5;
     /**

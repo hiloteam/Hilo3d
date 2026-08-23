@@ -213,9 +213,9 @@ fn mix32(input: u32) -> u32 {
 
 fn particleRandom(stableId: u32, lane: u32) -> f32 {
     var value = mix32(params.identity.x);
-    value = mix32(value ^ params.identity.y * 0x9e3779b1u);
-    value = mix32(value ^ stableId * 0x85ebca77u);
-    value = mix32(value ^ lane * 0x27d4eb2fu);
+    value = mix32(value ^ (params.identity.y * 0x9e3779b1u));
+    value = mix32(value ^ (stableId * 0x85ebca77u));
+    value = mix32(value ^ (lane * 0x27d4eb2fu));
     return f32(value) / 4294967296.0;
 }
 

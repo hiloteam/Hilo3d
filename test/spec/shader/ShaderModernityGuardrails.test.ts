@@ -158,4 +158,14 @@ describe('shader source modernity guardrails', () => {
             )
         ).toContain('StorageGraphicsShader storage block is not readonly std430');
     });
+
+    it('allows the reviewed clustered storage chunk but keeps ordinary chunks closed', () => {
+        const source = `#ifdef HILO_CLUSTERED_FORWARD
+            layout(std430) readonly buffer Lights { vec4 values[]; } lights;
+            #endif`;
+        expect(labels('src/shader/chunk/clusteredForward.frag', source)).toEqual([]);
+        expect(labels('src/shader/chunk/ordinary.frag', source)).toContain(
+            'ordinary graphics shader declares storage buffer'
+        );
+    });
 });

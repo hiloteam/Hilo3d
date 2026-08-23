@@ -30,6 +30,18 @@ describe('Light', () => {
         expect(light.quadraticAttenuation).toBe(0);
     });
 
+    it('keeps clustered receiver layers independent from node visibility layers', () => {
+        const light = new Light({ layer: 0x2, lightLayerMask: 0x80000001 });
+        expect(light.layer).toBe(0x2);
+        expect(light.lightLayerMask).toBe(0x80000001);
+        expect(() => {
+            light.lightLayerMask = -1;
+        }).toThrow(RangeError);
+        expect(() => {
+            light.lightLayerMask = 0x1_0000_0000;
+        }).toThrow(RangeError);
+    });
+
     it.each([-1, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN])(
         'rejects an invalid range: %s',
         range => {

@@ -195,7 +195,7 @@ export class MeshDrawListPlanner {
         ) {
             const depthA = this.transparentDepth(a);
             const depthB = this.transparentDepth(b);
-            if (depthA !== depthB) return depthB - depthA;
+            if (depthA !== depthB) return depthA - depthB;
         }
         return 0;
     };
@@ -472,9 +472,7 @@ export class MeshDrawListPlanner {
         record.transparentDepth = 0;
         if (record.transparent && this.#transparentSortCamera !== null) {
             mesh.worldMatrix.getTranslation(this.#transparentPosition);
-            this.#transparentPosition.transformMat4(
-                this.#transparentSortCamera.viewProjectionMatrix
-            );
+            this.#transparentPosition.transformMat4(this.#transparentSortCamera.viewMatrix);
             record.transparentDepth = this.#transparentPosition.z;
         }
 
@@ -819,8 +817,7 @@ export class MeshDrawListPlanner {
     private transparentDepth(mesh: Mesh): number {
         mesh.worldMatrix.getTranslation(this.#transparentPosition);
         this.#transparentPosition.transformMat4(
-            requireRecordValue(this.#transparentSortCamera, 'transparent sort camera')
-                .viewProjectionMatrix
+            requireRecordValue(this.#transparentSortCamera, 'transparent sort camera').viewMatrix
         );
         return this.#transparentPosition.z;
     }

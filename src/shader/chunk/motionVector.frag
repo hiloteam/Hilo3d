@@ -35,7 +35,11 @@
 
     void hiloWriteTemporalReactiveMask() {
         #ifdef HILO_TEMPORAL_REACTIVE_MASK
-            hilo_ReactiveMask = clamp(u_temporalReactiveFactor, 0.0, 1.0);
+            #ifdef HILO_TEMPORAL_FORCE_REACTIVE
+                hilo_ReactiveMask = 1.0;
+            #else
+                hilo_ReactiveMask = clamp(u_temporalReactiveFactor, 0.0, 1.0);
+            #endif
         #endif
     }
 #endif
