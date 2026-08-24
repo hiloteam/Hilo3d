@@ -1,4 +1,6 @@
-#ifdef HILO_SHADOW_ATLAS
+#ifdef HILO_CLUSTERED_SHADOWS
+    uniform highp sampler2DShadow u_shadowAtlas;
+#elif defined(HILO_SHADOW_ATLAS)
     #if defined(HILO_DIRECTIONAL_LIGHTS_SMC) || defined(HILO_SPOT_LIGHTS_SMC) || defined(HILO_POINT_LIGHTS_SMC)
         uniform highp sampler2DShadow u_shadowAtlas;
     #endif
@@ -22,7 +24,7 @@
     #endif
 #endif
 
-#ifdef HILO_AREA_LIGHTS
+#if defined(HILO_AREA_LIGHTS) || defined(HILO_CLUSTERED_FORWARD)
     uniform sampler2D u_areaLightsLtcTexture1;
     uniform sampler2D u_areaLightsLtcTexture2;
 

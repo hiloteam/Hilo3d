@@ -12,6 +12,16 @@ export interface StorageGraphicsShaderDescriptor {
     readonly bindings: readonly ShaderReadBinding[];
 }
 
+/** Internal adapter for a preprocessed portable shader promoted into the storage-raster dialect. */
+export interface PortableStorageGraphicsShaderDescriptor {
+    readonly label?: string;
+    /** Fully preprocessed GLSL ES 3.00 vertex source. */
+    readonly portableVertexSource: string;
+    /** Fully preprocessed GLSL ES 3.00 fragment source with constrained readonly storage blocks. */
+    readonly portableFragmentSource: string;
+    readonly bindings: readonly ShaderReadBinding[];
+}
+
 const MAX_U32 = 0xffff_ffff;
 const identifierPattern = /^[A-Za-z_]\w*$/u;
 const sampledTextureTypes: ReadonlySet<string> = new Set([
@@ -178,6 +188,14 @@ function requireSource(value: unknown, path: string): string {
     return value;
 }
 
+function promotePortableSource(source: string, stage: 'vertex' | 'fragment'): string {
+    const promoted = source.replace(/^#version 300 es$/mu, '#version 310 es');
+    if (promoted === source) {
+        throw new TypeError(`Portable storage graphics ${stage} source must use GLSL ES 3.00`);
+    }
+    return promoted;
+}
+
 /**
  * Immutable WebGPU-only graphics shader configuration for readonly storage-buffer rendering.
  *
@@ -242,6 +260,24 @@ export class StorageGraphicsShader {
         this.bindings = Object.freeze(bindings);
         Object.freeze(this);
     }
+}
+
+/**
+ * Promote fully preprocessed portable raster source at the single storage-graphics boundary.
+ * This keeps dynamic built-in material variants on the same GLSL/Naga path without admitting a
+ * second handwritten WGSL or raster-material tree.
+ *
+ * @internal
+ */
+export function createStorageGraphicsShaderFromPortable(
+    descriptor: Readonly<PortableStorageGraphicsShaderDescriptor>
+): StorageGraphicsShader {
+    return new StorageGraphicsShader({
+        ...(descriptor.label === undefined ? {} : { label: descriptor.label }),
+        vertexSource: promotePortableSource(descriptor.portableVertexSource, 'vertex'),
+        fragmentSource: promotePortableSource(descriptor.portableFragmentSource, 'fragment'),
+        bindings: descriptor.bindings
+    });
 }
 
 export default StorageGraphicsShader;

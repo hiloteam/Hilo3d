@@ -697,6 +697,9 @@ function getShaderVariant(
     if (groundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
     if (role === 'motion-vector' && temporalReactiveMask) {
         header += '#define HILO_TEMPORAL_REACTIVE_MASK 1\n';
+        if (material.forwardQueue === 'transparent') {
+            header += '#define HILO_TEMPORAL_FORCE_REACTIVE 1\n';
+        }
     }
     const pass = resolveMaterialPassDefinition(material, role);
     if (pass === null) return null;

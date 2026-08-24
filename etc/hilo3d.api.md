@@ -801,8 +801,11 @@ export interface CameraParameters extends NodeParameters {
 
 // @public
 export interface ClusteredForwardPlusDiagnostics {
+    readonly activeMaterialVariantCount: number;
     readonly autoExposureEV: number;
     readonly autoExposureTargetEV: number;
+    readonly clusteredDeformedObjectCount: number;
+    readonly clusteredTransparentObjectCount: number;
     readonly clusterLightIndexCount: number;
     readonly clusterOverflowCount: number;
     readonly droppedLightCount: number;
@@ -810,6 +813,9 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly hiZValid: boolean;
     readonly lightCount: number;
     readonly lodObjectCount: number;
+    readonly materialVariantBudget: number;
+    readonly materialVariantBudgetExceededCount: number;
+    readonly materialVariantWarmupTimeMs: number;
     readonly objectCount: number;
     readonly occludedObjectCount: number;
     readonly renderScale: number;
@@ -817,12 +823,13 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly visibleObjectCount: number;
     readonly volumetricFroxelCount: number;
     readonly volumetricHistoryUsed: boolean;
+    readonly warmedMaterialVariantCount: number;
 }
 
 // @public
 export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactory {
     constructor(options: Readonly<ClusteredForwardPlusPipelineOptions>);
-    create(context: RenderPipelineCreateContext): RenderPipeline;
+    create(context: RenderPipelineCreateContext): Promise<RenderPipeline>;
     readonly name = "GPU Scene + Clustered Forward+";
     readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>>;
     readonly requirements: Readonly<RenderPipelineRequirements>;
@@ -848,8 +855,22 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
     readonly toneMapping?: 'aces' | 'filmic';
+    readonly variantManifest?: Readonly<ClusteredMaterialVariantManifest>;
     readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
     readonly zSlices?: number;
+}
+
+// @public
+export interface ClusteredMaterialVariantManifest {
+    readonly entries: readonly Readonly<ClusteredMaterialVariantManifestEntry>[];
+    readonly maxVariants?: number;
+    readonly warmupBatchSize?: number;
+}
+
+// @public
+export interface ClusteredMaterialVariantManifestEntry {
+    readonly mesh: Mesh;
+    readonly shadowed?: boolean;
 }
 
 // @public (undocumented)
@@ -3683,6 +3704,8 @@ export class Light extends Node_2 {
     isPointLight: boolean;
     // (undocumented)
     isSpotLight: boolean;
+    get lightLayerMask(): number;
+    set lightLayerMask(value: number);
     linearAttenuation: number;
     quadraticAttenuation: number;
     get range(): number;
@@ -3793,6 +3816,7 @@ export interface LightParameters extends NodeParameters {
     enabled?: boolean;
     // (undocumented)
     isDirty?: boolean;
+    lightLayerMask?: number;
     // (undocumented)
     linearAttenuation?: number;
     // (undocumented)
@@ -8145,6 +8169,7 @@ export interface RenderPipelineContext {
 export interface RenderPipelineCreateContext {
     readonly capabilities: RenderPipelineCapabilities;
     createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
+    warmupStorageGraphicsShaders(shaders: readonly StorageGraphicsShader[], batchSize?: number): Promise<void>;
 }
 
 // @public
@@ -8585,6 +8610,7 @@ export interface SceneStorageBufferBinding {
 export interface SceneStorageShaderVariant {
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
     readonly shader: StorageGraphicsShader;
+    readonly shaderByMesh?: ReadonlyMap<Mesh, StorageGraphicsShader>;
 }
 
 // @public
@@ -8775,6 +8801,11 @@ export const semantic: {
     };
     OBJECTIDCOLOR: {
         get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): Float32Array;
+        isDependMesh: boolean;
+        notSupportInstanced: boolean;
+    };
+    MODELLAYERPARAMS: {
+        get(mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): Uint32Array;
         isDependMesh: boolean;
         notSupportInstanced: boolean;
     };
@@ -9627,6 +9658,8 @@ export class SpotLight extends Light {
     constructor(params?: SpotLightParameters);
     // (undocumented)
     className: string;
+    get cookie(): Readonly<Required<SpotLightCookie>> | null;
+    set cookie(value: Readonly<SpotLightCookie> | null);
     get cutoff(): number;
     set cutoff(value: number);
     // (undocumented)
@@ -9637,6 +9670,8 @@ export class SpotLight extends Light {
     getViewDirection(camera: Camera): Vector3;
     // (undocumented)
     getWorldDirection(): Vector3;
+    get iesProfile(): Readonly<Required<SpotLightIESProfile>> | null;
+    set iesProfile(value: Readonly<SpotLightIESProfile> | null);
     // (undocumented)
     isSpotLight: boolean;
     get outerCutoff(): number;
@@ -9645,6 +9680,20 @@ export class SpotLight extends Light {
     get outerCutoffCos(): number;
     // (undocumented)
     static readonly typeName = "SpotLight";
+}
+
+// @public
+export interface SpotLightCookie {
+    readonly intensity?: number;
+    readonly offset?: readonly [number, number];
+    readonly scale?: readonly [number, number];
+    readonly softness?: number;
+}
+
+// @public
+export interface SpotLightIESProfile {
+    readonly exponent?: number;
+    readonly intensity?: number;
 }
 
 // @public (undocumented)
@@ -9661,10 +9710,12 @@ export interface SpotLightInfo extends DirectionalLightInfo {
 
 // @public (undocumented)
 export interface SpotLightParameters extends ShadowCastingLightParameters {
+    cookie?: Readonly<SpotLightCookie> | null;
     // (undocumented)
     cutoff?: number;
     // (undocumented)
     direction?: Vector3;
+    iesProfile?: Readonly<SpotLightIESProfile> | null;
     // (undocumented)
     outerCutoff?: number;
 }

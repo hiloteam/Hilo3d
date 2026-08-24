@@ -45,6 +45,8 @@ export interface LightParameters extends NodeParameters {
     quadraticAttenuation?: number;
     range?: number;
     isDirty?: boolean;
+    /** Receiver-layer mask used by clustered lighting; defaults to every layer. */
+    lightLayerMask?: number;
 }
 
 /** Parameters shared only by light kinds that implement shadows on every rendering backend. */
@@ -68,6 +70,19 @@ class Light extends Node {
      * 光强度
      */
     amount = 1;
+    private lightLayerMaskValue = 0xffffffff;
+
+    /** Receiver-layer mask evaluated independently from camera/node visibility. */
+    get lightLayerMask(): number {
+        return this.lightLayerMaskValue;
+    }
+
+    set lightLayerMask(value: number) {
+        if (!Number.isSafeInteger(value) || value < 0 || value > 0xffffffff) {
+            throw new RangeError('Light.lightLayerMask must be an unsigned 32-bit integer.');
+        }
+        this.lightLayerMaskValue = value >>> 0;
+    }
     /**
      * 是否开启灯光
      */

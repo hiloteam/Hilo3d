@@ -35,7 +35,7 @@ describe('built-in std140 ABI', () => {
             LightBlock: 16288,
             MaterialBlock: 448,
             MaterialTextureBlock: 1920,
-            ModelBlock: 208,
+            ModelBlock: 224,
             GeometryBlock: 224,
             SkinningBlock: 16400,
             MorphBlock: 80,
@@ -86,6 +86,7 @@ describe('built-in std140 ABI', () => {
         expect(modelBlockLayout.fields.u_normalWorldMatrix.offset).toBe(128);
         expect(modelBlockLayout.fields.u_objectIdColor.offset).toBe(176);
         expect(modelBlockLayout.fields.u_modelHistoryParams.offset).toBe(192);
+        expect(modelBlockLayout.fields.u_modelLayerParams.offset).toBe(208);
         expect(geometryBlockLayout.fields.u_positionDecodeMat.offset).toBe(0);
         expect(geometryBlockLayout.fields.u_uvDecodeMat.offset).toBe(128);
         expect(geometryBlockLayout.fields.u_uv1DecodeMat.offset).toBe(176);

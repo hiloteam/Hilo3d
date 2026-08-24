@@ -10,6 +10,7 @@ import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
 import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
+import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import {
     createRenderPipelineCapabilities,
     validateRenderPipelineCapabilitySuperset,
@@ -33,6 +34,10 @@ export interface RenderPipelineHostLifecycle {
     failFrame(error: unknown): void;
     endFrame(submitted: boolean): void;
     createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
+    warmupStorageGraphicsShaders(
+        shaders: readonly StorageGraphicsShader[],
+        batchSize?: number
+    ): Promise<void>;
     createPipelineContext(
         scene: RendererScene,
         camera: Camera,
@@ -115,7 +120,12 @@ export class RenderPipelineHost {
         const candidate: unknown = await factory.create(
             Object.freeze({
                 capabilities,
-                createStorageBuffer: this.lifecycle.createPipelineStorageBuffer.bind(this.lifecycle)
+                createStorageBuffer: this.lifecycle.createPipelineStorageBuffer.bind(
+                    this.lifecycle
+                ),
+                warmupStorageGraphicsShaders: this.lifecycle.warmupStorageGraphicsShaders.bind(
+                    this.lifecycle
+                )
             })
         );
         if (

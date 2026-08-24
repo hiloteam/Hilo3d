@@ -1453,6 +1453,11 @@ describe('Scriptable render pipeline', () => {
                 renderPipeline: new FixedRuntimeFactory(runtime)
             });
             activeRenderers.push(renderer);
+            const target = renderer.createRenderTarget({
+                width: 16,
+                height: 8,
+                colorAttachments: [{ format: 'rgba8unorm' }]
+            });
             runtime.buffer = renderer.createStorageBuffer({
                 label: 'instanced storage scene values',
                 byteLength: 16,
@@ -1496,9 +1501,16 @@ describe('Scriptable render pipeline', () => {
                 'prepareStorageScene'
             );
 
-            renderer.render(scene, new PerspectiveCamera());
-            renderer.render(scene, new PerspectiveCamera());
+            renderer.renderToTarget(target, scene, new PerspectiveCamera());
+            renderer.renderToTarget(target, scene, new PerspectiveCamera());
             await renderer.waitForIdle();
+            const readback = await target.readColorAttachment();
+            let redPixels = 0;
+            for (let offset = 0; offset < readback.data.length; offset += 4) {
+                if ((readback.data[offset] ?? 0) > 128 && (readback.data[offset + 1] ?? 0) > 16) {
+                    redPixels++;
+                }
+            }
 
             expect(prepareStorageScene).toHaveBeenCalledTimes(8);
             expect(prepareStorageScene.mock.calls.slice(4).map(call => call[0])).toEqual([
@@ -1510,7 +1522,9 @@ describe('Scriptable render pipeline', () => {
             expect(prepareStorageScene.mock.calls.every(call => call[6] === true)).toBe(true);
             expect(renderer.renderInfo.drawCount).toBe(4);
             expect(renderer.renderInfo.faceCount).toBeGreaterThan(0);
+            expect(redPixels).toBeGreaterThan(8);
             prepareStorageScene.mockRestore();
+            target.destroy();
         }
     );
 

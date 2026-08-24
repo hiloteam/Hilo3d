@@ -194,6 +194,7 @@ vec3 directSpecular = vec3(0.0);
 vec3 lightDiffuse;
 vec3 lightSpecular;
 
+#ifndef HILO_CLUSTERED_FORWARD
 #ifdef HILO_DIRECTIONAL_LIGHTS
 for (int i = 0; i < HILO_DIRECTIONAL_LIGHTS; i++) {
     vec3 lightDir = normalize(-u_directionalLightsInfo[i]);
@@ -388,6 +389,74 @@ for (int i = 0; i < HILO_AREA_LIGHTS; i++) {
     #endif
 }
 #endif
+#else
+uvec2 clusteredAllocation = hiloClusteredAllocation(v_fragPos);
+uint clusteredGlobalLightCount = floatBitsToUint(clusterFrameData.values[30u]).x;
+uint clusteredLocalLightCount = clusteredAllocation.y;
+vec3 clusteredClearcoatNormal = N;
+#ifdef HILO_HAS_CLEARCOAT
+clusteredClearcoatNormal = clearcoatNormal;
+#endif
+for (uint lightIndex = 0u; lightIndex < clusteredGlobalLightCount; lightIndex += 1u) {
+    vec3 clusteredClearcoat;
+    hiloEvaluateClusteredPBRLight(
+        lightIndex,
+        v_fragPos,
+        N,
+        V,
+        clusteredClearcoatNormal,
+        anisotropyT,
+        anisotropyB,
+        specularColor,
+        diffuseColor,
+        areaSpecularColor,
+        areaDiffuseColor,
+        roughness,
+        anisotropyStrength,
+        iridescenceFactor,
+        iridescenceIor,
+        iridescenceThickness,
+        clearcoatFactor,
+        clearcoatRoughness,
+        lightDiffuse,
+        lightSpecular,
+        clusteredClearcoat
+    );
+    directDiffuse += lightDiffuse;
+    directSpecular += lightSpecular;
+    clearcoatDirect += clusteredClearcoat;
+}
+for (uint clusteredIndex = 0u; clusteredIndex < clusteredLocalLightCount; clusteredIndex += 1u) {
+    uint lightIndex = clusterLightIndices.values[clusteredAllocation.x + clusteredIndex];
+    vec3 clusteredClearcoat;
+    hiloEvaluateClusteredPBRLight(
+        lightIndex,
+        v_fragPos,
+        N,
+        V,
+        clusteredClearcoatNormal,
+        anisotropyT,
+        anisotropyB,
+        specularColor,
+        diffuseColor,
+        areaSpecularColor,
+        areaDiffuseColor,
+        roughness,
+        anisotropyStrength,
+        iridescenceFactor,
+        iridescenceIor,
+        iridescenceThickness,
+        clearcoatFactor,
+        clearcoatRoughness,
+        lightDiffuse,
+        lightSpecular,
+        clusteredClearcoat
+    );
+    directDiffuse += lightDiffuse;
+    directSpecular += lightSpecular;
+    clearcoatDirect += clusteredClearcoat;
+}
+#endif
 
 vec3 indirectDiffuse = hiloGetIBLDiffuse(indirectDiffuseNormal, iblDiffuseColor, ao);
 vec3 indirectSpecular = hiloGetIBLSpecular(
@@ -403,7 +472,9 @@ vec3 indirectSpecular = hiloGetIBLSpecular(
     ao
 );
 
-#if defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
+#if defined(HILO_CLUSTERED_FORWARD) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
+indirectDiffuse += clusterFrameData.values[31u].rgb * iblDiffuseColor * ao * HILO_INVERSE_PI;
+#elif defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
 indirectDiffuse += u_ambientLightsColor * iblDiffuseColor * ao * HILO_INVERSE_PI;
 #endif
 

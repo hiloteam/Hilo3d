@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
+import Skeleton from '../../../src/core/Skeleton';
+import SkinnedMesh from '../../../src/core/SkinnedMesh';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
@@ -10,17 +12,23 @@ import AmbientLight from '../../../src/light/AmbientLight';
 import AreaLight from '../../../src/light/AreaLight';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import PointLight from '../../../src/light/PointLight';
+import SpotLight from '../../../src/light/SpotLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import Color from '../../../src/math/Color';
 import Matrix3 from '../../../src/math/Matrix3';
+import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
+import ParticleSystem from '../../../src/particle/ParticleSystem';
+import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
 import Renderer from '../../../src/render/Renderer';
 import {
     registerRendererDiagnostics,
     unregisterRendererDiagnostics
 } from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
+import { FullscreenRenderPass } from '../../../src/render/pipeline/passes';
+import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import type { RHIDevice } from '../../../src/render/rhi/core';
 import Texture from '../../../src/texture/Texture';
 import { RGBA, TEXTURE_2D, UNSIGNED_BYTE } from '../../../src/constants/webgl';
@@ -82,7 +90,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             temporalAA: {}
         });
         expect(withTemporalAA.requirements.requiredLimits).toMatchObject({
-            maxColorAttachments: 3
+            maxColorAttachments: 4
         });
         expect(withTemporalAA.requirements.requiredTextureFormats).toContainEqual({
             format: 'r32float',
@@ -134,7 +142,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         expect(withReflections.requirements.requiredLimits).toMatchObject({
             maxStorageTexturesPerShaderStage: 2,
             maxSampledTexturesPerShaderStage: 14,
-            maxColorAttachments: 3
+            maxColorAttachments: 4
         });
         expect(withReflections.requirements.requiredTextureFormats).toEqual(
             expect.arrayContaining([
@@ -161,7 +169,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         });
         expect(withSSGI.requirements.requiredLimits).toMatchObject({
             maxSampledTexturesPerShaderStage: 12,
-            maxColorAttachments: 3
+            maxColorAttachments: 4
         });
         expect(withSSGI.requirements.requiredTextureFormats).toEqual(
             expect.arrayContaining([
@@ -215,6 +223,10 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         const material = new PBRMaterial();
         const transparent = new PBRMaterial({
             compositing: { mode: 'alpha-blend', premultiplied: true }
+        });
+        const manifestMesh = new Mesh({
+            geometry: new BoxGeometry({ widthSegments: 2 }),
+            material: new PBRMaterial({ clearcoatFactor: 0.5 })
         });
 
         expect(() => new ClusteredForwardPlusPipelineFactory({ buckets: [] })).toThrow(
@@ -368,6 +380,31 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             () =>
                 new ClusteredForwardPlusPipelineFactory({
                     buckets: [{ geometry, material }],
+                    variantManifest: {
+                        entries: [{ mesh: manifestMesh }, { mesh: manifestMesh }],
+                        maxVariants: 1,
+                        warmupBatchSize: 1
+                    }
+                })
+        ).not.toThrow();
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    variantManifest: { entries: [{ mesh: new Mesh() }] }
+                })
+        ).toThrow(/native clustered PBR/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    variantManifest: { entries: [], maxVariants: 0 }
+                })
+        ).toThrow(/positive safe integer/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
                     volumetricLighting: {
                         localVolumes: [
                             {
@@ -447,6 +484,404 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxBufferSize: geometryBufferBytes
         });
     });
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'shades globally sorted layered, morph, and skinned transparent PBR from clustered lights',
+        async () => {
+            const bucketGeometry = new BoxGeometry();
+            const bucketMaterial = new PBRMaterial();
+            const layeredMesh = new Mesh({
+                geometry: new BoxGeometry({ widthSegments: 2 }),
+                material: new PBRMaterial({
+                    baseColor: new Color(0.35, 0.9, 0.25),
+                    clearcoatFactor: 0.75,
+                    clearcoatRoughnessFactor: 0.18,
+                    anisotropyStrength: 0.45,
+                    iridescenceFactor: 0.55,
+                    iridescenceThicknessMinimum: 160,
+                    iridescenceThicknessMaximum: 360
+                }),
+                y: 1.05,
+                scaleX: 0.55,
+                scaleY: 0.55,
+                scaleZ: 0.55,
+                frustumTest: false
+            });
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry: bucketGeometry, material: bucketMaterial }],
+                maxObjects: 1,
+                maxLights: 4,
+                maxLightIndices: 4_096,
+                maxLightsPerCluster: 4,
+                maxViewportWidth: 64,
+                maxViewportHeight: 32,
+                hiZ: false,
+                bloomStrength: 0,
+                temporalAA: { renderScale: 0.5 },
+                variantManifest: {
+                    entries: [{ mesh: layeredMesh, shadowed: false }],
+                    maxVariants: 4,
+                    warmupBatchSize: 1
+                }
+            });
+            const canvas = document.createElement('canvas');
+            const rendererDiagnostics = registerRendererDiagnostics(canvas);
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: canvas,
+                width: 64,
+                height: 32,
+                antialias: false,
+                renderingProfile: 'high-end',
+                renderPipeline: factory
+            });
+            renderer.clearColor = new Color(0, 0, 0);
+            const target = renderer.createRenderTarget({
+                width: 64,
+                height: 32,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: { format: 'depth32float', depthMode: 'reversed' }
+            });
+            const particleSystem = new ParticleSystem({
+                definition: ParticleSystemDefinition.create({
+                    emitters: [
+                        {
+                            name: 'clustered-temporal-stateless',
+                            capacity: 64,
+                            execution: 'stateless',
+                            duration: 4,
+                            emission: { rateOverTime: 16 },
+                            initialize: {
+                                lifetime: 2,
+                                direction: [0, 1, 0],
+                                speed: 0.35,
+                                size: 0.35,
+                                color: [1, 0.55, 0.12, 0.8]
+                            },
+                            renderers: [{ type: 'sprite', blend: 'additive', depthTest: false }]
+                        }
+                    ]
+                }),
+                seed: 31,
+                autoPlay: false,
+                compilationEnvironment: { backend: 'webgpu' }
+            });
+            particleSystem.simulate(0.5);
+            try {
+                const scene = new Node();
+                particleSystem.addTo(scene);
+                const morphSource = new BoxGeometry({ widthSegments: 2 });
+                const morphVertices = morphSource.vertices;
+                if (morphVertices === null) throw new Error('Expected morph source vertices');
+                const morphTarget = new Float32Array(morphVertices.data.length);
+                for (let index = 0; index < morphTarget.length; index += 3) {
+                    morphTarget[index] = 0.08;
+                }
+                const morphGeometry = new MorphGeometry({
+                    vertices: morphSource.vertices,
+                    normals: morphSource.normals,
+                    uvs: morphSource.uvs,
+                    indices: morphSource.indices,
+                    weights: new Float32Array([0.5]),
+                    targets: {
+                        vertices: [new GeometryData(morphTarget, 3)]
+                    }
+                });
+                const morphMaterial = new PBRMaterial({
+                    compositing: { mode: 'alpha-blend', premultiplied: true },
+                    cullMode: 'none',
+                    opacity: 0.72,
+                    baseColor: new Color(0.95, 0.18, 0.08),
+                    metallic: 0.05,
+                    roughness: 0.32,
+                    clearcoatFactor: 0.85,
+                    clearcoatRoughnessFactor: 0.16
+                });
+                const morphMesh = new Mesh({
+                    geometry: morphGeometry,
+                    material: morphMaterial,
+                    x: -0.75,
+                    z: -0.6,
+                    frustumTest: false
+                });
+
+                const skinGeometry = new BoxGeometry({ widthSegments: 2 });
+                const skinVertices = skinGeometry.vertices;
+                if (skinVertices === null) throw new Error('Expected skin source vertices');
+                const skinIndices = new Uint8Array(skinVertices.count * 4);
+                const skinWeights = new Uint8Array(skinVertices.count * 4);
+                for (let index = 0; index < skinVertices.count; index += 1) {
+                    skinWeights[index * 4] = 255;
+                }
+                skinGeometry.skinIndices = new GeometryData(skinIndices, 4);
+                skinGeometry.skinWeights = new GeometryData(skinWeights, 4, {
+                    normalized: true
+                });
+                const joint = new Node();
+                joint.updateMatrixWorld(true);
+                const skinMaterial = new PBRMaterial({
+                    compositing: { mode: 'alpha-blend', premultiplied: true },
+                    cullMode: 'none',
+                    opacity: 0.68,
+                    baseColor: new Color(0.05, 0.3, 1),
+                    metallic: 0.2,
+                    roughness: 0.38,
+                    anisotropyStrength: 0.65,
+                    anisotropyRotation: 0.4,
+                    iridescenceFactor: 0.7,
+                    iridescenceThicknessMinimum: 180,
+                    iridescenceThicknessMaximum: 420
+                });
+                const skinned = new SkinnedMesh({
+                    geometry: skinGeometry,
+                    material: skinMaterial,
+                    skeleton: new Skeleton({
+                        jointNodeList: [joint],
+                        jointNames: ['root'],
+                        inverseBindMatrices: [new Matrix4()]
+                    }),
+                    x: 0.75,
+                    z: 0.6,
+                    frustumTest: false
+                });
+                skinned.updateMatrixWorld(true);
+                skinned.addTo(scene);
+                morphMesh.addTo(scene);
+                layeredMesh.addTo(scene);
+                new AmbientLight({ amount: 0.01 }).addTo(scene);
+                const layeredPoint = new PointLight({
+                    amount: 100,
+                    range: 8,
+                    z: 3,
+                    lightLayerMask: 1
+                });
+                layeredPoint.addTo(scene);
+                const photometricLight = new SpotLight({
+                    amount: 10,
+                    range: 8,
+                    z: 3,
+                    direction: new Vector3(0, 0, -1),
+                    lightLayerMask: 1,
+                    cookie: {
+                        scale: [0.9, 0.7],
+                        intensity: 0.9,
+                        softness: 0.2
+                    },
+                    iesProfile: { intensity: 1.1, exponent: 1.5 }
+                });
+                photometricLight.addTo(scene);
+                const camera = new PerspectiveCamera({
+                    aspect: 2,
+                    near: 0.1,
+                    far: 20,
+                    depthMode: 'reversed'
+                });
+                camera.setPosition(0, 0, 6).lookAt(new Vector3(0, 0, 0));
+
+                const prepareStorageScene = vi.spyOn(
+                    MeshDrawProcessor.prototype,
+                    'prepareStorageScene'
+                );
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const readback = await target.readColorAttachment();
+                let colorEnergy = 0;
+                for (let offset = 0; offset < readback.data.length; offset += 4) {
+                    colorEnergy +=
+                        (readback.data[offset] ?? 0) +
+                        (readback.data[offset + 1] ?? 0) +
+                        (readback.data[offset + 2] ?? 0);
+                }
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    objectCount: 0,
+                    fallbackObjectCount: 0,
+                    clusteredDeformedObjectCount: 1,
+                    clusteredTransparentObjectCount: 2,
+                    lightCount: 2,
+                    warmedMaterialVariantCount: 1,
+                    activeMaterialVariantCount: 3,
+                    materialVariantBudgetExceededCount: 0,
+                    materialVariantBudget: 4
+                });
+                const nativePasses = rendererDiagnostics
+                    .snapshot()
+                    .renderGraph?.passes.map(pass => pass.name);
+                expect(nativePasses).toContain('GPU Scene deformed and layered clustered PBR');
+                expect(nativePasses).toContain('Clustered Forward+ transparent PBR');
+                expect(nativePasses).toContain(
+                    'Transparent transmission and particle temporal reactive coverage'
+                );
+                expect(nativePasses).toContain(
+                    'Transparent transmission and particle resurrection'
+                );
+                expect(nativePasses).toContain('Transparent GPU particle temporal composition');
+                expect(prepareStorageScene.mock.calls.slice(-2).map(call => call[0])).toEqual([
+                    morphMesh,
+                    skinned
+                ]);
+                expect(colorEnergy).toBeGreaterThan(1_000);
+                prepareStorageScene.mockRestore();
+
+                layeredPoint.lightLayerMask = 2;
+                photometricLight.lightLayerMask = 2;
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const layerExcluded = await target.readColorAttachment();
+                let excludedEnergy = 0;
+                for (let offset = 0; offset < layerExcluded.data.length; offset += 4) {
+                    excludedEnergy +=
+                        (layerExcluded.data[offset] ?? 0) +
+                        (layerExcluded.data[offset + 1] ?? 0) +
+                        (layerExcluded.data[offset + 2] ?? 0);
+                }
+                expect(excludedEnergy).toBeLessThan(colorEnergy * 0.75);
+                layeredPoint.lightLayerMask = 1;
+                photometricLight.lightLayerMask = 1;
+
+                const runtimeVariant = new Mesh({
+                    geometry: new BoxGeometry(),
+                    material: new PBRMaterial({ baseColor: new Color(0.8, 0.8, 0.2) }),
+                    y: -1.25,
+                    x: -2,
+                    frustumTest: false
+                });
+                runtimeVariant.addTo(scene);
+                const originalFullscreenExecute = Object.getOwnPropertyDescriptor(
+                    FullscreenRenderPass.prototype,
+                    'execute'
+                )?.value as (
+                    this: FullscreenRenderPass,
+                    ...parameters: Parameters<FullscreenRenderPass['execute']>
+                ) => void;
+                let injectedFailure = false;
+                let resurrectionPassCount = 0;
+                const executeFailure = vi
+                    .spyOn(FullscreenRenderPass.prototype, 'execute')
+                    .mockImplementation(function (
+                        this: FullscreenRenderPass,
+                        ...parameters: Parameters<typeof originalFullscreenExecute>
+                    ): void {
+                        if (this.name === 'Transparent transmission and particle resurrection') {
+                            resurrectionPassCount++;
+                        }
+                        if (!injectedFailure && resurrectionPassCount === 2) {
+                            injectedFailure = true;
+                            throw new Error('injected clustered temporal submission failure');
+                        }
+                        originalFullscreenExecute.apply(this, parameters);
+                    });
+                try {
+                    expect(() => {
+                        renderer.renderToTarget(target, scene, camera);
+                    }).toThrow(/injected clustered temporal submission failure/u);
+                } finally {
+                    executeFailure.mockRestore();
+                }
+                expect(injectedFailure).toBe(true);
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    activeMaterialVariantCount: 3,
+                    materialVariantBudgetExceededCount: 0
+                });
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    fallbackObjectCount: 0,
+                    clusteredDeformedObjectCount: 2,
+                    activeMaterialVariantCount: 4,
+                    materialVariantBudgetExceededCount: 0
+                });
+
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material: new PBRMaterial({
+                        clearcoatFactor: 0.45,
+                        clearcoatRoughnessFactor: 0.3
+                    }),
+                    y: -1.25,
+                    x: 2,
+                    frustumTest: false
+                }).addTo(scene);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    fallbackObjectCount: 1,
+                    clusteredDeformedObjectCount: 2,
+                    activeMaterialVariantCount: 4,
+                    materialVariantBudgetExceededCount: 1
+                });
+
+                const extension = renderer.getExtension('rhi') as {
+                    readonly device: RHIDevice;
+                } | null;
+                if (extension === null) throw new Error('Expected the public RHI extension');
+                const deviceLost = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceLost',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                const deviceRestored = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceRestored',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                extension.device.destroy();
+                await deviceLost;
+                await Promise.all([renderer.waitForIdle(), deviceRestored]);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                expect(
+                    rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
+                ).toContain('Transparent temporal history initialize');
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    activeMaterialVariantCount: 4,
+                    materialVariantBudgetExceededCount: 1
+                });
+
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material: new PBRMaterial({ transmissionFactor: 0.45 }),
+                    y: -1.2,
+                    frustumTest: false
+                }).addTo(scene);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                expect(await factory.readDiagnostics()).toMatchObject({
+                    fallbackObjectCount: 4,
+                    clusteredDeformedObjectCount: 2,
+                    clusteredTransparentObjectCount: 0,
+                    materialVariantBudgetExceededCount: 1
+                });
+                const mixedPasses = rendererDiagnostics
+                    .snapshot()
+                    .renderGraph?.passes.map(pass => pass.name);
+                expect(mixedPasses).toContain('Clustered Forward+ compatibility opaque copy');
+                expect(mixedPasses).toContain('Clustered Forward+ compatibility fallback');
+                expect(mixedPasses).not.toContain('Clustered Forward+ transparent PBR');
+            } finally {
+                particleSystem.destroy(renderer);
+                target.destroy();
+                renderer.destroy();
+                unregisterRendererDiagnostics(canvas, rendererDiagnostics);
+            }
+        },
+        20_000
+    );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
         'renders every compacted material bucket without indirect-first-instance',
@@ -728,7 +1163,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 const diagnostics = await factory.readDiagnostics();
 
                 expect(diagnostics.objectCount).toBe(8);
-                expect(diagnostics.fallbackObjectCount).toBe(4);
+                expect(diagnostics.fallbackObjectCount).toBe(0);
                 expect(diagnostics.lightCount).toBe(5);
                 expect(diagnostics.visibleObjectCount).toBeGreaterThan(0);
                 expect(diagnostics.clusterLightIndexCount).toBeGreaterThan(0);
@@ -774,7 +1209,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 4
+                    fallbackObjectCount: 0
                 });
 
                 camera.invalidateTransformHistory();
@@ -824,7 +1259,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 4,
+                    fallbackObjectCount: 0,
                     hiZValid: true
                 });
 
@@ -844,14 +1279,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 0,
-                    fallbackObjectCount: 12
+                    fallbackObjectCount: 0
                 });
                 for (const mesh of meshes) mesh.material = material;
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 4
+                    fallbackObjectCount: 0
                 });
 
                 const removedMesh = meshes[0];
@@ -861,13 +1296,13 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 7,
-                    fallbackObjectCount: 4
+                    fallbackObjectCount: 0
                 });
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 3
+                    fallbackObjectCount: 0
                 });
                 removedMesh.addTo(scene);
 
@@ -886,14 +1321,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 0,
-                    fallbackObjectCount: 12
+                    fallbackObjectCount: 0
                 });
                 geometry.vertices = originalVertices;
                 renderer.render(scene, camera);
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 4
+                    fallbackObjectCount: 0
                 });
 
                 new Mesh({
@@ -910,7 +1345,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 8,
-                    fallbackObjectCount: 6
+                    fallbackObjectCount: 2
                 });
             } finally {
                 renderer.destroy();

@@ -706,8 +706,9 @@ draw。两者共享 particle surface shader chunks、texture/color/soft-depth �
 ### 10.3 透明、TAA 与后处理
 
 - 粒子默认在 opaque TAA/TAAU resolve 后、Bloom/tone mapping 前进入 linear HDR scene color；
-- transparent particle 不写 opaque motion/depth history；
-- 高 emissive/快速闪烁粒子通过显式 composition policy 避免污染 opaque history；
+- transparent particle 不写 opaque motion/depth history；Clustered high-end 把 GPU
+  particle 先写入 output-resolution overlay/mask/depth，再以独立短 history resolve 后合成；
+- 高 emissive/快速闪烁粒子通过 conservative reactive mask 和隔离 history 避免污染 opaque/透明表面；
 - soft particle 读取当前 scene depth，但不能与同一 pass 的 depth write 形成非法 feedback；
 - 首版只在 system/renderer group 粒度与普通 transparent
   queue 排序，不承诺每粒子与任意透明 Mesh 全局交错；

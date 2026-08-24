@@ -74,6 +74,59 @@ test('renders a real frame through WebGPU and Naga', async ({ page }) => {
     });
 });
 
+test('closes the high-end clustered transparent, particle, and recovery P0 gate', async ({
+    page
+}) => {
+    test.setTimeout(30_000);
+    const consoleErrors: string[] = [];
+    const pageErrors: string[] = [];
+    const gpuValidationErrors: string[] = [];
+    const devtools = await page.context().newCDPSession(page);
+    await devtools.send('Log.enable');
+    devtools.on('Log.entryAdded', ({ entry }) => {
+        if (entry.level === 'error' && entry.source === 'rendering') {
+            gpuValidationErrors.push(entry.text);
+        }
+    });
+    page.on('console', message => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+    page.on('pageerror', error => pageErrors.push(error.message));
+
+    await page.goto('/test/ui/fixtures/clustered-forward-plus-p0.html', {
+        waitUntil: 'load'
+    });
+    await page.waitForFunction(
+        () => window.__HILO3D_CLUSTERED_FORWARD_PLUS_P0_RESULT__ !== undefined,
+        undefined,
+        { timeout: 25_000 }
+    );
+    const result = await page.evaluate(() => window.__HILO3D_CLUSTERED_FORWARD_PLUS_P0_RESULT__);
+    await devtools.detach();
+
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+    expect(gpuValidationErrors).toEqual([]);
+    expect(result).toMatchObject({
+        nativeTransparent: true,
+        nativeDeformedLayered: true,
+        particleTemporalComposition: true,
+        transparentResurrection: true,
+        recoveryHistoryInitialized: true,
+        recoveryDeviceChanged: true,
+        warmedMaterialVariantCount: 1,
+        activeMaterialVariantCount: 3,
+        materialVariantBudgetExceededCount: 0,
+        clusteredTransparentObjectCount: 2,
+        clusteredDeformedObjectCount: 1,
+        fallbackObjectCount: 0,
+        mixedTransparencyFallback: true
+    });
+    expect(result?.litEnergy).toBeGreaterThan(1_000);
+    expect(result?.excludedEnergy).toBeLessThan((result?.litEnergy ?? 0) * 0.75);
+    expect(result?.recoveredEnergy).toBeGreaterThan(1_000);
+});
+
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`runs the same scriptable forward feature through ${backend}`, async ({ page }) => {
         const consoleErrors: string[] = [];
@@ -181,6 +234,24 @@ declare global {
             readonly supportedSources: readonly string[];
             readonly renderedSources: readonly string[];
             readonly skipped: readonly string[];
+        };
+        __HILO3D_CLUSTERED_FORWARD_PLUS_P0_RESULT__?: {
+            readonly litEnergy: number;
+            readonly excludedEnergy: number;
+            readonly recoveredEnergy: number;
+            readonly nativeTransparent: boolean;
+            readonly nativeDeformedLayered: boolean;
+            readonly particleTemporalComposition: boolean;
+            readonly transparentResurrection: boolean;
+            readonly recoveryHistoryInitialized: boolean;
+            readonly recoveryDeviceChanged: boolean;
+            readonly warmedMaterialVariantCount: number;
+            readonly activeMaterialVariantCount: number;
+            readonly materialVariantBudgetExceededCount: number;
+            readonly clusteredTransparentObjectCount: number;
+            readonly clusteredDeformedObjectCount: number;
+            readonly fallbackObjectCount: number;
+            readonly mixedTransparencyFallback: boolean;
         };
     }
 }

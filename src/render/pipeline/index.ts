@@ -2,6 +2,8 @@ export {
     ClusteredForwardPlusPipelineFactory,
     type ClusteredForwardPlusDiagnostics,
     type ClusteredForwardPlusPipelineOptions,
+    type ClusteredMaterialVariantManifest,
+    type ClusteredMaterialVariantManifestEntry,
     type GPUSceneBucket,
     type GPUSceneLOD
 } from './ClusteredForwardPlus';

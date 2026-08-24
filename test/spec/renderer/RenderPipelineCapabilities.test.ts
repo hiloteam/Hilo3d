@@ -282,6 +282,9 @@ describe('RenderPipelineCapabilities', () => {
         const host = new RenderPipelineHost({
             createPipelineStorageBuffer() {
                 throw new Error('Capability replacement test does not create storage buffers');
+            },
+            warmupStorageGraphicsShaders() {
+                return Promise.resolve();
             }
         } as unknown as RenderPipelineHostLifecycle);
         await host.initialize(runtimeFactory(), source);

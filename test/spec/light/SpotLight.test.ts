@@ -19,6 +19,31 @@ describe('SpotLight', () => {
         expect(light.outerCutoff).toBe(180);
     });
 
+    it('normalizes analytic cookie and IES profile parameters', () => {
+        const light = new SpotLight({
+            cookie: {
+                scale: [0.75, 0.5],
+                offset: [0.1, -0.2],
+                intensity: 0.8,
+                softness: 0.25
+            },
+            iesProfile: { intensity: 1.4, exponent: 3 }
+        });
+        expect(light.cookie).toEqual({
+            scale: [0.75, 0.5],
+            offset: [0.1, -0.2],
+            intensity: 0.8,
+            softness: 0.25
+        });
+        expect(light.iesProfile).toEqual({ intensity: 1.4, exponent: 3 });
+        expect(Object.isFrozen(light.cookie)).toBe(true);
+        expect(Object.isFrozen(light.iesProfile)).toBe(true);
+
+        expect(() => new SpotLight({ cookie: { scale: [0, 1] } })).toThrow(RangeError);
+        expect(() => new SpotLight({ cookie: { softness: 2 } })).toThrow(RangeError);
+        expect(() => new SpotLight({ iesProfile: { exponent: -1 } })).toThrow(RangeError);
+    });
+
     it.each([-1, 181, Number.POSITIVE_INFINITY, Number.NaN])(
         'rejects an invalid cone angle: %s',
         angle => {

@@ -24,6 +24,7 @@ import type {
 import type { RenderGraphTextureHandle, ScriptableRenderGraph } from './ScriptableRenderGraph';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
+import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 
 /** Optional renderer capabilities exposed only after their complete SRP/RHI path is available. */
 export type RenderPipelineCapabilityName =
@@ -133,6 +134,11 @@ export interface RenderPipelineCreateContext {
      * recording while avoiding native backend access.
      */
     createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
+    /** Translate and validate storage-aware raster variants before the first application frame. */
+    warmupStorageGraphicsShaders(
+        shaders: readonly StorageGraphicsShader[],
+        batchSize?: number
+    ): Promise<void>;
 }
 
 /** Attachment operations selected for one physical output color attachment. */

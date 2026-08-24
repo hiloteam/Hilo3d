@@ -5,6 +5,9 @@ float transparency = 1.0;
     transparency = u_transparencyFactor;
 #endif
 color.a *= transparency;
+#if defined(HILO_MOTION_VECTOR_PASS) && defined(HILO_TEMPORAL_FORCE_REACTIVE)
+    if (color.a <= 0.00392156862745098) discard;
+#endif
 #ifdef HILO_ALPHA_CUTOFF
     if (color.a < u_alphaCutoff) {
         discard;

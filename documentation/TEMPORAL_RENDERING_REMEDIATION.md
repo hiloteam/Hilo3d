@@ -82,9 +82,13 @@ shader 保持非 reactive；custom shader 可在 `HILO_TEMPORAL_REACTIVE_MASK` �
    role 补写同一 motion/reactive target；
 6. TAA initialize 或 resolve；TAAU 先以 Catmull-Rom 重建当前颜色，并写 output-resolution color/depth
    history、未进入 history 的 sharpened output 与 full-resolution scene depth；
-7. ordinary Forward fallback transparent/transmission 合成；
-8. Bloom、display transform、present；
-9. 只有 queue 接受 submission 后才轮换 color/depth/visibility history 并提交 previous transforms。
+7. native clustered 或 ordinary Forward transparent/transmission 合成，随后用透明 motion、reactive
+   coverage 与当前深度 resolve 独立的 color/mask/depth history；
+8. GPU particle 在 output
+   resolution 独立记录 overlay/reactive/depth，resolve 自己的短 history，再合成回场景；
+9. Bloom、display transform、present；
+10. 只有 queue 接受 submission 后才轮换 opaque、透明、粒子与 visibility history，并提交 previous
+    transforms 和 GPU particle state。
 
 任何 setup、prepare、execute 或提交失败都会走 discard：jitter 被清除，history index、visibility
 index 和 previous transform 都保持最后成功状态。
@@ -98,9 +102,10 @@ index 和 previous transform 都保持最后成功状态。
   box 对亮度和色度同时过宽。
 - 大 motion 最多只保留 60% history；当前/上一亮度差进一步降低 weight。材质 authored mask 做 3×3
   dilation 后与该 heuristic 取最大抑制量，`1` 会完全拒绝 history。
-- transparent、particle、UI 不写当前 opaque
-  history。它们在 TAAU 后保持 output-resolution 的当前帧 composition；transparent
-  history/resurrection 仍是后续质量切片。
+- transparent、transmission 与 particle 不写 opaque
+  history。它们在 TAAU 后以 output-resolution 独立 history resolve：透明使用 motion/reactive/depth
+  agreement 和衰减 resurrection；particle 使用隔离 overlay/mask/depth
+  history，避免污染表面 history。UI 保持在全部时域 composition 之后。
 - TAAU full-resolution depth 使用对应 internal depth texel；stencil 从零开始。依赖 opaque
   stencil 标记的透明自定义 pass 必须保持原生 `renderScale=1`。
 
@@ -117,6 +122,8 @@ TAA/TAAU 是明确 opt-in。以不含 backend row-pitch/alignment 的格式字�
 | Resolved target     | output-resolution `8 B/pixel` transient                               | 相同                                                                                           |
 | TAAU resolved depth | sub-native 模式额外一张 output-resolution depth transient             | 相同                                                                                           |
 | Visibility history  | 无                                                                    | 双缓冲 `uint`，合计 `8 B/object`；只在启用时存在                                               |
+| Transparent history | 无                                                                    | 双缓冲 `rgba16float` color + `r8unorm` mask + `r32float` depth；按需存在                       |
+| Particle history    | 无                                                                    | 独立双缓冲 color/mask/depth；仅可见 GPU particle 且 TAAU 启用时按需存在                        |
 
 原生 1080p 下，上述 history 加 motion/reactive/resolved 的理论额外峰值约 85 MB；其中约 50
 MB 是跨帧 persistent history。TAAU 的 current scene/motion/depth 成本按 `renderScale²`
@@ -126,6 +133,10 @@ history、一个 motion sample 和最多四个 depth history texel，并输出�
 attachment。它适合 high-end profile，不应在内存受限设备上默认开启。动态控制开启后还会激活 Render
 Graph timestamp query/resolve/readback 三槽 ring；回读不阻塞生产帧，ring 饱和时保持当前比例。history
 packing 或更低质量 tier 必须作为独立设计，不能偷偷改变当前 ABI。
+
+表中约 85 MB 的旧峰值估算只覆盖 opaque
+TAAU 基线；启用透明或粒子短 history 时还需按上述格式计入各自 output-resolution
+persistent 资源，未启用对应内容时不创建。
 
 ## 自动化验收
 

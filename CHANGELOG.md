@@ -26,15 +26,29 @@
   temporal reactivity for the fused GPU Scene depth/motion pass.
 - Expand the fixed Camera/Model/Skinning/Morph/Instance std140 ABI with current/previous transforms,
   stable and jittered camera projections, render origins, and per-domain history/depth flags. Custom
-  shaders that redeclare built-in blocks must use the updated field order and capacities.
+  shaders that redeclare built-in blocks must use the updated field order and capacities. Add
+  `u_modelLayerParams` to `ModelBlock` so direct and GPU Scene clustered shading share the uint32
+  receiver light-layer contract.
 - Make forward feature color encoding explicit. `replaceColor()` now requires `linear` or `srgb`,
   and the default Forward pipeline always routes surface presentation through the Render Graph so
   the final output transfer is owned by the output stage rather than individual materials.
 - Replace the Forward-specific color-encoding type with the shared `RenderColorEncoding`. Manual
   RenderTarget presentation now accepts an explicit `colorEncoding`; linear inputs receive the final
   sRGB transfer, while display-transformed `srgb` inputs are preserved without a second conversion.
+- Make `ClusteredForwardPlusPipelineFactory.create()` asynchronous so renderer initialization can
+  finish its declared material-variant warmup before the first frame.
 
 ### Changes
+
+- Complete the WebGPU high-end Clustered Forward+ P0 closure. Globally sorted compatible transparent
+  PBR and direct GPU Scene skin, morph, and layered glTF PBR now consume the native storage light
+  list, while mixed Transmission/custom/particle transparent queues fail closed to the shared
+  Forward path. Add transparent/transmission and isolated GPU-particle reactive, depth-agreement,
+  history-resurrection composition; analytic Spot cookie/IES records and uint32 light-layer
+  filtering; a public material-variant manifest with asynchronous warmup, transactional runtime
+  admission, fixed budgets, and diagnostics; and real WebGPU pixel/UI coverage for rollback, device
+  loss, recovery, layered/deformed lighting, particles, and mixed-queue fallback. Fix the stateless
+  particle WGSL hash expression for strict browser parser precedence.
 
 - Resolve the `hilo3d-game` starter dependency from the npm `next` dist-tag, validate its supported
   2.0 release shape, and pin the resolved concrete version for reproducible installs.

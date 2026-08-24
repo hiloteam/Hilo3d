@@ -208,12 +208,15 @@ dilation，并与亮度 heuristic 取最大值抑制不稳定 shading 的 histor
 是原生分辨率 TAA；固定或动态 0.5–1 的 sub-native scale 会同步缩放 opaque
 color/depth/motion、Hi-Z 与 cluster viewport，用 Catmull-Rom 重建当前帧，并写 output-resolution
 color/depth history、resolved color 和供后续 scene pass 使用的 full-resolution depth。resolved
-opaque color 随后才接受 transparent composition，因此透明不写入 TAA/TAAU history。Clustered Forward+
-opt-in TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
-buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 resolve 前补写同一 motion
-target，fallback transparent 在 resolve 后合成。`dynamicResolution` 仅在 WebGPU `timestamp-query`
-可用时创建：控制器异步消费逐 Graph pass GPU 时间，使用 EWMA、迟滞、量化步进、warmup 与 settling
-window，在声明的 min/max 内调整 scene
+opaque color 随后接受 transparent/transmission composition；Clustered
+Forward+ 再以透明 motion、reactive coverage 和当前深度驱动独立的 color/mask/depth
+history，使用深度一致性、衰减与 resurrection 抑制拖影。GPU
+particle 在输出分辨率独立合成并使用自己的短 history；opaque/masked particle 还保守写满 reactive
+coverage。UI 始终留在全部时域 resolve 之后。Clustered Forward+ opt-in TAA 时把 GPU Scene
+motion 融入 depth prepass，以前一已提交帧的 visibility buffer 拒绝重现物体的陈旧 history；fallback
+opaque/masked 在 opaque resolve 前补写同一 motion target。`dynamicResolution` 仅在 WebGPU
+`timestamp-query` 可用时创建：控制器异步消费逐 Graph pass
+GPU 时间，使用 EWMA、迟滞、量化步进、warmup 与 settling window，在声明的 min/max 内调整 scene
 scale；比例变化会失效 TAA、Hi-Z、SSR、SSGI/GTAO、volumetric 与 atmosphere/cloud 的尺寸相关 history，但 UI/透明合成和最终 output 保持原生分辨率。之后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent
 upsample 与线性 composite；`ColorUber` 最后统一完成 grading、tone
@@ -289,12 +292,17 @@ engine `Texture` 通过 graph import 复用 renderer 的上传、恢复与 submi
 pipeline runtime 的 `frameSubmitted()` / `frameDiscarded()` 是 CPU-side temporal
 state 的事务边界；current/previous object/camera transform 只在 RHI
 submission 已存在后提交，录制或提交前失败则丢弃 staged revision。当前 factory 限定 single-sample
-perspective camera 与 opaque/alpha-mask、unskinned、indexed triangle PBR bucket；GPU fast
-path 接受 scalar factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
+perspective camera；固定 indirect bucket 限于 opaque/alpha-mask、unskinned、indexed triangle
+PBR；GPU fast path 接受 scalar
+factor 以及 base-color/metallic/roughness/combined-MR/occlusion/emission/normal 2D
 map，支持每纹理槽独立的 UV0/UV1、UV transform、encoding、channel 与 sampler
 mutation；alpha-mask 的 depth、motion、material-attributes 与 color pass 共用 base-color/opacity
-coverage 语义。未注册 mesh、对象容量 overflow、skinning/morph、transparent/layered
-material，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
+coverage 语义。符合内置 PBR 合同的 skin/morph 与完整 layered glTF opaque 通过 GPU Scene
+object/material record 进入 clustered direct storage
+lane；整个透明队列均兼容时，按全局 back-to-front 顺序进入同一 clustered-native light
+list。Transmission、自定义材质或粒子与透明 Mesh 混排时整条透明队列 fail
+closed，避免跨 native/compatibility
+pass 改写排序。未注册 mesh、对象容量 overflow，以及注册 bucket 在运行时发生的不兼容 material/geometry/raster-state
 replacement 会在同一帧迁移到共享 Forward compatibility path；恢复兼容后可重新进入 GPU
 Scene。fallback 使用显式 mesh identity
 exclusion 避免重复绘制，按 opaque/transparent 分开排序并复用共享 shadow 录制。compatibility
@@ -309,9 +317,12 @@ LUT 和显式 LOD 查询，不按点光近似；directional、spot 与 point sha
 light 继续由共享 renderer 录制唯一 shadow atlas，再把同一 graph texture、shadow-first light
 order、bias/cascade/matrix 数据返回 pipeline。clustered PBR 按物体 `receiveShadows`
 标志使用 standard/reversed-depth comparison sampler 做 3×3 PCF，不复制 atlas、不绕过 Render
-Graph，也不因启用阴影而整相机回退。初始 bucket 声明不合法、非 perspective/multisample
-output 或不支持的 WebGPU 设备仍 fail-closed；cookie/IES 继续走后续 high-end 扩展，不会静默退化到 WebGL
-2。factory 的 required
+Graph，也不因启用阴影而整相机回退。Spot light record 提供解析式 cookie scale/offset/intensity/
+softness 与归一化轴向 IES fit；所有灯光和 receiver 使用 uint32 light-layer mask，在 shader 入口 fail
+closed。该合同不伪装成任意 cookie texture atlas 或原始 `.ies` 文件导入。材质 variant
+manifest 在异步 factory 创建时 warmup Naga/pipeline，运行时新 variant 受固定预算与 submission
+transaction 约束，并通过 diagnostics 暴露 warm、active、rejected 和耗时。初始 bucket 声明不合法、非 perspective/multisample
+output 或不支持的 WebGPU 设备仍 fail-closed，不会静默退化到 WebGL 2。factory 的 required
 limits 覆盖 object/geometry/visible/cluster/light-index 全部 buffer 与最坏 dispatch
 dimension，在 runtime 分配前完成设备准入。
 
