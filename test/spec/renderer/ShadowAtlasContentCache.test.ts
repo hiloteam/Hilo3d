@@ -95,6 +95,26 @@ describe('ShadowAtlasContentCache', () => {
         await committedSubmission.done;
         expect(content.metrics).toMatchObject({ size: 1, highWater: 1 });
 
+        mesh.x = 2;
+        mesh.updateMatrixWorld();
+        const deferredBatch = new RHIUploadBatch(new FrameArena());
+        expect(content.stage(atlas, plan, [mesh], deferredBatch)).toMatchObject({
+            dirtySliceCount: 1,
+            reasons: ['caster-transform']
+        });
+        content.deferUnscheduled([false]);
+        const deferredSubmission = submit(device, deferredBatch);
+        await deferredSubmission.done;
+
+        const deferredRetryBatch = new RHIUploadBatch(new FrameArena());
+        expect(content.stage(atlas, plan, [mesh], deferredRetryBatch)).toMatchObject({
+            dirtySliceCount: 1,
+            reasons: ['caster-transform']
+        });
+        content.deferUnscheduled([true]);
+        const deferredRetrySubmission = submit(device, deferredRetryBatch);
+        await deferredRetrySubmission.done;
+
         mesh.x = 10_000;
         mesh.updateMatrixWorld();
         const distantBatch = new RHIUploadBatch(new FrameArena());

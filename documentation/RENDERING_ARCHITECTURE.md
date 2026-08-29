@@ -87,11 +87,18 @@ bounds 变化、skin 和 morph 则保守失效全部相关 slice。脏 slice 通
 fullscreen triangle 在 viewport/scissor 内局部清理，Render Pass 使用 `load`
 保留其他 tile，避免整张 atlas clear 破坏缓存。内容 revision 只在有效 submission 后提交，graph
 build/prepare/execute 失败会回滚并在下一帧重试；atlas resize、detach、资源释放和 device/context
-recovery 都会明确失效。注册 `RendererDiagnostics` 后，`caches.shadowAtlas`
-提供累计 hit/miss/replacement/live-slice 观测。
+recovery 都会明确失效。Clustered GPU Scene 中的 rigid caster 由 compute 按 shadow
+slice 裁剪并写入固定 bucket indirect draw；不满足 GPU Scene 合同的 caster 仍走共享 CPU depth
+path。high-end profile 依据 receiver 覆盖缩放 local
+light 与远级联分辨率，以 1/2/4/8 帧 cadence 更新 CSM，并由确定性 slice/page
+budget 延后 caster-only 失效。每个 slice 再拆为 128 像素固定物理页，逐页 scissor 重绘；页 revision、residency 和失败回滚均在有效 submission 后提交，旧页在缺页期间继续提供确定内容。注册
+`RendererDiagnostics` 后，`caches.shadowAtlas`
+提供累计hit/miss/replacement/live-slice，`frame.shadow*` 提供 slice/page
+request、update、defer、resident 和 overflow 观测。
 
-这一切仍是稳定 tile 的生产缓存层，不宣称已经实现 GPU caster culling、receiver-driven
-budget 或 virtual shadow page table/residency。
+当前页层仍使用 stable atlas 内的固定物理映射；尚未实现 GPU receiver/depth page
+request、任意 physical-page remap/page table 或 directional clipmap，因此不宣称等价于完整 Virtual
+Shadow Maps。
 
 Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，先按 Node 级
 `sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV

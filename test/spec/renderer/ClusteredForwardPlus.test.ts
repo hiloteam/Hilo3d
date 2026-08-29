@@ -1606,9 +1606,11 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 hiZ: false,
                 bloomStrength: 0
             });
+            const canvas = document.createElement('canvas');
+            const rendererDiagnostics = registerRendererDiagnostics(canvas);
             const renderer = await Renderer.create({
                 backend: 'webgpu',
-                domElement: document.createElement('canvas'),
+                domElement: canvas,
                 width: 64,
                 height: 64,
                 antialias: false,
@@ -1668,7 +1670,16 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     fallbackObjectCount: 0,
                     lightCount: 1
                 });
+                expect(
+                    rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
+                ).toEqual(
+                    expect.arrayContaining([
+                        'GPU Scene shadow caster frustum culling',
+                        'GPU Scene shadow caster buckets'
+                    ])
+                );
             } finally {
+                unregisterRendererDiagnostics(canvas, rendererDiagnostics);
                 target.destroy();
                 renderer.destroy();
             }

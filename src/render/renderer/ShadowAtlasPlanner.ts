@@ -15,6 +15,10 @@ export interface ShadowAtlasLightRequest<Owner extends object = object> {
     readonly height: number;
     /** Directional requests only. Omitted requests use one compatibility cascade. */
     readonly cascadeCount?: number;
+    /** Optional per-slice widths for directional cascades or point faces. */
+    readonly sliceWidths?: readonly number[];
+    /** Optional per-slice heights for directional cascades or point faces. */
+    readonly sliceHeights?: readonly number[];
 }
 
 export interface ShadowAtlasRequests<Owner extends object = object> {
@@ -418,9 +422,12 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             requirePositiveSafeInteger(request.width, `${kind} shadow width`);
             requirePositiveSafeInteger(request.height, `${kind} shadow height`);
             if (kind === 'directional') {
-                this.directionalRequestCascadeCount(request);
+                const count = this.directionalRequestCascadeCount(request);
+                this.validateSliceDimensions(request, count, kind);
             } else if (request.cascadeCount !== undefined) {
                 throw new TypeError('Only directional shadow requests may specify cascadeCount');
+            } else {
+                this.validateSliceDimensions(request, kind === 'point' ? 6 : 1, kind);
             }
             requireOwner(request.owner, kind, index);
             if (this.#seenOwners.has(request.owner)) {
@@ -504,14 +511,16 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
                 slice.physicalIndex = physicalIndex;
                 slice.viewport.x = x;
                 slice.viewport.y = y;
-                slice.viewport.width = tileWidth;
-                slice.viewport.height = tileHeight;
+                const sliceWidth = request.sliceWidths?.[subIndex] ?? tileWidth;
+                const sliceHeight = request.sliceHeights?.[subIndex] ?? tileHeight;
+                slice.viewport.width = sliceWidth;
+                slice.viewport.height = sliceHeight;
                 slice.viewport.minDepth = 0;
                 slice.viewport.maxDepth = 1;
                 slice.uvRect.x = x / atlasWidth;
                 slice.uvRect.y = y / atlasHeight;
-                slice.uvRect.width = tileWidth / atlasWidth;
-                slice.uvRect.height = tileHeight / atlasHeight;
+                slice.uvRect.width = sliceWidth / atlasWidth;
+                slice.uvRect.height = sliceHeight / atlasHeight;
                 physicalIndex++;
             }
         }
@@ -538,6 +547,32 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             );
         }
         return count;
+    }
+
+    private validateSliceDimensions(
+        request: ShadowAtlasLightRequest<Owner>,
+        count: number,
+        kind: ShadowAtlasLightKind
+    ): void {
+        for (const [name, values] of [
+            ['sliceWidths', request.sliceWidths],
+            ['sliceHeights', request.sliceHeights]
+        ] as const) {
+            if (values === undefined) continue;
+            if (values.length !== count) {
+                throw new RangeError(
+                    `${kind} shadow ${name} must contain exactly ${String(count)} values`
+                );
+            }
+            for (let index = 0; index < values.length; index += 1) {
+                const value = values[index];
+                requirePositiveSafeInteger(value ?? 0, `${kind} shadow ${name}[${String(index)}]`);
+                const maximum = name === 'sliceWidths' ? request.width : request.height;
+                if ((value ?? 0) > maximum) {
+                    throw new RangeError(`${kind} shadow ${name} cannot exceed its request size`);
+                }
+            }
+        }
     }
 
     private recordOwner(

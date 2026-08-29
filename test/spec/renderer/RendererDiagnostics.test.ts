@@ -196,6 +196,26 @@ describe('RendererDiagnostics', () => {
         diagnostics.recordUpload(2);
         diagnostics.recordSubmission();
         diagnostics.recordArenaGrowth(2);
+        diagnostics.recordShadowScheduling({
+            requestedSlices: 5,
+            updatedSlices: 3,
+            deferredSlices: 2,
+            requestedPages: 12,
+            updatedPages: 8,
+            deferredPages: 4,
+            residentPages: 20,
+            budgetOverflowPages: 1
+        });
+        diagnostics.recordShadowScheduling({
+            requestedSlices: 2,
+            updatedSlices: 1,
+            deferredSlices: 1,
+            requestedPages: 3,
+            updatedPages: 2,
+            deferredPages: 1,
+            residentPages: 24,
+            budgetOverflowPages: 2
+        });
 
         expect(diagnostics.snapshot().frame).toEqual({
             draws: 8,
@@ -210,7 +230,15 @@ describe('RendererDiagnostics', () => {
             computeBindGroupSwitches: 3,
             uploads: 2,
             submissions: 1,
-            arenaGrowths: 2
+            arenaGrowths: 2,
+            shadowRequestedSlices: 7,
+            shadowUpdatedSlices: 4,
+            shadowDeferredSlices: 3,
+            shadowRequestedPages: 15,
+            shadowUpdatedPages: 10,
+            shadowDeferredPages: 5,
+            shadowResidentPages: 24,
+            shadowBudgetOverflowPages: 3
         });
 
         diagnostics.resetFrame();
@@ -229,7 +257,15 @@ describe('RendererDiagnostics', () => {
             computeBindGroupSwitches: 0,
             uploads: 0,
             submissions: 0,
-            arenaGrowths: 0
+            arenaGrowths: 0,
+            shadowRequestedSlices: 0,
+            shadowUpdatedSlices: 0,
+            shadowDeferredSlices: 0,
+            shadowRequestedPages: 0,
+            shadowUpdatedPages: 0,
+            shadowDeferredPages: 0,
+            shadowResidentPages: 0,
+            shadowBudgetOverflowPages: 0
         });
         expect(snapshot.nativeObjects.vertexArray.live).toBe(2);
         expect(snapshot.caches.vertexArray).toMatchObject({ hits: 1, size: 2, highWater: 2 });

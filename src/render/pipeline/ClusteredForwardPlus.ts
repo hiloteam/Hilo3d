@@ -221,9 +221,13 @@ const OBJECT_HIZ_STABLE_FLAG = 4;
 const OBJECT_MOTION_HISTORY_FLAG = 8;
 const OBJECT_MOTION_CHANGED_FLAG = 16;
 const OBJECT_RECEIVE_SHADOW_FLAG = 32;
+const OBJECT_CAST_SHADOW_FLAG = 64;
 const LIGHT_COOKIE_FLAG = 1;
 const LIGHT_IES_FLAG = 2;
 const CULL_WORKGROUP_SIZE = 64;
+const SHADOW_FRAME_STRIDE_BYTES = 768;
+const SHADOW_FRAME_WORDS = SHADOW_FRAME_STRIDE_BYTES / 4;
+const SHADOW_FRAME_BINDING_BYTES = FRAME_BASE_VEC4_COUNT * 16;
 const PREFIX_WORKGROUP_SIZE = 256;
 const DEFAULT_MAX_OBJECTS = 16_384;
 const DEFAULT_MAX_LIGHTS = 512;
@@ -659,6 +663,7 @@ interface PhysicalBucket {
     tangent1Revision: number;
     indexRevision: number;
     depthPass: GPUDrivenRenderPass;
+    shadowPass: GPUDrivenRenderPass;
     colorPass: GPUDrivenRenderPass;
     colorShadowed: boolean;
     materialAttributesPass: GPUDrivenRenderPass | null;
@@ -706,6 +711,8 @@ interface GPUSceneObjectRecord {
     committedFrustumTest: boolean;
     pendingReceiveShadows: boolean;
     committedReceiveShadows: boolean;
+    pendingCastShadows: boolean;
+    committedCastShadows: boolean;
     pendingBoundsRevision: number;
     committedBoundsRevision: number;
     pendingOcclusionStable: boolean;
@@ -1691,6 +1698,58 @@ function gpuSceneCullBindings(hiZLevelCount: number): readonly ComputeShaderBind
 }
 
 const GPU_SCENE_CULL_PASS = computePass(gpuSceneCullShader(0));
+
+const GPU_SHADOW_CULL_PASS = computePass(
+    new ComputeShader({
+        label: 'GPU Scene shadow caster frustum culling',
+        source: `${FRAME_WGSL}
+@group(0) @binding(0) var<storage, read> frameData: FrameData;
+@group(0) @binding(1) var<storage, read> objects: array<ObjectRecord>;
+@group(0) @binding(2) var<storage, read> buckets: array<BucketRecord>;
+@group(0) @binding(3) var<storage, read_write> selectedPhysicalBuckets: array<u32>;
+@group(0) @binding(4) var<storage, read_write> indirectArguments: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read_write> cullStats: array<atomic<u32>>;
+@compute @workgroup_size(${String(CULL_WORKGROUP_SIZE)})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= frameData.counts.x || id.x >= frameData.budgets.x) { return; }
+    selectedPhysicalBuckets[id.x] = 0xffffffffu;
+    let object = objects[id.x];
+    let flags = object.metadata.z;
+    if (
+        (flags & ${String(OBJECT_ACTIVE_FLAG | OBJECT_CAST_SHADOW_FLAG)}u) !=
+        ${String(OBJECT_ACTIVE_FLAG | OBJECT_CAST_SHADOW_FLAG)}u ||
+        (object.metadata.y & frameData.budgets.w) == 0u
+    ) { return; }
+    let model = objectModel(object);
+    let localCenter = vec4<f32>(object.bounds.xyz, 1.0);
+    let center = (model * localCenter).xyz;
+    let radius = object.bounds.w * maximumScale(model);
+    let clip = frameData.currentViewProjection * vec4<f32>(center, 1.0);
+    let rowX = vec3<f32>(
+        frameData.currentViewProjection[0].x,
+        frameData.currentViewProjection[1].x,
+        frameData.currentViewProjection[2].x
+    );
+    let rowY = vec3<f32>(
+        frameData.currentViewProjection[0].y,
+        frameData.currentViewProjection[1].y,
+        frameData.currentViewProjection[2].y
+    );
+    let radiusX = radius * length(rowX);
+    let radiusY = radius * length(rowY);
+    if ((flags & ${String(OBJECT_FRUSTUM_CULLING_FLAG)}u) != 0u) {
+        if (clip.x + radiusX < -clip.w || clip.x - radiusX > clip.w) { return; }
+        if (clip.y + radiusY < -clip.w || clip.y - radiusY > clip.w) { return; }
+    }
+    let bucket = buckets[object.metadata.x].indices0.x;
+    _ = atomicAdd(&indirectArguments[bucket * 5u + 1u], 1u);
+    selectedPhysicalBuckets[id.x] = bucket;
+    _ = atomicAdd(&cullStats[0], 1u);
+}`,
+        workgroupSize: [CULL_WORKGROUP_SIZE],
+        bindings: gpuSceneCullBindings(0)
+    })
+);
 
 const GPU_SCENE_BUCKET_PREFIX_PASS = computePass(
     new ComputeShader({
@@ -3743,6 +3802,21 @@ class MutableComputeParameters implements ComputeRenderPassParameters {
         const binding = this.buffers[index];
         if (binding === undefined) throw new RangeError('Compute buffer slot is unavailable');
         binding.buffer = buffer;
+        delete binding.byteOffset;
+        delete binding.byteLength;
+    }
+
+    setBufferRange(
+        index: number,
+        buffer: RenderGraphBufferHandle,
+        byteOffset: number,
+        byteLength: number
+    ): void {
+        const binding = this.buffers[index];
+        if (binding === undefined) throw new RangeError('Compute buffer slot is unavailable');
+        binding.buffer = buffer;
+        binding.byteOffset = byteOffset;
+        binding.byteLength = byteLength;
     }
 
     setTexture(index: number, texture: RenderGraphTextureAccessHandle): void {
@@ -3802,6 +3876,8 @@ class MutableGPUDrivenParameters implements GPUDrivenRenderPassParameters {
         const binding = this.buffers[index];
         if (binding === undefined) throw new RangeError('GPU-driven buffer slot is unavailable');
         binding.buffer = buffer;
+        delete binding.byteOffset;
+        delete binding.byteLength;
     }
 
     setBufferRange(
@@ -3837,6 +3913,8 @@ class MutableGPUDrivenBatchParameters implements GPUDrivenRenderBatchPassParamet
     readonly parameters: GPUDrivenRenderPassParameters[] = [];
     readonly colorAttachments: RenderPipelineColorAttachment[] = [];
     depthStencilAttachment?: RenderPipelineDepthStencilAttachment;
+    viewport?: readonly [number, number, number, number];
+    scissor?: readonly [number, number, number, number];
 
     add(pass: GPUDrivenRenderPass, parameters: GPUDrivenRenderPassParameters): void {
         this.passes.push(pass);
@@ -3848,6 +3926,8 @@ class MutableGPUDrivenBatchParameters implements GPUDrivenRenderBatchPassParamet
         this.parameters.length = 0;
         this.colorAttachments.length = 0;
         delete this.depthStencilAttachment;
+        delete this.viewport;
+        delete this.scissor;
     }
 }
 
@@ -4139,6 +4219,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly usesRenderGraphTimeline: boolean;
     readonly #options: Readonly<NormalizedOptions>;
     readonly #frameData: StorageBuffer;
+    readonly #shadowFrameData: StorageBuffer;
     readonly #objects: StorageBuffer;
     readonly #bucketData: StorageBuffer;
     readonly #materialDatabase: SharedMaterialRecordDatabase<PBRMaterial>;
@@ -4163,6 +4244,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #logicalBucketByGeometry = new Map<Geometry, Map<PBRMaterial, number>>();
     readonly #logicalGPUCompatible: Uint8Array;
     readonly #gpuManagedMeshes: Mesh[] = [];
+    readonly #gpuShadowMeshes: Mesh[] = [];
     readonly #fallbackOpaqueMeshes: Mesh[] = [];
     readonly #clusteredOpaqueMeshes: Mesh[] = [];
     readonly #fallbackOpaqueExcludedMeshes: Mesh[] = [];
@@ -4193,6 +4275,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #frameBytes = new ArrayBuffer(FRAME_RECORD_BYTES);
     readonly #frameFloats = new Float32Array(this.#frameBytes);
     readonly #frameUInts = new Uint32Array(this.#frameBytes);
+    readonly #shadowFrameBytes = new ArrayBuffer(
+        MAX_SHADOW_ATLAS_SLICES * SHADOW_FRAME_STRIDE_BYTES
+    );
+    readonly #shadowFrameFloats = new Float32Array(this.#shadowFrameBytes);
+    readonly #shadowFrameUInts = new Uint32Array(this.#shadowFrameBytes);
     readonly #lightFloats: Float32Array;
     readonly #lightUInts: Uint32Array;
     readonly #localLightFloats: Float32Array;
@@ -4311,12 +4398,22 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #depthDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(4, 1)
     );
+    readonly #shadowDrawPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenParameters(5, 1)
+    );
     readonly #depthBatchPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenBatchParameters(),
         parameters => {
             parameters.reset();
         }
     );
+    readonly #shadowBatchPool = new RenderPassParameterPool(
+        () => new MutableGPUDrivenBatchParameters(),
+        parameters => {
+            parameters.reset();
+        }
+    );
+    readonly #shadowPageScissors: [number, number, number, number][] = [];
     readonly #colorDrawPool = new RenderPassParameterPool(
         () => new MutableGPUDrivenParameters(8, 2)
     );
@@ -4356,6 +4453,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     );
     readonly #displayPass: FullscreenRenderPass;
     readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
+    readonly #shadowBatchPass = new GPUDrivenRenderBatchPass('GPU Scene shadow caster buckets');
     readonly #colorBatchPass = new GPUDrivenRenderBatchPass('Clustered PBR buckets');
     readonly #materialAttributesBatchPass = new GPUDrivenRenderBatchPass(
         'GPU Scene GTAO material attributes'
@@ -4561,6 +4659,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameData = create({
             label: 'Clustered Forward+ frame database',
             byteLength: FRAME_RECORD_BYTES,
+            usage: ['storage', 'copy-destination'],
+            recovery: 'cpu-shadow'
+        });
+        this.#shadowFrameData = create({
+            label: 'GPU Scene shadow slice frame database',
+            byteLength: this.#shadowFrameBytes.byteLength,
             usage: ['storage', 'copy-destination'],
             recovery: 'cpu-shadow'
         });
@@ -4792,11 +4896,18 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const renderHeight = Math.max(1, Math.floor(context.output.height * sceneScale));
         this.refreshGPUCompatibility();
         this.collectScene(context);
+        this.#materialDatabase.stage(context);
+        this.syncGeometryDatabases(context);
         let fallbackCulling: CullingResultsHandle | null = null;
         let shadowResources: Readonly<RenderPipelineShadowResources> | null = null;
         if (this.#fallbackObjectCount !== 0 || this.#hasShadowLights) {
             fallbackCulling = context.cull();
-            shadowResources = context.recordShadows(fallbackCulling);
+            shadowResources = context.recordShadows(fallbackCulling, {
+                excludeMeshes: this.#gpuShadowMeshes
+            });
+            if (shadowResources !== null && this.#gpuShadowMeshes.length !== 0) {
+                this.recordGPUShadows(context, shadowResources);
+            }
         }
         this.packLights(context, shadowResources);
         this.packShadowFrame(shadowResources);
@@ -4809,8 +4920,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 this.#clusteredTransparentObjectCount
         );
         this.refreshShadowCompatibility(shadowResources !== null);
-        this.#materialDatabase.stage(context);
-        this.syncGeometryDatabases(context);
         const frame = this.packFrame(context, renderWidth, renderHeight);
         context.writeStorageBuffer(this.#frameData, 0, new Uint8Array(this.#frameBytes));
 
@@ -5336,6 +5445,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 record.committedWorldVersion = record.pendingWorldVersion;
                 record.committedFrustumTest = record.pendingFrustumTest;
                 record.committedReceiveShadows = record.pendingReceiveShadows;
+                record.committedCastShadows = record.pendingCastShadows;
                 record.committedBoundsRevision = record.pendingBoundsRevision;
                 record.committedOcclusionStable = record.pendingOcclusionStable;
                 record.committedMotionChanged = record.pendingMotionChanged;
@@ -5451,6 +5561,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#pendingRejectedMaterialVariants.clear();
         const buffers: StorageBuffer[] = [
             this.#frameData,
+            this.#shadowFrameData,
             this.#objects,
             this.#bucketData,
             this.#lights,
@@ -5667,6 +5778,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         validated.indexFormat,
                         variant
                     ),
+                    shadowPass: this.createShadowPass(
+                        logical,
+                        physicalIndex,
+                        validated.indexFormat,
+                        variant
+                    ),
                     colorPass: this.createColorPass(
                         logical,
                         physicalIndex,
@@ -5698,6 +5815,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return new GPUDrivenRenderPass({
             name: `GPU Scene depth bucket ${String(physicalIndex)}`,
             shader: gpuSceneMaskedDepthShader(variant, this.#options.temporalAA !== null),
+            pipelineState: requireBucketPassState(logical.material, 'depth-only'),
+            vertexLayouts: gpuSceneDepthVertexLayouts(variant),
+            indexFormat
+        });
+    }
+
+    private createShadowPass(
+        logical: Readonly<NormalizedBucket>,
+        physicalIndex: number,
+        indexFormat: 'uint16' | 'uint32',
+        variant: Readonly<PBRMaterialVariant>
+    ): GPUDrivenRenderPass {
+        return new GPUDrivenRenderPass({
+            name: `GPU Scene shadow bucket ${String(physicalIndex)}`,
+            shader: gpuSceneMaskedDepthShader(variant, false),
             pipelineState: requireBucketPassState(logical.material, 'depth-only'),
             vertexLayouts: gpuSceneDepthVertexLayouts(variant),
             indexFormat
@@ -5807,6 +5939,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 bucket.indexFormat,
                 variant
             );
+            bucket.shadowPass = this.createShadowPass(
+                logical,
+                bucket.physicalIndex,
+                bucket.indexFormat,
+                variant
+            );
             bucket.colorPass = this.createColorPass(
                 logical,
                 bucket.physicalIndex,
@@ -5856,6 +5994,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const cameraVisibility = context.camera.visibility >>> 0;
         const ambient = this.#frameFloats;
         this.#gpuManagedMeshes.length = 0;
+        this.#gpuShadowMeshes.length = 0;
         this.#fallbackOpaqueMeshes.length = 0;
         this.#clusteredOpaqueMeshes.length = 0;
         this.#fallbackOpaqueExcludedMeshes.length = 0;
@@ -5912,6 +6051,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                                 committedFrustumTest: node.frustumTest,
                                 pendingReceiveShadows: node.receiveShadows,
                                 committedReceiveShadows: node.receiveShadows,
+                                pendingCastShadows: node.castShadows,
+                                committedCastShadows: node.castShadows,
                                 pendingBoundsRevision: -1,
                                 committedBoundsRevision: -1,
                                 pendingOcclusionStable: false,
@@ -5937,6 +6078,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                         }
                     } else {
                         this.#gpuManagedMeshes.push(node);
+                        if (node.castShadows) this.#gpuShadowMeshes.push(node);
                         record.seenFrame = this.#frameSerial;
                         const bounds = this.#logicalBounds[logicalIndex];
                         if (bounds === undefined) {
@@ -5960,6 +6102,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                             record.committedWorldVersion !== node.worldMatrixVersion ||
                             record.committedFrustumTest !== node.frustumTest ||
                             record.committedReceiveShadows !== node.receiveShadows ||
+                            record.committedCastShadows !== node.castShadows ||
                             !boundsStable ||
                             record.committedOcclusionStable !== occlusionStable ||
                             record.committedMotionChanged !== motionChanged ||
@@ -6352,7 +6495,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             (occlusionStable ? OBJECT_HIZ_STABLE_FLAG : 0) |
             (motionHistoryValid ? OBJECT_MOTION_HISTORY_FLAG : 0) |
             (motionChanged ? OBJECT_MOTION_CHANGED_FLAG : 0) |
-            (mesh.receiveShadows ? OBJECT_RECEIVE_SHADOW_FLAG : 0);
+            (mesh.receiveShadows ? OBJECT_RECEIVE_SHADOW_FLAG : 0) |
+            (mesh.castShadows ? OBJECT_CAST_SHADOW_FLAG : 0);
         this.#objectUInts[floatOffset + 51] = this.#materialDatabase.getHandle(
             bucket.material
         ).recordIndex;
@@ -6360,6 +6504,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         record.pendingWorldVersion = mesh.worldMatrixVersion;
         record.pendingFrustumTest = mesh.frustumTest;
         record.pendingReceiveShadows = mesh.receiveShadows;
+        record.pendingCastShadows = mesh.castShadows;
         record.pendingBoundsRevision = sphere.revision;
         record.pendingOcclusionStable = occlusionStable;
         record.pendingMotionHistoryValid = motionHistoryValid;
@@ -6768,6 +6913,167 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             previous: Object.freeze(previous),
             current: Object.freeze(current)
         });
+    }
+
+    /**
+     * Cull registered rigid shadow casters per dirty atlas slice and append fixed-bucket indirect
+     * draws after the shared fallback/clear pass. The visible count remains GPU-only.
+     */
+    private recordGPUShadows(
+        context: RenderPipelineContext,
+        shadows: Readonly<RenderPipelineShadowResources>
+    ): void {
+        let highestSlice = 0;
+        let pageWorkIndex = 0;
+        for (const region of shadows.pageRegions) {
+            const slice = shadows.slices[region.slicePhysicalIndex];
+            if (slice === undefined) throw new Error('GPU shadow page references a missing slice');
+            highestSlice = Math.max(highestSlice, slice.physicalIndex + 1);
+            this.packShadowSliceFrame(slice, context.camera.visibility >>> 0);
+        }
+        if (highestSlice === 0) return;
+        context.writeStorageBuffer(
+            this.#shadowFrameData,
+            0,
+            new Uint8Array(this.#shadowFrameBytes, 0, highestSlice * SHADOW_FRAME_STRIDE_BYTES)
+        );
+
+        const shadowFrames = context.graph.importStorageBuffer(this.#shadowFrameData);
+        const objects = context.graph.importStorageBuffer(this.#objects);
+        const bucketData = context.graph.importStorageBuffer(this.#bucketData);
+        const materials = context.graph.importStorageBuffer(this.#materialDatabase.buffer);
+        const visible = context.graph.importStorageBuffer(this.#visibleIndices);
+        const selected = context.graph.importStorageBuffer(this.#selectedPhysicalBuckets);
+        const cursors = context.graph.importStorageBuffer(this.#visibleBucketCursors);
+        const offsets = context.graph.importStorageBuffer(this.#visibleBucketOffsets);
+        const indirect = context.graph.importStorageBuffer(this.#indirectArguments);
+        const stats = context.graph.importStorageBuffer(this.#cullStats);
+
+        for (const region of shadows.pageRegions) {
+            const slice = shadows.slices[region.slicePhysicalIndex];
+            if (slice === undefined) throw new Error('GPU shadow page references a missing slice');
+            const frameOffset = slice.physicalIndex * SHADOW_FRAME_STRIDE_BYTES;
+            const clear = context.acquirePassParameters(this.#clearPool);
+            clear.add(stats, 0, STATS_BYTES);
+            for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
+                clear.add(indirect, index * INDIRECT_ARGUMENT_BYTES + 4, 4);
+            }
+            context.graph.addPass(this.#clearPass, clear);
+
+            const cull = context.acquirePassParameters(this.#cullPool);
+            cull.setBufferRange(0, shadowFrames, frameOffset, SHADOW_FRAME_BINDING_BYTES);
+            cull.setBuffer(1, objects);
+            cull.setBuffer(2, bucketData);
+            cull.setBuffer(3, selected);
+            cull.setBuffer(4, indirect);
+            cull.setBuffer(5, stats);
+            cull.setDispatch(
+                Math.max(1, Math.ceil(this.#activeObjectHighWater / CULL_WORKGROUP_SIZE))
+            );
+            context.graph.addPass(GPU_SHADOW_CULL_PASS, cull);
+
+            const prefix = context.acquirePassParameters(this.#bucketPrefixPool);
+            prefix.setBufferRange(0, shadowFrames, frameOffset, SHADOW_FRAME_BINDING_BYTES);
+            prefix.setBuffer(1, indirect);
+            prefix.setBuffer(2, cursors);
+            prefix.setBuffer(3, offsets);
+            prefix.setDispatch(1);
+            context.graph.addPass(GPU_SCENE_BUCKET_PREFIX_PASS, prefix);
+
+            const compact = context.acquirePassParameters(this.#visibleCompactPool);
+            compact.setBufferRange(0, shadowFrames, frameOffset, SHADOW_FRAME_BINDING_BYTES);
+            compact.setBuffer(1, selected);
+            compact.setBuffer(2, cursors);
+            compact.setBuffer(3, offsets);
+            compact.setBuffer(4, visible);
+            compact.setDispatch(
+                Math.max(1, Math.ceil(this.#activeObjectHighWater / CULL_WORKGROUP_SIZE))
+            );
+            context.graph.addPass(GPU_SCENE_VISIBLE_COMPACT_PASS, compact);
+
+            const depthAttachment: RenderPipelineDepthStencilAttachment = {
+                texture: shadows.atlas,
+                depthLoadOp: 'load',
+                depthStoreOp: 'store',
+                depthClearValue: depthClearValue(shadows.depthMode)
+            };
+            const batch = context.acquirePassParameters(this.#shadowBatchPool);
+            batch.depthStencilAttachment = depthAttachment;
+            batch.viewport = slice.viewport;
+            let scissor = this.#shadowPageScissors[pageWorkIndex];
+            if (scissor === undefined) {
+                scissor = [0, 0, 0, 0];
+                this.#shadowPageScissors[pageWorkIndex] = scissor;
+            }
+            scissor[0] = region.x;
+            scissor[1] = region.y;
+            scissor[2] = region.width;
+            scissor[3] = region.height;
+            batch.scissor = scissor;
+            pageWorkIndex++;
+            for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
+                const bucket = this.#physicalBuckets[index];
+                if (bucket === undefined) continue;
+                const variant = bucket.materialVariant;
+                const coverage = coverageTextures(variant);
+                const parameters = context.acquirePassParameters(this.#shadowDrawPool);
+                parameters.configure(bucket.shadowPass.vertexLayouts.length, coverage.length);
+                parameters.configureStorageBufferCount(variant.coverageMode === 'mask' ? 5 : 4);
+                parameters.setBufferRange(0, shadowFrames, frameOffset, SHADOW_FRAME_BINDING_BYTES);
+                parameters.setBuffer(1, objects);
+                parameters.setBuffer(2, visible);
+                parameters.setBufferRange(3, offsets, index * BUCKET_OFFSET_STRIDE_BYTES, 4);
+                if (variant.coverageMode === 'mask') parameters.setBuffer(4, materials);
+                parameters.setVertexBuffer(0, context.graph.importStorageBuffer(bucket.position));
+                let vertexSlot = 1;
+                if (coverage.some(binding => binding.uv === 0)) {
+                    if (bucket.uv0 === null) throw new Error('GPU shadow UV0 is unavailable');
+                    parameters.setVertexBuffer(
+                        vertexSlot++,
+                        context.graph.importStorageBuffer(bucket.uv0)
+                    );
+                }
+                if (coverage.some(binding => binding.uv === 1)) {
+                    if (bucket.uv1 === null) throw new Error('GPU shadow UV1 is unavailable');
+                    parameters.setVertexBuffer(
+                        vertexSlot,
+                        context.graph.importStorageBuffer(bucket.uv1)
+                    );
+                }
+                for (let textureIndex = 0; textureIndex < coverage.length; textureIndex += 1) {
+                    const texture = coverage[textureIndex]?.texture;
+                    if (texture === undefined) continue;
+                    parameters.setTexture(textureIndex, context.graph.importTexture(texture));
+                    parameters.samplers[textureIndex] = this.samplerFor(texture);
+                }
+                parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
+                parameters.draw.buffer = indirect;
+                parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
+                parameters.colorAttachments.length = 0;
+                parameters.depthStencilAttachment = depthAttachment;
+                batch.add(bucket.shadowPass, parameters);
+            }
+            context.graph.addPass(this.#shadowBatchPass, batch);
+        }
+    }
+
+    private packShadowSliceFrame(
+        slice: RenderPipelineShadowResources['slices'][number],
+        visibilityMask: number
+    ): void {
+        const wordOffset = slice.physicalIndex * SHADOW_FRAME_WORDS;
+        this.#shadowFrameFloats.set(slice.viewProjectionMatrix, wordOffset);
+        this.#shadowFrameFloats.set(slice.viewProjectionMatrix, wordOffset + 16);
+        this.#shadowFrameFloats[wordOffset + 96] = slice.viewport[0];
+        this.#shadowFrameFloats[wordOffset + 97] = slice.viewport[1];
+        this.#shadowFrameFloats[wordOffset + 98] = slice.viewport[2];
+        this.#shadowFrameFloats[wordOffset + 99] = slice.viewport[3];
+        this.#shadowFrameFloats[wordOffset + 100] = slice.near;
+        this.#shadowFrameFloats[wordOffset + 101] = slice.far;
+        this.#shadowFrameUInts[wordOffset + 112] = this.#activeObjectHighWater;
+        this.#shadowFrameUInts[wordOffset + 113] = this.#physicalBuckets.length;
+        this.#shadowFrameUInts[wordOffset + 116] = this.#visibleBucketCapacity;
+        this.#shadowFrameUInts[wordOffset + 119] = visibilityMask;
     }
 
     private recordDepthPrepass(

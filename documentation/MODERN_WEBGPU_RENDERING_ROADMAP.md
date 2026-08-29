@@ -30,9 +30,10 @@ Draw、HDR/PBR、设备丢失恢复、严格帧事务、TAA/TAAU、GTAO、SSR、
    reactive mask 已落地；透明、transmission 与 GPU particle 已有隔离的 reactive/depth/history
    resurrection 策略。
 5. **阴影缓存与虚拟页**：共享 Shadow Atlas、CSM、Spot/Point shadow、Clustered surface
-   sampling，以及 submission-aware stable-slice 内容缓存、局部 scissored
-   clear 和刚体 caster/light 精确失效已完成；GPU caster cull、receiver-driven budget 与 virtual
-   shadow page residency 仍未完成。
+   sampling、submission-aware stable-slice 内容缓存、GPU Scene caster cull、receiver-driven
+   resolution/update budget、CSM cadence，以及固定 atlas 内的 submission-aware page
+   residency 已完成；GPU receiver/depth request、任意 physical-page remap/page table 与 directional
+   clipmap 仍未完成。
 6. **现代资源与几何虚拟化**：GPU Scene 已有 projected-radius bucket LOD，但仍没有 meshlet/cluster
    geometry streaming、KTX 2/Basis、mip
    residency、虚拟纹理或虚拟阴影页系统；SSGI 已覆盖屏幕内漫反射传输，off-screen probe/software-BVH
@@ -113,21 +114,21 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 
 ## 2. 当前渲染能力基线
 
-| 领域                                 | 当前状态          | 证据与边界                                                                                                                                                                       |
-| ------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared Renderer / Render Graph / RHI | 生产可用          | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                                                                                        |
-| Raster PBR / HDR                     | 生产可用          | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径                                                                             |
-| Shadow                               | 生产缓存首版      | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow、PCF 与 stable-slice 内容缓存；Clustered opaque surface 复用同一 atlas，仍缺 GPU caster cull、receiver-driven 分配和虚拟页      |
-| Compute / Storage / Indirect         | 底座生产可用      | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环                                                                        |
-| Material architecture                | high-end P0 完成  | Definition/Instance、语义 Pass、共享 PBR GPU record，以及 variant manifest、异步 warmup、预算和诊断已落地；更多 family 按需扩展                                                  |
-| GPU-driven ordinary scene            | high-end P0 完成  | opaque/alpha-mask 走固定 bucket indirect；skin/morph/layered PBR 走 GPU Scene direct storage lane；兼容透明保留全局排序并消费 clustered light list                               |
-| Forward+                             | high-end P0 完成  | 3D cluster、有界预算、storage GGX PBR、共享 shadow/LTC、透明/变形/layered consumer、analytic cookie/IES 与 uint32 light-layer ABI 已闭环                                         |
-| Temporal rendering                   | high-end P0 完成  | opaque TAAU、GPU-time dynamic resolution、authored reactive，以及透明/transmission/GPU-particle 独立 short history 与 resurrection 已完成                                        |
-| Exposure / display transform         | WebGPU 生产切片   | 独立 Forward `AutoExposure` 与 Clustered 集成都具备 GPU histogram、asymmetric eye adaptation、submission-aware history；`ColorUber` 有参数化 filmic，Clustered 有 compact filmic |
-| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；透明/离屏几何不参与 trace，probe/BVH fallback 待 GI0                                                  |
-| Volumetrics / atmosphere             | high-end 生产切片 | WebGPU Clustered froxel、height/local fog、screen-space caster visibility、physical atmosphere LUT、aerial perspective、temporal clouds，以及 surface/froxel cloud shadow 已落地 |
-| Geometry / texture streaming         | 仅 bucket LOD     | GPU Scene 已有 projected-radius geometry bucket LOD；没有 meshlet/cluster streaming、KTX 2/Basis 或 mip residency，KTX loader 仅支持 KTX 1.1 单面 2D 容器                        |
-| GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 且无内部 timing consumer 时不创建 query                                                 |
+| 领域                                 | 当前状态          | 证据与边界                                                                                                                                                                                                    |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared Renderer / Render Graph / RHI | 生产可用          | 单一共享前端、显式 graph、双后端、submission-aware 生命周期和恢复已经完成                                                                                                                                     |
+| Raster PBR / HDR                     | 生产可用          | layered glTF PBR、IBL、LTC area light、transmission、`rgba16float`、Bloom、Color Uber 已接入共享路径                                                                                                          |
+| Shadow                               | 生产缓存与固定页  | 统一 atlas、方向光 1–4 级 CSM、Spot/Point shadow、PCF、stable-slice cache、Clustered GPU caster cull、receiver/budget/cadence 与固定物理页 residency；仍缺 GPU page request、任意 page-table remap 和 clipmap |
+| Compute / Storage / Indirect         | 底座生产可用      | Direct WGSL compute、storage buffer/texture、indirect dispatch/draw、readback、恢复和 graph hazard 已闭环                                                                                                     |
+| Material architecture                | high-end P0 完成  | Definition/Instance、语义 Pass、共享 PBR GPU record，以及 variant manifest、异步 warmup、预算和诊断已落地；更多 family 按需扩展                                                                               |
+| GPU-driven ordinary scene            | high-end P0 完成  | opaque/alpha-mask 走固定 bucket indirect；skin/morph/layered PBR 走 GPU Scene direct storage lane；兼容透明保留全局排序并消费 clustered light list                                                            |
+| Forward+                             | high-end P0 完成  | 3D cluster、有界预算、storage GGX PBR、共享 shadow/LTC、透明/变形/layered consumer、analytic cookie/IES 与 uint32 light-layer ABI 已闭环                                                                      |
+| Temporal rendering                   | high-end P0 完成  | opaque TAAU、GPU-time dynamic resolution、authored reactive，以及透明/transmission/GPU-particle 独立 short history 与 resurrection 已完成                                                                     |
+| Exposure / display transform         | WebGPU 生产切片   | 独立 Forward `AutoExposure` 与 Clustered 集成都具备 GPU histogram、asymmetric eye adaptation、submission-aware history；`ColorUber` 有参数化 filmic，Clustered 有 compact filmic                              |
+| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；透明/离屏几何不参与 trace，probe/BVH fallback 待 GI0                                                                               |
+| Volumetrics / atmosphere             | high-end 生产切片 | WebGPU Clustered froxel、height/local fog、screen-space caster visibility、physical atmosphere LUT、aerial perspective、temporal clouds，以及 surface/froxel cloud shadow 已落地                              |
+| Geometry / texture streaming         | 仅 bucket LOD     | GPU Scene 已有 projected-radius geometry bucket LOD；没有 meshlet/cluster streaming、KTX 2/Basis 或 mip residency，KTX loader 仅支持 KTX 1.1 单面 2D 容器                                                     |
+| GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 且无内部 timing consumer 时不创建 query                                                                              |
 
 ### 2.1 现有实现中最关键的限制
 
@@ -161,9 +162,11 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
   texture 仍只支持屏幕空间 transmission，不是离屏折射场景表示。
 - RHI 已有 timestamp QuerySet、pass timestamp、debug group/marker 和 Render Graph
   timeline；occlusion query 仍不在当前合同内。
-- 当前 Shadow Atlas 已有跨帧 stable-slice 内容缓存，但仍不是 virtual-page residency：GPU caster
-  cull、receiver-driven budget 和 page table 尚未落地；体积光也只使用 bounded screen-space caster
-  visibility 与 cloud shadow，尚未采样 shared shadow atlas。
+- 当前 Shadow Atlas 已有跨帧 stable-slice cache、Clustered GPU caster cull、receiver-driven
+  budget/cadence 和固定物理页 residency；但仍不是完整 Virtual Shadow Maps，因为 GPU receiver/depth
+  request、任意 physical-page remap/page table 与 directional
+  clipmap 尚未落地。体积光也只使用 bounded screen-space caster visibility 与 cloud
+  shadow，尚未采样 shared shadow atlas。
 - KTX loader 明确只解析 KTX 1.1、单 face 2D；没有 KTX 2、Basis Universal transcode、mip
   residency 或带宽预算。
 - 110k object / 256 light fixture 已验证 GPU-only 规模正确性、CPU record/GPU
@@ -219,22 +222,22 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 
 ## 5. 缺口优先级矩阵
 
-| ID   | 能力                                                                     | 优先级 | 当前状态                                         | 工作量 | 前置依赖                                      |
-| ---- | ------------------------------------------------------------------------ | ------ | ------------------------------------------------ | ------ | --------------------------------------------- |
-| F0   | Graph texture subresource view、persistent texture/history               | P0     | 已完成                                           | L      | 当前 Graph/RHI                                |
-| F1   | `f16`、subgroup、timestamp/query、debug marker 的 capability 与 RHI 闭环 | P0     | 已完成                                           | M      | WebGPU compiler/RHI                           |
-| D0   | Reversed-Z、camera-relative rendering、current/previous frame ABI        | P0     | 已完成                                           | L      | Camera/shader ABI                             |
-| MAT0 | Material Definition/Instance、语义 Pass、稳定 variant、共享 material ABI | P0     | high-end P0 完成；更多 family 后续               | XL     | 当前 Renderer/SRP 与 G0/L0 材质垂直切片       |
-| G0   | GPU Scene、dirty upload、GPU frustum/Hi-Z culling、LOD/compact           | P0     | high-end P0 完成                                 | XL     | F0、D0；材质/变形扩展使用 MAT0                |
-| L0   | 生产级 Clustered Forward+ + 内置 PBR storage lighting                    | P0     | high-end P0 完成                                 | XL     | F0、F1、G0；完整材质接入使用 MAT0             |
-| T0   | Motion Vector、history、TAA/TAAU、dynamic resolution                     | P0     | high-end P0 完成                                 | XL     | F0、D0、MAT0                                  |
-| E0   | Auto exposure、exposure history、参数化 filmic display transform         | P1     | 已完成                                           | M      | F0、compute/storage；可独立于 T0 使用         |
-| Q0   | Material attribute buffer、GTAO、Hi-Z SSR、temporal SSGI                 | P1     | 已完成；off-screen fallback 属于 GI0             | XL     | MAT0、F0；Clustered 集成用 T0，SSR 用 G0 Hi-Z |
-| S0   | Shadow cache/invalidation、GPU caster cull、virtual shadow pages         | P1→P2  | stable-atlas 缓存首版完成；GPU cull/虚拟页未开始 | XL     | MAT0、G0、F0、F1                              |
-| V0   | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 生产切片完成；atlas shadow/透明体积后续          | XL     | L0、F0；T0 可稳定最终边缘但非创建前置         |
-| A0   | KTX 2/Basis、mip residency、texture/geometry streaming budget            | P1     | 未开始                                           | XL     | F0、diagnostics                               |
-| M0   | Offline meshlet build、cluster LOD、GPU material bin、geometry streaming | P2     | 未开始；已有 bucket-level LOD 可复用             | XXL    | MAT0、G0、A0                                  |
-| GI0  | Screen/probe/software-BVH hybrid GI                                      | P2     | 屏幕内 SSGI 已完成；off-screen 层未开始          | XXL    | T0、Q0、G0、A0                                |
+| ID   | 能力                                                                     | 优先级 | 当前状态                                                | 工作量 | 前置依赖                                      |
+| ---- | ------------------------------------------------------------------------ | ------ | ------------------------------------------------------- | ------ | --------------------------------------------- |
+| F0   | Graph texture subresource view、persistent texture/history               | P0     | 已完成                                                  | L      | 当前 Graph/RHI                                |
+| F1   | `f16`、subgroup、timestamp/query、debug marker 的 capability 与 RHI 闭环 | P0     | 已完成                                                  | M      | WebGPU compiler/RHI                           |
+| D0   | Reversed-Z、camera-relative rendering、current/previous frame ABI        | P0     | 已完成                                                  | L      | Camera/shader ABI                             |
+| MAT0 | Material Definition/Instance、语义 Pass、稳定 variant、共享 material ABI | P0     | high-end P0 完成；更多 family 后续                      | XL     | 当前 Renderer/SRP 与 G0/L0 材质垂直切片       |
+| G0   | GPU Scene、dirty upload、GPU frustum/Hi-Z culling、LOD/compact           | P0     | high-end P0 完成                                        | XL     | F0、D0；材质/变形扩展使用 MAT0                |
+| L0   | 生产级 Clustered Forward+ + 内置 PBR storage lighting                    | P0     | high-end P0 完成                                        | XL     | F0、F1、G0；完整材质接入使用 MAT0             |
+| T0   | Motion Vector、history、TAA/TAAU、dynamic resolution                     | P0     | high-end P0 完成                                        | XL     | F0、D0、MAT0                                  |
+| E0   | Auto exposure、exposure history、参数化 filmic display transform         | P1     | 已完成                                                  | M      | F0、compute/storage；可独立于 T0 使用         |
+| Q0   | Material attribute buffer、GTAO、Hi-Z SSR、temporal SSGI                 | P1     | 已完成；off-screen fallback 属于 GI0                    | XL     | MAT0、F0；Clustered 集成用 T0，SSR 用 G0 Hi-Z |
+| S0   | Shadow cache/invalidation、GPU caster cull、virtual shadow pages         | P1→P2  | 生产缓存与固定物理页首版完成；page-table/clipmap 未开始 | XL     | MAT0、G0、F0、F1                              |
+| V0   | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 生产切片完成；atlas shadow/透明体积后续                 | XL     | L0、F0；T0 可稳定最终边缘但非创建前置         |
+| A0   | KTX 2/Basis、mip residency、texture/geometry streaming budget            | P1     | 未开始                                                  | XL     | F0、diagnostics                               |
+| M0   | Offline meshlet build、cluster LOD、GPU material bin、geometry streaming | P2     | 未开始；已有 bucket-level LOD 可复用                    | XXL    | MAT0、G0、A0                                  |
+| GI0  | Screen/probe/software-BVH hybrid GI                                      | P2     | 屏幕内 SSGI 已完成；off-screen 层未开始                 | XXL    | T0、Q0、G0、A0                                |
 
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
@@ -245,8 +248,9 @@ Database 已完成；G0/L0、T0、E0、Q0、V0/天气均已形成可运行的生
 timeline、确定的前后帧坐标 ABI、GPU Scene object/light database、共享 PBR material
 handle/variant、3D cluster allocator 与现有时域/屏幕空间 controller。P0 的透明、变形、完整 layered
 PBR、analytic cookie/IES、light-layer、variant
-warmup 和透明/粒子时域策略已收口；尚需在登记物理 GPU 上建立不可覆盖的跨提交性能基线。S0 已完成 stable-atlas 内容缓存首版，但 GPU
-caster cull、receiver budget 与虚拟页仍未开始；A0、M0 和 GI0 的 off-screen 层也尚未开始。详见
+warmup 和透明/粒子时域策略已收口；尚需在登记物理 GPU 上建立不可覆盖的跨提交性能基线。S0 已完成 stable-atlas
+cache、GPU caster cull、receiver budget/cadence 与固定物理页 residency；任意 page-table remap、GPU
+page request 和 clipmap 仍未开始。A0、M0 和 GI0 的 off-screen 层也尚未开始。详见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ## 6. 可落地工作包
@@ -613,7 +617,7 @@ off-screen GI 补偿属于 GI0，而不是未完成的 Q0。实现与上线证�
 这里推荐 GTAO/temporal AO，而不是补传统 SSAO；推荐 hierarchical SSR/temporal
 SSGI，而不是单帧固定步长 ray march。
 
-#### S0：现代阴影（生产缓存首版已完成；GPU cull / 虚拟页未开始）
+#### S0：现代阴影（生产缓存完成；固定物理页首版完成）
 
 ![S0：阴影缓存、脏页更新与虚拟阴影 Atlas](./images/modern-webgpu-roadmap/virtual-shadow-cache.jpg)
 
@@ -628,13 +632,19 @@ SSGI，而不是单帧固定步长 ray march。
 2. **虚拟阴影层**：directional clipmap/local-light virtual page table、depth/receiver 分析产生 page
    request、physical page allocation、per-page draw list、submission 后提交 residency。
 
-当前已交付第一层中的 stable atlas content cache、static/dynamic exact invalidation、slice-local
-scissored depth clear、submission commit/rollback、recovery invalidation 和
-`RendererDiagnostics.caches.shadowAtlas`。静态 slice 不再记录 Shadow Pass；移动 local
-light 只重绘对应 face，刚体 caster 用 shadow-camera bounds 把失效限制到相交 slice。geometry
-bounds 变化、skin/morph 目前保守失效相关全部 slice。GPU caster culling、receiver-driven
-resolution/update budget 和远近级更新频率仍是第一层剩余工作，不能由当前 CPU-side exact
-invalidation 冒充。
+第一层现已交付 stable atlas content cache、static/dynamic exact invalidation、slice-local scissored
+depth clear、submission commit/rollback、recovery invalidation、Clustered GPU Scene caster
+cull/indirect depth draw、receiver-driven resolution、确定性 update budget 和 1/2/4/8 CSM
+cadence。静态 slice 不再记录 Shadow Pass；移动 local light 只重绘对应 face，rigid GPU
+caster 不回读 visible count，不满足 GPU Scene 合同的 caster 保留共享 CPU fallback。geometry
+bounds 变化、skin/morph 仍保守失效相关全部 slice。
+
+第二层已交付固定 atlas 内的 128 像素页 residency 首版：dirty slice
+revision 分页请求，旧页在预算不足时继续有效，page-scissored
+clear/draw 与 residency 只在 submission 后提交，rollback 会确定重试；`RendererDiagnostics.frame.shadow*`
+暴露 request/update/defer/resident/overflow。这不是最终 virtual page table：页目前固定映射到 stable
+atlas，尚无 GPU receiver/depth request、任意 physical-page allocation/remap、directional
+clipmap，GPU caster cull 也仍以 slice frustum 保守生成每页 draw list。
 
 这里的 virtual shadow
 page 不等同于 SVT/RVT。SVT 是从磁盘按 tile 流送纹理，RVT 是运行时生成并缓存材质或地形 shading 数据；两者可以承载 lightmap 或 shadow
@@ -837,9 +847,10 @@ report、类型消费和 package 验证必须同版本完成。
   atmosphere/cloud/cloud-shadow 场景。**仍缺**：shared shadow-atlas volumetric
   sampling、透明介质参与和对应性能证据；
 - **Streaming 未有**：后续场景需覆盖低带宽冷启动、快速 teleport、取消、内存压力与 device loss；
-- **Shadow cache 已有首版**：单元/生产接线覆盖静态 hit、local-light face 局部失效、失败回滚、atlas
-  detach 与 recovery；**仍缺** GPU caster cull、receiver/update
-  budget、快速 camera 压力场景与 virtual page overflow。
+- **Shadow cache/固定页已有首版**：单元/生产接线覆盖静态 hit、local-light face 局部失效、GPU caster
+  cull、receiver/update budget、CSM cadence、page overflow、失败回滚、atlas
+  detach 与 recovery；**仍缺**快速 camera 物理 GPU 压力证据、GPU receiver/depth
+  request、任意 page-table remap 与 directional clipmap。
 
 不能把验收 example 的“算法跑通”当成 production baseline，也不能通过 CPU readback visible
 count 来驱动下一步 draw。功能完成必须同时回答：更少的 CPU work、更稳定的 GPU

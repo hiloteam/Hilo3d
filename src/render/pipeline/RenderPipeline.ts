@@ -25,6 +25,7 @@ import type { RenderGraphTextureHandle, ScriptableRenderGraph } from './Scriptab
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
+import type Mesh from '../../core/Mesh';
 
 /** Optional renderer capabilities exposed only after their complete SRP/RHI path is available. */
 export type RenderPipelineCapabilityName =
@@ -232,6 +233,61 @@ export interface RenderPipelineShadowResources {
     readonly pointBiases: Float32Array;
     /** Six view-space-to-shadow-clip face matrices per shadowed point light. */
     readonly pointMatrices: Float32Array;
+    /** Physical atlas slices in dense render order. Values are valid only for this invocation. */
+    readonly slices: readonly Readonly<RenderPipelineShadowSlice>[];
+    /** Page-granular atlas updates recorded this frame, in render order. */
+    readonly pageRegions: readonly Readonly<RenderPipelineShadowPageRegion>[];
+}
+
+/** One frame-scoped physical page update within a shadow slice. */
+export interface RenderPipelineShadowPageRegion {
+    /** Dense physical slice containing this page. */
+    readonly slicePhysicalIndex: number;
+    /** Zero-based horizontal virtual-page coordinate within the slice. */
+    readonly pageX: number;
+    /** Zero-based vertical virtual-page coordinate within the slice. */
+    readonly pageY: number;
+    /** Physical atlas X origin in pixels. */
+    readonly x: number;
+    /** Physical atlas Y origin in pixels. */
+    readonly y: number;
+    /** Physical page width in pixels; edge pages may be smaller than the page size. */
+    readonly width: number;
+    /** Physical page height in pixels; edge pages may be smaller than the page size. */
+    readonly height: number;
+}
+
+/** One frame-scoped shadow-atlas slice exposed for GPU-driven caster work. */
+export interface RenderPipelineShadowSlice {
+    /** Light projection represented by the slice. */
+    readonly kind: 'directional' | 'spot' | 'point';
+    /** Stable LightBlock ABI index. */
+    readonly sliceIndex: number;
+    /** Dense physical placement index within the atlas. */
+    readonly physicalIndex: number;
+    /** Point-light cube face, or null for planar shadows. */
+    readonly face: number | null;
+    /** Directional cascade index, or null for local lights. */
+    readonly cascade: number | null;
+    /** Atlas viewport as `[x, y, width, height]`. */
+    readonly viewport: RendererViewport;
+    /** World-space to shadow clip-space transform. */
+    readonly viewProjectionMatrix: Float32Array;
+    /** Shadow-camera near plane. */
+    readonly near: number;
+    /** Shadow-camera far plane. */
+    readonly far: number;
+    /** Whether the submission-aware cache scheduled this slice for update. */
+    readonly dirty: boolean;
+}
+
+/** Optional hybrid-shadow selection used by GPU-managed pipelines. */
+export interface RenderPipelineShadowOptions {
+    /**
+     * Mesh identities omitted from CPU shadow draws while remaining part of cache invalidation.
+     * The caller must record equivalent atlas writes for every exposed `pageRegions` entry.
+     */
+    readonly excludeMeshes?: readonly Mesh[];
 }
 
 /** Frame-scoped recording context; retaining it after record() returns is an error. */
@@ -265,7 +321,8 @@ export interface RenderPipelineContext {
      * active. The returned arrays are frame-scoped and must not be retained after `record()`.
      */
     recordShadows(
-        cullingResults: CullingResultsHandle
+        cullingResults: CullingResultsHandle,
+        options?: Readonly<RenderPipelineShadowOptions>
     ): Readonly<RenderPipelineShadowResources> | null;
     /** Acquire one runtime-owned, high-water reusable parameter slot. */
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;

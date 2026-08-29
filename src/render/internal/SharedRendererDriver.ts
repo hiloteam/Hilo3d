@@ -93,10 +93,15 @@ import { RendererRecoveringError, type ResourceRegistryHandle } from '../rendere
 import { ShaderArtifactCompiler } from '../renderer/ShaderArtifactCompiler';
 import { ShadowAtlasMeshPreparer } from '../renderer/ShadowAtlasMeshPreparer';
 import { ShadowAtlasContentCache } from '../renderer/ShadowAtlasContentCache';
+import {
+    ShadowAtlasPageResidency,
+    type ShadowAtlasPageRegion
+} from '../renderer/ShadowAtlasPageResidency';
 import { ShadowAtlasRenderer } from '../renderer/ShadowAtlasRenderer';
 import { ShadowAtlasResourceCache } from '../renderer/ShadowAtlasResourceCache';
 import { ShadowAtlasSceneAdapter } from '../renderer/ShadowAtlasSceneAdapter';
 import { ShadowAtlasTextureBinding } from '../renderer/ShadowAtlasTextureBinding';
+import { ShadowAtlasUpdateScheduler } from '../renderer/ShadowAtlasUpdateScheduler';
 import { ComputePipelineResourceCache } from '../renderer/ComputePipelineResourceCache';
 import { ComputeSamplerResourceCache } from '../renderer/ComputeSamplerResourceCache';
 import { GPUDrivenPipelineResourceCache } from '../renderer/GPUDrivenPipelineResourceCache';
@@ -135,6 +140,8 @@ interface RenderingResources {
     readonly scriptableBindGroups: ScriptableBindGroupResourceCache;
     readonly shadowScene: ShadowAtlasSceneAdapter;
     readonly shadowContent: ShadowAtlasContentCache;
+    readonly shadowUpdates: ShadowAtlasUpdateScheduler;
+    readonly shadowPages: ShadowAtlasPageResidency;
     readonly shadowResources: ShadowAtlasResourceCache;
     readonly shadowRenderer: ShadowAtlasRenderer;
     readonly shadowPreparer: ShadowAtlasMeshPreparer;
@@ -147,12 +154,20 @@ interface RenderingResources {
         readonly sampleCount: 1;
     };
     readonly shadowOwner: object;
-    readonly shadowPrepareOptions: { width: number; height: number };
+    readonly shadowPrepareOptions: {
+        width: number;
+        height: number;
+        receiverDrivenResolution: boolean;
+        minimumResolution: number;
+        frameIndex: number;
+        cascadeUpdateIntervals: readonly number[];
+    };
     readonly shadowRenderOptions: {
         label: string;
         preparer: ShadowAtlasMeshPreparer;
         depthClearValue: number;
         dirtySlices: readonly boolean[] | undefined;
+        pageRegions: readonly ShadowAtlasPageRegion[] | undefined;
         sliceClearDraw: PreparedDraw | undefined;
     };
     readonly shadowViewport: {
@@ -905,6 +920,7 @@ class SharedRendererDriver
 
     recordScriptableShadows(
         meshes: readonly Mesh[],
+        cacheMeshes: readonly Mesh[],
         camera: Camera,
         viewport: Readonly<RHIViewport>,
         width: number,
@@ -913,7 +929,7 @@ class SharedRendererDriver
         const resources = this.requireResources();
         const context = this.createContext(camera, viewport);
         this.ensureMeshFrame(context);
-        return this.renderSceneShadows(resources, context, meshes, width, height);
+        return this.renderSceneShadows(resources, context, meshes, cacheMeshes, width, height);
     }
 
     recordScriptablePass(passCount: number): void {
@@ -1490,6 +1506,13 @@ class SharedRendererDriver
         const scriptableBindGroups = new ScriptableBindGroupResourceCache(processor.registry);
         const shadowScene = new ShadowAtlasSceneAdapter();
         const shadowContent = new ShadowAtlasContentCache();
+        const shadowUpdates = new ShadowAtlasUpdateScheduler({
+            maxUpdatesPerFrame: this.renderingProfile === 'high-end' ? 8 : 4
+        });
+        const shadowPages = new ShadowAtlasPageResidency({
+            pageSize: 128,
+            maxPageUpdatesPerFrame: this.renderingProfile === 'high-end' ? 32 : 16
+        });
         const shadowResources = new ShadowAtlasResourceCache(processor.registry);
         const shadowRenderer = new ShadowAtlasRenderer(
             processor.registry,
@@ -1520,12 +1543,23 @@ class SharedRendererDriver
             sampleCount: 1 as const
         };
         const shadowOwner = Object.freeze({ renderer: this });
-        const shadowPrepareOptions = { width: 1, height: 1 };
+        const shadowPrepareOptions = {
+            width: 1,
+            height: 1,
+            receiverDrivenResolution: this.renderingProfile === 'high-end',
+            minimumResolution: 128,
+            frameIndex: 0,
+            cascadeUpdateIntervals:
+                this.renderingProfile === 'high-end'
+                    ? Object.freeze([1, 2, 4, 8])
+                    : Object.freeze([1, 1, 1, 1])
+        };
         const shadowRenderOptions = {
             label: 'Shadow atlas',
             preparer: shadowPreparer,
             depthClearValue: 1,
             dirtySlices: undefined,
+            pageRegions: undefined,
             sliceClearDraw: undefined
         };
         const shadowViewport = {
@@ -1552,6 +1586,7 @@ class SharedRendererDriver
         recovery.registerSynchronizer({
             synchronizeAfterRecovery: () => {
                 shadowContent.invalidateAll();
+                shadowPages.invalidateAll();
             }
         });
         recovery.registerSynchronizer({
@@ -1585,6 +1620,8 @@ class SharedRendererDriver
             scriptableBindGroups,
             shadowScene,
             shadowContent,
+            shadowUpdates,
+            shadowPages,
             shadowResources,
             shadowRenderer,
             shadowPreparer,
@@ -1698,6 +1735,9 @@ class SharedRendererDriver
         });
         attempt(() => {
             resources.shadowContent.destroy();
+        });
+        attempt(() => {
+            resources.shadowPages.destroy();
         });
         attempt(() => {
             resources.shadowPreparer.destroy();
@@ -1846,6 +1886,7 @@ class SharedRendererDriver
             resources,
             context,
             visible,
+            visible,
             target.width,
             target.height
         );
@@ -1896,12 +1937,14 @@ class SharedRendererDriver
         resources: RenderingResources,
         context: RenderGraphFrameContext,
         meshes: readonly Mesh[],
+        cacheMeshes: readonly Mesh[],
         defaultWidth: number,
         defaultHeight: number
     ): Readonly<ScriptableShadowAtlasBuild> | null {
         const prepareOptions = resources.shadowPrepareOptions;
         prepareOptions.width = positiveSurfaceDimension(defaultWidth, this.width);
         prepareOptions.height = positiveSurfaceDimension(defaultHeight, this.height);
+        prepareOptions.frameIndex = context.frameIndex;
 
         // Frame planning resets LightManager's public atlas fields. Also remove the private active
         // binding before shadow preparation so any failure cannot revive last frame's atlas through
@@ -1917,6 +1960,17 @@ class SharedRendererDriver
         if (plan.atlas.sliceCount === 0) {
             const uploads = this.#pipelineHost.requireActiveScope().uploads;
             resources.shadowContent.stageEmpty(uploads);
+            resources.shadowPages.stageEmpty(uploads);
+            this.rendererDiagnosticsSink?.recordShadowScheduling({
+                requestedSlices: 0,
+                updatedSlices: 0,
+                deferredSlices: 0,
+                requestedPages: 0,
+                updatedPages: 0,
+                deferredPages: 0,
+                residentPages: 0,
+                budgetOverflowPages: 0
+            });
             resources.shadowPreparer.retireAll(uploads);
             resources.shadowResources.detach(resources.shadowOwner);
             return null;
@@ -1928,10 +1982,35 @@ class SharedRendererDriver
             context.camera.depthMode
         );
         const scope = this.#pipelineHost.requireActiveScope();
-        const content = resources.shadowContent.stage(atlas, plan, meshes, scope.uploads);
+        const content = resources.shadowContent.stage(atlas, plan, cacheMeshes, scope.uploads);
+        const updates = resources.shadowUpdates.schedule(plan, content, context.frameIndex);
+        const pages = resources.shadowPages.stage(
+            plan,
+            content,
+            updates.scheduledSlices,
+            scope.uploads
+        );
+        let completedUpdateCount = 0;
+        for (let index = 0; index < content.sliceCount; index += 1) {
+            if (content.dirtySlices[index] === true && pages.completedSlices[index] === true) {
+                completedUpdateCount++;
+            }
+        }
+        this.rendererDiagnosticsSink?.recordShadowScheduling({
+            requestedSlices: updates.requestedUpdateCount,
+            updatedSlices: completedUpdateCount,
+            deferredSlices: updates.requestedUpdateCount - completedUpdateCount,
+            requestedPages: pages.requestedPageCount,
+            updatedPages: pages.scheduledPageCount,
+            deferredPages: pages.deferredPageCount,
+            residentPages: pages.residentPageCount,
+            budgetOverflowPages: pages.budgetOverflowCount
+        });
+        resources.shadowContent.deferUnscheduled(pages.completedSlices);
         resources.shadowRenderOptions.depthClearValue = depthClearValue(context.camera.depthMode);
-        resources.shadowRenderOptions.dirtySlices = content.dirtySlices;
-        if (content.dirtySliceCount > 0) {
+        resources.shadowRenderOptions.dirtySlices = updates.scheduledSlices;
+        resources.shadowRenderOptions.pageRegions = pages.updateRegions;
+        if (pages.scheduledPageCount > 0) {
             this.beginScriptableFullscreenPass(context);
             const depthMode = context.camera.depthMode;
             resources.shadowClearTarget.depthStencilFormat = plan.atlas.format;
@@ -1966,7 +2045,9 @@ class SharedRendererDriver
             passCount: build.passCount,
             texture: build.texture,
             atlas,
-            plan
+            plan,
+            dirtySlices: updates.scheduledSlices,
+            pageRegions: pages.updateRegions
         });
     }
 
