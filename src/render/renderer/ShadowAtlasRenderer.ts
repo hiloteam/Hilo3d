@@ -33,6 +33,10 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
     readonly preparer?: ShadowAtlasSlicePreparer<Owner>;
     /** Clear value matching the shadow cameras' depth convention. */
     readonly depthClearValue?: number;
+    /** Physical-index update mask supplied by the submission-aware S0 content cache. */
+    readonly dirtySlices?: readonly boolean[] | undefined;
+    /** Portable depth-only fullscreen draw used to clear one scissored dirty slice. */
+    readonly sliceClearDraw?: PreparedDraw | undefined;
 }
 
 /** @internal Exact graph resource produced by one shadow-atlas build. */
@@ -44,9 +48,10 @@ export interface ShadowAtlasBuildResult {
 /**
  * Executes one shared depth-atlas graph for directional, spot, and point-light slices.
  *
- * The first pass clears the complete atlas; following slice passes load it and restrict writes
- * with a viewport/scissor. This avoids backend framebuffer managers and gives WebGL immediate and
- * WebGPU deferred execution the same observable pass ordering.
+ * Legacy callers clear the complete atlas in the first pass. S0 callers instead provide an exact
+ * dirty-slice mask and a portable depth-only clear draw; every dirty pass loads the persistent
+ * atlas, clears only its viewport/scissor, and preserves all cached slices. This keeps WebGL
+ * immediate and WebGPU deferred execution on the same Render Graph/RHI path.
  */
 export class ShadowAtlasRenderer<Owner extends object = object> {
     readonly frame: RenderGraphFrame;
@@ -139,17 +144,22 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
             );
 
             let previousPass: RGPassHandle | null = null;
+            let builtPassCount = 0;
             for (let index = 0; index < plan.slices.length; index += 1) {
                 const slice = plan.slices[index];
                 if (slice === undefined)
                     throw new Error('Shadow atlas plan contains a sparse slice');
+                if (options.dirtySlices?.[index] === false) continue;
                 const pass = this.passAt(this.#passCursor++);
                 pass.reset();
                 pass.label = `${options.label ?? 'Shadow atlas'} ${slice.kind} ${String(slice.sliceIndex)}`;
+                const usesSliceClear = options.sliceClearDraw !== undefined;
                 pass.setDepthStencilAttachment({
                     texture: atlasTexture,
-                    ...(index === 0 ? { depthClearValue: options.depthClearValue ?? 1 } : {}),
-                    depthLoadOp: index === 0 ? 'clear' : 'load',
+                    ...(!usesSliceClear && builtPassCount === 0
+                        ? { depthClearValue: options.depthClearValue ?? 1 }
+                        : {}),
+                    depthLoadOp: !usesSliceClear && builtPassCount === 0 ? 'clear' : 'load',
                     depthStoreOp: 'store'
                 });
                 pass.setViewport(slice.viewport);
@@ -160,6 +170,10 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                     height: Math.floor(slice.viewport.height)
                 });
                 if (previousPass !== null) pass.dependsOn(previousPass);
+                if (options.sliceClearDraw !== undefined) {
+                    if (meshFrameStarted) pass.addDrawSnapshot(options.sliceClearDraw);
+                    else pass.addDraw(options.sliceClearDraw);
+                }
                 const draws =
                     options.preparer?.prepare(slice) ?? options.sliceDraws?.[index] ?? EMPTY_DRAWS;
                 for (const draw of draws) {
@@ -177,9 +191,10 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                     bridge.addSampledTextureReads(scope.graph, pass, sampledDependencies);
                 }
                 previousPass = scope.graph.addPass(ShadowPassTemplate, pass);
+                builtPassCount++;
             }
             scope.graph.markOutput(atlasTexture);
-            return Object.freeze({ passCount: plan.sliceCount, texture: atlasTexture });
+            return Object.freeze({ passCount: builtPassCount, texture: atlasTexture });
         } finally {
             options.preparer?.end?.();
         }
@@ -242,6 +257,20 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
         }
         if (options.sliceDraws !== undefined && options.sliceDraws.length !== plan.slices.length) {
             throw new RangeError('Shadow sliceDraws must match plan.slices order and count');
+        }
+        if (
+            options.dirtySlices !== undefined &&
+            options.dirtySlices.length !== plan.slices.length
+        ) {
+            throw new RangeError('Shadow dirtySlices must match plan.slices order and count');
+        }
+        if (
+            options.dirtySlices !== undefined &&
+            options.sliceClearDraw === undefined &&
+            options.dirtySlices.some(dirty => dirty) &&
+            options.dirtySlices.some(dirty => !dirty)
+        ) {
+            throw new TypeError('Partial shadow-atlas updates require a sliceClearDraw');
         }
     }
 

@@ -40,6 +40,10 @@
 
 ### Changes
 
+- Add the first S0 production shadow-cache slice. Stable atlas tiles now use exact light/caster
+  snapshots, scissored portable depth clears, per-slice invalidation, submission commit/rollback,
+  recovery invalidation, and `RendererDiagnostics.caches.shadowAtlas`; static slices issue no shadow
+  pass, while local-light changes redraw only their affected faces.
 - Complete the WebGPU high-end Clustered Forward+ P0 closure. Globally sorted compatible transparent
   PBR and direct GPU Scene skin, morph, and layered glTF PBR now consume the native storage light
   list, while mixed Transmission/custom/particle transparent queues fail closed to the shared

@@ -78,6 +78,21 @@ base 不随当前 cascade 数变化；物理 atlas 只创建实际启用的 slic
 bytes，仍低于 WebGL 2 保证的 16,384-byte minimum uniform-block
 capacity；WebGPU 使用相同 std140 布局和 GLSL→Naga→WGSL 产物。
 
+Shadow Atlas 现在还包含首版 S0 内容缓存。共享层按 atlas allocation、slice placement、light
+view-projection，以及 caster identity、transform、geometry stream、material/texture
+revision 和 skin/morph
+deformation 做精确快照；不使用可能碰撞的 hash。静态 slice 在后续有效帧中不再记录 Shadow
+Pass，刚体 caster/light 的变化只失效相交的 light slice；geometry
+bounds 变化、skin 和 morph 则保守失效全部相关 slice。脏 slice 通过同一 GLSL→Naga→WGSL/RHI 路径的 depth-only
+fullscreen triangle 在 viewport/scissor 内局部清理，Render Pass 使用 `load`
+保留其他 tile，避免整张 atlas clear 破坏缓存。内容 revision 只在有效 submission 后提交，graph
+build/prepare/execute 失败会回滚并在下一帧重试；atlas resize、detach、资源释放和 device/context
+recovery 都会明确失效。注册 `RendererDiagnostics` 后，`caches.shadowAtlas`
+提供累计 hit/miss/replacement/live-slice 观测。
+
+这一切仍是稳定 tile 的生产缓存层，不宣称已经实现 GPU caster culling、receiver-driven
+budget 或 virtual shadow page table/residency。
+
 Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，先按 Node 级
 `sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV
 rect、size/anchor、tint 与 transform 编译成 portable instance batch。WebGL 2 使用 instance vertex

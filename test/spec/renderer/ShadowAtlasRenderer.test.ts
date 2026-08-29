@@ -142,9 +142,29 @@ describe.each([
             'less-equal'
         );
 
+        const drawCountBeforePartial = backend.executionLog.filter(command =>
+            command.startsWith('draw:')
+        ).length;
+        const partial = renderer.render(context(device, 2), atlas, plan, {
+            sliceDraws: [[draw], [draw]],
+            dirtySlices: [false, true],
+            sliceClearDraw: draw
+        });
+        await complete(backend);
+        await partial.submission.done;
+        expect(descriptors).toHaveLength(3);
+        expect(descriptors.at(-1)?.depthStencilAttachment).toMatchObject({
+            depthLoadOp: 'load',
+            depthStoreOp: 'store'
+        });
+        expect(
+            backend.executionLog.filter(command => command.startsWith('draw:')).length -
+                drawCountBeforePartial
+        ).toBe(2);
+
         renderer.destroy();
         resources.destroy();
-        expect(registry.collect(1)).toBe(3);
+        expect(registry.collect(2)).toBe(3);
         pipeline.destroy();
         planner.destroy();
         registry.destroy();

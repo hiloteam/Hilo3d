@@ -5,6 +5,10 @@ import { LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP } from '../../constants/we
 import type Texture from '../../texture/Texture';
 import Shader from '../../shader/Shader';
 import {
+    DEFAULT_MATERIAL_PIPELINE_STATE,
+    type MaterialPipelineState
+} from '../../material/MaterialDefinition';
+import {
     createRendererFrame,
     invokeRendererFrameCallback,
     default as RendererCore,
@@ -69,6 +73,8 @@ import {
 import { externalTextureBindingRegistry } from '../renderer/ExternalTextureBindingRegistry';
 import type { FullscreenDrawProcessor } from '../renderer/FullscreenDrawProcessor';
 import { MeshDrawProcessor } from '../renderer/MeshDrawProcessor';
+import type { PreparedDraw } from '../renderer/PreparedDraw';
+import type { RHIMeshDrawTargetDescriptor } from '../renderer/RHIDescriptorMapping';
 import { OffscreenRenderTargetRenderer } from '../renderer/OffscreenRenderTargetRenderer';
 import { PostProcessRenderer } from '../renderer/PostProcessRenderer';
 import {
@@ -86,6 +92,7 @@ import { RenderTargetTextureBindingProvider } from '../renderer/RenderTargetText
 import { RendererRecoveringError, type ResourceRegistryHandle } from '../renderer/ResourceRegistry';
 import { ShaderArtifactCompiler } from '../renderer/ShaderArtifactCompiler';
 import { ShadowAtlasMeshPreparer } from '../renderer/ShadowAtlasMeshPreparer';
+import { ShadowAtlasContentCache } from '../renderer/ShadowAtlasContentCache';
 import { ShadowAtlasRenderer } from '../renderer/ShadowAtlasRenderer';
 import { ShadowAtlasResourceCache } from '../renderer/ShadowAtlasResourceCache';
 import { ShadowAtlasSceneAdapter } from '../renderer/ShadowAtlasSceneAdapter';
@@ -127,16 +134,26 @@ interface RenderingResources {
     readonly gpuDrivenPipelines: GPUDrivenPipelineResourceCache;
     readonly scriptableBindGroups: ScriptableBindGroupResourceCache;
     readonly shadowScene: ShadowAtlasSceneAdapter;
+    readonly shadowContent: ShadowAtlasContentCache;
     readonly shadowResources: ShadowAtlasResourceCache;
     readonly shadowRenderer: ShadowAtlasRenderer;
     readonly shadowPreparer: ShadowAtlasMeshPreparer;
     readonly shadowBinding: ShadowAtlasTextureBinding;
+    readonly shadowClearShaders: Readonly<Record<'standard' | 'reversed', Shader>>;
+    readonly shadowClearOwners: Readonly<Record<'standard' | 'reversed', object>>;
+    readonly shadowClearTarget: {
+        readonly colorFormats: RHIMeshDrawTargetDescriptor['colorFormats'];
+        depthStencilFormat: NonNullable<RHIMeshDrawTargetDescriptor['depthStencilFormat']>;
+        readonly sampleCount: 1;
+    };
     readonly shadowOwner: object;
     readonly shadowPrepareOptions: { width: number; height: number };
     readonly shadowRenderOptions: {
         label: string;
         preparer: ShadowAtlasMeshPreparer;
         depthClearValue: number;
+        dirtySlices: readonly boolean[] | undefined;
+        sliceClearDraw: PreparedDraw | undefined;
     };
     readonly shadowViewport: {
         x: number;
@@ -163,6 +180,29 @@ const OPTIONAL_WEBGPU_FEATURES: readonly RHIRequestableWebGPUFeature[] = Object.
     'texture-compression-etc2',
     'texture-compression-astc'
 ]);
+
+const SHADOW_ATLAS_CLEAR_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+void main() {}
+`;
+const EMPTY_SHADOW_COLOR_FORMATS = Object.freeze([]);
+
+function shadowAtlasClearVertexSource(depthMode: Camera['depthMode']): string {
+    const clipDepth = depthMode === 'reversed' ? '-1.0' : '1.0';
+    return `#version 300 es
+void main() {
+    vec2 positions[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    gl_Position = vec4(positions[gl_VertexID], ${clipDepth}, 1.0);
+}`;
+}
+
+const SHADOW_ATLAS_CLEAR_PIPELINE_STATE: Readonly<MaterialPipelineState> = Object.freeze({
+    ...DEFAULT_MATERIAL_PIPELINE_STATE,
+    cullMode: 'none',
+    depthTest: true,
+    depthWrite: true,
+    depthCompare: 'always'
+});
 
 const REQUESTABLE_WEBGPU_FEATURES = new Set<string>([
     ...OPTIONAL_WEBGPU_FEATURES,
@@ -308,6 +348,7 @@ class SharedRendererDriver
     #selectedTargetColorEncoding: RenderColorEncoding = 'linear';
     #pipelineCacheMetrics: RHICacheCounterContinuation | null = null;
     #bindGroupCacheMetrics: RHICacheCounterContinuation | null = null;
+    #shadowAtlasCacheMetrics: RHICacheCounterContinuation | null = null;
     #vertexInputCacheMetrics: RHICacheCounterContinuation | null = null;
     #framebufferCacheMetrics: RHICacheCounterContinuation | null = null;
     #scriptablePipelineContextCursor = 0;
@@ -1448,6 +1489,7 @@ class SharedRendererDriver
         );
         const scriptableBindGroups = new ScriptableBindGroupResourceCache(processor.registry);
         const shadowScene = new ShadowAtlasSceneAdapter();
+        const shadowContent = new ShadowAtlasContentCache();
         const shadowResources = new ShadowAtlasResourceCache(processor.registry);
         const shadowRenderer = new ShadowAtlasRenderer(
             processor.registry,
@@ -1458,12 +1500,33 @@ class SharedRendererDriver
         );
         const shadowPreparer = new ShadowAtlasMeshPreparer(processor);
         const shadowBinding = new ShadowAtlasTextureBinding();
+        const shadowClearShaders = Object.freeze({
+            standard: new Shader({
+                vs: shadowAtlasClearVertexSource('standard'),
+                fs: SHADOW_ATLAS_CLEAR_FRAGMENT_SOURCE
+            }),
+            reversed: new Shader({
+                vs: shadowAtlasClearVertexSource('reversed'),
+                fs: SHADOW_ATLAS_CLEAR_FRAGMENT_SOURCE
+            })
+        });
+        const shadowClearOwners = Object.freeze({
+            standard: Object.freeze({ depthMode: 'standard' }),
+            reversed: Object.freeze({ depthMode: 'reversed' })
+        });
+        const shadowClearTarget = {
+            colorFormats: EMPTY_SHADOW_COLOR_FORMATS,
+            depthStencilFormat: 'depth24plus' as const,
+            sampleCount: 1 as const
+        };
         const shadowOwner = Object.freeze({ renderer: this });
         const shadowPrepareOptions = { width: 1, height: 1 };
         const shadowRenderOptions = {
             label: 'Shadow atlas',
             preparer: shadowPreparer,
-            depthClearValue: 1
+            depthClearValue: 1,
+            dirtySlices: undefined,
+            sliceClearDraw: undefined
         };
         const shadowViewport = {
             x: 0,
@@ -1486,6 +1549,11 @@ class SharedRendererDriver
         recovery.registerSynchronizer(processor.uniformBlocks);
         recovery.registerSynchronizer(postProcess.fullscreen);
         recovery.registerSynchronizer(storageBuffers);
+        recovery.registerSynchronizer({
+            synchronizeAfterRecovery: () => {
+                shadowContent.invalidateAll();
+            }
+        });
         recovery.registerSynchronizer({
             synchronizeAfterRecovery: () => {
                 // Render-target pass contents are not recoverable from isolated public patches.
@@ -1516,10 +1584,14 @@ class SharedRendererDriver
             gpuDrivenPipelines,
             scriptableBindGroups,
             shadowScene,
+            shadowContent,
             shadowResources,
             shadowRenderer,
             shadowPreparer,
             shadowBinding,
+            shadowClearShaders,
+            shadowClearOwners,
+            shadowClearTarget,
             shadowOwner,
             shadowPrepareOptions,
             shadowRenderOptions,
@@ -1549,6 +1621,11 @@ class SharedRendererDriver
         if (this.#bindGroupCacheMetrics === null) {
             this.#bindGroupCacheMetrics = new RHICacheCounterContinuation(bindGroupMetrics);
         } else this.#bindGroupCacheMetrics.rebind(bindGroupMetrics);
+        if (this.#shadowAtlasCacheMetrics === null) {
+            this.#shadowAtlasCacheMetrics = new RHICacheCounterContinuation(
+                resources.shadowContent.metrics
+            );
+        } else this.#shadowAtlasCacheMetrics.rebind(resources.shadowContent.metrics);
         this.bindDeviceCacheDiagnostics(device, resources.processor);
     }
 
@@ -1620,6 +1697,9 @@ class SharedRendererDriver
             resources.shadowBinding.destroy();
         });
         attempt(() => {
+            resources.shadowContent.destroy();
+        });
+        attempt(() => {
             resources.shadowPreparer.destroy();
         });
         attempt(() => {
@@ -1627,6 +1707,10 @@ class SharedRendererDriver
         });
         attempt(() => {
             resources.shadowScene.destroy();
+        });
+        attempt(() => {
+            resources.shadowClearShaders.standard.destroy();
+            resources.shadowClearShaders.reversed.destroy();
         });
         const cleanup = (async (): Promise<void> => {
             await Promise.allSettled([
@@ -1831,7 +1915,9 @@ class SharedRendererDriver
             prepareOptions
         );
         if (plan.atlas.sliceCount === 0) {
-            resources.shadowPreparer.retireAll(this.#pipelineHost.requireActiveScope().uploads);
+            const uploads = this.#pipelineHost.requireActiveScope().uploads;
+            resources.shadowContent.stageEmpty(uploads);
+            resources.shadowPreparer.retireAll(uploads);
             resources.shadowResources.detach(resources.shadowOwner);
             return null;
         }
@@ -1841,13 +1927,31 @@ class SharedRendererDriver
             plan.atlas,
             context.camera.depthMode
         );
+        const scope = this.#pipelineHost.requireActiveScope();
+        const content = resources.shadowContent.stage(atlas, plan, meshes, scope.uploads);
         resources.shadowRenderOptions.depthClearValue = depthClearValue(context.camera.depthMode);
+        resources.shadowRenderOptions.dirtySlices = content.dirtySlices;
+        if (content.dirtySliceCount > 0) {
+            this.beginScriptableFullscreenPass(context);
+            const depthMode = context.camera.depthMode;
+            resources.shadowClearTarget.depthStencilFormat = plan.atlas.format;
+            resources.shadowRenderOptions.sliceClearDraw = resources.postProcess.fullscreen.prepare(
+                {
+                    owner: resources.shadowClearOwners[depthMode],
+                    shader: resources.shadowClearShaders[depthMode],
+                    pipelineState: SHADOW_ATLAS_CLEAR_PIPELINE_STATE,
+                    target: resources.shadowClearTarget,
+                    fragmentOutputMode: 'depth-only',
+                    depthMode
+                }
+            );
+        } else resources.shadowRenderOptions.sliceClearDraw = undefined;
         resources.shadowPreparer.configure(plan, meshes);
         const viewport = resources.shadowViewport;
         viewport.width = atlas.width;
         viewport.height = atlas.height;
         const build = resources.shadowRenderer.build(
-            this.#pipelineHost.requireActiveScope(),
+            scope,
             context,
             atlas,
             plan.atlas,
@@ -2067,11 +2171,13 @@ class SharedRendererDriver
         const bindGroup = this.#bindGroupCacheMetrics;
         const vertexInput = this.#vertexInputCacheMetrics;
         const framebuffer = this.#framebufferCacheMetrics;
+        const shadowAtlas = this.#shadowAtlasCacheMetrics;
         if (
             pipeline === null ||
             bindGroup === null ||
             vertexInput === null ||
-            framebuffer === null
+            framebuffer === null ||
+            shadowAtlas === null
         ) {
             throw new Error('Renderer cache diagnostics are not initialized');
         }
@@ -2079,6 +2185,7 @@ class SharedRendererDriver
         sink.synchronizeCache('bindGroup', bindGroup);
         sink.synchronizeCache('vertexArray', vertexInput);
         sink.synchronizeCache('framebuffer', framebuffer);
+        sink.synchronizeCache('shadowAtlas', shadowAtlas);
     }
 
     private createContext(

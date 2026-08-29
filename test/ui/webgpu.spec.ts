@@ -26,8 +26,8 @@ test('renders a real frame through WebGPU and Naga', async ({ page }) => {
         backend: 'webgpu',
         rhiExtensionBackend: 'webgpu',
         rhiSurfaceState: 'configured',
-        // Production RenderInfo includes the main pass plus directional, spot, and cube-shadow draws.
-        drawCount: 52,
+        // Static shadow slices are cached, so this frame contains only the main-scene draws.
+        drawCount: 4,
         faceCount: 60,
         hasShadowAtlas: true,
         shadowLightKinds: { directional: 1, point: 1, spot: 1 },
