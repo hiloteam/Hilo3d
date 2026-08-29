@@ -48,7 +48,17 @@ describe('ShadowAtlasPageResidency', () => {
 
         const firstBatch = new RHIUploadBatch(new FrameArena());
         const first = pages.stage(plan, decision('allocation', 1), [true], firstBatch);
-        expect(first.updateRegions).toHaveLength(4);
+        expect(first.updateRegions).toEqual([
+            {
+                slicePhysicalIndex: 0,
+                pageX: 0,
+                pageY: 0,
+                x: 0,
+                y: 0,
+                width: 256,
+                height: 256
+            }
+        ]);
         expect(first.completedSlices).toEqual([true]);
         expect(first).toMatchObject({
             requestedPageCount: 4,
@@ -92,6 +102,36 @@ describe('ShadowAtlasPageResidency', () => {
         });
         expect(stable.completedSlices).toEqual([true]);
         stableBatch.rollback();
+
+        const groupedPages = new ShadowAtlasPageResidency({
+            pageSize: 128,
+            maxPageUpdatesPerFrame: 3
+        });
+        const groupedAllocationBatch = new RHIUploadBatch(new FrameArena());
+        groupedPages.stage(plan, decision('allocation', 1), [true], groupedAllocationBatch);
+        const groupedAllocationCommands = device.graphicsQueue.beginFrame();
+        groupedAllocationBatch.flush(groupedAllocationCommands);
+        const groupedAllocationSubmission =
+            device.graphicsQueue.endFrame(groupedAllocationCommands);
+        groupedAllocationBatch.commit(groupedAllocationSubmission);
+        await groupedAllocationSubmission.done;
+        const groupedReplacementBatch = new RHIUploadBatch(new FrameArena());
+        const groupedReplacement = groupedPages.stage(
+            plan,
+            replacement,
+            [true],
+            groupedReplacementBatch
+        );
+        expect(groupedReplacement.scheduledPageCount).toBe(3);
+        expect(groupedReplacement.updateRegions).toHaveLength(2);
+        expect(groupedReplacement.updateRegions).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ x: 0, y: 0, width: 256, height: 128 }),
+                expect.objectContaining({ x: 0, y: 128, width: 128, height: 128 })
+            ])
+        );
+        groupedReplacementBatch.rollback();
+        groupedPages.destroy();
 
         pages.destroy();
         adapter.destroy();

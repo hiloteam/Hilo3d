@@ -36,7 +36,7 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
     readonly depthClearValue?: number;
     /** Physical-index update mask supplied by the submission-aware S0 content cache. */
     readonly dirtySlices?: readonly boolean[] | undefined;
-    /** Optional page-granular update list. When present, each entry records one scissored pass. */
+    /** Optional coalesced page update list. Each rectangle records one scissored pass. */
     readonly pageRegions?: readonly Readonly<ShadowAtlasPageRegion>[] | undefined;
     /** Portable depth-only fullscreen draw used to clear one scissored dirty slice. */
     readonly sliceClearDraw?: PreparedDraw | undefined;
@@ -183,7 +183,9 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                     else pass.addDraw(options.sliceClearDraw);
                 }
                 const draws =
-                    options.preparer?.prepare(slice) ?? options.sliceDraws?.[index] ?? EMPTY_DRAWS;
+                    options.preparer?.prepare(slice) ??
+                    options.sliceDraws?.[sliceIndex] ??
+                    EMPTY_DRAWS;
                 for (const draw of draws) {
                     if (meshFrameStarted) pass.addDrawSnapshot(draw);
                     else pass.addDraw(draw);

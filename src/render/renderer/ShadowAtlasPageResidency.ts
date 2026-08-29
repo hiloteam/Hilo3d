@@ -86,16 +86,51 @@ function createSliceRecord(): SliceRecord {
     };
 }
 
+function horizontalRegionOrder(
+    left: Readonly<MutablePageRegion>,
+    right: Readonly<MutablePageRegion>
+): number {
+    return (
+        left.slicePhysicalIndex - right.slicePhysicalIndex ||
+        left.pageY - right.pageY ||
+        left.pageX - right.pageX
+    );
+}
+
+function verticalRegionOrder(
+    left: Readonly<MutablePageRegion>,
+    right: Readonly<MutablePageRegion>
+): number {
+    return (
+        left.slicePhysicalIndex - right.slicePhysicalIndex ||
+        left.x - right.x ||
+        left.width - right.width ||
+        left.y - right.y
+    );
+}
+
+function copyRegion(target: MutablePageRegion, source: Readonly<MutablePageRegion>): void {
+    target.slicePhysicalIndex = source.slicePhysicalIndex;
+    target.pageX = source.pageX;
+    target.pageY = source.pageY;
+    target.x = source.x;
+    target.y = source.y;
+    target.width = source.width;
+    target.height = source.height;
+}
+
 /**
  * Submission-aware fixed-atlas virtual-page residency for shadow updates. Receiver-driven slice
- * sizing determines the requested virtual grid; dirty pages are redrawn with page scissoring and
- * committed only after a valid RHI submission. Missing pages retain the previous slice contents.
+ * sizing determines the requested virtual grid; dirty pages are redrawn through coalesced scissor
+ * rectangles and committed only after a valid RHI submission. Missing pages retain the previous
+ * slice contents.
  */
 export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
     readonly pageSize: number;
     readonly maxPageUpdatesPerFrame: number;
     readonly #slices: SliceRecord[] = [];
     readonly #regions: MutablePageRegion[] = [];
+    readonly #spareRegions: MutablePageRegion[] = [];
     readonly #completedSlices: boolean[] = [];
     readonly #remainingPages: number[] = [];
     readonly #state: MutableDecisionState = {
@@ -250,7 +285,8 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
             this.#pendingSliceCursor = sliceCursor;
             this.#pendingSliceCursorEpoch = this.#transactionEpoch;
         }
-        this.#regions.length = this.#regionCount;
+        this.truncateRegions(this.#regionCount);
+        this.coalesceUpdateRegions();
         this.#state.requestedPageCount = requested;
         this.#state.scheduledPageCount = scheduled;
         this.#state.deferredPageCount = requested - scheduled;
@@ -265,7 +301,7 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         this.beginTransaction(uploads);
         this.#activeSliceCount = 0;
         this.#regionCount = 0;
-        this.#regions.length = 0;
+        this.truncateRegions(0);
         this.#completedSlices.length = 0;
         this.#remainingPages.length = 0;
         this.#state.requestedPageCount = 0;
@@ -330,6 +366,7 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         this.rollback();
         this.#slices.length = 0;
         this.#regions.length = 0;
+        this.#spareRegions.length = 0;
         this.#completedSlices.length = 0;
         this.#remainingPages.length = 0;
         this.#destroyed = true;
@@ -421,7 +458,15 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
     ): void {
         let region = this.#regions[this.#regionCount];
         if (region === undefined) {
-            region = { slicePhysicalIndex: 0, pageX: 0, pageY: 0, x: 0, y: 0, width: 0, height: 0 };
+            region = this.#spareRegions.pop() ?? {
+                slicePhysicalIndex: 0,
+                pageX: 0,
+                pageY: 0,
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0
+            };
             this.#regions[this.#regionCount] = region;
         }
         region.slicePhysicalIndex = slicePhysicalIndex;
@@ -432,6 +477,66 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         region.width = Math.min(this.pageSize, slice.width - pageX * this.pageSize);
         region.height = Math.min(this.pageSize, slice.height - pageY * this.pageSize);
         this.#regionCount++;
+    }
+
+    private coalesceUpdateRegions(): void {
+        if (this.#regionCount < 2) return;
+        this.#regions.sort(horizontalRegionOrder);
+        let horizontalCount = 0;
+        for (let sourceIndex = 0; sourceIndex < this.#regionCount; sourceIndex += 1) {
+            const source = this.#regions[sourceIndex];
+            if (source === undefined) throw new Error('Shadow page region storage is incomplete');
+            const previous = this.#regions[horizontalCount - 1];
+            if (
+                previous?.slicePhysicalIndex === source.slicePhysicalIndex &&
+                previous.pageY === source.pageY &&
+                previous.y === source.y &&
+                previous.height === source.height &&
+                previous.x + previous.width === source.x
+            ) {
+                previous.width += source.width;
+                continue;
+            }
+            const target = this.#regions[horizontalCount];
+            if (target === undefined) throw new Error('Shadow page region storage is incomplete');
+            if (target !== source) copyRegion(target, source);
+            horizontalCount++;
+        }
+        this.truncateRegions(horizontalCount);
+        if (horizontalCount < 2) {
+            this.#regionCount = horizontalCount;
+            return;
+        }
+
+        this.#regions.sort(verticalRegionOrder);
+        let compactCount = 0;
+        for (let sourceIndex = 0; sourceIndex < horizontalCount; sourceIndex += 1) {
+            const source = this.#regions[sourceIndex];
+            if (source === undefined) throw new Error('Shadow page region storage is incomplete');
+            const previous = this.#regions[compactCount - 1];
+            if (
+                previous?.slicePhysicalIndex === source.slicePhysicalIndex &&
+                previous.x === source.x &&
+                previous.width === source.width &&
+                previous.y + previous.height === source.y
+            ) {
+                previous.height += source.height;
+                continue;
+            }
+            const target = this.#regions[compactCount];
+            if (target === undefined) throw new Error('Shadow page region storage is incomplete');
+            if (target !== source) copyRegion(target, source);
+            compactCount++;
+        }
+        this.#regionCount = compactCount;
+        this.truncateRegions(compactCount);
+    }
+
+    private truncateRegions(length: number): void {
+        while (this.#regions.length > length) {
+            const region = this.#regions.pop();
+            if (region !== undefined) this.#spareRegions.push(region);
+        }
     }
 
     private residentPageCount(): number {

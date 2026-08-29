@@ -91,7 +91,7 @@ recovery 都会明确失效。Clustered GPU Scene 中的 rigid caster 由 comput
 slice 裁剪并写入固定 bucket indirect draw；不满足 GPU Scene 合同的 caster 仍走共享 CPU depth
 path。high-end profile 依据 receiver 覆盖缩放 local
 light 与远级联分辨率，以 1/2/4/8 帧 cadence 更新 CSM，并由确定性 slice/page
-budget 延后 caster-only 失效。每个 slice 再拆为 128 像素固定物理页，逐页 scissor 重绘；页 revision、residency 和失败回滚均在有效 submission 后提交，旧页在缺页期间继续提供确定内容。注册
+budget 延后 caster-only 失效。每个 slice 再拆为 128 像素固定物理页；同帧相邻 dirty 页先合并为 scissor 矩形再重绘，完整 slice 因此只重复录制一次 caster 队列。页 revision、residency 和失败回滚均在有效 submission 后提交，旧页在缺页期间继续提供确定内容。注册
 `RendererDiagnostics` 后，`caches.shadowAtlas`
 提供累计hit/miss/replacement/live-slice，`frame.shadow*` 提供 slice/page
 request、update、defer、resident 和 overflow 观测。

@@ -46,7 +46,8 @@
   pass, while local-light changes redraw only their affected faces.
 - Extend S0 shadows with clustered GPU Scene caster culling and fixed-bucket indirect depth draws;
   receiver-driven local/cascade resolution; deterministic slice budgets and 1/2/4/8-frame CSM
-  cadence; and submission-aware 128-pixel page residency with page-scissored updates. Expose page
+  cadence; and submission-aware 128-pixel page residency with coalesced page-scissored updates that
+  avoid replaying the caster queue once per adjacent page. Expose page
   request/update/defer/residency and budget-overflow counts in frame diagnostics. Arbitrary physical
   page remapping, GPU receiver/depth requests, and directional clipmaps remain future work.
 - Complete the WebGPU high-end Clustered Forward+ P0 closure. Globally sorted compatible transparent
