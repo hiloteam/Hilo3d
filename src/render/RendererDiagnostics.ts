@@ -102,6 +102,22 @@ export interface RendererFrameDiagnosticsSnapshot {
     readonly uploads: number;
     readonly submissions: number;
     readonly arenaGrowths: number;
+    /** Shadow slices requesting fresh contents this frame. */
+    readonly shadowRequestedSlices: number;
+    /** Shadow slices whose complete desired contents were scheduled this frame. */
+    readonly shadowUpdatedSlices: number;
+    /** Shadow slices retaining prior contents because of cadence or budget. */
+    readonly shadowDeferredSlices: number;
+    /** Non-resident shadow pages requested this frame. */
+    readonly shadowRequestedPages: number;
+    /** Shadow page redraws scheduled this frame. */
+    readonly shadowUpdatedPages: number;
+    /** Requested pages retaining prior contents because of the page budget. */
+    readonly shadowDeferredPages: number;
+    /** Pages committed resident before this frame's submission. */
+    readonly shadowResidentPages: number;
+    /** Mandatory page updates beyond the configured soft budget. */
+    readonly shadowBudgetOverflowPages: number;
 }
 
 export interface RendererDiagnosticsSnapshot {
@@ -187,7 +203,15 @@ const FRAME_COMPUTE_BIND_GROUP_SWITCHES = FRAME_COMPUTE_PIPELINE_SWITCHES + 1;
 const FRAME_UPLOADS = FRAME_COMPUTE_BIND_GROUP_SWITCHES + 1;
 const FRAME_SUBMISSIONS = FRAME_UPLOADS + 1;
 const FRAME_ARENA_GROWTHS = FRAME_SUBMISSIONS + 1;
-const COUNTER_COUNT = FRAME_ARENA_GROWTHS + 1;
+const FRAME_SHADOW_REQUESTED_SLICES = FRAME_ARENA_GROWTHS + 1;
+const FRAME_SHADOW_UPDATED_SLICES = FRAME_SHADOW_REQUESTED_SLICES + 1;
+const FRAME_SHADOW_DEFERRED_SLICES = FRAME_SHADOW_UPDATED_SLICES + 1;
+const FRAME_SHADOW_REQUESTED_PAGES = FRAME_SHADOW_DEFERRED_SLICES + 1;
+const FRAME_SHADOW_UPDATED_PAGES = FRAME_SHADOW_REQUESTED_PAGES + 1;
+const FRAME_SHADOW_DEFERRED_PAGES = FRAME_SHADOW_UPDATED_PAGES + 1;
+const FRAME_SHADOW_RESIDENT_PAGES = FRAME_SHADOW_DEFERRED_PAGES + 1;
+const FRAME_SHADOW_BUDGET_OVERFLOW_PAGES = FRAME_SHADOW_RESIDENT_PAGES + 1;
+const COUNTER_COUNT = FRAME_SHADOW_BUDGET_OVERFLOW_PAGES + 1;
 
 function nativeObjectBase(kind: RendererNativeObjectKind): number {
     switch (kind) {
@@ -478,6 +502,38 @@ export class RendererDiagnostics implements RenderGraphTimelineSink {
         this.increment(FRAME_ARENA_GROWTHS, count);
     }
 
+    /** Accumulate shadow update work and replace the current residency gauge for this frame. */
+    recordShadowScheduling(values: {
+        readonly requestedSlices: number;
+        readonly updatedSlices: number;
+        readonly deferredSlices: number;
+        readonly requestedPages: number;
+        readonly updatedPages: number;
+        readonly deferredPages: number;
+        readonly residentPages: number;
+        readonly budgetOverflowPages: number;
+    }): void {
+        const entries: readonly (readonly [number, number])[] = [
+            [FRAME_SHADOW_REQUESTED_SLICES, values.requestedSlices],
+            [FRAME_SHADOW_UPDATED_SLICES, values.updatedSlices],
+            [FRAME_SHADOW_DEFERRED_SLICES, values.deferredSlices],
+            [FRAME_SHADOW_REQUESTED_PAGES, values.requestedPages],
+            [FRAME_SHADOW_UPDATED_PAGES, values.updatedPages],
+            [FRAME_SHADOW_DEFERRED_PAGES, values.deferredPages],
+            [FRAME_SHADOW_RESIDENT_PAGES, values.residentPages],
+            [FRAME_SHADOW_BUDGET_OVERFLOW_PAGES, values.budgetOverflowPages]
+        ];
+        for (const [, value] of entries) {
+            if (!Number.isSafeInteger(value) || value < 0) {
+                throw new RangeError('Shadow diagnostics must be non-negative safe integers');
+            }
+        }
+        for (const [counter, value] of entries) {
+            if (counter === FRAME_SHADOW_RESIDENT_PAGES) this.setValue(counter, value);
+            else this.increment(counter, value);
+        }
+    }
+
     resetFrame(): void {
         this.#counters.fill(0, FRAME_START);
     }
@@ -527,7 +583,15 @@ export class RendererDiagnostics implements RenderGraphTimelineSink {
                 computeBindGroupSwitches: this.value(FRAME_COMPUTE_BIND_GROUP_SWITCHES),
                 uploads: this.value(FRAME_UPLOADS),
                 submissions: this.value(FRAME_SUBMISSIONS),
-                arenaGrowths: this.value(FRAME_ARENA_GROWTHS)
+                arenaGrowths: this.value(FRAME_ARENA_GROWTHS),
+                shadowRequestedSlices: this.value(FRAME_SHADOW_REQUESTED_SLICES),
+                shadowUpdatedSlices: this.value(FRAME_SHADOW_UPDATED_SLICES),
+                shadowDeferredSlices: this.value(FRAME_SHADOW_DEFERRED_SLICES),
+                shadowRequestedPages: this.value(FRAME_SHADOW_REQUESTED_PAGES),
+                shadowUpdatedPages: this.value(FRAME_SHADOW_UPDATED_PAGES),
+                shadowDeferredPages: this.value(FRAME_SHADOW_DEFERRED_PAGES),
+                shadowResidentPages: this.value(FRAME_SHADOW_RESIDENT_PAGES),
+                shadowBudgetOverflowPages: this.value(FRAME_SHADOW_BUDGET_OVERFLOW_PAGES)
             }),
             renderGraph: this.#renderGraphTimeline
         });

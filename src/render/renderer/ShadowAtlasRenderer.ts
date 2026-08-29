@@ -10,6 +10,7 @@ import type { RenderTargetGraphBridge } from './RenderTargetGraphBridge';
 import type { ResourceRegistry } from './ResourceRegistry';
 import type { ShadowAtlasPlan, ShadowAtlasSlice } from './ShadowAtlasPlanner';
 import type { ShadowAtlasResourceRecord } from './ShadowAtlasResourceCache';
+import type { ShadowAtlasPageRegion } from './ShadowAtlasPageResidency';
 import { SubmissionResourceTracker } from './SubmissionResourceTracker';
 import { ShadowPassTemplate, SharedDrawPassParameters } from './passes';
 
@@ -35,6 +36,8 @@ export interface ShadowAtlasRenderOptions<Owner extends object = object> {
     readonly depthClearValue?: number;
     /** Physical-index update mask supplied by the submission-aware S0 content cache. */
     readonly dirtySlices?: readonly boolean[] | undefined;
+    /** Optional coalesced page update list. Each rectangle records one scissored pass. */
+    readonly pageRegions?: readonly Readonly<ShadowAtlasPageRegion>[] | undefined;
     /** Portable depth-only fullscreen draw used to clear one scissored dirty slice. */
     readonly sliceClearDraw?: PreparedDraw | undefined;
 }
@@ -145,11 +148,16 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
 
             let previousPass: RGPassHandle | null = null;
             let builtPassCount = 0;
-            for (let index = 0; index < plan.slices.length; index += 1) {
-                const slice = plan.slices[index];
+            const workCount = options.pageRegions?.length ?? plan.slices.length;
+            for (let index = 0; index < workCount; index += 1) {
+                const region = options.pageRegions?.[index];
+                const sliceIndex = region?.slicePhysicalIndex ?? index;
+                const slice = plan.slices[sliceIndex];
                 if (slice === undefined)
                     throw new Error('Shadow atlas plan contains a sparse slice');
-                if (options.dirtySlices?.[index] === false) continue;
+                if (options.pageRegions === undefined && options.dirtySlices?.[index] === false) {
+                    continue;
+                }
                 const pass = this.passAt(this.#passCursor++);
                 pass.reset();
                 pass.label = `${options.label ?? 'Shadow atlas'} ${slice.kind} ${String(slice.sliceIndex)}`;
@@ -164,10 +172,10 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                 });
                 pass.setViewport(slice.viewport);
                 pass.setScissor({
-                    x: Math.floor(slice.viewport.x),
-                    y: Math.floor(slice.viewport.y),
-                    width: Math.floor(slice.viewport.width),
-                    height: Math.floor(slice.viewport.height)
+                    x: Math.floor(region?.x ?? slice.viewport.x),
+                    y: Math.floor(region?.y ?? slice.viewport.y),
+                    width: Math.floor(region?.width ?? slice.viewport.width),
+                    height: Math.floor(region?.height ?? slice.viewport.height)
                 });
                 if (previousPass !== null) pass.dependsOn(previousPass);
                 if (options.sliceClearDraw !== undefined) {
@@ -175,7 +183,9 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                     else pass.addDraw(options.sliceClearDraw);
                 }
                 const draws =
-                    options.preparer?.prepare(slice) ?? options.sliceDraws?.[index] ?? EMPTY_DRAWS;
+                    options.preparer?.prepare(slice) ??
+                    options.sliceDraws?.[sliceIndex] ??
+                    EMPTY_DRAWS;
                 for (const draw of draws) {
                     if (meshFrameStarted) pass.addDrawSnapshot(draw);
                     else pass.addDraw(draw);
@@ -263,6 +273,30 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
             options.dirtySlices.length !== plan.slices.length
         ) {
             throw new RangeError('Shadow dirtySlices must match plan.slices order and count');
+        }
+        if (options.pageRegions !== undefined) {
+            for (const region of options.pageRegions) {
+                const slice = plan.slices[region.slicePhysicalIndex];
+                if (
+                    slice === undefined ||
+                    !Number.isSafeInteger(region.pageX) ||
+                    !Number.isSafeInteger(region.pageY) ||
+                    region.pageX < 0 ||
+                    region.pageY < 0 ||
+                    !Number.isSafeInteger(region.x) ||
+                    !Number.isSafeInteger(region.y) ||
+                    !Number.isSafeInteger(region.width) ||
+                    !Number.isSafeInteger(region.height) ||
+                    region.width <= 0 ||
+                    region.height <= 0 ||
+                    region.x < slice.viewport.x ||
+                    region.y < slice.viewport.y ||
+                    region.x + region.width > slice.viewport.x + slice.viewport.width ||
+                    region.y + region.height > slice.viewport.y + slice.viewport.height
+                ) {
+                    throw new RangeError('Shadow page region must fit its physical atlas slice');
+                }
+            }
         }
         if (
             options.dirtySlices !== undefined &&

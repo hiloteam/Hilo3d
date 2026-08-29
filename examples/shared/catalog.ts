@@ -107,6 +107,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
     'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
     'stormfront_observatory.html': 'Tempest Reliquary — Physical Atmosphere',
+    'shadow_residency_sanctum.html': 'Umbra Sanctum — Shadow Page Residency',
     'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
     'screen_space_global_illumination_chapel.html':
         'Prismatic Vespers — Screen-space Global Illumination',
@@ -145,6 +146,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
     'stormfront_observatory.html':
         'Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.',
+    'shadow_residency_sanctum.html':
+        'Enter a procedural moonlit nave where moving GPU Scene casters, fair page circulation, camera-layer isolation, CSM cadence, volumetric shafts, SSR, GTAO, and bloom exercise submission-aware shadow residency.',
     'screen_space_reflections_palace.html':
         'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
     'screen_space_global_illumination_chapel.html':
@@ -236,6 +239,7 @@ const FEATURED_PATHS = new Set([
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
+    'shadow_residency_sanctum.html',
     'screen_space_reflections_palace.html',
     'screen_space_global_illumination_chapel.html',
     'ground_truth_ambient_occlusion.html',
@@ -364,6 +368,7 @@ function createEntry(path: string): ExampleCatalogEntry {
                 path === 'clustered_forward_plus_sponza.html' ||
                 path === 'volumetric_neon_reliquary.html' ||
                 path === 'stormfront_observatory.html' ||
+                path === 'shadow_residency_sanctum.html' ||
                 path === 'screen_space_reflections_palace.html' ||
                 path === 'temporal_aa_observatory.html' ||
                 path === 'compute_gpu_driven.html' ||

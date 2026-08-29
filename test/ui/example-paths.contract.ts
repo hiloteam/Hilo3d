@@ -67,11 +67,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(87);
+        expect(examplePaths).toHaveLength(88);
     });
 
-    it('expands 87 pages into the complete 162-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(162);
+    it('expands 88 pages into the complete 163-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(163);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -83,6 +83,7 @@ describe('example release matrix contract', () => {
                         path === 'clustered_forward_plus_sponza.html' ||
                         path === 'volumetric_neon_reliquary.html' ||
                         path === 'stormfront_observatory.html' ||
+                        path === 'shadow_residency_sanctum.html' ||
                         path === 'screen_space_reflections_palace.html' ||
                         path === 'temporal_aa_observatory.html' ||
                         path === 'compute_gpu_driven.html' ||
@@ -102,7 +103,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(85);
+        expect(catalog).toHaveLength(86);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -112,7 +113,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(74);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(84);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(85);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -226,6 +227,7 @@ describe('example release matrix contract', () => {
             'clustered_forward_plus_sponza.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
+            'shadow_residency_sanctum.html',
             'screen_space_reflections_palace.html',
             'temporal_aa_observatory.html',
             'compute_gpu_driven.html',
@@ -236,14 +238,18 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'cascaded_shadows.html',
             'clustered_forward_plus_sponza.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
+            'shadow_residency_sanctum.html',
             'shaderToy.html'
         ]);
+        expect(exampleUsesDedicatedReleaseTest('cascaded_shadows.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('shadow_residency_sanctum.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('quickStart.html')).toBe(false);
         const genericCases = exampleCases.filter(
@@ -252,12 +258,15 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(157);
+        expect(genericCases).toHaveLength(155);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
         expect(genericReleaseTestSource).toContain(
             'if (exampleUsesDedicatedReleaseTest(examplePath)) continue;'
+        );
+        expect(genericReleaseTestSource).toContain(
+            'cascaded shadow garden exposes live controls through ${backend}'
         );
         expect(nativeReleaseTestSource).toContain(
             'Sponza Forward+ exposes stable camera and lighting controls @webgpu'
@@ -283,6 +292,7 @@ describe('example release matrix contract', () => {
             'particle_gpu_nebula.html': { test: '1' },
             'screen_space_global_illumination_chapel.html': { test: '1' },
             'screen_space_reflections_palace.html': { test: '1' },
+            'shadow_residency_sanctum.html': { test: '1' },
             'stormfront_observatory.html': { test: '1' },
             'temporal_aa_observatory.html': { test: '1' }
         });

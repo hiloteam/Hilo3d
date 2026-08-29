@@ -8159,7 +8159,7 @@ export interface RenderPipelineContext {
     readonly graph: ScriptableRenderGraph;
     readonly output: RenderPipelineOutput;
     prepareScene(): void;
-    recordShadows(cullingResults: CullingResultsHandle): Readonly<RenderPipelineShadowResources> | null;
+    recordShadows(cullingResults: CullingResultsHandle, options?: Readonly<RenderPipelineShadowOptions>): Readonly<RenderPipelineShadowResources> | null;
     readonly scene: RendererScene;
     readonly viewport: RendererViewport;
     writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
@@ -8298,6 +8298,22 @@ export interface RenderPipelineRequirements {
 }
 
 // @public
+export interface RenderPipelineShadowOptions {
+    readonly excludeMeshes?: readonly Mesh[];
+}
+
+// @public
+export interface RenderPipelineShadowPageRegion {
+    readonly height: number;
+    readonly pageX: number;
+    readonly pageY: number;
+    readonly slicePhysicalIndex: number;
+    readonly width: number;
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
 export interface RenderPipelineShadowResources {
     readonly atlas: RenderGraphTextureHandle;
     readonly atlasRects: Float32Array;
@@ -8309,14 +8325,30 @@ export interface RenderPipelineShadowResources {
     readonly directionalCascadeSplits: Float32Array;
     readonly directionalLights: readonly DirectionalLight[];
     readonly directionalShadowCount: number;
+    readonly pageRegions: readonly Readonly<RenderPipelineShadowPageRegion>[];
     readonly pointBiases: Float32Array;
     readonly pointLights: readonly PointLight[];
     readonly pointMatrices: Float32Array;
     readonly pointShadowCount: number;
+    readonly slices: readonly Readonly<RenderPipelineShadowSlice>[];
     readonly spotBiases: Float32Array;
     readonly spotLights: readonly SpotLight[];
     readonly spotMatrices: Float32Array;
     readonly spotShadowCount: number;
+}
+
+// @public
+export interface RenderPipelineShadowSlice {
+    readonly cascade: number | null;
+    readonly dirty: boolean;
+    readonly face: number | null;
+    readonly far: number;
+    readonly kind: 'directional' | 'spot' | 'point';
+    readonly near: number;
+    readonly physicalIndex: number;
+    readonly sliceIndex: number;
+    readonly viewport: RendererViewport;
+    readonly viewProjectionMatrix: Float32Array;
 }
 
 // @public

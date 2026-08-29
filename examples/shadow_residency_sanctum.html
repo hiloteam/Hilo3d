@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <meta
+            name="description"
+            content="A cinematic WebGPU shadow-page residency installation built with Hilo3D Clustered Forward+."
+        />
+        <title>Hilo3D Umbra Sanctum — Shadow Page Residency</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./shadow_residency_sanctum.css" />
+    </head>
+    <body data-sanctum-phase="loading" data-sanctum-ready="false">
+        <div id="container"></div>
+        <div class="sanctumVeil" aria-hidden="true"></div>
+        <div class="sanctumGrain" aria-hidden="true"></div>
+
+        <header class="sanctumHeader">
+            <a href="./index.html" class="sanctumBrand" aria-label="Back to Hilo3D examples">
+                <span></span>Hilo3D
+            </a>
+            <p>shadow residency study · 07</p>
+        </header>
+
+        <main class="sanctumIntro">
+            <p class="sanctumEyebrow">Clustered Forward+ · fixed physical pages</p>
+            <h1>Umbra<br /><em>Sanctum</em></h1>
+            <p class="sanctumDescription">
+                Twelve votive blades keep a measured orbit around an impossible moon. Their moving
+                penumbrae cross a page-budgeted atlas while the nave keeps its memory of darkness.
+            </p>
+        </main>
+
+        <section class="sanctumConsole" aria-label="Shadow residency controls">
+            <div class="sanctumMetrics">
+                <div><span>budget / demand</span><strong id="pageMetric">—</strong></div>
+                <div><span>resident</span><strong id="residentMetric">—</strong></div>
+                <div><span>deferred</span><strong id="deferredMetric">—</strong></div>
+                <div><span>backend</span><strong id="backendMetric">—</strong></div>
+            </div>
+            <div class="sanctumActions">
+                <button id="motionToggle" type="button" aria-pressed="true">
+                    <span class="sanctumPulse"></span>
+                    <small>caster field</small><strong id="motionLabel">kinetic</strong>
+                </button>
+                <button id="veilToggle" type="button" aria-pressed="false">
+                    <span class="sanctumRune">◒</span>
+                    <small>layer witness</small><strong id="veilLabel">excluded</strong>
+                </button>
+                <button id="viewButton" type="button">
+                    <span class="sanctumRune">↗</span>
+                    <small>composition</small><strong>next view</strong>
+                </button>
+            </div>
+        </section>
+
+        <aside class="sanctumLegend">
+            <span>01</span>
+            <p>caster cadence</p>
+            <i></i>
+            <span>02</span>
+            <p>fair page circulation</p>
+            <i></i>
+            <span>03</span>
+            <p>camera-layer isolation</p>
+        </aside>
+
+        <p class="sanctumHint">Drag to orbit · wheel to cross the threshold</p>
+        <p class="sanctumCaption">Procedural geometry · live GPU culling · no baked shadows</p>
+
+        <script type="module" src="./shadow_residency_sanctum.ts"></script>
+    </body>
+</html>

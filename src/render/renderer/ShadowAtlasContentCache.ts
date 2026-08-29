@@ -26,6 +26,8 @@ export interface ShadowAtlasContentDecision {
     readonly dirtySlices: readonly boolean[];
     /** First exact invalidation cause for each physical slice, or `null` on a cache hit. */
     readonly reasons: readonly (ShadowAtlasInvalidationReason | null)[];
+    /** Stable desired-content revision for each dirty slice; zero identifies a cache hit. */
+    readonly updateIds: readonly number[];
     readonly sliceCount: number;
     readonly dirtySliceCount: number;
     readonly cachedSliceCount: number;
@@ -81,6 +83,7 @@ interface SliceRecord {
     pending: SliceSnapshot;
     committedValid: boolean;
     pendingEpoch: number;
+    pendingUpdateId: number;
 }
 
 function createCasterSnapshot(): CasterSnapshot {
@@ -225,6 +228,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
     readonly #slices: SliceRecord[] = [];
     readonly #dirtySlices: boolean[] = [];
     readonly #reasons: (ShadowAtlasInvalidationReason | null)[] = [];
+    readonly #updateIds: number[] = [];
     #transactionEpoch = 0;
     #transactionActive = false;
     #pendingSliceCount = 0;
@@ -232,6 +236,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
     #pendingReplacements = 0;
     #pendingRemovals = 0;
     #nextCasterRevision = 1;
+    #nextSliceUpdateId = 1;
     #destroyed = false;
 
     stage(
@@ -249,6 +254,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         const sliceCount = plan.slices.length;
         this.#dirtySlices.length = sliceCount;
         this.#reasons.length = sliceCount;
+        this.#updateIds.length = sliceCount;
         this.#pendingSliceCount = sliceCount;
         this.#pendingInsertions = 0;
         this.#pendingReplacements = 0;
@@ -274,10 +280,21 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
                 slice
             );
             const dirty = reason !== null;
+            let updateId = 0;
+            if (dirty) {
+                const repeatsPendingRequest =
+                    record.pendingUpdateId !== 0 &&
+                    this.sliceInvalidationReason(record.pending, atlas.token, slice) === null;
+                updateId = repeatsPendingRequest
+                    ? record.pendingUpdateId
+                    : this.allocateSliceUpdateId();
+            }
             this.copySlice(record.pending, atlas.token, slice);
             record.pendingEpoch = this.#transactionEpoch;
+            record.pendingUpdateId = updateId;
             this.#dirtySlices[physicalIndex] = dirty;
             this.#reasons[physicalIndex] = reason;
+            this.#updateIds[physicalIndex] = updateId;
             if (dirty) {
                 dirtySliceCount++;
                 this.metrics.recordMiss();
@@ -293,6 +310,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         return Object.freeze({
             dirtySlices: this.#dirtySlices,
             reasons: this.#reasons,
+            updateIds: this.#updateIds,
             sliceCount,
             dirtySliceCount,
             cachedSliceCount: sliceCount - dirtySliceCount
@@ -309,6 +327,30 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         this.#pendingRemovals = 0;
         for (const record of this.#slices) {
             if (record.committedValid) this.#pendingRemovals++;
+        }
+    }
+
+    /**
+     * Keep committed contents for dirty slices that an update scheduler deferred this frame.
+     * Deferred slices remain dirty on the next stage because their pending snapshot is not
+     * committed. Newly allocated slices cannot be deferred because they have no valid contents.
+     */
+    deferUnscheduled(scheduledSlices: readonly boolean[]): void {
+        this.assertAlive();
+        if (!this.#transactionActive) {
+            throw new Error('Shadow content cache has no staged transaction to schedule');
+        }
+        if (scheduledSlices.length !== this.#pendingSliceCount) {
+            throw new RangeError('Shadow update schedule must cover every pending atlas slice');
+        }
+        for (let index = 0; index < this.#pendingSliceCount; index += 1) {
+            if (this.#dirtySlices[index] !== true || scheduledSlices[index] === true) continue;
+            const record = this.#slices[index];
+            if (!record?.committedValid) {
+                throw new Error('A shadow slice without committed contents cannot be deferred');
+            }
+            record.pendingEpoch = 0;
+            if (this.#pendingReplacements > 0) this.#pendingReplacements--;
         }
     }
 
@@ -374,6 +416,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         this.#slices.length = 0;
         this.#dirtySlices.length = 0;
         this.#reasons.length = 0;
+        this.#updateIds.length = 0;
         this.#destroyed = true;
     }
 
@@ -387,6 +430,15 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
             this.#activeCasterRecords.clear();
         }
         uploads.enlist(this);
+    }
+
+    private allocateSliceUpdateId(): number {
+        const revision = this.#nextSliceUpdateId;
+        if (!Number.isSafeInteger(revision)) {
+            throw new RangeError('Shadow slice update revision space is exhausted');
+        }
+        this.#nextSliceUpdateId++;
+        return revision;
     }
 
     private captureCasters(meshes: readonly Mesh[]): void {
@@ -631,7 +683,8 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
                 committed: createSliceSnapshot(),
                 pending: createSliceSnapshot(),
                 committedValid: false,
-                pendingEpoch: 0
+                pendingEpoch: 0,
+                pendingUpdateId: 0
             };
             this.#slices[index] = record;
         }

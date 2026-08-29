@@ -246,6 +246,69 @@ describe.each([
         backend.destroy();
     });
 
+    it('updates directional cascade cameras at configured near-to-far cadences', () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const manager = new LightManager();
+        const directional = new DirectionalLight({
+            direction: new Vector3(-0.5, -1, 0.25),
+            shadow: { width: 64, height: 64, cascadeCount: 4, cascadeMaxDistance: 60 }
+        });
+        manager.addLight(directional);
+        const adapter = new ShadowAtlasSceneAdapter();
+        const camera = mainCamera();
+        const options = {
+            width: 64,
+            height: 64,
+            frameIndex: 0,
+            cascadeUpdateIntervals: [1, 2, 4, 8]
+        };
+        const first = adapter.prepare(manager, camera, device.capabilities, options);
+        const originalProjections = first.slices.map(slice =>
+            Array.from(slice.viewProjectionMatrix.elements)
+        );
+
+        camera.setPosition(8, 4, 8).lookAt(new Vector3());
+        options.frameIndex = 1;
+        const second = adapter.prepare(manager, camera, device.capabilities, options);
+        expect(Array.from(second.slices[0]?.viewProjectionMatrix.elements ?? [])).not.toEqual(
+            originalProjections[0]
+        );
+        for (let cascade = 1; cascade < 4; cascade += 1) {
+            expect(Array.from(second.slices[cascade]?.viewProjectionMatrix.elements ?? [])).toEqual(
+                originalProjections[cascade]
+            );
+        }
+
+        camera.setPosition(10, 4, 8).lookAt(new Vector3());
+        options.frameIndex = 2;
+        const secondFrameProjections = second.slices.map(slice =>
+            Array.from(slice.viewProjectionMatrix.elements)
+        );
+        const third = adapter.prepare(manager, camera, device.capabilities, options);
+        expect(Array.from(third.slices[1]?.viewProjectionMatrix.elements ?? [])).not.toEqual(
+            secondFrameProjections[1]
+        );
+        expect(Array.from(third.slices[2]?.viewProjectionMatrix.elements ?? [])).toEqual(
+            secondFrameProjections[2]
+        );
+        expect(Array.from(third.slices[3]?.viewProjectionMatrix.elements ?? [])).toEqual(
+            secondFrameProjections[3]
+        );
+
+        if (directional.shadow === null) throw new Error('Directional shadow options are missing');
+        directional.shadow.cascadeMaxDistance = 30;
+        options.frameIndex = 3;
+        const priorFarProjection = Array.from(third.slices[3]?.viewProjectionMatrix.elements ?? []);
+        const configurationChanged = adapter.prepare(manager, camera, device.capabilities, options);
+        expect(
+            Array.from(configurationChanged.slices[3]?.viewProjectionMatrix.elements ?? [])
+        ).not.toEqual(priorFarProjection);
+
+        adapter.destroy();
+        backend.destroy();
+    });
+
     it('locks point faces and matrices to +X,-X,+Y,-Y,+Z,-Z order', () => {
         const backend = createBackend();
         const device = backend.createDevice();

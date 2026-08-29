@@ -65,7 +65,9 @@ import type {
     RenderPipelineOutput,
     RenderPipelineOutputColorAttachment,
     RenderPipelineOutputDepthStencilAttachment,
-    RenderPipelineShadowResources
+    RenderPipelineShadowResources,
+    RenderPipelineShadowOptions,
+    RenderPipelineShadowSlice
 } from '../pipeline/RenderPipeline';
 import {
     acquireRenderPassParameters,
@@ -159,6 +161,7 @@ import { importSurfaceColor, importSurfaceDepthStencil } from '../renderer/Surfa
 import { SharedDrawPassParameters } from '../renderer/passes/SharedDrawPass';
 import type { ShadowAtlasScenePlan } from '../renderer/ShadowAtlasSceneAdapter';
 import type { ShadowAtlasResourceRecord } from '../renderer/ShadowAtlasResourceCache';
+import type { ShadowAtlasPageRegion } from '../renderer/ShadowAtlasPageResidency';
 import { refreshShadowAtlasSceneBinding } from '../renderer/ShadowAtlasTextureBinding';
 import { depthClearValue } from '../renderer/DepthConvention';
 
@@ -486,6 +489,7 @@ export interface ScriptableRenderPipelineServices {
     ): void;
     recordScriptableShadows(
         meshes: readonly Mesh[],
+        cacheMeshes: readonly Mesh[],
         camera: Camera,
         viewport: Readonly<RHIViewport>,
         width: number,
@@ -503,6 +507,21 @@ export interface ScriptableShadowAtlasBuild {
     readonly texture: RGTextureHandle;
     readonly atlas: Readonly<ShadowAtlasResourceRecord>;
     readonly plan: Readonly<ShadowAtlasScenePlan>;
+    readonly dirtySlices: readonly boolean[];
+    readonly pageRegions: readonly Readonly<ShadowAtlasPageRegion>[];
+}
+
+interface MutableRenderPipelineShadowSlice {
+    kind: RenderPipelineShadowSlice['kind'];
+    sliceIndex: number;
+    physicalIndex: number;
+    face: number | null;
+    cascade: number | null;
+    readonly viewport: [number, number, number, number];
+    readonly viewProjectionMatrix: Float32Array;
+    near: number;
+    far: number;
+    dirty: boolean;
 }
 
 /** @internal Runtime-scoped ownership identities for persistent SRP targets. */
@@ -3967,10 +3986,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
     }
 
     recordShadows(
-        cullingResults: CullingResultsHandle
+        cullingResults: CullingResultsHandle,
+        options?: Readonly<RenderPipelineShadowOptions>
     ): Readonly<RenderPipelineShadowResources> | null {
         this.#owner.assertLeaseActive(this.#lease);
-        return this.#owner.recordShadows(cullingResults);
+        return this.#owner.recordShadows(cullingResults, options);
     }
 
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P {
@@ -4125,6 +4145,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     readonly #eventMeshes: Mesh[] = [];
     readonly #eventMeshSet = new Set<Mesh>();
     readonly #cleanupFailures: unknown[] = [];
+    readonly #shadowExcludedMeshes = new Set<Mesh>();
+    readonly #shadowDrawMeshes: Mesh[] = [];
+    readonly #shadowSliceRecords: MutableRenderPipelineShadowSlice[] = [];
 
     #scope: RenderGraphFrameBuildScope | null = null;
     #scene: RendererScene | null = null;
@@ -4467,7 +4490,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     }
 
     recordShadows(
-        cullingResults: CullingResultsHandle
+        cullingResults: CullingResultsHandle,
+        options: Readonly<RenderPipelineShadowOptions> = {}
     ): Readonly<RenderPipelineShadowResources> | null {
         this.assertActive();
         if (this.#shadowsRecorded) {
@@ -4485,7 +4509,26 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         }
         this.#shadowCulling = culling;
         const camera = culling.activate(this.services);
+        this.#shadowExcludedMeshes.clear();
+        const excludedMeshes: unknown = options.excludeMeshes;
+        if (excludedMeshes !== undefined) {
+            if (!Array.isArray(excludedMeshes)) {
+                throw new TypeError('Shadow excludeMeshes must be an array');
+            }
+            for (let index = 0; index < excludedMeshes.length; index += 1) {
+                const mesh: unknown = excludedMeshes[index];
+                if (!(mesh instanceof Mesh)) {
+                    throw new TypeError(`Shadow excludeMeshes[${String(index)}] must be a Mesh`);
+                }
+                this.#shadowExcludedMeshes.add(mesh);
+            }
+        }
+        this.#shadowDrawMeshes.length = 0;
+        for (const mesh of culling.visibleMeshes) {
+            if (!this.#shadowExcludedMeshes.has(mesh)) this.#shadowDrawMeshes.push(mesh);
+        }
         const shadowBuild = this.services.recordScriptableShadows(
+            this.#shadowDrawMeshes,
             culling.visibleMeshes,
             camera,
             this.rhiViewport,
@@ -4517,6 +4560,40 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         }).handle;
         const block = shadowBuild.plan.lightBlock;
         const manager = this.services.lightManager;
+        this.#shadowSliceRecords.length = shadowBuild.plan.slices.length;
+        for (let index = 0; index < shadowBuild.plan.slices.length; index += 1) {
+            const slice = shadowBuild.plan.slices[index];
+            if (slice === undefined) throw new Error('Shadow slice metadata is incomplete');
+            let record = this.#shadowSliceRecords[index];
+            if (record === undefined) {
+                record = {
+                    kind: 'directional',
+                    sliceIndex: 0,
+                    physicalIndex: 0,
+                    face: null,
+                    cascade: null,
+                    viewport: [0, 0, 0, 0],
+                    viewProjectionMatrix: new Float32Array(16),
+                    near: 0,
+                    far: 0,
+                    dirty: false
+                };
+                this.#shadowSliceRecords[index] = record;
+            }
+            record.kind = slice.kind;
+            record.sliceIndex = slice.sliceIndex;
+            record.physicalIndex = slice.physicalIndex;
+            record.face = slice.face;
+            record.cascade = slice.cascade;
+            record.viewport[0] = slice.viewport.x;
+            record.viewport[1] = slice.viewport.y;
+            record.viewport[2] = slice.viewport.width;
+            record.viewport[3] = slice.viewport.height;
+            record.viewProjectionMatrix.set(slice.viewProjectionMatrix.elements);
+            record.near = slice.near;
+            record.far = slice.far;
+            record.dirty = shadowBuild.dirtySlices[index] === true;
+        }
         return Object.freeze({
             atlas: atlasHandle,
             atlasSize: block.atlasSize,
@@ -4535,7 +4612,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             spotBiases: block.spotBiases,
             spotMatrices: block.spotMatrices,
             pointBiases: block.pointBiases,
-            pointMatrices: block.pointMatrices
+            pointMatrices: block.pointMatrices,
+            slices: this.#shadowSliceRecords,
+            pageRegions: shadowBuild.pageRegions
         });
     }
 

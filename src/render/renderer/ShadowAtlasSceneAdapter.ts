@@ -39,6 +39,14 @@ export interface ShadowAtlasScenePrepareOptions {
     readonly width: number;
     /** Default planar shadow-map height. Point lights use the smaller dimension. */
     readonly height: number;
+    /** Scale local lights and distant cascades from main-camera receiver coverage. */
+    readonly receiverDrivenResolution?: boolean;
+    /** Lower bound used by receiver-driven sizing. Defaults to 128 pixels. */
+    readonly minimumResolution?: number;
+    /** Monotonic renderer frame used by directional-cascade update cadence. Defaults to zero. */
+    readonly frameIndex?: number;
+    /** Per-cascade camera update intervals. Omitted intervals update every frame. */
+    readonly cascadeUpdateIntervals?: readonly number[];
 }
 
 /** Fixed-capacity arrays ready for the canonical LightBlock writer. */
@@ -106,6 +114,8 @@ interface MutableRequest extends ShadowAtlasLightRequest<ShadowAtlasSceneLight> 
     width: number;
     height: number;
     cascadeCount?: number;
+    sliceWidths?: number[];
+    sliceHeights?: number[];
 }
 
 interface StagedPlanarLight<LightType extends SpotLight, CameraType extends Camera> {
@@ -123,6 +133,8 @@ interface StagedDirectionalLight {
     readonly cameras: readonly OrthographicCamera[];
     readonly lightSpaceMatrices: readonly Matrix4[];
     readonly splits: Float32Array;
+    readonly renderWidths: Float64Array;
+    readonly renderHeights: Float64Array;
     cascadeCount: number;
     cascadeBlend: number;
     shadowStrength: number;
@@ -146,6 +158,13 @@ interface CommittedLightRecord {
     kind: ShadowAtlasLightKind;
     readonly cameras: Camera[];
     readonly lightSpaceMatrices: Matrix4[];
+    readonly lightWorldMatrix: Matrix4;
+    readonly lightDirection: Vector3;
+    readonly directionalSplits: Float32Array;
+    readonly directionalRenderWidths: Float64Array;
+    readonly directionalRenderHeights: Float64Array;
+    directionalCascadeCount: number;
+    directionalStateValid: boolean;
     activeSliceCount: number;
     epoch: number;
 }
@@ -193,6 +212,7 @@ interface MutableLightBlockState {
 const tempMatrix = new Matrix4();
 const tempTarget = new Vector3();
 const tempCascadePoint = new Vector3();
+const tempReceiverPosition = new Vector3();
 const tempBounds: Bounds = {
     x: 0,
     y: 0,
@@ -738,6 +758,75 @@ function createMutableRequest(): MutableRequest {
     return { owner: null as unknown as ShadowAtlasSceneLight, width: 1, height: 1 };
 }
 
+function quantizedReceiverDimension(value: number, minimum: number, maximum: number): number {
+    if (maximum <= minimum) return maximum;
+    const bounded = Math.min(maximum, Math.max(minimum, value));
+    return Math.min(maximum, Math.max(minimum, 2 ** Math.ceil(Math.log2(bounded))));
+}
+
+function sameNumbers(left: ArrayLike<number>, right: ArrayLike<number>, count: number): boolean {
+    for (let index = 0; index < count; index += 1) {
+        if (!Object.is(left[index], right[index])) return false;
+    }
+    return true;
+}
+
+function receiverDrivenLocalDimensions(
+    request: MutableRequest,
+    light: SpotLight | PointLight,
+    camera: Camera,
+    minimum: number
+): void {
+    if (!(camera instanceof PerspectiveCamera) || light.range <= 0) return;
+    const originalWidth = request.width;
+    const originalHeight = request.height;
+    light.updateMatrixWorld(true);
+    const world = light.worldMatrix.elements;
+    tempReceiverPosition.set(world[12], world[13], world[14]).transformMat4(camera.viewMatrix);
+    const depth = -tempReceiverPosition.z;
+    const focalPixels = originalHeight / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    const diameterPixels =
+        depth <= 0 ? 0 : (2 * light.range * focalPixels) / Math.max(depth, camera.near);
+    const scale = Math.min(1, diameterPixels / Math.max(originalWidth, originalHeight));
+    const width = quantizedReceiverDimension(originalWidth * scale, minimum, originalWidth);
+    const height = quantizedReceiverDimension(originalHeight * scale, minimum, originalHeight);
+    const sliceCount = light instanceof PointLight ? 6 : 1;
+    const widths = request.sliceWidths ?? [];
+    const heights = request.sliceHeights ?? [];
+    widths.length = sliceCount;
+    heights.length = sliceCount;
+    widths.fill(width);
+    heights.fill(height);
+    request.sliceWidths = widths;
+    request.sliceHeights = heights;
+}
+
+function configureDirectionalSliceDimensions(
+    request: MutableRequest,
+    cascadeCount: number,
+    minimum: number
+): void {
+    const widths = request.sliceWidths ?? [];
+    const heights = request.sliceHeights ?? [];
+    widths.length = cascadeCount;
+    heights.length = cascadeCount;
+    for (let cascade = 0; cascade < cascadeCount; cascade += 1) {
+        const divisor = 2 ** cascade;
+        widths[cascade] = quantizedReceiverDimension(
+            request.width / divisor,
+            minimum,
+            request.width
+        );
+        heights[cascade] = quantizedReceiverDimension(
+            request.height / divisor,
+            minimum,
+            request.height
+        );
+    }
+    request.sliceWidths = widths;
+    request.sliceHeights = heights;
+}
+
 function createMutableSceneSlice(): MutableSceneSlice {
     return {
         light: null,
@@ -866,18 +955,49 @@ export class ShadowAtlasSceneAdapter {
         }
         const defaultWidth = positiveSafeInteger(options.width, 'Shadow atlas default width');
         const defaultHeight = positiveSafeInteger(options.height, 'Shadow atlas default height');
+        const minimumResolution = positiveSafeInteger(
+            options.minimumResolution ?? 128,
+            'Shadow atlas minimum receiver resolution'
+        );
+        const frameIndex = options.frameIndex ?? 0;
+        if (!Number.isSafeInteger(frameIndex) || frameIndex < 0) {
+            throw new RangeError('Shadow frameIndex must be a non-negative safe integer');
+        }
+        const cascadeUpdateIntervals = options.cascadeUpdateIntervals;
+        if (cascadeUpdateIntervals !== undefined) {
+            for (let index = 0; index < cascadeUpdateIntervals.length; index += 1) {
+                positiveSafeInteger(
+                    cascadeUpdateIntervals[index] ?? 0,
+                    `Shadow cascadeUpdateIntervals[${String(index)}]`
+                );
+            }
+        }
         mainCamera.updateViewProjectionMatrix();
         finiteMatrix(mainCamera.worldMatrix, 'Active camera worldMatrix');
         finiteMatrix(mainCamera.viewProjectionMatrix, 'Active camera viewProjectionMatrix');
 
-        this.collectRequests(manager, mainCamera, defaultWidth, defaultHeight);
+        this.collectRequests(
+            manager,
+            mainCamera,
+            defaultWidth,
+            defaultHeight,
+            options.receiverDrivenResolution === true,
+            minimumResolution
+        );
         this.validateCounts();
         const tileWidth = this.stageTileDimension(defaultWidth, 'width');
         const tileHeight = this.stageTileDimension(defaultHeight, 'height');
         const tileAspect = tileWidth / tileHeight;
         // Keep every fallible scene/camera calculation before build(): the planner mutates its
         // reusable public plan only after its own validation succeeds.
-        this.stageCameras(mainCamera, tileWidth, tileHeight, tileAspect);
+        this.stageCameras(
+            mainCamera,
+            tileWidth,
+            tileHeight,
+            tileAspect,
+            frameIndex,
+            cascadeUpdateIntervals
+        );
 
         const atlas = this.planner.build(this.#stageRequests, capabilities);
         this.finishStagedLightBlock(atlas);
@@ -943,7 +1063,9 @@ export class ShadowAtlasSceneAdapter {
         manager: LightManager,
         mainCamera: Camera,
         width: number,
-        height: number
+        height: number,
+        receiverDriven: boolean,
+        minimumResolution: number
     ): void {
         this.#stageDirectionalRequests.length = 0;
         this.#stageSpotRequests.length = 0;
@@ -951,9 +1073,30 @@ export class ShadowAtlasSceneAdapter {
         if (!manager.shadowEnabled) return;
         this.#seenLights.clear();
         try {
-            this.collectDirectional(manager.directionalLights, mainCamera, width, height);
-            this.collectSpot(manager.spotLights, width, height);
-            this.collectPoint(manager.pointLights, width, height);
+            this.collectDirectional(
+                manager.directionalLights,
+                mainCamera,
+                width,
+                height,
+                receiverDriven,
+                minimumResolution
+            );
+            this.collectSpot(
+                manager.spotLights,
+                mainCamera,
+                width,
+                height,
+                receiverDriven,
+                minimumResolution
+            );
+            this.collectPoint(
+                manager.pointLights,
+                mainCamera,
+                width,
+                height,
+                receiverDriven,
+                minimumResolution
+            );
         } finally {
             this.#seenLights.clear();
         }
@@ -963,7 +1106,9 @@ export class ShadowAtlasSceneAdapter {
         lights: readonly DirectionalLight[],
         mainCamera: Camera,
         width: number,
-        height: number
+        height: number,
+        receiverDriven: boolean,
+        minimumResolution: number
     ): void {
         for (const light of lights) {
             if (!(light instanceof DirectionalLight)) {
@@ -983,11 +1128,25 @@ export class ShadowAtlasSceneAdapter {
             finiteDirection(light);
             validateCameraInfo(light.shadow.cameraInfo, 'Directional shadow cameraInfo');
             configureDirectionalCascades(staged, light.shadow, mainCamera);
+            if (receiverDriven) {
+                configureDirectionalSliceDimensions(
+                    staged.request,
+                    staged.cascadeCount,
+                    minimumResolution
+                );
+            }
             this.#stageDirectionalRequests.push(staged.request);
         }
     }
 
-    private collectSpot(lights: readonly SpotLight[], width: number, height: number): void {
+    private collectSpot(
+        lights: readonly SpotLight[],
+        mainCamera: Camera,
+        width: number,
+        height: number,
+        receiverDriven: boolean,
+        minimumResolution: number
+    ): void {
         for (const light of lights) {
             if (!(light instanceof SpotLight)) {
                 throw new TypeError('Spot shadow lists must contain SpotLight values');
@@ -1001,13 +1160,23 @@ export class ShadowAtlasSceneAdapter {
             }
             const staged = this.spotStageAt(index);
             this.stageRequest(staged, light, light.shadow, width, height, false);
+            if (receiverDriven) {
+                receiverDrivenLocalDimensions(staged.request, light, mainCamera, minimumResolution);
+            }
             finiteDirection(light);
             validateCameraInfo(light.shadow.cameraInfo, 'Spot shadow cameraInfo');
             this.#stageSpotRequests.push(staged.request);
         }
     }
 
-    private collectPoint(lights: readonly PointLight[], width: number, height: number): void {
+    private collectPoint(
+        lights: readonly PointLight[],
+        mainCamera: Camera,
+        width: number,
+        height: number,
+        receiverDriven: boolean,
+        minimumResolution: number
+    ): void {
         for (const light of lights) {
             if (!(light instanceof PointLight)) {
                 throw new TypeError('Point shadow lists must contain PointLight values');
@@ -1021,6 +1190,9 @@ export class ShadowAtlasSceneAdapter {
             }
             const staged = this.pointStageAt(index);
             this.stageRequest(staged, light, light.shadow, width, height, true);
+            if (receiverDriven) {
+                receiverDrivenLocalDimensions(staged.request, light, mainCamera, minimumResolution);
+            }
             validateCameraInfo(light.shadow.cameraInfo, 'Point shadow cameraInfo');
             this.#stagePointRequests.push(staged.request);
         }
@@ -1064,6 +1236,8 @@ export class ShadowAtlasSceneAdapter {
         staged.request.width = width;
         staged.request.height = height;
         delete staged.request.cascadeCount;
+        delete staged.request.sliceWidths;
+        delete staged.request.sliceHeights;
         writeShadowBias(shadow, staged);
     }
 
@@ -1116,7 +1290,9 @@ export class ShadowAtlasSceneAdapter {
         mainCamera: Camera,
         tileWidth: number,
         tileHeight: number,
-        tileAspect: number
+        tileAspect: number,
+        frameIndex: number,
+        cascadeUpdateIntervals: readonly number[] | undefined
     ): void {
         clearLightBlockState(this.#stageLightBlock);
         this.#stageLightBlock.directionalShadowCount = this.#stageDirectionalRequests.length;
@@ -1129,6 +1305,14 @@ export class ShadowAtlasSceneAdapter {
                 throw new Error('Directional shadow staging is incomplete');
             }
             light.updateMatrixWorld(true);
+            const committed = this.#records.get(light);
+            const lightStateStable =
+                committed?.kind === 'directional' &&
+                committed.directionalStateValid &&
+                committed.lightWorldMatrix.equals(light.worldMatrix) &&
+                committed.lightDirection.equals(light.direction) &&
+                committed.directionalCascadeCount === staged.cascadeCount &&
+                sameNumbers(committed.directionalSplits, staged.splits, staged.cascadeCount);
             this.#stageLightBlock.directionalBiases[index * 2] = staged.minBias;
             this.#stageLightBlock.directionalBiases[index * 2 + 1] = staged.maxBias;
             this.#stageLightBlock.directionalCascadeSplits.set(staged.splits, index * 4);
@@ -1146,7 +1330,23 @@ export class ShadowAtlasSceneAdapter {
                 if (!camera || !matrix || cascadeFar === undefined) {
                     throw new Error('Directional cascade staging is incomplete');
                 }
-                if (!staged.useCascadeFit) {
+                const interval = cascadeUpdateIntervals?.[cascade] ?? 1;
+                const committedCamera = committed?.cameras[cascade];
+                const renderWidth = staged.request.sliceWidths?.[cascade] ?? tileWidth;
+                const renderHeight = staged.request.sliceHeights?.[cascade] ?? tileHeight;
+                staged.renderWidths[cascade] = renderWidth;
+                staged.renderHeights[cascade] = renderHeight;
+                const reuseCommitted =
+                    lightStateStable &&
+                    interval > 1 &&
+                    frameIndex % interval !== 0 &&
+                    committedCamera instanceof OrthographicCamera &&
+                    committedCamera.depthMode === mainCamera.depthMode &&
+                    committed.directionalRenderWidths[cascade] === renderWidth &&
+                    committed.directionalRenderHeights[cascade] === renderHeight;
+                if (reuseCommitted) {
+                    copyCamera(committedCamera, camera);
+                } else if (!staged.useCascadeFit) {
                     stageDirectionalCamera(camera, light, mainCamera);
                 } else {
                     let fitNear = cascadeNear;
@@ -1169,8 +1369,8 @@ export class ShadowAtlasSceneAdapter {
                         mainCamera,
                         fitNear,
                         cascadeFar,
-                        tileWidth,
-                        tileHeight,
+                        renderWidth,
+                        renderHeight,
                         staged.stabilize
                     );
                 }
@@ -1237,12 +1437,18 @@ export class ShadowAtlasSceneAdapter {
         this.#stageLightBlock.atlasSize[2] = 1 / atlas.width;
         this.#stageLightBlock.atlasSize[3] = 1 / atlas.height;
         for (let index = 0; index < this.#stageDirectionalRequests.length; index += 1) {
-            this.#stageLightBlock.directionalMapSizes[index * 2] = atlas.tileWidth;
-            this.#stageLightBlock.directionalMapSizes[index * 2 + 1] = atlas.tileHeight;
+            const request = this.#stageDirectionalRequests[index];
+            this.#stageLightBlock.directionalMapSizes[index * 2] =
+                request?.sliceWidths?.[0] ?? atlas.tileWidth;
+            this.#stageLightBlock.directionalMapSizes[index * 2 + 1] =
+                request?.sliceHeights?.[0] ?? atlas.tileHeight;
         }
         for (let index = 0; index < this.#stageSpotRequests.length; index += 1) {
-            this.#stageLightBlock.spotMapSizes[index * 2] = atlas.tileWidth;
-            this.#stageLightBlock.spotMapSizes[index * 2 + 1] = atlas.tileHeight;
+            const request = this.#stageSpotRequests[index];
+            this.#stageLightBlock.spotMapSizes[index * 2] =
+                request?.sliceWidths?.[0] ?? atlas.tileWidth;
+            this.#stageLightBlock.spotMapSizes[index * 2 + 1] =
+                request?.sliceHeights?.[0] ?? atlas.tileHeight;
         }
         for (const slice of atlas.slices) {
             const offset = slice.sliceIndex * 4;
@@ -1328,6 +1534,14 @@ export class ShadowAtlasSceneAdapter {
                 if (sourceCamera && camera) copyCamera(sourceCamera, camera);
                 if (sourceMatrix && matrix) matrix.copy(sourceMatrix);
             }
+            light.updateMatrixWorld(true);
+            record.lightWorldMatrix.copy(light.worldMatrix);
+            record.lightDirection.copy(light.direction);
+            record.directionalSplits.set(staged.splits);
+            record.directionalRenderWidths.set(staged.renderWidths);
+            record.directionalRenderHeights.set(staged.renderHeights);
+            record.directionalCascadeCount = staged.cascadeCount;
+            record.directionalStateValid = true;
         }
     }
 
@@ -1396,6 +1610,13 @@ export class ShadowAtlasSceneAdapter {
             kind,
             cameras,
             lightSpaceMatrices,
+            lightWorldMatrix: new Matrix4(),
+            lightDirection: new Vector3(),
+            directionalSplits: new Float32Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
+            directionalRenderWidths: new Float64Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
+            directionalRenderHeights: new Float64Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
+            directionalCascadeCount: 0,
+            directionalStateValid: false,
             activeSliceCount: 0,
             epoch: 0
         };
@@ -1411,6 +1632,7 @@ export class ShadowAtlasSceneAdapter {
 
     private releaseRecord(record: CommittedLightRecord, pool: boolean): void {
         record.light = null;
+        record.directionalStateValid = false;
         record.activeSliceCount = 0;
         record.epoch = 0;
         for (const camera of record.cameras) {
@@ -1441,6 +1663,24 @@ export class ShadowAtlasSceneAdapter {
             target.height = source.height;
             if (source.cascadeCount === undefined) delete target.cascadeCount;
             else target.cascadeCount = source.cascadeCount;
+            if (source.sliceWidths === undefined) delete target.sliceWidths;
+            else {
+                const widths = target.sliceWidths ?? [];
+                widths.length = source.sliceWidths.length;
+                for (let slice = 0; slice < widths.length; slice += 1) {
+                    widths[slice] = source.sliceWidths[slice] ?? 1;
+                }
+                target.sliceWidths = widths;
+            }
+            if (source.sliceHeights === undefined) delete target.sliceHeights;
+            else {
+                const heights = target.sliceHeights ?? [];
+                heights.length = source.sliceHeights.length;
+                for (let slice = 0; slice < heights.length; slice += 1) {
+                    heights[slice] = source.sliceHeights[slice] ?? 1;
+                }
+                target.sliceHeights = heights;
+            }
         }
     }
 
@@ -1474,6 +1714,8 @@ export class ShadowAtlasSceneAdapter {
                     () => new Matrix4()
                 ),
                 splits: new Float32Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
+                renderWidths: new Float64Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
+                renderHeights: new Float64Array(MAX_DIRECTIONAL_SHADOW_CASCADES),
                 cascadeCount: 1,
                 cascadeBlend: 0.1,
                 shadowStrength: 1,
