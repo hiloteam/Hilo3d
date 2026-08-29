@@ -1,4 +1,5 @@
 import type { MaterialPipelineState } from '../../material/MaterialDefinition';
+import type { CameraDepthMode } from '../../camera/Camera';
 import type Shader from '../../shader/Shader';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
@@ -13,7 +14,7 @@ import {
     type ShaderBindGroupHandleSet,
     type ShaderSampledBindingResources
 } from './ShaderBindGroupResourceCache';
-import { ShaderArtifactCompiler } from './ShaderArtifactCompiler';
+import { ShaderArtifactCompiler, type ShaderFragmentOutputMode } from './ShaderArtifactCompiler';
 import { ShaderResourceCache } from './ShaderResourceCache';
 import { SubmissionResourceTracker } from './SubmissionResourceTracker';
 
@@ -36,6 +37,10 @@ export interface FullscreenDrawPrepareOptions {
     readonly uniformBuffers?: readonly ResourceRegistryHandle<RHIBuffer>[];
     /** Resources follow `pipeline.bindingPlan.sampledBindings` order exactly. */
     readonly sampledResources?: readonly Readonly<ShaderSampledBindingResources>[];
+    /** Depth-only fullscreen work, such as a scissored atlas clear, has no color outputs. */
+    readonly fragmentOutputMode?: ShaderFragmentOutputMode;
+    /** Depth convention used when a depth-only target is prepared. */
+    readonly depthMode?: CameraDepthMode;
 }
 
 /**
@@ -152,7 +157,10 @@ export class FullscreenDrawProcessor {
         const pipeline = this.prepareGraphPipeline(
             options.shader,
             options.pipelineState,
-            options.target
+            options.target,
+            0,
+            options.fragmentOutputMode,
+            options.depthMode
         );
         const uniformBuffers = options.uniformBuffers ?? EMPTY_UNIFORM_BUFFERS;
         const sampledResources = options.sampledResources ?? EMPTY_SAMPLED_RESOURCES;
@@ -196,13 +204,16 @@ export class FullscreenDrawProcessor {
         shader: Shader,
         pipelineState: Readonly<MaterialPipelineState>,
         target: RHIMeshDrawTargetDescriptor,
-        numericDepthSamplerMask = 0
+        numericDepthSamplerMask = 0,
+        fragmentOutputMode: ShaderFragmentOutputMode = 'color',
+        depthMode: CameraDepthMode = 'standard'
     ): Readonly<PipelineResourceRecord> {
         this.assertAlive();
         if (!this.active) {
             throw new Error('Fullscreen draw processor requires beginFrame before preparation');
         }
         const compiled = this.compiler.compile(shader, this.registry.deviceBackend, {
+            fragmentOutputs: fragmentOutputMode,
             numericDepthSamplerMask
         });
         if (compiled.metadata.vertexInputs.length !== 0) {
@@ -214,10 +225,11 @@ export class FullscreenDrawProcessor {
             EMPTY_VERTEX_LAYOUTS,
             pipelineState,
             target,
-            'color',
+            fragmentOutputMode,
             undefined,
             undefined,
-            numericDepthSamplerMask
+            numericDepthSamplerMask,
+            depthMode
         );
         this.resourceUses.use(pipeline.pipeline);
         return pipeline;

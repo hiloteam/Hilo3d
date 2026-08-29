@@ -123,6 +123,7 @@ Scene 覆盖范围内的兼容 Mesh 会继续走共享 Forward 路径，并合�
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | GPU Scene          | 脏对象/材质数据库、previous-frame Hi-Z 遮挡、projected-radius LOD、紧凑可见区间与固定 indirect bucket |
 | Clustered Forward+ | depth-driven 3D cluster、有界且确定性的灯光分配、storage PBR、共享方向光/聚光/点光阴影与 LTC 面光     |
+| 阴影缓存           | 稳定 atlas tile、逐 slice 精确失效、局部深度清理、事务式复用与 recovery-aware 诊断                    |
 | 时域渲染           | Motion Vector、authored reactive mask、原生 TAA、0.5–1.0 TAAU 与 timestamp 驱动的动态分辨率           |
 | 屏幕空间光照       | WebGPU/WebGL 2 可移植 GTAO 与 SSGI，以及 WebGPU Clustered hierarchical SSR                            |
 | 体积与天气         | Froxel 高度雾/局部雾、方向光/点光/聚光注入、物理大气 LUT、时域云与云影                                |

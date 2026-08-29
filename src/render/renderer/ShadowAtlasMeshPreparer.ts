@@ -29,6 +29,8 @@ export class ShadowAtlasMeshPreparer
     readonly #ownerRecords = new Map<object, ShadowOwnerRecord>();
     readonly #usedOwners = new Set<object>();
     readonly #pendingDetachOwners = new Set<object>();
+    readonly #configuredCameras = new Set<Camera>();
+    readonly #configuredMeshes = new Set<Mesh>();
     #plan: Readonly<ShadowAtlasScenePlan> | null = null;
     #meshes: readonly Mesh[] = Object.freeze([]);
     #target: RHIMeshDrawTargetDescriptor | null = null;
@@ -50,11 +52,17 @@ export class ShadowAtlasMeshPreparer
         // Truncating first clears entries when the reusable plan keeps the same slice count.
         this.#sceneSlicesByPhysicalIndex.length = 0;
         this.#sceneSlicesByPhysicalIndex.length = plan.atlas.sliceCount;
+        this.#configuredCameras.clear();
         for (const slice of plan.slices) {
             if (this.#sceneSlicesByPhysicalIndex[slice.physicalIndex] !== undefined) {
                 throw new TypeError('Shadow scene plan contains a duplicate physical slice');
             }
             this.#sceneSlicesByPhysicalIndex[slice.physicalIndex] = slice;
+            this.#configuredCameras.add(slice.camera);
+        }
+        this.#configuredMeshes.clear();
+        for (const mesh of meshes) {
+            if (mesh.castShadows && mesh.material !== null) this.#configuredMeshes.add(mesh);
         }
         this.#plan = plan;
         this.#meshes = meshes;
@@ -105,6 +113,14 @@ export class ShadowAtlasMeshPreparer
         this.#active = false;
         for (const owner of this.#ownerRecords.keys()) {
             if (this.#usedOwners.has(owner)) continue;
+            const record = this.#ownerRecords.get(owner);
+            if (
+                record !== undefined &&
+                this.#configuredCameras.has(record.camera) &&
+                this.#configuredMeshes.has(record.mesh)
+            ) {
+                continue;
+            }
             this.#pendingDetachOwners.add(owner);
         }
         this.#usedOwners.clear();
@@ -143,6 +159,8 @@ export class ShadowAtlasMeshPreparer
         this.#ownersByCamera.clear();
         this.#usedOwners.clear();
         this.#pendingDetachOwners.clear();
+        this.#configuredCameras.clear();
+        this.#configuredMeshes.clear();
         this.#sceneSlicesByPhysicalIndex.length = 0;
         this.#draws.length = 0;
         this.#plan = null;

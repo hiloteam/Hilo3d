@@ -134,7 +134,7 @@ describe('SharedRendererDriver shadow production wiring', () => {
         if (atlasTexture === null) throw new Error('Directional shadow atlas was not attached');
         expect(renderer.lightManager.shadowAtlasSize).toEqualishValues(16, 8, 1 / 16, 1 / 8);
         expect(diagnostics.snapshot().frame).toMatchObject({
-            draws: 3,
+            draws: 4,
             passes: 3,
             submissions: 1
         });
@@ -143,7 +143,8 @@ describe('SharedRendererDriver shadow production wiring', () => {
             firstDiagnostics.caches.pipeline,
             firstDiagnostics.caches.bindGroup,
             firstDiagnostics.caches.vertexArray,
-            firstDiagnostics.caches.framebuffer
+            firstDiagnostics.caches.framebuffer,
+            firstDiagnostics.caches.shadowAtlas
         ]) {
             expect(cache.misses).not.toBeNull();
             expect(cache.size).not.toBeNull();
@@ -167,6 +168,23 @@ describe('SharedRendererDriver shadow production wiring', () => {
         }
         firstPasses.restore();
 
+        const cachedPasses = observePassLabels(rhiExtension(renderer).device);
+        renderer.render(scene, camera);
+        await renderer.waitForIdle();
+        expect(cachedPasses.labels).toEqual([
+            'Forward scene',
+            'Forward linear-to-sRGB output transfer'
+        ]);
+        expect(diagnostics.snapshot().frame).toMatchObject({
+            draws: 2,
+            passes: 2,
+            submissions: 1
+        });
+        expect(diagnostics.snapshot().caches.shadowAtlas.hits).toBeGreaterThan(
+            firstDiagnostics.caches.shadowAtlas.hits ?? 0
+        );
+        cachedPasses.restore();
+
         scene.addChild(spot).addChild(point);
         const allPasses = observePassLabels(rhiExtension(renderer).device);
         renderer.render(scene, camera);
@@ -187,7 +205,7 @@ describe('SharedRendererDriver shadow production wiring', () => {
         expect(renderer.lightManager.shadowAtlas).toBe(atlasTexture);
         expect(renderer.lightManager.shadowAtlasSize).toEqualishValues(96, 48, 1 / 96, 1 / 48);
         expect(diagnostics.snapshot().frame).toMatchObject({
-            draws: 10,
+            draws: 18,
             passes: 10,
             submissions: 1
         });
@@ -206,6 +224,22 @@ describe('SharedRendererDriver shadow production wiring', () => {
         );
         allPasses.restore();
 
+        point.x += 0.25;
+        const pointPasses = observePassLabels(rhiExtension(renderer).device);
+        renderer.render(scene, camera);
+        await renderer.waitForIdle();
+        const pointShadowLabels = pointPasses.labels.filter(label =>
+            label.startsWith('Shadow atlas')
+        );
+        expect(pointShadowLabels).toHaveLength(6);
+        expect(pointShadowLabels.every(label => label.split(' ')[2] === 'point')).toBe(true);
+        expect(diagnostics.snapshot().frame).toMatchObject({
+            draws: 14,
+            passes: 8,
+            submissions: 1
+        });
+        pointPasses.restore();
+
         const renderTarget = renderer.createRenderTarget({
             label: 'Shadow integration target',
             width: 12,
@@ -217,13 +251,13 @@ describe('SharedRendererDriver shadow production wiring', () => {
         renderer.renderToTarget(renderTarget, scene, camera);
         await renderer.waitForIdle();
         expect(targetPasses.labels.filter(label => label.startsWith('Shadow atlas'))).toHaveLength(
-            8
+            0
         );
         expect(targetPasses.labels.at(-1)).toBe('Forward scene');
         expect(renderer.lightManager.shadowAtlas).toBe(atlasTexture);
         expect(diagnostics.snapshot().frame).toMatchObject({
-            draws: 9,
-            passes: 9,
+            draws: 1,
+            passes: 1,
             submissions: 1
         });
         targetPasses.restore();
@@ -294,7 +328,7 @@ describe('SharedRendererDriver shadow production wiring', () => {
         expect(bindingAfterRecovery?.textureView).toBe(viewHandle);
         expect(bindingAfterRecovery?.sampler).toBe(samplerHandle);
         expect(diagnostics.snapshot().frame).toMatchObject({
-            draws: 10,
+            draws: 18,
             passes: 10,
             submissions: 1
         });
@@ -315,7 +349,7 @@ describe('SharedRendererDriver shadow production wiring', () => {
         expect(renderer.lightManager.shadowAtlas).not.toBeNull();
         expect(renderer.lightManager.shadowAtlas).not.toBe(atlasTexture);
         expect(diagnostics.snapshot().frame).toMatchObject({
-            draws: 10,
+            draws: 18,
             passes: 10,
             submissions: 1
         });

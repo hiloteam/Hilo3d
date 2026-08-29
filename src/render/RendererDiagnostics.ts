@@ -31,7 +31,8 @@ export type RendererCacheKind =
     | 'pipelineLayout'
     | 'bindGroup'
     | 'framebuffer'
-    | 'vertexArray';
+    | 'vertexArray'
+    | 'shadowAtlas';
 
 export interface RendererNativeObjectCountersSnapshot {
     readonly created: number;
@@ -77,6 +78,8 @@ export interface RendererCacheDiagnosticsSnapshot {
     readonly bindGroup: RendererCacheCountersSnapshot;
     readonly framebuffer: RendererCacheCountersSnapshot;
     readonly vertexArray: RendererCacheCountersSnapshot;
+    /** Stable shadow-atlas content slices reused without issuing caster draws. */
+    readonly shadowAtlas: RendererCacheCountersSnapshot;
 }
 
 export interface RendererFrameDiagnosticsSnapshot {
@@ -168,8 +171,9 @@ const CACHE_PIPELINE_LAYOUT = CACHE_BIND_GROUP_LAYOUT + CACHE_STRIDE;
 const CACHE_BIND_GROUP = CACHE_PIPELINE_LAYOUT + CACHE_STRIDE;
 const CACHE_FRAMEBUFFER = CACHE_BIND_GROUP + CACHE_STRIDE;
 const CACHE_VERTEX_ARRAY = CACHE_FRAMEBUFFER + CACHE_STRIDE;
+const CACHE_SHADOW_ATLAS = CACHE_VERTEX_ARRAY + CACHE_STRIDE;
 
-const FRAME_START = CACHE_VERTEX_ARRAY + CACHE_STRIDE;
+const FRAME_START = CACHE_SHADOW_ATLAS + CACHE_STRIDE;
 const FRAME_DRAWS = FRAME_START;
 const FRAME_INDIRECT_DRAWS = FRAME_DRAWS + 1;
 const FRAME_DISPATCHES = FRAME_INDIRECT_DRAWS + 1;
@@ -242,6 +246,8 @@ function cacheBase(kind: RendererCacheKind): number {
             return CACHE_FRAMEBUFFER;
         case 'vertexArray':
             return CACHE_VERTEX_ARRAY;
+        case 'shadowAtlas':
+            return CACHE_SHADOW_ATLAS;
     }
 }
 
@@ -505,7 +511,8 @@ export class RendererDiagnostics implements RenderGraphTimelineSink {
                 pipelineLayout: this.cacheSnapshot(CACHE_PIPELINE_LAYOUT),
                 bindGroup: this.cacheSnapshot(CACHE_BIND_GROUP),
                 framebuffer: this.cacheSnapshot(CACHE_FRAMEBUFFER),
-                vertexArray: this.cacheSnapshot(CACHE_VERTEX_ARRAY)
+                vertexArray: this.cacheSnapshot(CACHE_VERTEX_ARRAY),
+                shadowAtlas: this.cacheSnapshot(CACHE_SHADOW_ATLAS)
             }),
             frame: Object.freeze({
                 draws: this.value(FRAME_DRAWS),

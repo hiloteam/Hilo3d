@@ -127,6 +127,7 @@ path and compose into the same linear HDR frame.
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | GPU Scene               | Dirty object/material databases, previous-frame Hi-Z occlusion, projected-radius LOD, compact visible ranges, and fixed indirect buckets  |
 | Clustered Forward+      | Depth-driven 3D clusters, bounded deterministic light allocation, storage PBR, shared directional/spot/point shadows, and LTC area lights |
+| Shadow caching          | Stable atlas tiles, exact per-slice invalidation, scissored depth clears, transactional reuse, and recovery-aware diagnostics             |
 | Temporal rendering      | Motion vectors, authored reactive masks, native TAA, 0.5–1.0 TAAU, and timestamp-driven dynamic resolution                                |
 | Screen-space lighting   | Portable GTAO and SSGI on WebGPU/WebGL 2, plus WebGPU Clustered hierarchical SSR                                                          |
 | Volumetrics and weather | Froxel height/local fog, directional/point/spot injection, physical atmosphere LUTs, temporal clouds, and cloud shadows                   |
