@@ -238,12 +238,14 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'cascaded_shadows.html',
             'clustered_forward_plus_sponza.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
             'shaderToy.html'
         ]);
+        expect(exampleUsesDedicatedReleaseTest('cascaded_shadows.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
@@ -256,12 +258,15 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(157);
+        expect(genericCases).toHaveLength(155);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
         expect(genericReleaseTestSource).toContain(
             'if (exampleUsesDedicatedReleaseTest(examplePath)) continue;'
+        );
+        expect(genericReleaseTestSource).toContain(
+            'cascaded shadow garden exposes live controls through ${backend}'
         );
         expect(nativeReleaseTestSource).toContain(
             'Sponza Forward+ exposes stable camera and lighting controls @webgpu'

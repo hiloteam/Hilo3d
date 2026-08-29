@@ -30,6 +30,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
 ] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
+    'cascaded_shadows.html',
     'clustered_forward_plus_sponza.html',
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
