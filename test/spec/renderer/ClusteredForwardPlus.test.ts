@@ -27,9 +27,15 @@ import {
     unregisterRendererDiagnostics
 } from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
+import type { RenderPipelineCreateContext } from '../../../src/render/pipeline/RenderPipeline';
 import { FullscreenRenderPass } from '../../../src/render/pipeline/passes';
+import {
+    ScreenSpaceReflectionsController,
+    snapshotScreenSpaceReflectionsOptions
+} from '../../../src/render/postprocessing/ScreenSpaceReflections';
 import { MeshDrawProcessor } from '../../../src/render/renderer/MeshDrawProcessor';
 import type { RHIDevice } from '../../../src/render/rhi/core';
+import type { StorageBuffer } from '../../../src/render/StorageBuffer';
 import Texture from '../../../src/texture/Texture';
 import { RGBA, TEXTURE_2D, UNSIGNED_BYTE } from '../../../src/constants/webgl';
 import { RGBA8 } from '../../../src/constants/webgl2';
@@ -236,6 +242,50 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 { format: 'r32float', use: 'storage' }
             ])
         );
+    });
+
+    it('constructs, reads, and releases the screen-space reflection runtime', async () => {
+        const counters = new Uint32Array([1, 2, 3, 4, 5, 6, 7, 8]);
+        const destroy = vi.fn();
+        const read = vi.fn(() =>
+            Promise.resolve({
+                data: new Uint8Array(counters.buffer),
+                byteOffset: 0,
+                byteLength: counters.byteLength
+            })
+        );
+        const diagnostics = { destroy, read } as unknown as StorageBuffer;
+        const createStorageBuffer = vi.fn(() => diagnostics);
+        const context = { createStorageBuffer } as unknown as RenderPipelineCreateContext;
+        const settings = snapshotScreenSpaceReflectionsOptions({ maxSteps: 8 });
+
+        expect(() => new ScreenSpaceReflectionsController(settings, context, 1, 0)).toThrow(
+            /at least one Hi-Z level/u
+        );
+
+        const controller = new ScreenSpaceReflectionsController(settings, context, 0.75, 12);
+        expect(createStorageBuffer).toHaveBeenCalledOnce();
+        expect(createStorageBuffer).toHaveBeenCalledWith({
+            label: 'Screen-space reflections diagnostics',
+            byteLength: 32,
+            usage: ['storage', 'copy-source'],
+            recovery: 'reinitialize'
+        });
+        await expect(controller.readDiagnostics()).resolves.toEqual({
+            activeTileCount: 1,
+            activePixelCount: 2,
+            hitPixelCount: 3,
+            missPixelCount: 4,
+            uncertainPixelCount: 5,
+            backfaceRejectedPixelCount: 6,
+            historyAcceptedPixelCount: 7,
+            historyRejectedPixelCount: 8
+        });
+
+        controller.destroy();
+        controller.destroy();
+        expect(destroy).toHaveBeenCalledOnce();
+        await expect(controller.readDiagnostics()).rejects.toThrow(/is destroyed/u);
     });
 
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
