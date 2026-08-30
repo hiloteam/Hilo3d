@@ -433,8 +433,9 @@ const mobileCameraPosition = new Hilo3d.Vector3(11.2, 4.65, 16.4);
 const viewTarget = new Hilo3d.Vector3(1.55, 0.18, -4.62);
 const initialCameraPosition = mobileLayout.matches ? mobileCameraPosition : desktopCameraPosition;
 
-const { stage, renderer, directionLight, ambientLight, orbitControls } = await createExampleContext(
-    {
+const { stage, renderer, directionLight, ambientLight, orbitControls, ticker } =
+    await createExampleContext({
+        autoStart: false,
         camera: {
             fov: 32,
             near: 0.05,
@@ -444,6 +445,8 @@ const { stage, renderer, directionLight, ambientLight, orbitControls } = await c
             z: initialCameraPosition.z
         },
         stage: {
+            width: testMode ? 640 : window.innerWidth,
+            height: testMode ? 360 : window.innerHeight,
             pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.5),
             clearColor: new Hilo3d.Color(0.032, 0.012, 0.011),
             renderPipeline: pipeline
@@ -458,8 +461,7 @@ const { stage, renderer, directionLight, ambientLight, orbitControls } = await c
             rotateSpeed: 0.38,
             zoomSpeed: 0.55
         }
-    }
-);
+    });
 
 renderer.clearColor.set(0.032, 0.012, 0.011, 1);
 directionLight.amount = 0.42;
@@ -589,6 +591,7 @@ toggle.addEventListener('click', () => {
     toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
     document.body.dataset['gtao'] = gtaoEnabled ? 'enabled' : 'disabled';
     history.replaceState(history.state, '', buildUrl(location.href, { gtao: gtaoEnabled }));
+    if (testMode) stage.tick(1000 / 60);
 });
 mobileLayout.addEventListener('change', event => {
     orbitControls.setView(event.matches ? mobileCameraPosition : desktopCameraPosition, viewTarget);
@@ -596,5 +599,8 @@ mobileLayout.addEventListener('change', event => {
 
 document.body.dataset['gtao'] = gtaoEnabled ? 'enabled' : 'disabled';
 document.body.dataset['backend'] = renderer.backend;
-document.body.dataset['gtaoPhase'] = 'ready';
 orbitControls.setView(initialCameraPosition, viewTarget);
+stage.tick(1000 / 60);
+await renderer.waitForIdle();
+if (!testMode) ticker.start();
+document.body.dataset['gtaoPhase'] = 'ready';
