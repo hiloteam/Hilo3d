@@ -61,8 +61,15 @@
   receiver-driven local/cascade resolution; deterministic slice budgets and 1/2/4/8-frame CSM
   cadence; and submission-aware 128-pixel page residency with coalesced page-scissored updates that
   avoid replaying the caster queue once per adjacent page. Expose page
-  request/update/defer/residency and budget-overflow counts in frame diagnostics. Arbitrary physical
-  page remapping, GPU receiver/depth requests, and directional clipmaps remain future work.
+  request/update/defer/residency and budget-overflow counts in frame diagnostics.
+- Add opt-in WebGPU Clustered virtual directional shadows through
+  `ClusteredForwardPlusPipelineOptions.virtualShadows`: previous-Hi-Z receiver classification,
+  atomic GPU request deduplication and deterministic ordering, arbitrary logical-to-physical page
+  remapping with LRU eviction, deferred dirty-page retry, per-page GPU caster compact/indirect depth
+  draws, and camera-centered directional clipmaps. Double-buffer page tables, residency, and clipmap
+  epochs commit only after successful submission; failed frames roll back and device recovery
+  reinitializes mappings without CPU request readback. Expose on-demand virtual-shadow diagnostics
+  and retain shared CSM fallback for missing pages and non-GPU caster scenes.
 - Complete the WebGPU high-end Clustered Forward+ P0 closure. Globally sorted compatible transparent
   PBR and direct GPU Scene skin, morph, and layered glTF PBR now consume the native storage light
   list, while mixed Transmission/custom/particle transparent queues fail closed to the shared

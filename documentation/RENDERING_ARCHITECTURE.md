@@ -96,9 +96,26 @@ budget 延后 caster-only 失效。每个 slice 再拆为 128 像素固定物理
 提供累计hit/miss/replacement/live-slice，`frame.shadow*` 提供 slice/page
 request、update、defer、resident 和 overflow 观测。
 
-当前页层仍使用 stable atlas 内的固定物理映射；尚未实现 GPU receiver/depth page
-request、任意 physical-page remap/page table 或 directional clipmap，因此不宣称等价于完整 Virtual
-Shadow Maps。
+WebGPU high-end `ClusteredForwardPlusPipelineFactory` 还提供显式 opt-in 的
+`virtualShadows`。这条方向光路径从上一提交帧的 Hi-Z depth 在 compute 中重建 receiver world
+position，以 atomic
+bitset 生成和去重逻辑页请求，再按 light/clipmap/page 的确定顺序扫描；CPU 不读取请求、页数或 indirect 参数。GPU 分配器把逻辑页任意 remap 到有界 physical
+depth atlas，优先复用 exact identity，否则按 last-used frame 驱逐最旧的未选物理页；dirty 页在 update
+budget 不足时保留 pending 状态且不发布 stale page-table entry。随后按物理页进行 caster cull、bucket
+prefix/compact，并用固定上限的 GPU-authored indirect clear/depth draw 更新 atlas。
+
+方向光使用 camera-centered、texel/page-snapped
+clipmap；默认四级，每级覆盖宽度倍增。页 identity 包含 light/map、绝对页坐标与提交感知 epoch，光方向、沿光线方向的 snapped
+depth slab、caster transform/material/coverage 或 geometry bounds 变化都会精确或保守失效。page
+table 使用 renderer-owned 双缓冲 history，physical residency 使用双 `StorageBuffer`；两者和 clipmap
+epoch 只在 `frameSubmitted()` 后轮换，graph/prepare/execute 失败保留上一提交状态，device
+recovery 通过无效 history 清空 residency 并重建 atlas。缺页和 deferred dirty 页回退到同帧 stable
+CSM，不解释为“无遮挡”。
+
+首版虚拟路径只覆盖 GPU Scene rigid opaque/alpha-mask caster 与 Clustered GPU Scene
+receiver；出现 skin、morph、direct/fallback 等非虚拟 caster 时，该帧方向光继续完整使用 shared stable
+atlas。Spot/Point 与 WebGL 2 也始终保持 shared
+atlas 路径。这是明确的渐进边界，不建立第二套后端 shader 树或 CPU page-request fallback。
 
 Sprite 仍是 Mesh：共享单位 quad、按 atlas Texture 共享 SpriteMaterial，先按 Node 级
 `sortingLayer / zIndex / stable scene traversal` 确定显示顺序，再仅对相邻兼容项合批，并把 UV

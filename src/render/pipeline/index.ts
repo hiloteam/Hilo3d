@@ -7,6 +7,7 @@ export {
     type GPUSceneBucket,
     type GPUSceneLOD
 } from './ClusteredForwardPlus';
+export type { VirtualShadowMapDiagnostics, VirtualShadowMapOptions } from './VirtualShadowMaps';
 export {
     ForwardRenderPipelineFactory,
     type ForwardRenderFeatureContext,

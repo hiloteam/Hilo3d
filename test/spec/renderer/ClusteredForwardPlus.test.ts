@@ -28,7 +28,7 @@ import {
 } from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
 import type { RenderPipelineCreateContext } from '../../../src/render/pipeline/RenderPipeline';
-import { FullscreenRenderPass } from '../../../src/render/pipeline/passes';
+import { ComputeRenderPass, FullscreenRenderPass } from '../../../src/render/pipeline/passes';
 import {
     ScreenSpaceReflectionsController,
     snapshotScreenSpaceReflectionsOptions
@@ -139,6 +139,31 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxBindingsPerBindGroup: 22,
             maxSampledTexturesPerShaderStage: 13
         });
+
+        const withVirtualShadows = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            maxObjects: 64,
+            virtualShadows: {
+                virtualResolution: 1_024,
+                pageSize: 128,
+                physicalPageCount: 16,
+                maxPageUpdatesPerFrame: 8,
+                directionalClipmapLevels: 3
+            }
+        });
+        expect(withVirtualShadows.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 26,
+            maxSampledTexturesPerShaderStage: 13,
+            maxSamplersPerShaderStage: 13,
+            maxTextureDimension2D: 512
+        });
+        expect(withVirtualShadows.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba32float', use: 'sampled' },
+                { format: 'rgba32float', use: 'storage' },
+                { format: 'depth32float', use: 'sampled' }
+            ])
+        );
 
         const withReflections = new ClusteredForwardPlusPipelineFactory({
             buckets: [{ geometry, material }],
@@ -377,6 +402,28 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     typeof ClusteredForwardPlusPipelineFactory
                 >[0])
         ).toThrow(/hiZ must be a boolean/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    hiZ: false,
+                    virtualShadows: {}
+                })
+        ).toThrow(/virtual shadows require hiZ/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    virtualShadows: { pageSize: 96 }
+                })
+        ).toThrow(/powers of two/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    virtualShadows: { physicalPageCount: 4, maxPageUpdatesPerFrame: 5 }
+                })
+        ).toThrow(/cannot exceed physicalPageCount/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
@@ -1761,7 +1808,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
-        'samples the shared shadow atlas in clustered storage PBR pixels',
+        'samples GPU-requested virtual pages with stable shadow-atlas fallback',
         async () => {
             const geometry = new BoxGeometry();
             const material = new PBRMaterial({
@@ -1777,7 +1824,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightsPerCluster: 1,
                 maxViewportWidth: 64,
                 maxViewportHeight: 64,
-                hiZ: false,
+                virtualShadows: {
+                    virtualResolution: 512,
+                    pageSize: 64,
+                    physicalPageCount: 16,
+                    maxPageUpdatesPerFrame: 16,
+                    directionalClipmapLevels: 2,
+                    firstDirectionalClipmapExtent: 16
+                },
                 bloomStrength: 0
             });
             const canvas = document.createElement('canvas');
@@ -1799,7 +1853,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             });
             try {
                 const scene = new Node();
-                new Mesh({
+                const floor = new Mesh({
                     geometry,
                     material,
                     y: -1,
@@ -1808,7 +1862,12 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     scaleZ: 5,
                     frustumTest: false
                 }).addTo(scene);
-                new Mesh({ geometry, material, y: 0, frustumTest: false }).addTo(scene);
+                const caster = new Mesh({
+                    geometry,
+                    material,
+                    y: 0,
+                    frustumTest: false
+                }).addTo(scene);
                 new AmbientLight({ amount: 0.05 }).addTo(scene);
                 const light = new DirectionalLight({
                     amount: 4,
@@ -1842,14 +1901,102 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 2,
                     fallbackObjectCount: 0,
-                    lightCount: 1
+                    lightCount: 1,
+                    virtualShadows: {
+                        physicalPageCapacity: 16,
+                        directionalClipmapLevelCount: 2
+                    }
                 });
+                const originalComputeExecute = Object.getOwnPropertyDescriptor(
+                    ComputeRenderPass.prototype,
+                    'execute'
+                )?.value as (
+                    this: ComputeRenderPass,
+                    ...parameters: Parameters<ComputeRenderPass['execute']>
+                ) => void;
+                let injectedFailure = false;
+                const computeFailure = vi
+                    .spyOn(ComputeRenderPass.prototype, 'execute')
+                    .mockImplementation(function (
+                        this: ComputeRenderPass,
+                        ...parameters: Parameters<typeof originalComputeExecute>
+                    ): void {
+                        if (
+                            !injectedFailure &&
+                            this.name ===
+                                'Virtual shadow deterministic page-table allocation and remap'
+                        ) {
+                            injectedFailure = true;
+                            throw new Error('injected virtual-shadow submission failure');
+                        }
+                        originalComputeExecute.apply(this, parameters);
+                    });
+                try {
+                    expect(() => {
+                        renderer.renderToTarget(target, scene, camera);
+                    }).toThrow(/injected virtual-shadow submission failure/u);
+                } finally {
+                    computeFailure.mockRestore();
+                }
+                expect(injectedFailure).toBe(true);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+
+                const extension = renderer.getExtension('rhi') as {
+                    readonly device: RHIDevice;
+                } | null;
+                if (extension === null) throw new Error('Expected the public RHI extension');
+                const deviceLost = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceLost',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                const deviceRestored = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceRestored',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                extension.device.destroy();
+                await deviceLost;
+                await Promise.all([renderer.waitForIdle(), deviceRestored]);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const recoveredDiagnostics = await factory.readDiagnostics();
+                expect(recoveredDiagnostics).toMatchObject({
+                    virtualShadows: {
+                        physicalPageCapacity: 16,
+                        directionalClipmapLevelCount: 2
+                    }
+                });
+                expect(recoveredDiagnostics.virtualShadows?.requestedPageCount).toBeGreaterThan(0);
+                expect(recoveredDiagnostics.virtualShadows?.renderedPageCount).toBeGreaterThan(0);
+
+                floor.x = 8;
+                caster.x = 8;
+                camera.setPosition(12, 3, 6).lookAt(new Vector3(8, -0.5, 0));
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const remappedDiagnostics = await factory.readDiagnostics();
+                expect(remappedDiagnostics.virtualShadows?.evictionCount).toBeGreaterThan(0);
                 expect(
                     rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
                 ).toEqual(
                     expect.arrayContaining([
-                        'GPU Scene shadow caster frustum culling',
-                        'GPU Scene shadow caster buckets'
+                        'Virtual shadow receiver depth page requests',
+                        'Virtual shadow deterministic page-table allocation and remap',
+                        'GPU Scene virtual shadow physical page updates'
                     ])
                 );
             } finally {
