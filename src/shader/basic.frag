@@ -40,6 +40,9 @@ void main(void) {
             #include "./chunk/diffuse_main.frag"
             #include "./chunk/transparency_main.frag"
             hilo_FragColor = hiloMaterialAttributes(normal, 1.0, 0.0, 0.0);
+            #ifdef HILO_SSR_MATERIAL_DATA
+                hiloWriteMaterialReflectionData(vec3(0.0), vec3(0.0));
+            #endif
             #include "./chunk/logDepth_main.frag"
         }
     #else

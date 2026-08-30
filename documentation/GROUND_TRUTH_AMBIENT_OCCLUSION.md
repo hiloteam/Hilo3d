@@ -54,7 +54,7 @@ opaque depth prepass
 depth、attribute 与 motion 都由内置 material semantic pass 生成，alpha-mask
 coverage、skinning、morph 和 instancing 仍使用共享材质/几何准备路径。GTAO 不绕过 Render
 Graph，也不从后端 framebuffer 抓取数据。Forward 与 Clustered 都要求可作为 attachment 且可 filterable
-sample 的 `rgba16float`。
+sample 的 `rgba8unorm` material attributes；bent-normal AO/history 继续使用 `rgba16float`。
 
 AO history/output packing 为：
 

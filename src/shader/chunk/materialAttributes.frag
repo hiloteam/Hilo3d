@@ -9,8 +9,18 @@ vec2 hiloEncodeOctahedralNormal(vec3 value) {
         );
         encoded = (1.0 - abs(encoded.yx)) * octahedralSign;
     }
-    return encoded;
+    return encoded * 0.5 + 0.5;
 }
+
+#ifdef HILO_SSR_MATERIAL_DATA
+layout(location=1) out vec4 hilo_ReflectionResponse;
+layout(location=2) out vec4 hilo_ReflectionFallbackSpecular;
+
+void hiloWriteMaterialReflectionData(vec3 response, vec3 fallbackSpecular) {
+    hilo_ReflectionResponse = vec4(max(response, vec3(0.0)), 1.0);
+    hilo_ReflectionFallbackSpecular = vec4(max(fallbackSpecular, vec3(0.0)), 1.0);
+}
+#endif
 
 vec4 hiloMaterialAttributes(
     vec3 viewNormal,
@@ -19,10 +29,11 @@ vec4 hiloMaterialAttributes(
     float reflectionReceiver
 ) {
     float receiverFlag = reflectionReceiver >= 0.5 ? 1.0 : 0.0;
-    float metallicBits = floor(clamp(metallic, 0.0, 1.0) * 255.0 + 0.5);
+    float metallicBits = floor(clamp(metallic, 0.0, 1.0) * 127.0 + 0.5);
+    float packedMaterial = receiverFlag + metallicBits * 2.0;
     return vec4(
         hiloEncodeOctahedralNormal(viewNormal),
         clamp(perceptualRoughness, 0.045, 1.0),
-        receiverFlag + metallicBits * 2.0
+        packedMaterial / 255.0
     );
 }

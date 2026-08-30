@@ -819,6 +819,14 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly objectCount: number;
     readonly occludedObjectCount: number;
     readonly renderScale: number;
+    readonly screenSpaceReflectionActivePixelCount: number;
+    readonly screenSpaceReflectionActiveTileCount: number;
+    readonly screenSpaceReflectionBackfaceRejectedPixelCount: number;
+    readonly screenSpaceReflectionHistoryAcceptedPixelCount: number;
+    readonly screenSpaceReflectionHistoryRejectedPixelCount: number;
+    readonly screenSpaceReflectionHitPixelCount: number;
+    readonly screenSpaceReflectionMissPixelCount: number;
+    readonly screenSpaceReflectionUncertainPixelCount: number;
     readonly smoothedGPUFrameTimeMs: number | null;
     readonly visibleObjectCount: number;
     readonly volumetricFroxelCount: number;

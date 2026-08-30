@@ -125,7 +125,7 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Forward+                             | high-end P0 完成  | 3D cluster、有界预算、storage GGX PBR、共享 shadow/LTC、透明/变形/layered consumer、analytic cookie/IES 与 uint32 light-layer ABI 已闭环                                                                      |
 | Temporal rendering                   | high-end P0 完成  | opaque TAAU、GPU-time dynamic resolution、authored reactive，以及透明/transmission/GPU-particle 独立 short history 与 resurrection 已完成                                                                     |
 | Exposure / display transform         | WebGPU 生产切片   | 独立 Forward `AutoExposure` 与 Clustered 集成都具备 GPU histogram、asymmetric eye adaptation、submission-aware history；`ColorUber` 有参数化 filmic，Clustered 有 compact filmic                              |
-| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；透明/离屏几何不参与 trace，probe/BVH fallback 待 GI0                                                                               |
+| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；SSR miss 保留 forward environment/probe baseline，透明/离屏几何不参与 trace，BVH/SDF fallback 待 GI0                               |
 | Volumetrics / atmosphere             | high-end 生产切片 | WebGPU Clustered froxel、height/local fog、screen-space caster visibility、physical atmosphere LUT、aerial perspective、temporal clouds，以及 surface/froxel cloud shadow 已落地                              |
 | Geometry / texture streaming         | 仅 bucket LOD     | GPU Scene 已有 projected-radius geometry bucket LOD；没有 meshlet/cluster streaming、KTX 2/Basis 或 mip residency，KTX loader 仅支持 KTX 1.1 单面 2D 容器                                                     |
 | GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 且无内部 timing consumer 时不创建 query                                                                              |
@@ -366,8 +366,9 @@ MAT0 不采用有序 `material.passes[]`。Pipeline/Render
 Graph 继续拥有 Pass 顺序、attachment 和资源依赖；材质只声明能为
 `forward`、`depth-only`、`shadow-caster`、`motion-vector`、 `material-attributes` 与 `picking`
 等语义角色生成什么 Shader、状态和绑定。motion 的 `rgba16float` velocity/log-depth + `r8unorm`
-reactive MRT、material-attributes 的 oct-normal/roughness/metallic/receiver ABI，以及 shadow
-coverage 都已经由生产消费者验证。当前剩余项是扩展更多 surface family，并增加 variant
+reactive MRT、`rgba8unorm` material-attributes 的 oct-normal/roughness/metallic/receiver
+ABI，以及 shadow coverage 都已经由生产消费者验证。当前剩余项是扩展更多 surface
+family，并增加 variant
 manifest/warmup；它们是独立后续工作，不再阻塞 T0/Q0。完整设计、兼容策略和验收矩阵见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
@@ -607,7 +608,8 @@ diagnostics 是后续增强，不属于 E0 已完成合同。
 - effect 只在声明需要时创建 attribute/history
   resource，默认 Forward/Clustered 快路径不付费（GTAO、SSR、SSGI 已验证）。
 
-当前 SSR 的 screen-edge/off-screen fallback 是确定性零贡献；GTAO 的屏幕外遮挡同样不参与 horizon
+当前 SSR 的 screen-edge/off-screen trace 是确定性无命中并保留 forward environment/probe
+baseline；GTAO 的屏幕外遮挡同样不参与 horizon
 search。SSGI 已完成屏幕内时域漫反射传输，但屏幕外/被遮挡 geometry 仍是零贡献；probe/BVH/SDF
 off-screen GI 补偿属于 GI0，而不是未完成的 Q0。实现与上线证据见
 [`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md) 与

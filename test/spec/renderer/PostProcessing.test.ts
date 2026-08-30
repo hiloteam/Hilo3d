@@ -220,7 +220,8 @@ describe('built-in post-processing', () => {
                 { format: 'rgba16float', use: 'filterable-sampled' },
                 { format: 'r32float', use: 'color-attachment' },
                 { format: 'r32float', use: 'sampled' },
-                { format: 'rgba8unorm', use: 'color-attachment' }
+                { format: 'rgba8unorm', use: 'color-attachment' },
+                { format: 'rgba8unorm', use: 'filterable-sampled' }
             ])
         );
     });

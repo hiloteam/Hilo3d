@@ -121,15 +121,15 @@ const material = new Hilo3d.ShaderMaterial({
 
 Pipeline 通过 role 请求材质，而不是读取 `material.passes[]` 并让材质控制执行顺序。
 
-| Role                  | 当前内置支持 | 合同                                                                                             |
-| --------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
-| `forward`             | 是           | 普通 surface/unlit color 输出                                                                    |
-| `depth-only`          | 是           | 复用 deformation 与 coverage，无 color attachment                                                |
-| `shadow-caster`       | 是           | 复用 deformation、coverage、cull 和 alpha cutoff                                                 |
-| `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                                          |
-| `motion-vector`       | 是           | opaque/masked 输出 single-sample `rgba16float` UV velocity 与 previous/current log-view-depth    |
-| `material-attributes` | 是           | single-sample `rgba16float`：oct view normal、roughness、receiver/metallic packing；SSR 按需使用 |
-| `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                                               |
+| Role                  | 当前内置支持 | 合同                                                                                                                            |
+| --------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `forward`             | 是           | 普通 surface/unlit color 输出                                                                                                   |
+| `depth-only`          | 是           | 复用 deformation 与 coverage，无 color attachment                                                                               |
+| `shadow-caster`       | 是           | 复用 deformation、coverage、cull 和 alpha cutoff                                                                                |
+| `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                                                                         |
+| `motion-vector`       | 是           | opaque/masked 输出 single-sample `rgba16float` UV velocity 与 previous/current log-view-depth                                   |
+| `material-attributes` | 是           | single-sample `rgba8unorm` 属性；SSR 时扩展两个 matching HDR MRT，写 reflection response 与 environment/probe specular baseline |
+| `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                                                                              |
 
 [`MaterialCompiler.ts`](../src/material/MaterialCompiler.ts) 负责 role 解析、target
 contract 验证和稳定 variant key。fallback 只有三种：
@@ -261,7 +261,7 @@ default 对象而发生串改。
 | Shared GPU Material Database | 已完成（PBR）   | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery                     |
 | Variant manifest / warmup    | high-end 已完成 | Clustered manifest 异步 warmup、固定预算、事务式运行时准入与诊断                                |
 | Motion vectors               | 已完成生产切片  | opaque/masked、skin/morph/instance history、固定/动态 TAAU，以及透明/粒子 reactive 与短 history |
-| Material attributes          | 已完成首版      | oct view normal/roughness/receiver/metallic ABI，SSR opt-in 时按需创建附件                      |
+| Material attributes          | 已完成生产 ABI  | oct normal/roughness/receiver/metallic；SSR opt-in 再写 response 与 fallback specular MRT       |
 | Advanced surface families    | 后续            | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                              |
 
 首个共享 GPU Material Database 已满足：

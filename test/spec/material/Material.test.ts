@@ -145,7 +145,27 @@ describe('modern material model', () => {
             compiler.compile({
                 ...request,
                 target: {
-                    colorFormats: ['rgba16float'],
+                    colorFormats: ['rgba8unorm'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).not.toBeNull();
+        expect(
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba8unorm', 'rgba16float', 'rgba16float'],
+                    depthStencilFormat: 'depth32float',
+                    sampleCount: 1
+                }
+            })
+        ).not.toBeNull();
+        expect(
+            compiler.compile({
+                ...request,
+                target: {
+                    colorFormats: ['rgba8unorm', 'rg11b10ufloat', 'rg11b10ufloat'],
                     depthStencilFormat: 'depth32float',
                     sampleCount: 1
                 }
@@ -155,12 +175,12 @@ describe('modern material model', () => {
             compiler.compile({
                 ...request,
                 target: {
-                    colorFormats: ['rgba8unorm'],
+                    colorFormats: ['rgba16float'],
                     depthStencilFormat: 'depth32float',
                     sampleCount: 1
                 }
             })
-        ).toThrow(/Material attributes role requires one single-sample rgba16float/u);
+        ).toThrow(/single-sample rgba8unorm attributes/u);
     });
 
     it('accepts the optional authored reactive target for motion vectors', () => {

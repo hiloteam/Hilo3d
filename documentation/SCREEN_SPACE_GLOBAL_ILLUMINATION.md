@@ -68,6 +68,9 @@ depth 记录。Clustered 路径在未启用 GTAO 时由 opaque
 MRT 写 attributes，启用 GTAO 时则复用独立 attribute pass；普通 Forward
 fallback 继续通过共享 material semantic pass 覆盖。
 
+共享 material attributes 使用 filterable、renderable `rgba8unorm`，oct normal 映射到 `[0, 1]`；SSGI
+radiance、history、denoise 与 full-resolution 输出仍使用 `rgba16float` HDR target。
+
 trace 在 view-space normal 半球内使用逐帧旋转的低差异方向，以二次步长沿投影射线访问 scene
 depth。命中必须满足 view-space thickness、最大距离、屏幕边缘衰减、receiver cosine 和反向 emitter
 cosine。线性 HDR scene color 是 radiance source；`maxRadiance` 在单样本亮度上做有限 firefly

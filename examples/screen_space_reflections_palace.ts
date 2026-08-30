@@ -7,6 +7,15 @@ interface ReflectionPalaceEvidence {
     readonly fallbackObjectCount: number;
     readonly visibleObjectCount: number;
     readonly hiZValid: boolean;
+    readonly activeTileCount: number;
+    readonly activePixelCount: number;
+    readonly hitPixelCount: number;
+    readonly missPixelCount: number;
+    readonly uncertainPixelCount: number;
+    readonly backfaceRejectedPixelCount: number;
+    readonly historyAcceptedPixelCount: number;
+    readonly historyRejectedPixelCount: number;
+    readonly resolutionScale: 0.5;
     readonly screenSpaceReflections: boolean;
     readonly temporalAA: true;
     readonly surfaceFinish: 'smoked lacquer';
@@ -53,10 +62,10 @@ if (carModel.resourceErrors.length > 0) {
 }
 for (const material of carModel.materials) {
     if (!(material instanceof Hilo3d.PBRMaterial) || !material.name?.startsWith('Paint')) continue;
-    material.normalScale = Math.min(material.normalScale, 0.16);
-    material.roughness = Math.max(material.roughness, 0.32);
-    material.iridescenceFactor = Math.min(material.iridescenceFactor, 0.05);
-    material.specularEnvIntensity = Math.min(material.specularEnvIntensity, 0.96);
+    material.normalScale = Math.min(material.normalScale, 0.04);
+    material.roughness = Math.max(material.roughness, 0.36);
+    material.iridescenceFactor = Math.min(material.iridescenceFactor, 0.02);
+    material.specularEnvIntensity = Math.min(material.specularEnvIntensity, 0.9);
 }
 
 const floorGeometry = new Hilo3d.PlaneGeometry({ width: 80, height: 80 });
@@ -69,6 +78,16 @@ const floorMaterial = new Hilo3d.PBRMaterial({
     specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
     diffuseEnvIntensity: 0.05,
     specularEnvIntensity: 0.12
+});
+const verticalMirrorMaterial = new Hilo3d.PBRMaterial({
+    baseColor: new Hilo3d.Color(0.025, 0.03, 0.045),
+    metallic: 0.72,
+    roughness: 0.11,
+    brdfLUT,
+    diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
+    specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
+    diffuseEnvIntensity: 0.025,
+    specularEnvIntensity: 0.2
 });
 const gpuEvidenceGeometry = new Hilo3d.BoxGeometry({ width: 0.16, height: 0.08, depth: 0.16 });
 const gpuEvidenceMaterial = new Hilo3d.PBRMaterial({
@@ -99,7 +118,7 @@ const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
     },
     screenSpaceReflections: reflectionsEnabled
         ? {
-              resolutionScale: 1,
+              resolutionScale: 0.5,
               maxRayDistance: 56,
               thickness: 0.18,
               stride: 0.06,
@@ -182,6 +201,17 @@ const floor = new Hilo3d.Mesh({
     frustumTest: false
 }).addTo(stage);
 floor.receiveShadows = false;
+
+new Hilo3d.Mesh({
+    geometry: new Hilo3d.PlaneGeometry({ width: 5.8, height: 3.3 }),
+    material: verticalMirrorMaterial,
+    x: -3.25,
+    y: -0.12,
+    z: -9.65,
+    rotationY: -8,
+    pointerEnabled: false,
+    frustumTest: false
+}).addTo(stage);
 
 new Hilo3d.Mesh({
     geometry: gpuEvidenceGeometry,
@@ -280,6 +310,15 @@ window.__HILO3D_SSR_PALACE_RESULT__ = {
     fallbackObjectCount: diagnostics.fallbackObjectCount,
     visibleObjectCount: diagnostics.visibleObjectCount,
     hiZValid: diagnostics.hiZValid,
+    activeTileCount: diagnostics.screenSpaceReflectionActiveTileCount,
+    activePixelCount: diagnostics.screenSpaceReflectionActivePixelCount,
+    hitPixelCount: diagnostics.screenSpaceReflectionHitPixelCount,
+    missPixelCount: diagnostics.screenSpaceReflectionMissPixelCount,
+    uncertainPixelCount: diagnostics.screenSpaceReflectionUncertainPixelCount,
+    backfaceRejectedPixelCount: diagnostics.screenSpaceReflectionBackfaceRejectedPixelCount,
+    historyAcceptedPixelCount: diagnostics.screenSpaceReflectionHistoryAcceptedPixelCount,
+    historyRejectedPixelCount: diagnostics.screenSpaceReflectionHistoryRejectedPixelCount,
+    resolutionScale: 0.5,
     screenSpaceReflections: reflectionsEnabled,
     temporalAA: true,
     surfaceFinish: 'smoked lacquer',
@@ -288,6 +327,23 @@ window.__HILO3D_SSR_PALACE_RESULT__ = {
 window.__HILO3D_SSR_PALACE_TEST_API__ = {
     async settle(frames = 8): Promise<void> {
         await stepFrames(frames);
+    },
+    async moveCamera(): Promise<void> {
+        controls.setView(new Hilo3d.Vector3(9.35, 1.08, 5.05), heroTarget);
+        await stepFrames(1);
+    },
+    async setGrazingCamera(): Promise<void> {
+        controls.setView(new Hilo3d.Vector3(9.85, -0.49, 5.45), heroTarget);
+        await stepFrames(1);
+    },
+    async moveHero(deltaX = 0.32): Promise<void> {
+        carModel.node.x += deltaX;
+        await stepFrames(1);
+    },
+    async setFloorRoughness(value: number): Promise<number> {
+        floorMaterial.roughness = value;
+        await stepFrames(2);
+        return (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount;
     }
 };
 statusLabel.textContent = reflectionsEnabled ? 'reflection history stable' : 'direct light only';
@@ -311,6 +367,10 @@ declare global {
         __HILO3D_SSR_PALACE_RESULT__?: ReflectionPalaceEvidence;
         __HILO3D_SSR_PALACE_TEST_API__?: {
             settle(frames?: number): Promise<void>;
+            moveCamera(): Promise<void>;
+            setGrazingCamera(): Promise<void>;
+            moveHero(deltaX?: number): Promise<void>;
+            setFloorRoughness(value: number): Promise<number>;
         };
     }
 }
