@@ -828,6 +828,7 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly screenSpaceReflectionMissPixelCount: number;
     readonly screenSpaceReflectionUncertainPixelCount: number;
     readonly smoothedGPUFrameTimeMs: number | null;
+    readonly virtualShadows: Readonly<VirtualShadowMapDiagnostics> | null;
     readonly visibleObjectCount: number;
     readonly volumetricFroxelCount: number;
     readonly volumetricHistoryUsed: boolean;
@@ -864,6 +865,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly tileSize?: number;
     readonly toneMapping?: 'aces' | 'filmic';
     readonly variantManifest?: Readonly<ClusteredMaterialVariantManifest>;
+    readonly virtualShadows?: Readonly<VirtualShadowMapOptions> | false;
     readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
     readonly zSlices?: number;
 }
@@ -11078,6 +11080,28 @@ export class Vector4 {
 
 // @public (undocumented)
 export const version: string;
+
+// @public
+export interface VirtualShadowMapDiagnostics {
+    readonly deferredPageCount: number;
+    readonly directionalClipmapLevelCount: number;
+    readonly evictionCount: number;
+    readonly invalidatedPageCount: number;
+    readonly physicalPageCapacity: number;
+    readonly renderedPageCount: number;
+    readonly requestedPageCount: number;
+    readonly residentPageCount: number;
+}
+
+// @public
+export interface VirtualShadowMapOptions {
+    readonly directionalClipmapLevels?: number;
+    readonly firstDirectionalClipmapExtent?: number;
+    readonly maxPageUpdatesPerFrame?: number;
+    readonly pageSize?: number;
+    readonly physicalPageCount?: number;
+    readonly virtualResolution?: number;
+}
 
 // @public
 export interface VolumetricBoxFogVolume {

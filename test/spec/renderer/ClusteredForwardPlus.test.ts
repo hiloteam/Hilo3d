@@ -27,8 +27,26 @@ import {
     unregisterRendererDiagnostics
 } from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
-import type { RenderPipelineCreateContext } from '../../../src/render/pipeline/RenderPipeline';
-import { FullscreenRenderPass } from '../../../src/render/pipeline/passes';
+import {
+    acquireRenderPassParameters,
+    type RenderPassParameterPool
+} from '../../../src/render/pipeline/RenderPassParameterPool';
+import type {
+    RenderPipelineContext,
+    RenderPipelineCreateContext,
+    RenderPipelineShadowResources
+} from '../../../src/render/pipeline/RenderPipeline';
+import {
+    snapshotVirtualShadowMapOptions,
+    VirtualShadowMapController,
+    virtualShadowBucketOffsetRange,
+    virtualShadowClearIndirectOffset,
+    virtualShadowIndirectOffset,
+    virtualShadowPhysicalPageRange,
+    type VirtualShadowFrameResources,
+    type VirtualShadowRecordInputs
+} from '../../../src/render/pipeline/VirtualShadowMaps';
+import { ComputeRenderPass, FullscreenRenderPass } from '../../../src/render/pipeline/passes';
 import {
     ScreenSpaceReflectionsController,
     snapshotScreenSpaceReflectionsOptions
@@ -139,6 +157,31 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxBindingsPerBindGroup: 22,
             maxSampledTexturesPerShaderStage: 13
         });
+
+        const withVirtualShadows = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            maxObjects: 64,
+            virtualShadows: {
+                virtualResolution: 1_024,
+                pageSize: 128,
+                physicalPageCount: 16,
+                maxPageUpdatesPerFrame: 8,
+                directionalClipmapLevels: 3
+            }
+        });
+        expect(withVirtualShadows.requirements.requiredLimits).toMatchObject({
+            maxBindingsPerBindGroup: 26,
+            maxSampledTexturesPerShaderStage: 13,
+            maxSamplersPerShaderStage: 13,
+            maxTextureDimension2D: 512
+        });
+        expect(withVirtualShadows.requirements.requiredTextureFormats).toEqual(
+            expect.arrayContaining([
+                { format: 'rgba32float', use: 'sampled' },
+                { format: 'rgba32float', use: 'storage' },
+                { format: 'depth32float', use: 'sampled' }
+            ])
+        );
 
         const withReflections = new ClusteredForwardPlusPipelineFactory({
             buckets: [{ geometry, material }],
@@ -288,6 +331,252 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
         await expect(controller.readDiagnostics()).rejects.toThrow(/is destroyed/u);
     });
 
+    it('records and transactionally owns virtual-shadow page state without GPU readback', async () => {
+        const settings = snapshotVirtualShadowMapOptions({
+            virtualResolution: 512,
+            pageSize: 64,
+            physicalPageCount: 4,
+            maxPageUpdatesPerFrame: 2,
+            directionalClipmapLevels: 2,
+            firstDirectionalClipmapExtent: 16
+        });
+        const counters = new Uint32Array([9, 8, 7, 6, 5, 4, 3, 2]);
+        const created: {
+            readonly label: string;
+            readonly destroy: ReturnType<typeof vi.fn>;
+        }[] = [];
+        type StorageDescriptor = Parameters<RenderPipelineCreateContext['createStorageBuffer']>[0];
+        const createStorageBuffer = vi.fn((descriptor: StorageDescriptor): StorageBuffer => {
+            const destroy = vi.fn();
+            const data =
+                descriptor.label === 'Virtual shadow request, residency, and update counters'
+                    ? new Uint8Array(counters.buffer)
+                    : new Uint8Array(descriptor.byteLength);
+            created.push({ label: descriptor.label ?? '', destroy });
+            return {
+                byteLength: descriptor.byteLength,
+                destroy,
+                read: vi.fn(() =>
+                    Promise.resolve({
+                        data,
+                        byteOffset: data.byteOffset,
+                        byteLength: data.byteLength
+                    })
+                )
+            } as unknown as StorageBuffer;
+        });
+        const createContext = { createStorageBuffer } as unknown as RenderPipelineCreateContext;
+        const controller = new VirtualShadowMapController(
+            settings,
+            createContext,
+            [{ indexCount: 36 }, { indexCount: 12 }],
+            3,
+            64
+        );
+
+        expect(createStorageBuffer).toHaveBeenCalledTimes(12);
+        expect(created.map(entry => entry.label)).toEqual(
+            expect.arrayContaining([
+                'Virtual shadow directional clipmap database',
+                'Virtual shadow physical residency state A',
+                'Virtual shadow physical residency state B',
+                'Virtual shadow page bucket indirect arguments'
+            ])
+        );
+        expect(virtualShadowPhysicalPageRange(2)).toEqual({
+            byteOffset: 512,
+            byteLength: 32
+        });
+        expect(virtualShadowBucketOffsetRange(2, 1, 3)).toEqual({
+            byteOffset: 1_792,
+            byteLength: 4
+        });
+        expect(virtualShadowIndirectOffset(2, 1, 3)).toBe(140);
+        expect(virtualShadowClearIndirectOffset(2)).toBe(32);
+
+        const light = new DirectionalLight({ direction: new Vector3(1, -2, 1) });
+        const camera = new PerspectiveCamera({ aspect: 1, near: 0.1, far: 30 });
+        camera.setPosition(4, 3, 6).lookAt(new Vector3()).updateViewProjectionMatrix();
+        const shadows = {
+            depthMode: 'standard',
+            directionalLights: [light],
+            directionalShadowCount: 1
+        } as unknown as Readonly<RenderPipelineShadowResources>;
+        const noDirectionalShadows = {
+            depthMode: 'reversed',
+            directionalLights: [],
+            directionalShadowCount: 0
+        } as unknown as Readonly<RenderPipelineShadowResources>;
+        const owner = {};
+        const passNames: string[] = [];
+        let nextHandle = 10;
+        const makeContext = (frameIndex: number, historyValid: boolean): RenderPipelineContext => {
+            const graph = {
+                acquireHistoryTexture: vi.fn(() => ({
+                    current: 1,
+                    valid: historyValid,
+                    generation: 0,
+                    historyCount: historyValid ? 1 : 0,
+                    history: vi.fn(() => 2)
+                })),
+                acquirePersistentTarget: vi.fn(() => ({
+                    width: settings.physicalAtlasWidth,
+                    height: settings.physicalAtlasHeight,
+                    sampleCount: 1,
+                    colorAttachmentCount: 0,
+                    color: vi.fn(),
+                    depthStencil: 3
+                })),
+                importStorageBuffer: vi.fn(() => nextHandle++),
+                addPass: vi.fn((pass: { readonly name: string }) => {
+                    passNames.push(pass.name);
+                    return nextHandle++;
+                })
+            };
+            return {
+                frameIndex,
+                camera,
+                viewport: [0, 0, 64, 64],
+                graph,
+                writeStorageBuffer: vi.fn(),
+                acquirePassParameters: (pool: RenderPassParameterPool<object>): object =>
+                    acquireRenderPassParameters(pool, owner, frameIndex)
+            } as unknown as RenderPipelineContext;
+        };
+        const makeInputs = (
+            shadowResources: Readonly<RenderPipelineShadowResources>,
+            activeObjectHighWater: number,
+            hiZHistoryValid: boolean
+        ): Readonly<VirtualShadowRecordInputs> =>
+            ({
+                frameBuffer: 20,
+                objects: 21,
+                bucketData: 22,
+                previousHiZ: hiZHistoryValid ? 23 : null,
+                hiZHistoryValid,
+                shadows: shadowResources,
+                activeObjectHighWater,
+                previousViewMatrix: camera.viewMatrix.elements,
+                cameraHistoryValid: hiZHistoryValid
+            }) as unknown as Readonly<VirtualShadowRecordInputs>;
+
+        const first = controller.record(
+            makeContext(1, false),
+            makeInputs(noDirectionalShadows, 0, false)
+        );
+        expect(first).toMatchObject<Partial<VirtualShadowFrameResources>>({
+            clearAtlas: true,
+            directionalLightCount: 0
+        });
+        expect(passNames).not.toContain('Virtual shadow receiver depth page requests');
+        controller.frameDiscarded(0);
+        controller.frameDiscarded(1);
+
+        passNames.length = 0;
+        const second = controller.record(makeContext(2, true), makeInputs(shadows, 3, true));
+        expect(second.clearAtlas).toBe(true);
+        expect(passNames).toEqual(
+            expect.arrayContaining([
+                'Virtual shadow receiver depth page requests',
+                'Virtual shadow changed-caster page invalidation',
+                'Virtual shadow deterministic page-table allocation and remap',
+                'Virtual shadow per-page caster culling',
+                'Virtual shadow per-page bucket prefix',
+                'Virtual shadow per-page visible caster compact'
+            ])
+        );
+        controller.frameSubmitted(1);
+        controller.frameSubmitted(2);
+
+        const third = controller.record(makeContext(3, true), makeInputs(shadows, 3, true));
+        expect(third.clearAtlas).toBe(false);
+        controller.frameSubmitted(3);
+        controller.invalidateAll();
+        const invalidated = controller.record(makeContext(4, true), makeInputs(shadows, 3, false));
+        expect(invalidated.clearAtlas).toBe(true);
+        controller.frameDiscarded(4);
+
+        await expect(controller.readDiagnostics()).resolves.toEqual({
+            requestedPageCount: 9,
+            renderedPageCount: 8,
+            deferredPageCount: 7,
+            residentPageCount: 6,
+            evictionCount: 5,
+            invalidatedPageCount: 4,
+            physicalPageCapacity: 4,
+            directionalClipmapLevelCount: 2
+        });
+        controller.destroy();
+        controller.destroy();
+        expect(created.every(entry => entry.destroy.mock.calls.length === 1)).toBe(true);
+        expect(() => {
+            controller.invalidateAll();
+        }).toThrow(/is destroyed/u);
+        expect(() => controller.record(makeContext(5, true), makeInputs(shadows, 3, true))).toThrow(
+            /is destroyed/u
+        );
+        await expect(controller.readDiagnostics()).rejects.toThrow(/is destroyed/u);
+
+        const failingCreateStorageBuffer = vi.fn(
+            (descriptor: StorageDescriptor): StorageBuffer =>
+                ({
+                    byteLength: descriptor.byteLength,
+                    destroy: vi.fn(() => {
+                        if (descriptor.label === 'Virtual shadow receiver request bitset') {
+                            throw new Error('injected destroy failure');
+                        }
+                    })
+                }) as unknown as StorageBuffer
+        );
+        const failingController = new VirtualShadowMapController(
+            settings,
+            {
+                createStorageBuffer: failingCreateStorageBuffer
+            } as unknown as RenderPipelineCreateContext,
+            [{ indexCount: 3 }],
+            1,
+            64
+        );
+        expect(() => {
+            failingController.destroy();
+        }).toThrow(/resource destruction failed/u);
+        expect(() => {
+            failingController.destroy();
+        }).not.toThrow();
+    });
+
+    it('validates every virtual-shadow option boundary', () => {
+        expect(() => snapshotVirtualShadowMapOptions(null)).toThrow(/must be an object/u);
+        expect(() => snapshotVirtualShadowMapOptions([])).toThrow(/must be an object/u);
+        expect(() => snapshotVirtualShadowMapOptions({ virtualResolution: 511 })).toThrow(
+            /powers of two/u
+        );
+        expect(() => snapshotVirtualShadowMapOptions({ pageSize: 32 })).toThrow(
+            /between 64 and 256/u
+        );
+        expect(() => snapshotVirtualShadowMapOptions({ pageSize: 512 })).toThrow(
+            /between 64 and 256/u
+        );
+        expect(() =>
+            snapshotVirtualShadowMapOptions({ virtualResolution: 64, pageSize: 64 })
+        ).toThrow(/between 8 and 128 pages/u);
+        expect(() =>
+            snapshotVirtualShadowMapOptions({ virtualResolution: 65_536, pageSize: 64 })
+        ).toThrow(/between 8 and 128 pages/u);
+        expect(() => snapshotVirtualShadowMapOptions({ physicalPageCount: 257 })).toThrow(
+            /cannot exceed 256/u
+        );
+        expect(() => snapshotVirtualShadowMapOptions({ directionalClipmapLevels: 5 })).toThrow(
+            /cannot exceed four/u
+        );
+        expect(() => snapshotVirtualShadowMapOptions({ firstDirectionalClipmapExtent: 0 })).toThrow(
+            /finite and positive/u
+        );
+        expect(() => snapshotVirtualShadowMapOptions({ maxPageUpdatesPerFrame: 0 })).toThrow(
+            /positive safe integer/u
+        );
+    });
+
     it('validates bucket identities, opaque materials, and unique LOD thresholds', () => {
         const geometry = new BoxGeometry();
         const material = new PBRMaterial();
@@ -377,6 +666,28 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     typeof ClusteredForwardPlusPipelineFactory
                 >[0])
         ).toThrow(/hiZ must be a boolean/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    hiZ: false,
+                    virtualShadows: {}
+                })
+        ).toThrow(/virtual shadows require hiZ/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    virtualShadows: { pageSize: 96 }
+                })
+        ).toThrow(/powers of two/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    virtualShadows: { physicalPageCount: 4, maxPageUpdatesPerFrame: 5 }
+                })
+        ).toThrow(/cannot exceed physicalPageCount/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
@@ -1761,7 +2072,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
-        'samples the shared shadow atlas in clustered storage PBR pixels',
+        'samples GPU-requested virtual pages with stable shadow-atlas fallback',
         async () => {
             const geometry = new BoxGeometry();
             const material = new PBRMaterial({
@@ -1777,7 +2088,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightsPerCluster: 1,
                 maxViewportWidth: 64,
                 maxViewportHeight: 64,
-                hiZ: false,
+                virtualShadows: {
+                    virtualResolution: 512,
+                    pageSize: 64,
+                    physicalPageCount: 16,
+                    maxPageUpdatesPerFrame: 16,
+                    directionalClipmapLevels: 2,
+                    firstDirectionalClipmapExtent: 16
+                },
                 bloomStrength: 0
             });
             const canvas = document.createElement('canvas');
@@ -1799,7 +2117,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             });
             try {
                 const scene = new Node();
-                new Mesh({
+                const floor = new Mesh({
                     geometry,
                     material,
                     y: -1,
@@ -1808,7 +2126,12 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     scaleZ: 5,
                     frustumTest: false
                 }).addTo(scene);
-                new Mesh({ geometry, material, y: 0, frustumTest: false }).addTo(scene);
+                const caster = new Mesh({
+                    geometry,
+                    material,
+                    y: 0,
+                    frustumTest: false
+                }).addTo(scene);
                 new AmbientLight({ amount: 0.05 }).addTo(scene);
                 const light = new DirectionalLight({
                     amount: 4,
@@ -1842,14 +2165,102 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 2,
                     fallbackObjectCount: 0,
-                    lightCount: 1
+                    lightCount: 1,
+                    virtualShadows: {
+                        physicalPageCapacity: 16,
+                        directionalClipmapLevelCount: 2
+                    }
                 });
+                const originalComputeExecute = Object.getOwnPropertyDescriptor(
+                    ComputeRenderPass.prototype,
+                    'execute'
+                )?.value as (
+                    this: ComputeRenderPass,
+                    ...parameters: Parameters<ComputeRenderPass['execute']>
+                ) => void;
+                let injectedFailure = false;
+                const computeFailure = vi
+                    .spyOn(ComputeRenderPass.prototype, 'execute')
+                    .mockImplementation(function (
+                        this: ComputeRenderPass,
+                        ...parameters: Parameters<typeof originalComputeExecute>
+                    ): void {
+                        if (
+                            !injectedFailure &&
+                            this.name ===
+                                'Virtual shadow deterministic page-table allocation and remap'
+                        ) {
+                            injectedFailure = true;
+                            throw new Error('injected virtual-shadow submission failure');
+                        }
+                        originalComputeExecute.apply(this, parameters);
+                    });
+                try {
+                    expect(() => {
+                        renderer.renderToTarget(target, scene, camera);
+                    }).toThrow(/injected virtual-shadow submission failure/u);
+                } finally {
+                    computeFailure.mockRestore();
+                }
+                expect(injectedFailure).toBe(true);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+
+                const extension = renderer.getExtension('rhi') as {
+                    readonly device: RHIDevice;
+                } | null;
+                if (extension === null) throw new Error('Expected the public RHI extension');
+                const deviceLost = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceLost',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                const deviceRestored = new Promise<void>(resolve => {
+                    renderer.on(
+                        'webgpuDeviceRestored',
+                        () => {
+                            resolve();
+                        },
+                        true
+                    );
+                });
+                extension.device.destroy();
+                await deviceLost;
+                await Promise.all([renderer.waitForIdle(), deviceRestored]);
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const recoveredDiagnostics = await factory.readDiagnostics();
+                expect(recoveredDiagnostics).toMatchObject({
+                    virtualShadows: {
+                        physicalPageCapacity: 16,
+                        directionalClipmapLevelCount: 2
+                    }
+                });
+                expect(recoveredDiagnostics.virtualShadows?.requestedPageCount).toBeGreaterThan(0);
+                expect(recoveredDiagnostics.virtualShadows?.renderedPageCount).toBeGreaterThan(0);
+
+                floor.x = 8;
+                caster.x = 8;
+                camera.setPosition(12, 3, 6).lookAt(new Vector3(8, -0.5, 0));
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                renderer.renderToTarget(target, scene, camera);
+                await renderer.waitForIdle();
+                const remappedDiagnostics = await factory.readDiagnostics();
+                expect(remappedDiagnostics.virtualShadows?.evictionCount).toBeGreaterThan(0);
                 expect(
                     rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
                 ).toEqual(
                     expect.arrayContaining([
-                        'GPU Scene shadow caster frustum culling',
-                        'GPU Scene shadow caster buckets'
+                        'Virtual shadow receiver depth page requests',
+                        'Virtual shadow deterministic page-table allocation and remap',
+                        'GPU Scene virtual shadow physical page updates'
                     ])
                 );
             } finally {
