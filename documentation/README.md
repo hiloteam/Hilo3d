@@ -14,7 +14,7 @@ committed.
 | [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)         | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap                 |
 | [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)           | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence               |
 | [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                       | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence          |
-| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Portable Forward GTAO, Clustered integration, bent-normal/visibility packing, temporal lifecycle, and release boundaries            |
+| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Analytic horizon GTAO, bent/multi-bounce PBR integration, log-depth temporal lifecycle, acceptance fixture, and release boundaries  |
 | [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)       | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries             |
 | [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers           |
 | [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |

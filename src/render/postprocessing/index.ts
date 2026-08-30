@@ -22,7 +22,9 @@ export {
 } from './TemporalAA';
 export {
     GroundTruthAmbientOcclusion,
-    type GroundTruthAmbientOcclusionOptions
+    type GroundTruthAmbientOcclusionNormalSource,
+    type GroundTruthAmbientOcclusionOptions,
+    type GroundTruthAmbientOcclusionQuality
 } from './GroundTruthAmbientOcclusion';
 export {
     ScreenSpaceGlobalIllumination,

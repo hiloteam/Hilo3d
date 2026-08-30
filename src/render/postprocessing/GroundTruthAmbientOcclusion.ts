@@ -36,40 +36,107 @@ const INVALID_CULLING_RESULTS = 0 as CullingResultsHandle;
 const INVALID_RENDERER_LIST = 0 as RendererListHandle;
 const CAMERA_HISTORY_RETENTION_FRAMES = 120;
 
+/** Quality preset used when an individual GTAO sampling control is omitted. */
+export type GroundTruthAmbientOcclusionQuality = 'low' | 'medium' | 'high' | 'ultra';
+
+/** Normal source used for GTAO horizon integration and edge rejection. */
+export type GroundTruthAmbientOcclusionNormalSource = 'material' | 'geometry' | 'hybrid';
+
 /** Production controls for ground-truth ambient occlusion. */
 export interface GroundTruthAmbientOcclusionOptions {
-    /** Internal AO resolution relative to opaque rendering. Defaults to 0.5. */
+    /** Sampling preset. Individual resolution/direction/step controls override it. Defaults to high. */
+    readonly quality?: GroundTruthAmbientOcclusionQuality;
+    /** Internal AO resolution relative to opaque rendering. Defaults to the quality preset. */
     readonly resolutionScale?: number;
     /** View-space horizon-search radius. Defaults to 2. */
     readonly radius?: number;
     /** Fraction of the radius at which distance falloff begins. Defaults to 0.6. */
     readonly falloffStart?: number;
-    /** Thin-surface tolerance in view-space units. Defaults to 0.05. */
+    /** View-space self-intersection rejection distance. Defaults to 0.05. */
     readonly thickness?: number;
-    /** Number of rotated horizon slices per pixel. Defaults to 6. */
-    readonly directionCount?: 4 | 6 | 8;
-    /** Samples evaluated on each side of a horizon slice. Defaults to 4. */
-    readonly stepCount?: 3 | 4 | 5 | 6;
+    /** Blend between a thin depth field and a solid occluder. Defaults to 0.5. */
+    readonly thicknessBlend?: number;
+    /** Number of rotated horizon slices per pixel. Defaults to the quality preset. */
+    readonly directionCount?: 2 | 3 | 4 | 6 | 8;
+    /** Samples evaluated on each side of a horizon slice. Defaults to the quality preset. */
+    readonly stepCount?: 3 | 4 | 5 | 6 | 8 | 10 | 12;
     /** Contrast applied to the physically normalized visibility. Defaults to 1.2. */
     readonly power?: number;
+    /** Occlusion intensity before contrast. Defaults to 1. */
+    readonly intensity?: number;
+    /** Angular self-occlusion bias in radians. Defaults to 0.035. */
+    readonly bias?: number;
+    /** Radius of the additional contact-occlusion lobe, relative to radius. Defaults to 0.2. */
+    readonly contactRadiusScale?: number;
+    /** Strength of the contact-occlusion lobe. Defaults to 0.35. */
+    readonly contactStrength?: number;
+    /** Normal source used by the horizon search. Defaults to hybrid. */
+    readonly normalSource?: GroundTruthAmbientOcclusionNormalSource;
+    /** Geometric-normal contribution in hybrid mode. Defaults to 0.65. */
+    readonly geometricNormalWeight?: number;
+    /** Strength of bent-normal redirection. Defaults to 1. */
+    readonly bentNormalStrength?: number;
+    /** Strength of color-aware multi-bounce diffuse AO. Defaults to 1. */
+    readonly multiBounce?: number;
+    /** View distance where AO starts fading. Defaults to 100. */
+    readonly distanceFadeStart?: number;
+    /** View distance where AO is fully disabled. Defaults to 200. */
+    readonly distanceFadeEnd?: number;
+    /** Screen-edge fade width in AO pixels. Defaults to 2. */
+    readonly edgeFadePixels?: number;
     /** Maximum accepted temporal contribution. Defaults to 0.9. */
     readonly historyWeight?: number;
     /** Maximum relative reprojected view-depth error. Defaults to 0.03. */
     readonly depthThreshold?: number;
+    /** Minimum normal agreement accepted by temporal reprojection. Defaults to 0.82. */
+    readonly normalThreshold?: number;
 }
 
 /** @internal Immutable validated GTAO configuration. */
 export interface GroundTruthAmbientOcclusionSettings {
+    readonly quality: GroundTruthAmbientOcclusionQuality;
     readonly resolutionScale: number;
     readonly radius: number;
     readonly falloffStart: number;
     readonly thickness: number;
-    readonly directionCount: 4 | 6 | 8;
-    readonly stepCount: 3 | 4 | 5 | 6;
+    readonly thicknessBlend: number;
+    readonly directionCount: 2 | 3 | 4 | 6 | 8;
+    readonly stepCount: 3 | 4 | 5 | 6 | 8 | 10 | 12;
     readonly power: number;
+    readonly intensity: number;
+    readonly bias: number;
+    readonly contactRadiusScale: number;
+    readonly contactStrength: number;
+    readonly normalSource: GroundTruthAmbientOcclusionNormalSource;
+    readonly geometricNormalWeight: number;
+    readonly bentNormalStrength: number;
+    readonly multiBounce: number;
+    readonly distanceFadeStart: number;
+    readonly distanceFadeEnd: number;
+    readonly edgeFadePixels: number;
     readonly historyWeight: number;
     readonly depthThreshold: number;
+    readonly normalThreshold: number;
 }
+
+const GTAO_QUALITY_DEFAULTS = Object.freeze({
+    low: Object.freeze({ resolutionScale: 0.5, directionCount: 2 as const, stepCount: 4 as const }),
+    medium: Object.freeze({
+        resolutionScale: 0.5,
+        directionCount: 3 as const,
+        stepCount: 5 as const
+    }),
+    high: Object.freeze({
+        resolutionScale: 0.5,
+        directionCount: 4 as const,
+        stepCount: 6 as const
+    }),
+    ultra: Object.freeze({
+        resolutionScale: 0.75,
+        directionCount: 6 as const,
+        stepCount: 8 as const
+    })
+});
 
 function finiteRange(value: number, minimum: number, maximum: number, label: string): number {
     if (!Number.isFinite(value) || value < minimum || value > maximum) {
@@ -87,13 +154,44 @@ function member<T extends number>(value: T, values: readonly T[], label: string)
     return value;
 }
 
+function stringMember<T extends string>(value: T, values: readonly T[], label: string): T {
+    if (!values.includes(value)) {
+        throw new TypeError(`${label} must be one of ${values.join(', ')}`);
+    }
+    return value;
+}
+
 /** @internal Validate and freeze public GTAO options. */
 export function snapshotGroundTruthAmbientOcclusionOptions(
     options: Readonly<GroundTruthAmbientOcclusionOptions>
 ): Readonly<GroundTruthAmbientOcclusionSettings> {
+    const quality = stringMember(
+        options.quality ?? 'high',
+        ['low', 'medium', 'high', 'ultra'] as const,
+        'GroundTruthAmbientOcclusion quality'
+    );
+    const defaults = GTAO_QUALITY_DEFAULTS[quality];
+    const distanceFadeStart = finiteRange(
+        options.distanceFadeStart ?? 100,
+        0,
+        1_000_000,
+        'GroundTruthAmbientOcclusion distanceFadeStart'
+    );
+    const distanceFadeEnd = finiteRange(
+        options.distanceFadeEnd ?? 200,
+        0.001,
+        1_000_000,
+        'GroundTruthAmbientOcclusion distanceFadeEnd'
+    );
+    if (distanceFadeEnd <= distanceFadeStart) {
+        throw new RangeError(
+            'GroundTruthAmbientOcclusion distanceFadeEnd must be greater than distanceFadeStart'
+        );
+    }
     return Object.freeze({
+        quality,
         resolutionScale: finiteRange(
-            options.resolutionScale ?? 0.5,
+            options.resolutionScale ?? defaults.resolutionScale,
             0.25,
             1,
             'GroundTruthAmbientOcclusion resolutionScale'
@@ -111,17 +209,73 @@ export function snapshotGroundTruthAmbientOcclusionOptions(
             10,
             'GroundTruthAmbientOcclusion thickness'
         ),
+        thicknessBlend: finiteRange(
+            options.thicknessBlend ?? 0.5,
+            0,
+            1,
+            'GroundTruthAmbientOcclusion thicknessBlend'
+        ),
         directionCount: member(
-            options.directionCount ?? 6,
-            [4, 6, 8] as const,
+            options.directionCount ?? defaults.directionCount,
+            [2, 3, 4, 6, 8] as const,
             'GroundTruthAmbientOcclusion directionCount'
         ),
         stepCount: member(
-            options.stepCount ?? 4,
-            [3, 4, 5, 6] as const,
+            options.stepCount ?? defaults.stepCount,
+            [3, 4, 5, 6, 8, 10, 12] as const,
             'GroundTruthAmbientOcclusion stepCount'
         ),
         power: finiteRange(options.power ?? 1.2, 0.25, 4, 'GroundTruthAmbientOcclusion power'),
+        intensity: finiteRange(
+            options.intensity ?? 1,
+            0,
+            4,
+            'GroundTruthAmbientOcclusion intensity'
+        ),
+        bias: finiteRange(options.bias ?? 0.035, 0, 0.5, 'GroundTruthAmbientOcclusion bias'),
+        contactRadiusScale: finiteRange(
+            options.contactRadiusScale ?? 0.2,
+            0.02,
+            1,
+            'GroundTruthAmbientOcclusion contactRadiusScale'
+        ),
+        contactStrength: finiteRange(
+            options.contactStrength ?? 0.35,
+            0,
+            2,
+            'GroundTruthAmbientOcclusion contactStrength'
+        ),
+        normalSource: stringMember(
+            options.normalSource ?? 'hybrid',
+            ['material', 'geometry', 'hybrid'] as const,
+            'GroundTruthAmbientOcclusion normalSource'
+        ),
+        geometricNormalWeight: finiteRange(
+            options.geometricNormalWeight ?? 0.65,
+            0,
+            1,
+            'GroundTruthAmbientOcclusion geometricNormalWeight'
+        ),
+        bentNormalStrength: finiteRange(
+            options.bentNormalStrength ?? 1,
+            0,
+            1,
+            'GroundTruthAmbientOcclusion bentNormalStrength'
+        ),
+        multiBounce: finiteRange(
+            options.multiBounce ?? 1,
+            0,
+            1,
+            'GroundTruthAmbientOcclusion multiBounce'
+        ),
+        distanceFadeStart,
+        distanceFadeEnd,
+        edgeFadePixels: finiteRange(
+            options.edgeFadePixels ?? 2,
+            0,
+            32,
+            'GroundTruthAmbientOcclusion edgeFadePixels'
+        ),
         historyWeight: finiteRange(
             options.historyWeight ?? 0.9,
             0,
@@ -133,6 +287,12 @@ export function snapshotGroundTruthAmbientOcclusionOptions(
             0,
             1,
             'GroundTruthAmbientOcclusion depthThreshold'
+        ),
+        normalThreshold: finiteRange(
+            options.normalThreshold ?? 0.82,
+            0,
+            1,
+            'GroundTruthAmbientOcclusion normalThreshold'
         )
     });
 }
@@ -152,6 +312,9 @@ const GTAO_BLOCK = `layout(std140) uniform GroundTruthAmbientOcclusionBlock {
     vec4 u_gtaoProjection;
     vec4 u_gtaoSearch;
     vec4 u_gtaoTemporal;
+    vec4 u_gtaoEffects;
+    vec4 u_gtaoContact;
+    vec4 u_gtaoFade;
 };`;
 
 registerUniformBlockBinding('GroundTruthAmbientOcclusionBlock');
@@ -160,7 +323,10 @@ const gtaoLayout = createStd140Layout({
     u_gtaoInverseProjection: 'mat4',
     u_gtaoProjection: 'vec4',
     u_gtaoSearch: 'vec4',
-    u_gtaoTemporal: 'vec4'
+    u_gtaoTemporal: 'vec4',
+    u_gtaoEffects: 'vec4',
+    u_gtaoContact: 'vec4',
+    u_gtaoFade: 'vec4'
 });
 
 function horizonFragment(settings: Readonly<GroundTruthAmbientOcclusionSettings>): string {
@@ -173,6 +339,7 @@ uniform sampler2D u_materialAttributes;
 ${GTAO_BLOCK}
 layout(location = 0) out vec4 gtaoResult;
 const float PI = 3.141592653589793;
+const float HALF_PI = 1.570796326794897;
 
 vec3 decodeOctahedralNormal(vec2 encoded) {
     encoded = encoded * 2.0 - 1.0;
@@ -209,6 +376,12 @@ vec2 ndcForUV(vec2 uv) {
 }
 
 vec3 reconstructViewPosition(vec2 uv, float deviceDepth) {
+    if (u_gtaoProjection.w > 0.5) {
+        vec4 rayPoint = u_gtaoInverseProjection * vec4(ndcForUV(uv), 0.0, 1.0);
+        vec3 ray = rayPoint.xyz / max(abs(rayPoint.w), 1e-6) * sign(rayPoint.w);
+        float viewDepth = exp2(deviceDepth * u_gtaoFade.z) - 1.0;
+        return ray * (viewDepth / max(-ray.z, 1e-6));
+    }
     vec4 homogeneous = u_gtaoInverseProjection * vec4(
         ndcForUV(uv),
         deviceDepth * 2.0 - 1.0,
@@ -225,45 +398,131 @@ float interleavedGradientNoise(vec2 pixel) {
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
+ivec2 pixelForUV(vec2 uv, ivec2 size) {
+    return clamp(ivec2(uv * vec2(size)), ivec2(0), size - ivec2(1));
+}
+
+vec3 positionAt(ivec2 pixel, ivec2 size, vec3 fallback) {
+    float depth = texelFetch(u_sceneDepth, pixel, 0).r;
+    if (isBackground(depth)) return fallback;
+    return reconstructViewPosition((vec2(pixel) + 0.5) / vec2(size), depth);
+}
+
+vec3 geometricNormalAt(ivec2 pixel, ivec2 size, vec3 center, vec3 referenceNormal) {
+    ivec2 leftPixel = max(pixel - ivec2(1, 0), ivec2(0));
+    ivec2 rightPixel = min(pixel + ivec2(1, 0), size - ivec2(1));
+    ivec2 topPixel = max(pixel - ivec2(0, 1), ivec2(0));
+    ivec2 bottomPixel = min(pixel + ivec2(0, 1), size - ivec2(1));
+    vec3 left = positionAt(leftPixel, size, center);
+    vec3 right = positionAt(rightPixel, size, center);
+    vec3 top = positionAt(topPixel, size, center);
+    vec3 bottom = positionAt(bottomPixel, size, center);
+    vec3 dx = abs(left.z - center.z) < abs(right.z - center.z)
+        ? center - left
+        : right - center;
+    vec3 dy = abs(top.z - center.z) < abs(bottom.z - center.z)
+        ? center - top
+        : bottom - center;
+    vec3 geometric = cross(dx, dy);
+    if (dot(geometric, geometric) < 1e-10) return referenceNormal;
+    geometric = normalize(geometric);
+    return dot(geometric, referenceNormal) < 0.0 ? -geometric : geometric;
+}
+
+float horizonCandidate(float cosine, float distanceToSample, float distanceWeight) {
+    float angle = acos(clamp(cosine, -1.0, 1.0));
+    float thinSurfaceAngle = min(
+        angle + u_gtaoSearch.z / max(distanceToSample, u_gtaoSearch.z + 1e-5),
+        PI
+    );
+    float thicknessAdjusted = mix(cos(thinSurfaceAngle), cosine, u_gtaoEffects.z);
+    float biased = cos(min(acos(clamp(thicknessAdjusted, -1.0, 1.0)) + u_gtaoEffects.y, PI));
+    return mix(-1.0, biased, distanceWeight);
+}
+
+float integrateVisibility(vec2 horizonCosine, float normalAngle, float projectedLength) {
+    vec2 horizonAngle = acos(clamp(horizonCosine, vec2(-1.0), vec2(1.0)));
+    float lower = max(-horizonAngle.x, normalAngle - HALF_PI);
+    float upper = min(horizonAngle.y, normalAngle + HALF_PI);
+    if (upper <= lower) return 0.0;
+    return projectedLength * 0.5 * (
+        sin(upper - normalAngle) - sin(lower - normalAngle)
+    );
+}
+
+vec3 integrateBentDirection(
+    vec2 horizonCosine,
+    float normalAngle,
+    vec3 viewDirection,
+    vec3 sliceDirection
+) {
+    vec2 horizonAngle = acos(clamp(horizonCosine, vec2(-1.0), vec2(1.0)));
+    float lower = max(-horizonAngle.x, normalAngle - HALF_PI);
+    float upper = min(horizonAngle.y, normalAngle + HALF_PI);
+    if (upper <= lower) return vec3(0.0);
+    return viewDirection * (sin(upper) - sin(lower)) +
+        sliceDirection * (cos(lower) - cos(upper));
+}
+
 void main() {
     ivec2 depthSize = textureSize(u_sceneDepth, 0);
-    ivec2 pixel = clamp(ivec2(v_uv * vec2(depthSize)), ivec2(0), depthSize - ivec2(1));
+    ivec2 pixel = pixelForUV(v_uv, depthSize);
+    vec2 centerUV = (vec2(pixel) + 0.5) / vec2(depthSize);
     float centerDepth = texelFetch(u_sceneDepth, pixel, 0).r;
     if (isBackground(centerDepth)) {
         gtaoResult = vec4(0.0, 0.0, 1.0, 0.0);
         return;
     }
-    vec3 center = reconstructViewPosition(v_uv, centerDepth);
+    vec3 center = reconstructViewPosition(centerUV, centerDepth);
     vec4 attributes = texelFetch(u_materialAttributes, pixel, 0);
-    vec3 normal = decodeOctahedralNormal(attributes.xy);
+    vec3 materialNormal = decodeOctahedralNormal(attributes.xy);
+    vec3 geometryNormal = geometricNormalAt(pixel, depthSize, center, materialNormal);
+    vec3 normal = ${
+        settings.normalSource === 'material'
+            ? 'materialNormal'
+            : settings.normalSource === 'geometry'
+              ? 'geometryNormal'
+              : 'normalize(mix(materialNormal, geometryNormal, u_gtaoFade.w))'
+    };
     float viewDepth = max(-center.z, 1e-4);
     float radiusPixels = u_gtaoProjection.y > 0.5
         ? u_gtaoSearch.x * u_gtaoProjection.x * float(depthSize.y) * 0.5 / viewDepth
         : u_gtaoSearch.x * float(depthSize.y) * 0.5 / max(abs(u_gtaoInverseProjection[1][1]), 1e-5);
     radiusPixels = clamp(radiusPixels, 1.0, 256.0);
-    float noise = interleavedGradientNoise(vec2(pixel) + u_gtaoTemporal.w * 17.0);
-    float occlusion = 0.0;
-    vec3 bent = normal;
+    float phase = u_gtaoTemporal.w;
+    float noise = interleavedGradientNoise(vec2(pixel) + vec2(phase * 17.0, phase * 29.0));
+    float visibilitySum = 0.0;
+    float contactVisibilitySum = 0.0;
+    vec3 bentSum = vec3(0.0);
+    vec3 viewDirection = normalize(-center);
     for (int directionIndex = 0; directionIndex < ${String(settings.directionCount)}; directionIndex++) {
         float angle = (float(directionIndex) + noise) * PI / float(${String(settings.directionCount)});
         vec2 screenDirection = vec2(cos(angle), sin(angle));
-        float directionOcclusion = 0.0;
-        vec3 directionBend = vec3(0.0);
+        vec3 sliceDirection = normalize(
+            reconstructViewPosition(centerUV + screenDirection / vec2(depthSize), centerDepth) -
+            center
+        );
+        vec3 sliceNormal = normalize(cross(sliceDirection, viewDirection));
+        vec3 projectedNormal = normal - sliceNormal * dot(normal, sliceNormal);
+        float projectedLength = max(length(projectedNormal), 1e-5);
+        projectedNormal /= projectedLength;
+        float normalCosine = clamp(dot(projectedNormal, viewDirection), -1.0, 1.0);
+        float normalAngle = acos(normalCosine) *
+            (dot(projectedNormal, sliceDirection) < 0.0 ? -1.0 : 1.0);
+        vec2 horizons = vec2(-1.0);
+        vec2 contactHorizons = vec2(-1.0);
         for (int side = -1; side <= 1; side += 2) {
-            float horizon = 0.0;
             for (int stepIndex = 0; stepIndex < ${String(settings.stepCount)}; stepIndex++) {
-                float stepFraction = (float(stepIndex) + 1.0 + noise * 0.35) /
+                float stepNoise = fract(noise + float(stepIndex) * 0.61803398875);
+                float stepFraction = (float(stepIndex) + 0.65 + stepNoise * 0.7) /
                     float(${String(settings.stepCount)});
                 float pixelDistance = max(1.0, radiusPixels * stepFraction * stepFraction);
-                vec2 sampleUV = v_uv + screenDirection * float(side) * pixelDistance /
+                vec2 sampleUV = centerUV + screenDirection * float(side) * pixelDistance /
                     vec2(depthSize);
                 if (any(lessThanEqual(sampleUV, vec2(0.0))) ||
                     any(greaterThanEqual(sampleUV, vec2(1.0)))) continue;
-                ivec2 samplePixel = clamp(
-                    ivec2(sampleUV * vec2(depthSize)),
-                    ivec2(0),
-                    depthSize - ivec2(1)
-                );
+                ivec2 samplePixel = pixelForUV(sampleUV, depthSize);
+                sampleUV = (vec2(samplePixel) + 0.5) / vec2(depthSize);
                 float sampleDepth = texelFetch(u_sceneDepth, samplePixel, 0).r;
                 if (isBackground(sampleDepth)) continue;
                 vec3 delta = reconstructViewPosition(sampleUV, sampleDepth) - center;
@@ -274,25 +533,63 @@ void main() {
                     u_gtaoSearch.x,
                     distanceToSample
                 );
-                float sampleHorizon = max(dot(normal, delta / distanceToSample), 0.0) *
-                    distanceWeight;
-                horizon = max(horizon, sampleHorizon);
+                float candidate = horizonCandidate(
+                    dot(delta / distanceToSample, viewDirection),
+                    distanceToSample,
+                    distanceWeight
+                );
+                int component = side < 0 ? 0 : 1;
+                horizons[component] = max(horizons[component], candidate);
+                float contactWeight = 1.0 - smoothstep(
+                    u_gtaoSearch.x * u_gtaoContact.x * 0.7,
+                    u_gtaoSearch.x * u_gtaoContact.x,
+                    distanceToSample
+                );
+                contactHorizons[component] = max(
+                    contactHorizons[component],
+                    horizonCandidate(
+                        dot(delta / distanceToSample, viewDirection),
+                        distanceToSample,
+                        contactWeight
+                    )
+                );
             }
-            directionOcclusion += horizon;
-            vec2 away = -screenDirection * float(side);
-            vec3 tangent = normalize(
-                reconstructViewPosition(v_uv + away * 0.01, centerDepth) - center
-            );
-            directionBend += tangent * horizon;
         }
-        occlusion += min(directionOcclusion * 0.5, 1.0);
-        bent += directionBend / float(${String(settings.directionCount)});
+        visibilitySum += clamp(
+            integrateVisibility(horizons, normalAngle, projectedLength),
+            0.0,
+            1.0
+        );
+        contactVisibilitySum += clamp(
+            integrateVisibility(contactHorizons, normalAngle, projectedLength),
+            0.0,
+            1.0
+        );
+        bentSum += integrateBentDirection(horizons, normalAngle, viewDirection, sliceDirection);
     }
-    float visibility = pow(
-        clamp(1.0 - occlusion / float(${String(settings.directionCount)}), 0.0, 1.0),
-        u_gtaoSearch.w
+    float inverseDirectionCount = 1.0 / float(${String(settings.directionCount)});
+    float baseVisibility = clamp(visibilitySum * inverseDirectionCount, 0.0, 1.0);
+    float contactVisibility = clamp(contactVisibilitySum * inverseDirectionCount, 0.0, 1.0);
+    float combinedOcclusion = (1.0 - baseVisibility) * u_gtaoEffects.x +
+        (1.0 - contactVisibility) * u_gtaoContact.y;
+    float visibility = pow(clamp(1.0 - combinedOcclusion, 0.0, 1.0), u_gtaoSearch.w);
+    float distanceFade = 1.0 - smoothstep(u_gtaoFade.x, u_gtaoFade.y, viewDepth);
+    float edgeDistance = min(
+        min(float(pixel.x), float(pixel.y)),
+        min(float(depthSize.x - 1 - pixel.x), float(depthSize.y - 1 - pixel.y))
     );
-    vec3 bentNormal = normalize(mix(normal, normalize(bent), 1.0 - visibility));
+    float edgeFade = u_gtaoContact.z <= 0.0
+        ? 1.0
+        : smoothstep(0.0, u_gtaoContact.z, edgeDistance);
+    float fade = distanceFade * edgeFade;
+    visibility = mix(1.0, visibility, fade);
+    vec3 integratedBent = dot(bentSum, bentSum) > 1e-8 ? normalize(bentSum) : normal;
+    if (dot(integratedBent, normal) < 0.0) integratedBent = normal;
+    vec3 bentNormal = normalize(mix(
+        normal,
+        integratedBent,
+        (1.0 - visibility) * u_gtaoEffects.w * fade
+    ));
     gtaoResult = vec4(encodeOctahedralNormal(bentNormal), visibility, log2(1.0 + viewDepth));
 }`;
 }
@@ -306,10 +603,12 @@ void main() { historyOutput = texture(u_current, v_uv); }`;
 
 const TEMPORAL_RESOLVE_FRAGMENT = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 v_uv;
 uniform sampler2D u_current;
 uniform sampler2D u_history;
 uniform sampler2D u_motionDepth;
+uniform sampler2D u_materialAttributes;
 ${GTAO_BLOCK}
 layout(location = 0) out vec4 historyOutput;
 
@@ -336,38 +635,102 @@ vec2 encodeOctahedralNormal(vec3 value) {
     }
     return encoded;
 }
+ivec2 pixelForUV(vec2 uv, ivec2 size) {
+    return clamp(ivec2(uv * vec2(size)), ivec2(0), size - ivec2(1));
+}
+vec3 materialNormalAt(vec2 uv) {
+    ivec2 size = textureSize(u_materialAttributes, 0);
+    vec2 encoded = texelFetch(u_materialAttributes, pixelForUV(uv, size), 0).xy * 2.0 - 1.0;
+    return decodeOctahedralNormal(encoded);
+}
 float relativeDepthError(float previousLog, float expectedLog) {
     float previous = exp2(max(previousLog, 0.0)) - 1.0;
     float expected = exp2(max(expectedLog, 0.0)) - 1.0;
     return abs(previous - expected) / max(expected, 1e-3);
 }
+vec4 closestMotion(vec2 uv, float currentLogDepth) {
+    ivec2 size = textureSize(u_motionDepth, 0);
+    ivec2 center = pixelForUV(uv, size);
+    vec4 closest = texelFetch(u_motionDepth, center, 0);
+    float closestError = abs(closest.w - currentLogDepth);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 coordinate = clamp(center + ivec2(x, y), ivec2(0), size - ivec2(1));
+            vec4 candidate = texelFetch(u_motionDepth, coordinate, 0);
+            float error = abs(candidate.w - currentLogDepth);
+            if (error < closestError) {
+                closest = candidate;
+                closestError = error;
+            }
+        }
+    }
+    return closest;
+}
+vec4 sampleHistory(vec2 uv) {
+    ivec2 size = textureSize(u_history, 0);
+    vec2 position = uv * vec2(size) - 0.5;
+    ivec2 base = ivec2(floor(position));
+    vec2 fraction = fract(position);
+    vec3 bent = vec3(0.0);
+    float visibility = 0.0;
+    float depth = 0.0;
+    float totalWeight = 0.0;
+    for (int y = 0; y <= 1; y++) {
+        for (int x = 0; x <= 1; x++) {
+            ivec2 coordinate = clamp(base + ivec2(x, y), ivec2(0), size - ivec2(1));
+            vec2 axisWeight = mix(vec2(1.0) - fraction, fraction, vec2(float(x), float(y)));
+            float weight = axisWeight.x * axisWeight.y;
+            vec4 sampleValue = texelFetch(u_history, coordinate, 0);
+            bent += decodeOctahedralNormal(sampleValue.xy) * weight;
+            visibility += sampleValue.z * weight;
+            depth += sampleValue.w * weight;
+            totalWeight += weight;
+        }
+    }
+    return vec4(
+        encodeOctahedralNormal(normalize(bent / max(totalWeight, 1e-5))),
+        visibility / max(totalWeight, 1e-5),
+        depth / max(totalWeight, 1e-5)
+    );
+}
 void main() {
     ivec2 currentSize = textureSize(u_current, 0);
     ivec2 currentPixel = clamp(ivec2(v_uv * vec2(currentSize)), ivec2(0), currentSize - ivec2(1));
     vec4 current = texelFetch(u_current, currentPixel, 0);
-    vec4 motion = texture(u_motionDepth, v_uv);
+    vec4 motion = closestMotion(v_uv, current.w);
     vec2 historyUV = v_uv - motion.xy;
     vec2 halfTexel = 0.5 / vec2(textureSize(u_history, 0));
     bool inside = all(greaterThanEqual(historyUV, halfTexel)) &&
         all(lessThanEqual(historyUV, vec2(1.0) - halfTexel));
-    vec4 previous = texture(u_history, clamp(historyUV, halfTexel, vec2(1.0) - halfTexel));
-    float minimumVisibility = current.z;
-    float maximumVisibility = current.z;
+    vec4 previous = sampleHistory(clamp(historyUV, halfTexel, vec2(1.0) - halfTexel));
+    float mean = 0.0;
+    float meanSquare = 0.0;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 coordinate = clamp(currentPixel + ivec2(x, y), ivec2(0), currentSize - ivec2(1));
             float value = texelFetch(u_current, coordinate, 0).z;
-            minimumVisibility = min(minimumVisibility, value);
-            maximumVisibility = max(maximumVisibility, value);
+            mean += value;
+            meanSquare += value * value;
         }
     }
-    previous.z = clamp(previous.z, minimumVisibility, maximumVisibility);
-    bool accepted = inside && motion.z >= 0.0 &&
-        relativeDepthError(previous.w, motion.z) <= u_gtaoTemporal.y;
+    mean /= 9.0;
+    meanSquare /= 9.0;
+    float standardDeviation = sqrt(max(meanSquare - mean * mean, 0.0));
+    float clipRadius = max(standardDeviation * 1.5, 0.018);
+    previous.z = clamp(previous.z, mean - clipRadius, mean + clipRadius);
+    float depthError = relativeDepthError(previous.w, motion.z);
+    float normalAgreement = dot(materialNormalAt(v_uv), materialNormalAt(historyUV));
+    bool accepted = inside && motion.z >= 0.0 && depthError <= u_gtaoTemporal.y &&
+        normalAgreement >= u_gtaoTemporal.z;
     float velocityPixels = length(motion.xy * vec2(textureSize(u_motionDepth, 0)));
-    float weight = accepted
-        ? mix(u_gtaoTemporal.x, min(u_gtaoTemporal.x, 0.55), clamp(velocityPixels / 24.0, 0.0, 1.0))
-        : 0.0;
+    float confidence = (1.0 - smoothstep(0.0, u_gtaoTemporal.y, depthError)) *
+        smoothstep(u_gtaoTemporal.z, 1.0, normalAgreement);
+    float stableWeight = u_gtaoTemporal.x * confidence;
+    float weight = accepted ? mix(
+        stableWeight,
+        min(stableWeight, 0.5),
+        clamp(velocityPixels / 16.0, 0.0, 1.0)
+    ) : 0.0;
     vec3 bent = normalize(mix(
         decodeOctahedralNormal(current.xy),
         decodeOctahedralNormal(previous.xy),
@@ -386,10 +749,8 @@ precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_source;
 uniform sampler2D u_materialAttributes;
-uniform sampler2D u_motionDepth;
 layout(location = 0) out vec4 filtered;
 vec3 decodeOctahedralNormal(vec2 encoded) {
-    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -399,47 +760,75 @@ vec3 decodeOctahedralNormal(vec2 encoded) {
         );
     }
     return normalize(normal);
+}
+vec2 encodeOctahedralNormal(vec3 value) {
+    vec3 normal = normalize(value);
+    normal /= max(abs(normal.x) + abs(normal.y) + abs(normal.z), 1e-6);
+    vec2 encoded = normal.xy;
+    if (normal.z < 0.0) {
+        encoded = (1.0 - abs(encoded.yx)) * vec2(
+            encoded.x >= 0.0 ? 1.0 : -1.0,
+            encoded.y >= 0.0 ? 1.0 : -1.0
+        );
+    }
+    return encoded;
+}
+ivec2 pixelForUV(vec2 uv, ivec2 size) {
+    return clamp(ivec2(uv * vec2(size)), ivec2(0), size - ivec2(1));
+}
+vec3 materialNormalAt(vec2 uv) {
+    ivec2 size = textureSize(u_materialAttributes, 0);
+    vec2 encoded = texelFetch(u_materialAttributes, pixelForUV(uv, size), 0).xy * 2.0 - 1.0;
+    return decodeOctahedralNormal(encoded);
+}
+float viewDepth(float logarithmicDepth) {
+    return exp2(max(logarithmicDepth, 0.0)) - 1.0;
 }
 void main() {
     ivec2 size = textureSize(u_source, 0);
     ivec2 pixel = clamp(ivec2(v_uv * vec2(size)), ivec2(0), size - ivec2(1));
     vec4 center = texelFetch(u_source, pixel, 0);
-    vec3 centerNormal = decodeOctahedralNormal(texture(u_materialAttributes, v_uv).xy);
-    float centerDepth = texture(u_motionDepth, v_uv).w;
-    vec4 sum = center * 0.4;
-    float totalWeight = 0.4;
-    const ivec2 offsets[8] = ivec2[8](
-        ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1),
-        ivec2(1, 1), ivec2(-1, 1), ivec2(1, -1), ivec2(-1, -1)
+    vec3 centerNormal = materialNormalAt(v_uv);
+    float centerDepth = viewDepth(center.w);
+    vec3 bentSum = decodeOctahedralNormal(center.xy);
+    float visibilitySum = center.z;
+    float totalWeight = 1.0;
+    const ivec2 offsets[4] = ivec2[4](
+        ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1)
     );
-    for (int index = 0; index < 8; index++) {
+    for (int index = 0; index < 4; index++) {
         ivec2 coordinate = clamp(pixel + offsets[index] * ${String(step)}, ivec2(0), size - ivec2(1));
         vec2 sampleUV = (vec2(coordinate) + 0.5) / vec2(size);
         vec4 sampleValue = texelFetch(u_source, coordinate, 0);
-        vec3 sampleNormal = decodeOctahedralNormal(texture(u_materialAttributes, sampleUV).xy);
-        float sampleDepth = texture(u_motionDepth, sampleUV).w;
-        float normalWeight = pow(max(dot(centerNormal, sampleNormal), 0.0), 16.0);
-        float relativeDepth = abs((exp2(centerDepth) - 1.0) - (exp2(sampleDepth) - 1.0)) /
-            max(exp2(centerDepth) - 1.0, 1e-3);
-        float depthWeight = exp(-relativeDepth * 48.0);
-        float spatialWeight = index < 4 ? 0.075 : 0.0375;
+        vec3 sampleNormal = materialNormalAt(sampleUV);
+        float sampleDepth = viewDepth(sampleValue.w);
+        float normalWeight = pow(max(dot(centerNormal, sampleNormal), 0.0), 24.0);
+        float relativeDepth = abs(centerDepth - sampleDepth) / max(centerDepth, 1e-3);
+        float depthWeight = exp(-relativeDepth * 64.0);
+        float spatialWeight = 0.42;
         float weight = normalWeight * depthWeight * spatialWeight;
-        sum += sampleValue * weight;
+        bentSum += decodeOctahedralNormal(sampleValue.xy) * weight;
+        visibilitySum += sampleValue.z * weight;
         totalWeight += weight;
     }
-    filtered = sum / max(totalWeight, 1e-5);
+    filtered = vec4(
+        encodeOctahedralNormal(normalize(bentSum / max(totalWeight, 1e-5))),
+        clamp(visibilitySum / max(totalWeight, 1e-5), 0.0, 1.0),
+        center.w
+    );
 }`;
 }
 
 const UPSAMPLE_FRAGMENT = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 v_uv;
 uniform sampler2D u_lowResolutionAO;
 uniform sampler2D u_materialAttributes;
 uniform sampler2D u_motionDepth;
+${GTAO_BLOCK}
 layout(location = 0) out vec4 fullResolutionAO;
 vec3 decodeOctahedralNormal(vec2 encoded) {
-    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -450,33 +839,84 @@ vec3 decodeOctahedralNormal(vec2 encoded) {
     }
     return normalize(normal);
 }
+vec2 encodeOctahedralNormal(vec3 value) {
+    vec3 normal = normalize(value);
+    normal /= max(abs(normal.x) + abs(normal.y) + abs(normal.z), 1e-6);
+    vec2 encoded = normal.xy;
+    if (normal.z < 0.0) {
+        encoded = (1.0 - abs(encoded.yx)) * vec2(
+            encoded.x >= 0.0 ? 1.0 : -1.0,
+            encoded.y >= 0.0 ? 1.0 : -1.0
+        );
+    }
+    return encoded;
+}
+ivec2 pixelForUV(vec2 uv, ivec2 size) {
+    return clamp(ivec2(uv * vec2(size)), ivec2(0), size - ivec2(1));
+}
+vec3 materialNormalAt(vec2 uv) {
+    ivec2 size = textureSize(u_materialAttributes, 0);
+    vec2 encoded = texelFetch(u_materialAttributes, pixelForUV(uv, size), 0).xy * 2.0 - 1.0;
+    return decodeOctahedralNormal(encoded);
+}
 void main() {
     ivec2 lowSize = textureSize(u_lowResolutionAO, 0);
     vec2 lowPosition = v_uv * vec2(lowSize) - 0.5;
     ivec2 base = ivec2(floor(lowPosition));
-    vec3 centerNormal = decodeOctahedralNormal(texture(u_materialAttributes, v_uv).xy);
-    float centerDepth = clamp(texture(u_motionDepth, v_uv).w, 0.0, 32.0);
-    vec4 fallback = texture(u_lowResolutionAO, v_uv);
-    vec4 sum = fallback * 1e-4;
-    float totalWeight = 1e-4;
+    vec3 centerNormal = materialNormalAt(v_uv);
+    ivec2 motionSize = textureSize(u_motionDepth, 0);
+    float centerDepth = texelFetch(u_motionDepth, pixelForUV(v_uv, motionSize), 0).w;
+    ivec2 fallbackCoordinate = clamp(
+        ivec2(floor(lowPosition + 0.5)),
+        ivec2(0),
+        lowSize - ivec2(1)
+    );
+    vec4 fallback = texelFetch(u_lowResolutionAO, fallbackCoordinate, 0);
+    vec3 bentSum = vec3(0.0);
+    float visibilitySum = 0.0;
+    float totalWeight = 0.0;
     for (int y = 0; y <= 1; y++) {
         for (int x = 0; x <= 1; x++) {
             ivec2 coordinate = clamp(base + ivec2(x, y), ivec2(0), lowSize - ivec2(1));
             vec2 sampleUV = (vec2(coordinate) + 0.5) / vec2(lowSize);
             vec4 sampleValue = texelFetch(u_lowResolutionAO, coordinate, 0);
-            vec3 sampleNormal = decodeOctahedralNormal(texture(u_materialAttributes, sampleUV).xy);
+            vec3 sampleNormal = materialNormalAt(sampleUV);
             vec2 bilinear = 1.0 - abs(vec2(coordinate) - lowPosition);
             float spatialWeight = max(bilinear.x, 0.001) * max(bilinear.y, 0.001);
-            float normalWeight = pow(clamp(dot(centerNormal, sampleNormal), 0.0, 1.0), 12.0);
-            float sampleDepth = clamp(sampleValue.w, 0.0, 32.0);
-            float depthWeight = exp(-abs(sampleDepth - centerDepth) * 24.0);
+            float normalWeight = pow(clamp(dot(centerNormal, sampleNormal), 0.0, 1.0), 24.0);
+            float sampleDepth = sampleValue.w;
+            float relativeDepth = abs(
+                (exp2(sampleDepth) - 1.0) - (exp2(centerDepth) - 1.0)
+            ) / max(exp2(centerDepth) - 1.0, 1e-3);
+            float depthWeight = exp(-relativeDepth * 64.0);
             float weight = spatialWeight * normalWeight * depthWeight;
-            sum += sampleValue * weight;
+            bentSum += decodeOctahedralNormal(sampleValue.xy) * weight;
+            visibilitySum += sampleValue.z * weight;
             totalWeight += weight;
         }
     }
-    fullResolutionAO = sum / max(totalWeight, 1e-4);
-    fullResolutionAO.z = clamp(fullResolutionAO.z, 0.0, 1.0);
+    vec3 bent = totalWeight > 1e-5
+        ? normalize(bentSum / totalWeight)
+        : decodeOctahedralNormal(fallback.xy);
+    float visibility = totalWeight > 1e-5 ? visibilitySum / totalWeight : fallback.z;
+    fullResolutionAO = vec4(
+        encodeOctahedralNormal(bent),
+        clamp(visibility, 0.0, 1.0),
+        u_gtaoContact.w
+    );
+}`;
+
+const FINALIZE_FRAGMENT = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+uniform sampler2D u_source;
+${GTAO_BLOCK}
+layout(location = 0) out vec4 finalAO;
+void main() {
+    ivec2 size = textureSize(u_source, 0);
+    ivec2 pixel = clamp(ivec2(v_uv * vec2(size)), ivec2(0), size - ivec2(1));
+    vec4 sourceValue = texelFetch(u_source, pixel, 0);
+    finalAO = vec4(sourceValue.xy, clamp(sourceValue.z, 0.0, 1.0), u_gtaoContact.w);
 }`;
 
 function fullscreenPass(
@@ -516,6 +956,12 @@ class MutableFullscreenParameters implements FullscreenRenderPassParameters {
 interface GTAOCameraState {
     readonly camera: Camera;
     readonly historyKey: object;
+    readonly inverseProjection: Matrix4;
+    readonly block: UniformBuffer<typeof gtaoLayout.schema>;
+    readonly horizonPass: FullscreenRenderPass;
+    readonly resolvePass: FullscreenRenderPass;
+    readonly upsamplePass: FullscreenRenderPass;
+    readonly finalizePass: FullscreenRenderPass;
     readonly committedProjection: Float32Array;
     committedTransformRevision: number;
     committedSubmission: number;
@@ -548,22 +994,14 @@ export interface GroundTruthAmbientOcclusionResources {
 /** @internal Portable raster GTAO, temporal accumulation, denoise, and bilateral upsample. */
 export class GroundTruthAmbientOcclusionController {
     readonly #settings: Readonly<GroundTruthAmbientOcclusionSettings>;
-    readonly #block: UniformBuffer<typeof gtaoLayout.schema>;
-    readonly #inverseProjection = new Matrix4();
-    readonly #horizonPass: FullscreenRenderPass;
     readonly #initializePass = fullscreenPass(
         'GTAO initialize temporal history',
         TEMPORAL_INITIALIZE_FRAGMENT
     );
-    readonly #resolvePass: FullscreenRenderPass;
     readonly #filterPasses = Object.freeze([
         fullscreenPass('GTAO edge-aware filter 1', spatialFilterFragment(1)),
         fullscreenPass('GTAO edge-aware filter 2', spatialFilterFragment(2))
     ]);
-    readonly #upsamplePass = fullscreenPass(
-        'GTAO bilateral full-resolution upsample',
-        UPSAMPLE_FRAGMENT
-    );
     readonly #parameters = new RenderPassParameterPool(
         () => new MutableFullscreenParameters(),
         parameters => {
@@ -602,27 +1040,6 @@ export class GroundTruthAmbientOcclusionController {
 
     constructor(settings: Readonly<GroundTruthAmbientOcclusionSettings>) {
         this.#settings = settings;
-        this.#block = UniformBuffer.fromSchema(gtaoLayout, {
-            u_gtaoInverseProjection: this.#inverseProjection.elements,
-            u_gtaoProjection: [1, 1, 0, 0],
-            u_gtaoSearch: [
-                settings.radius,
-                settings.falloffStart,
-                settings.thickness,
-                settings.power
-            ],
-            u_gtaoTemporal: [settings.historyWeight, settings.depthThreshold, 0, 0]
-        });
-        this.#horizonPass = fullscreenPass(
-            'GTAO rotated horizon search',
-            horizonFragment(settings),
-            [this.#block]
-        );
-        this.#resolvePass = fullscreenPass(
-            'GTAO production temporal resolve',
-            TEMPORAL_RESOLVE_FRAGMENT,
-            [this.#block]
-        );
     }
 
     record(
@@ -653,22 +1070,42 @@ export class GroundTruthAmbientOcclusionController {
         this.#fullResolutionDescriptor.extent.height = sceneHeight;
 
         const camera = context.camera;
-        this.#inverseProjection.invert(camera.jitteredProjectionMatrix);
+        const farValue: unknown = Reflect.get(camera, 'far');
+        if (
+            context.useLogDepth &&
+            (!camera.isPerspectiveCamera ||
+                camera.depthMode === 'reversed' ||
+                typeof farValue !== 'number' ||
+                !Number.isFinite(farValue) ||
+                farValue <= 0)
+        ) {
+            throw new Error(
+                'GroundTruthAmbientOcclusion logarithmic depth requires a standard-Z perspective camera with a finite positive far plane'
+            );
+        }
+        const far = typeof farValue === 'number' && Number.isFinite(farValue) ? farValue : 1;
         const projection = camera.jitteredProjectionMatrix.elements;
         const state = this.stageCamera(context, camera);
-        this.#block
-            .set('u_gtaoInverseProjection', this.#inverseProjection.elements)
+        state.inverseProjection.invert(camera.jitteredProjectionMatrix);
+        state.block
+            .set('u_gtaoInverseProjection', state.inverseProjection.elements)
             .set('u_gtaoProjection', [
                 Math.abs(projection[5]),
                 camera.isPerspectiveCamera ? 1 : 0,
                 camera.depthMode === 'reversed' ? 1 : 0,
-                0
+                context.useLogDepth ? 1 : 0
             ])
             .set('u_gtaoTemporal', [
                 this.#settings.historyWeight,
                 this.#settings.depthThreshold,
-                0,
-                this.#submissionIndex % 8
+                this.#settings.normalThreshold,
+                this.#submissionIndex % 24
+            ])
+            .set('u_gtaoFade', [
+                this.#settings.distanceFadeStart,
+                this.#settings.distanceFadeEnd,
+                Math.log2(far + 1),
+                this.#settings.geometricNormalWeight
             ]);
 
         const discontinuous =
@@ -688,7 +1125,7 @@ export class GroundTruthAmbientOcclusionController {
         );
         this.addFullscreen(
             context,
-            this.#horizonPass,
+            state.horizonPass,
             [resources.sceneDepth, resources.materialAttributes],
             current
         );
@@ -696,8 +1133,10 @@ export class GroundTruthAmbientOcclusionController {
         const historyAccepted = !discontinuous && (resources.historyValid ?? true) && history.valid;
         this.addFullscreen(
             context,
-            historyAccepted ? this.#resolvePass : this.#initializePass,
-            historyAccepted ? [current, history.history(), resources.motionDepth] : [current],
+            historyAccepted ? state.resolvePass : this.#initializePass,
+            historyAccepted
+                ? [current, history.history(), resources.motionDepth, resources.materialAttributes]
+                : [current],
             history.current
         );
 
@@ -712,23 +1151,26 @@ export class GroundTruthAmbientOcclusionController {
             this.addFullscreen(
                 context,
                 pass,
-                [filtered, resources.materialAttributes, resources.motionDepth],
+                [filtered, resources.materialAttributes],
                 destination
             );
             filtered = destination;
         }
 
-        if (aoWidth === sceneWidth && aoHeight === sceneHeight) return filtered;
         const fullResolution = context.graph.createTexture(
             'GTAO full-resolution bent normal and visibility',
             this.#fullResolutionDescriptor
         );
-        this.addFullscreen(
-            context,
-            this.#upsamplePass,
-            [filtered, resources.materialAttributes, resources.motionDepth],
-            fullResolution
-        );
+        if (aoWidth === sceneWidth && aoHeight === sceneHeight) {
+            this.addFullscreen(context, state.finalizePass, [filtered], fullResolution);
+        } else {
+            this.addFullscreen(
+                context,
+                state.upsamplePass,
+                [filtered, resources.materialAttributes, resources.motionDepth],
+                fullResolution
+            );
+        }
         return fullResolution;
     }
 
@@ -792,17 +1234,7 @@ export class GroundTruthAmbientOcclusionController {
         this.sweepInactiveStates(context, camera);
         let state = this.#states.get(camera);
         if (state === undefined) {
-            state = {
-                camera,
-                historyKey: Object.freeze({}),
-                committedProjection: new Float32Array(16),
-                committedTransformRevision: -1,
-                committedSubmission: -1,
-                pendingFrame: -1,
-                pendingTransformRevision: -1,
-                pendingProjection: new Float32Array(16),
-                lastTouchedFrame: frameIndex
-            };
+            state = this.createCameraState(camera, frameIndex);
             this.#states.set(camera, state);
             this.#ownedStates.add(state);
         }
@@ -817,6 +1249,74 @@ export class GroundTruthAmbientOcclusionController {
         state.lastTouchedFrame = frameIndex;
         this.#stagedStates.push(state);
         return state;
+    }
+
+    private createCameraState(camera: Camera, frameIndex: number): GTAOCameraState {
+        const inverseProjection = new Matrix4();
+        const settings = this.#settings;
+        const block = UniformBuffer.fromSchema(gtaoLayout, {
+            u_gtaoInverseProjection: inverseProjection.elements,
+            u_gtaoProjection: [1, 1, 0, 0],
+            u_gtaoSearch: [
+                settings.radius,
+                settings.falloffStart,
+                settings.thickness,
+                settings.power
+            ],
+            u_gtaoTemporal: [
+                settings.historyWeight,
+                settings.depthThreshold,
+                settings.normalThreshold,
+                0
+            ],
+            u_gtaoEffects: [
+                settings.intensity,
+                settings.bias,
+                settings.thicknessBlend,
+                settings.bentNormalStrength
+            ],
+            u_gtaoContact: [
+                settings.contactRadiusScale,
+                settings.contactStrength,
+                settings.edgeFadePixels,
+                settings.multiBounce
+            ],
+            u_gtaoFade: [
+                settings.distanceFadeStart,
+                settings.distanceFadeEnd,
+                1,
+                settings.geometricNormalWeight
+            ]
+        });
+        return {
+            camera,
+            historyKey: Object.freeze({}),
+            inverseProjection,
+            block,
+            horizonPass: fullscreenPass('GTAO rotated horizon search', horizonFragment(settings), [
+                block
+            ]),
+            resolvePass: fullscreenPass(
+                'GTAO production temporal resolve',
+                TEMPORAL_RESOLVE_FRAGMENT,
+                [block]
+            ),
+            upsamplePass: fullscreenPass(
+                'GTAO bilateral full-resolution upsample',
+                UPSAMPLE_FRAGMENT,
+                [block]
+            ),
+            finalizePass: fullscreenPass('GTAO full-resolution finalize', FINALIZE_FRAGMENT, [
+                block
+            ]),
+            committedProjection: new Float32Array(16),
+            committedTransformRevision: -1,
+            committedSubmission: -1,
+            pendingFrame: -1,
+            pendingTransformRevision: -1,
+            pendingProjection: new Float32Array(16),
+            lastTouchedFrame: frameIndex
+        };
     }
 
     private sweepInactiveStates(context: RenderPipelineContext, activeCamera: Camera): void {

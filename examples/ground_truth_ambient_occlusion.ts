@@ -382,15 +382,28 @@ class ToggleableGroundTruthAmbientOcclusion implements Hilo3d.ForwardRenderPipel
 }
 
 const gtao = new ToggleableGroundTruthAmbientOcclusion(gtaoEnabled, {
+    quality: testMode ? 'medium' : 'ultra',
     resolutionScale: testMode ? 0.5 : 0.7,
     radius: 1.12,
     falloffStart: 0.66,
-    thickness: 0.065,
-    directionCount: testMode ? 4 : 8,
-    stepCount: testMode ? 3 : 5,
-    power: 3.05,
+    thickness: 0.045,
+    thicknessBlend: 0.58,
+    directionCount: testMode ? 3 : 6,
+    stepCount: testMode ? 5 : 8,
+    intensity: 1.06,
+    power: 1.18,
+    bias: 0.03,
+    contactRadiusScale: 0.18,
+    contactStrength: 0.3,
+    normalSource: 'hybrid',
+    geometricNormalWeight: 0.64,
+    bentNormalStrength: 0.94,
+    multiBounce: 0.92,
+    distanceFadeStart: 36,
+    distanceFadeEnd: 54,
     historyWeight: 0.9,
-    depthThreshold: 0.025
+    depthThreshold: 0.025,
+    normalThreshold: 0.84
 });
 
 const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
@@ -568,7 +581,7 @@ const searchLabel = requireElement('#gtaoSearchLabel');
 toggle.setAttribute('aria-pressed', String(gtaoEnabled));
 toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
 backendLabel.textContent = BACKEND_LABELS[renderer.backend];
-searchLabel.textContent = testMode ? '4 × 3' : '8 × 5';
+searchLabel.textContent = testMode ? '3 × 5' : '6 × 8';
 toggle.addEventListener('click', () => {
     gtaoEnabled = !gtaoEnabled;
     gtao.enabled = gtaoEnabled;

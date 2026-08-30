@@ -3651,6 +3651,48 @@ layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
 ${textureDeclarations}
 ${withGroundTruthAmbientOcclusion ? 'uniform sampler2D u_gtaoTexture;' : ''}
+${
+    withGroundTruthAmbientOcclusion
+        ? `vec3 hiloDecodeGTAOBentNormal(vec2 encoded) {
+    vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
+    if (normal.z < 0.0) {
+        vec2 original = normal.xy;
+        normal.xy = (1.0 - abs(original.yx)) * vec2(
+            original.x >= 0.0 ? 1.0 : -1.0,
+            original.y >= 0.0 ? 1.0 : -1.0
+        );
+    }
+    return normalize(normal);
+}
+vec3 hiloGTAOMultiBounceVisibility(float visibility, vec3 albedo, float strength) {
+    vec3 a = 2.0404 * albedo - 0.3324;
+    vec3 b = -4.7951 * albedo + 0.6417;
+    vec3 c = 2.7552 * albedo + 0.6903;
+    vec3 multiBounce = max(
+        vec3(visibility),
+        ((visibility * a + b) * visibility + c) * visibility
+    );
+    return mix(vec3(visibility), clamp(multiBounce, 0.0, 1.0), strength);
+}
+float hiloGTAOSpecularVisibility(
+    float visibility,
+    vec3 bentNormal,
+    vec3 normal,
+    vec3 viewDirection,
+    float perceptualRoughness
+) {
+    vec3 reflectionDirection = -normalize(reflect(viewDirection, normal));
+    float coneCosine = clamp(1.0 - visibility, 0.0, 1.0);
+    float lobeWidth = max(perceptualRoughness * perceptualRoughness, 0.04);
+    float directionalVisibility = smoothstep(
+        coneCosine - lobeWidth,
+        coneCosine + lobeWidth,
+        dot(reflectionDirection, bentNormal)
+    );
+    return mix(max(visibility, directionalVisibility), visibility, perceptualRoughness);
+}`
+        : ''
+}
 ${withCloudShadow ? 'uniform sampler2D u_cloudShadowTexture;' : ''}
 uniform sampler2D u_areaLightsLtcTexture1;
 uniform sampler2D u_areaLightsLtcTexture2;
@@ -3907,14 +3949,32 @@ void main() {
     uint clusterIndex = slice * cluster.x * cluster.y + tileY * cluster.x + tileX;
     uvec2 allocation = clusterGrid.values[clusterIndex];
     uvec4 directional = floatBitsToUint(frameData.values[30u]);
-    float ambientOcclusion = surface.occlusion;
+    vec3 ambientDiffuseOcclusion = vec3(surface.occlusion);
+    float ambientSpecularOcclusion = surface.occlusion;
     ${
         withGroundTruthAmbientOcclusion
-            ? 'ambientOcclusion *= clamp(texture(u_gtaoTexture, gl_FragCoord.xy / frameData.values[24u].zw).b, 0.0, 1.0);'
+            ? `vec4 gtaoSample = texture(
+        u_gtaoTexture,
+        gl_FragCoord.xy / frameData.values[24u].zw
+    );
+    float gtaoVisibility = clamp(gtaoSample.b, 0.0, 1.0);
+    vec3 gtaoBentNormal = hiloDecodeGTAOBentNormal(gtaoSample.xy);
+    ambientDiffuseOcclusion *= hiloGTAOMultiBounceVisibility(
+        gtaoVisibility,
+        clamp(surface.baseColor.rgb, 0.0, 1.0),
+        clamp(gtaoSample.a, 0.0, 1.0)
+    );
+    ambientSpecularOcclusion *= hiloGTAOSpecularVisibility(
+        gtaoVisibility,
+        gtaoBentNormal,
+        normal,
+        viewDirection,
+        surface.roughness
+    );`
             : ''
     }
     vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
-        ambientOcclusion * HILO_INVERSE_PI;
+        ambientDiffuseOcclusion * HILO_INVERSE_PI;
     ${
         withReflectionData
             ? `float reflectionNdotV = max(abs(dot(normal, viewDirection)), 0.0001);
@@ -3924,7 +3984,7 @@ void main() {
     );
     vec3 ssrFallbackSpecular = frameData.values[31u].rgb *
         ssrReflectionResponse *
-        mix(1.0, 0.35, surface.roughness) * ambientOcclusion;
+        mix(1.0, 0.35, surface.roughness) * ambientSpecularOcclusion;
     lighting += ssrFallbackSpecular;
     reflectionResponse = vec4(ssrReflectionResponse, 1.0);
     reflectionFallbackSpecular = vec4(ssrFallbackSpecular, 1.0);`

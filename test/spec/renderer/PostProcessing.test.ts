@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import OrthographicCamera from '../../../src/camera/OrthographicCamera';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
+import Stage from '../../../src/core/Stage';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
@@ -50,6 +52,7 @@ import {
     AtmosphereWeatherController,
     snapshotAtmosphereWeatherOptions
 } from '../../../src/render/postprocessing/AtmosphereWeather';
+import { snapshotGroundTruthAmbientOcclusionOptions } from '../../../src/render/postprocessing/GroundTruthAmbientOcclusion';
 import type { RenderGraphTimelineSnapshot } from '../../../src/render/graph/RenderGraphTimeline';
 import Shader from '../../../src/shader/Shader';
 import type { RHIDevice } from '../../../src/render/rhi/core';
@@ -162,6 +165,40 @@ describe('built-in post-processing', () => {
         expect(source).toContain('uv = hiloRenderTargetUV(uv);');
     });
 
+    it('exposes color-aware diffuse and bent-cone specular GTAO integration', () => {
+        const pbr = Shader.shaders['chunk/pbr.frag'];
+        const pbrMain = Shader.shaders['chunk/pbr_main.frag'];
+        expect(pbr).toContain('hiloGTAOMultiBounceVisibility');
+        expect(pbr).toContain('hiloGTAOSpecularVisibility');
+        expect(pbrMain).toContain('gtaoDiffuseVisibility');
+        expect(pbrMain).toContain('gtaoSpecularVisibility');
+        expect(pbrMain).not.toContain('ao *= gtaoVisibility');
+    });
+
+    it('normalizes GTAO quality presets while preserving explicit sampling overrides', () => {
+        expect(snapshotGroundTruthAmbientOcclusionOptions({ quality: 'ultra' })).toMatchObject({
+            quality: 'ultra',
+            resolutionScale: 0.75,
+            directionCount: 6,
+            stepCount: 8,
+            normalSource: 'hybrid',
+            multiBounce: 1
+        });
+        expect(
+            snapshotGroundTruthAmbientOcclusionOptions({
+                quality: 'low',
+                resolutionScale: 1,
+                directionCount: 8,
+                stepCount: 12
+            })
+        ).toMatchObject({
+            quality: 'low',
+            resolutionScale: 1,
+            directionCount: 8,
+            stepCount: 12
+        });
+    });
+
     it('normalizes managed 2D, cube, BRDF, and LTC texture coordinates centrally', () => {
         const coordinates = Shader.shaders['method/portableCoordinates.glsl'];
         const uv = Shader.shaders['chunk/uv.frag'];
@@ -251,6 +288,16 @@ describe('built-in post-processing', () => {
             /directionCount/u
         );
         expect(() => new GroundTruthAmbientOcclusion({ radius: 0 })).toThrow(/radius/u);
+        expect(
+            () =>
+                new GroundTruthAmbientOcclusion({
+                    distanceFadeStart: 20,
+                    distanceFadeEnd: 20
+                })
+        ).toThrow(/distanceFadeEnd/u);
+        expect(
+            () => new GroundTruthAmbientOcclusion({ normalSource: 'invalid' as 'hybrid' })
+        ).toThrow(/normalSource/u);
         expect(() => new ScreenSpaceGlobalIllumination({ resolutionScale: 0.2 })).toThrow(
             /resolutionScale/u
         );
@@ -659,6 +706,102 @@ describe('built-in post-processing', () => {
             expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
         }
     );
+
+    it.each(taaIntegrationBackends)(
+        'isolates per-camera GTAO uniforms while decoding logarithmic depth on %s',
+        async backend => {
+            const first = new PerspectiveCamera({
+                aspect: 1,
+                near: 0.1,
+                far: 80,
+                z: 5,
+                priority: -1
+            });
+            const second = new PerspectiveCamera({
+                aspect: 1,
+                near: 0.2,
+                far: 160,
+                x: 1,
+                z: 6,
+                priority: 1,
+                clearColor: false
+            });
+            const stage = await Stage.create({
+                backend,
+                width: 40,
+                height: 40,
+                pixelRatio: 1,
+                antialias: false,
+                useLogDepth: true,
+                cameras: [second, first],
+                renderPipeline: new PostProcessRenderPipelineFactory({
+                    groundTruthAmbientOcclusion: {
+                        quality: 'low',
+                        resolutionScale: 1
+                    },
+                    bloom: false
+                })
+            });
+            try {
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material: new PBRMaterial({
+                        baseColor: new Color(0.7, 0.6, 0.5),
+                        roughness: 0.8
+                    }),
+                    frustumTest: false
+                }).addTo(stage);
+                const observed = observePassLabels(rhiDevice(stage.renderer));
+                stage.tick(16);
+                await stage.renderer.waitForIdle();
+                expect(
+                    observed.labels.filter(label => label === 'GTAO rotated horizon search')
+                ).toHaveLength(2);
+                observed.restore();
+            } finally {
+                stage.destroy();
+            }
+        }
+    );
+
+    it('rejects incompatible GTAO logarithmic-depth camera contracts while recording', async () => {
+        const camera = new OrthographicCamera({
+            left: -1,
+            right: 1,
+            top: 1,
+            bottom: -1,
+            near: 0.1,
+            far: 80,
+            z: 5
+        });
+        const stage = await Stage.create({
+            backend: 'webgl2',
+            width: 24,
+            height: 24,
+            pixelRatio: 1,
+            antialias: false,
+            useLogDepth: true,
+            cameras: [camera],
+            renderPipeline: new PostProcessRenderPipelineFactory({
+                groundTruthAmbientOcclusion: { quality: 'low' },
+                bloom: false
+            })
+        });
+        try {
+            let causeMessage = '';
+            try {
+                stage.tick(16);
+                throw new Error('Expected GTAO logarithmic-depth validation to reject the camera');
+            } catch (error) {
+                if (error instanceof Error && error.cause instanceof Error) {
+                    causeMessage = error.cause.message;
+                }
+            }
+            expect(causeMessage).toMatch(/standard-Z perspective camera/u);
+        } finally {
+            stage.destroy();
+        }
+    });
 
     it.each(taaIntegrationBackends)(
         'renders fixed-scale TAAU, HDR bloom, and transmissive composition on %s',

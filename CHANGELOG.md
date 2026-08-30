@@ -40,6 +40,15 @@
 
 ### Changes
 
+- Rebuild portable GTAO around view-relative dual horizons, projected-normal analytic visible-arc
+  integration, depth-derived or hybrid normals, a separately controlled contact lobe, integrated
+  bent normals, distance/edge fading, and explicit low/medium/high/ultra budgets. Add logarithmic-
+  depth reconstruction, per-camera pass/UBO isolation, closest-depth motion selection, depth/normal
+  confidence, variance clipping, vector-space bent-normal filtering, unblurred rejection depth, and
+  joint bilateral upsampling. Feed color-aware multi-bounce visibility and bent-cone specular
+  visibility into ordinary and Clustered PBR, retune The Silent Dragon, and add a deterministic GTAO
+  Acceptance Lab with corner, thin-card, slab, stair, normal-map, dielectric/metal, moving-occluder,
+  screen-edge, log-depth, on/off, temporal, and WebGL2/WebGPU parity gates.
 - Upgrade WebGPU high-end SSR with response-aware 8×8 tile masks, coherent prefix compaction,
   indirect stochastic visible-GGX tracing, roughness-adaptive ray budgets, refined depth crossings,
   hit-normal facing validation, and explicit uncertain/backface outcomes. Evaluate receiver- and

@@ -3542,17 +3542,37 @@ export class GroundTruthAmbientOcclusion implements ForwardRenderPipelineFeature
 }
 
 // @public
+export type GroundTruthAmbientOcclusionNormalSource = 'material' | 'geometry' | 'hybrid';
+
+// @public
 export interface GroundTruthAmbientOcclusionOptions {
+    readonly bentNormalStrength?: number;
+    readonly bias?: number;
+    readonly contactRadiusScale?: number;
+    readonly contactStrength?: number;
     readonly depthThreshold?: number;
-    readonly directionCount?: 4 | 6 | 8;
+    readonly directionCount?: 2 | 3 | 4 | 6 | 8;
+    readonly distanceFadeEnd?: number;
+    readonly distanceFadeStart?: number;
+    readonly edgeFadePixels?: number;
     readonly falloffStart?: number;
+    readonly geometricNormalWeight?: number;
     readonly historyWeight?: number;
+    readonly intensity?: number;
+    readonly multiBounce?: number;
+    readonly normalSource?: GroundTruthAmbientOcclusionNormalSource;
+    readonly normalThreshold?: number;
     readonly power?: number;
+    readonly quality?: GroundTruthAmbientOcclusionQuality;
     readonly radius?: number;
     readonly resolutionScale?: number;
-    readonly stepCount?: 3 | 4 | 5 | 6;
+    readonly stepCount?: 3 | 4 | 5 | 6 | 8 | 10 | 12;
     readonly thickness?: number;
+    readonly thicknessBlend?: number;
 }
+
+// @public
+export type GroundTruthAmbientOcclusionQuality = 'low' | 'medium' | 'high' | 'ultra';
 
 // @public (undocumented)
 export class HDRLoader {
@@ -8171,6 +8191,7 @@ export interface RenderPipelineContext {
     prepareScene(): void;
     recordShadows(cullingResults: CullingResultsHandle, options?: Readonly<RenderPipelineShadowOptions>): Readonly<RenderPipelineShadowResources> | null;
     readonly scene: RendererScene;
+    readonly useLogDepth: boolean;
     readonly viewport: RendererViewport;
     writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
 }

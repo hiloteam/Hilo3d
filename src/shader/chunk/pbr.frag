@@ -87,6 +87,39 @@ uniform sampler2D u_baseColorMap;
         }
         return normalize(normal);
     }
+
+    vec3 hiloGTAOMultiBounceVisibility(float visibility, vec3 albedo, float strength) {
+        vec3 a = 2.0404 * albedo - 0.3324;
+        vec3 b = -4.7951 * albedo + 0.6417;
+        vec3 c = 2.7552 * albedo + 0.6903;
+        vec3 multiBounce = max(
+            vec3(visibility),
+            ((visibility * a + b) * visibility + c) * visibility
+        );
+        return mix(vec3(visibility), clamp(multiBounce, 0.0, 1.0), strength);
+    }
+
+    float hiloGTAOSpecularVisibility(
+        float visibility,
+        vec3 bentNormal,
+        vec3 normal,
+        vec3 viewDirection,
+        float perceptualRoughness
+    ) {
+        vec3 reflectionDirection = -normalize(reflect(viewDirection, normal));
+        float coneCosine = clamp(1.0 - visibility, 0.0, 1.0);
+        float lobeWidth = max(perceptualRoughness * perceptualRoughness, 0.04);
+        float directionalVisibility = smoothstep(
+            coneCosine - lobeWidth,
+            coneCosine + lobeWidth,
+            dot(reflectionDirection, bentNormal)
+        );
+        return mix(
+            max(visibility, directionalVisibility),
+            visibility,
+            perceptualRoughness
+        );
+    }
     #endif
     #ifdef HILO_HAS_IRIDESCENCE
         #ifdef HILO_IRIDESCENCE_MAP
