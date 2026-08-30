@@ -167,7 +167,9 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             screenSpaceReflections: { resolutionScale: 1 }
         });
         expect(
-            fullResolution4KReflections.requirements.requiredLimits.maxComputeWorkgroupsPerDimension
+            fullResolution4KReflections.requirements.requiredLimits?.[
+                'maxComputeWorkgroupsPerDimension'
+            ]
         ).toBe(65_535);
 
         const withGTAO = new ClusteredForwardPlusPipelineFactory({
