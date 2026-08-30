@@ -490,6 +490,7 @@ class Shader {
             linearOutput,
             role,
             groundTruthAmbientOcclusion,
+            false,
             false
         );
     }
@@ -683,7 +684,8 @@ function getShaderVariant(
     linearOutput: boolean,
     role: MaterialPassRole,
     groundTruthAmbientOcclusion: boolean,
-    temporalReactiveMask: boolean
+    temporalReactiveMask: boolean,
+    materialReflectionData: boolean
 ): Shader | null {
     let header = Shader.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
     header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
@@ -692,6 +694,7 @@ function getShaderVariant(
     else if (role === 'motion-vector') header += '#define HILO_MOTION_VECTOR_PASS 1\n';
     else if (role === 'material-attributes') {
         header += '#define HILO_MATERIAL_ATTRIBUTES_PASS 1\n';
+        if (materialReflectionData) header += '#define HILO_SSR_MATERIAL_DATA 1\n';
     } else if (role === 'picking') header += '#define HILO_PICKING_PASS 1\n';
     if (linearOutput) header += '#define HILO_LINEAR_OUTPUT 1\n';
     if (groundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
@@ -740,6 +743,36 @@ export function getTemporalReactiveShader(
         linearOutput,
         role,
         groundTruthAmbientOcclusion,
+        true,
+        false
+    );
+}
+
+/** @internal Resolve the built-in material-attributes variant with SSR response/fallback MRTs. */
+export function getMaterialReflectionDataShader(
+    mesh: Mesh,
+    material: Material,
+    isUseInstance: boolean,
+    lightManager: LightManager,
+    fog: Fog | null,
+    useLogDepth: boolean,
+    renderer?: ShaderPrecisionProvider,
+    linearOutput = false,
+    role: MaterialPassRole = 'material-attributes',
+    groundTruthAmbientOcclusion = false
+): Shader | null {
+    return getShaderVariant(
+        mesh,
+        material,
+        isUseInstance,
+        lightManager,
+        fog,
+        useLogDepth,
+        renderer,
+        linearOutput,
+        role,
+        groundTruthAmbientOcclusion,
+        false,
         true
     );
 }

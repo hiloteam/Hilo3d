@@ -140,17 +140,35 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             screenSpaceReflections: {}
         });
         expect(withReflections.requirements.requiredLimits).toMatchObject({
-            maxStorageTexturesPerShaderStage: 2,
-            maxSampledTexturesPerShaderStage: 14,
+            maxStorageTexturesPerShaderStage: 4,
+            maxSampledTexturesPerShaderStage: 16,
             maxColorAttachments: 4
         });
         expect(withReflections.requirements.requiredTextureFormats).toEqual(
             expect.arrayContaining([
                 { format: 'rgba16float', use: 'storage' },
                 { format: 'r32float', use: 'storage' },
-                { format: 'rg32float', use: 'storage' }
+                { format: 'rg32float', use: 'storage' },
+                { format: 'rgba8unorm', use: 'color-attachment' },
+                { format: 'rgba8unorm', use: 'filterable-sampled' }
             ])
         );
+
+        const fullResolution4KReflections = new ClusteredForwardPlusPipelineFactory({
+            buckets: [{ geometry, material }],
+            maxObjects: 1,
+            maxLights: 1,
+            maxLightIndices: 1,
+            maxLightsPerCluster: 1,
+            zSlices: 1,
+            maxViewportWidth: 3_840,
+            maxViewportHeight: 2_160,
+            temporalAA: {},
+            screenSpaceReflections: { resolutionScale: 1 }
+        });
+        expect(
+            fullResolution4KReflections.requirements.requiredLimits.maxComputeWorkgroupsPerDimension
+        ).toBe(65_535);
 
         const withGTAO = new ClusteredForwardPlusPipelineFactory({
             buckets: [{ geometry, material }],
@@ -360,6 +378,22 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     screenSpaceReflections: { maxSteps: 7 }
                 })
         ).toThrow(/maxSteps/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    temporalAA: {},
+                    screenSpaceReflections: { maxRayDistance: 1, stride: 0.3 }
+                })
+        ).toThrow(/at least four stride steps/u);
+        expect(
+            () =>
+                new ClusteredForwardPlusPipelineFactory({
+                    buckets: [{ geometry, material }],
+                    temporalAA: {},
+                    screenSpaceReflections: { maxRayDistance: 1, thickness: 0.6 }
+                })
+        ).toThrow(/must not exceed half maxRayDistance/u);
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
@@ -981,7 +1015,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
-        'integrates GTAO before indirect clustered PBR shading',
+        'integrates GTAO into GPU Scene and Forward fallback SSR reflection data',
         async () => {
             const geometry = new BoxGeometry();
             const material = new PBRMaterial({
@@ -997,9 +1031,12 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxLightsPerCluster: 1,
                 maxViewportWidth: 64,
                 maxViewportHeight: 64,
-                hiZ: false,
                 bloomStrength: 0,
                 temporalAA: {},
+                screenSpaceReflections: {
+                    resolutionScale: 0.5,
+                    maxSteps: 8
+                },
                 groundTruthAmbientOcclusion: {
                     directionCount: 4,
                     stepCount: 3,
@@ -1020,6 +1057,19 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             try {
                 const scene = new Node();
                 new Mesh({ geometry, material, frustumTest: false }).addTo(scene);
+                new Mesh({
+                    geometry: new BoxGeometry(),
+                    material: new PBRMaterial({
+                        baseColor: new Color(0.3, 0.45, 0.75),
+                        metallic: 0.35,
+                        roughness: 0.3,
+                        iridescenceFactor: 0.7,
+                        iridescenceThicknessMinimum: 180,
+                        iridescenceThicknessMaximum: 420
+                    }),
+                    x: 1.25,
+                    frustumTest: false
+                }).addTo(scene);
                 new PointLight({ amount: 4, range: 8, z: 3 }).addTo(scene);
                 const camera = new PerspectiveCamera({
                     aspect: 1,
@@ -1036,7 +1086,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
 
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 1,
-                    fallbackObjectCount: 0
+                    fallbackObjectCount: 1
                 });
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
                 const passNames = rendererDiagnostics
@@ -1047,7 +1097,10 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                         'GPU Scene GTAO material attributes',
                         'GTAO rotated horizon search',
                         'GTAO production temporal resolve',
-                        'Clustered PBR buckets'
+                        'Clustered PBR buckets',
+                        'Clustered Forward+ fallback material attributes',
+                        'Screen-space reflections finalize indirect tile dispatch',
+                        'Hierarchical screen-space reflection trace'
                     ])
                 );
             } finally {
@@ -1094,7 +1147,11 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 maxViewportWidth: 128,
                 maxViewportHeight: 128,
                 temporalAA: { renderScale: 0.75 },
-                screenSpaceReflections: { resolutionScale: 0.5, maxSteps: 8 },
+                screenSpaceReflections: {
+                    resolutionScale: 0.5,
+                    maxSteps: 8,
+                    roughnessCutoff: 0.25
+                },
                 volumetricLighting: {
                     quality: 'low',
                     density: 0.018,
@@ -1171,6 +1228,20 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 expect(diagnostics.hiZValid).toBe(true);
                 expect(diagnostics.volumetricFroxelCount).toBeGreaterThan(0);
                 expect(diagnostics.volumetricHistoryUsed).toBe(true);
+                expect(diagnostics.screenSpaceReflectionActiveTileCount).toBeGreaterThan(0);
+                expect(diagnostics.screenSpaceReflectionActivePixelCount).toBeGreaterThan(0);
+                expect(
+                    diagnostics.screenSpaceReflectionHitPixelCount +
+                        diagnostics.screenSpaceReflectionMissPixelCount
+                ).toBe(diagnostics.screenSpaceReflectionActivePixelCount);
+                expect(
+                    diagnostics.screenSpaceReflectionUncertainPixelCount +
+                        diagnostics.screenSpaceReflectionBackfaceRejectedPixelCount
+                ).toBeLessThanOrEqual(diagnostics.screenSpaceReflectionMissPixelCount);
+                expect(
+                    diagnostics.screenSpaceReflectionHistoryAcceptedPixelCount +
+                        diagnostics.screenSpaceReflectionHistoryRejectedPixelCount
+                ).toBeGreaterThan(0);
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
                 const passNames = rendererDiagnostics
                     .snapshot()
@@ -1182,7 +1253,20 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     passNames?.indexOf('GPU Scene current depth Hi-Z min/max mip zero') ?? -1;
                 expect(fallbackDepthIndex).toBeGreaterThan(-1);
                 expect(currentHiZIndex).toBeGreaterThan(fallbackDepthIndex);
-                expect(passNames).toContain('Screen-space reflections confidence filter step 8');
+                expect(passNames).toContain('Screen-space reflections adaptive confidence filter');
+                expect(passNames).toContain(
+                    'Screen-space reflections variance-guided stability filter'
+                );
+                expect(passNames).toContain(
+                    'Screen-space reflections residual coverage cleanup filter'
+                );
+                expect(passNames).toEqual(
+                    expect.arrayContaining([
+                        'Screen-space reflections active tile classification',
+                        'Screen-space reflections coherent tile compaction',
+                        'Hierarchical screen-space reflection trace'
+                    ])
+                );
                 expect(passNames).toEqual(
                     expect.arrayContaining([
                         'Froxel volumetric light and density injection',
@@ -1192,6 +1276,44 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                         'Volumetric lighting linear HDR composite'
                     ])
                 );
+
+                material.roughness = 1;
+                renderer.render(scene, camera);
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(
+                    (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount
+                ).toBe(0);
+                material.roughness = 0.28;
+                renderer.render(scene, camera);
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(
+                    (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount
+                ).toBeGreaterThan(0);
+
+                material.metallic = 0.9;
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(
+                    (await factory.readDiagnostics()).screenSpaceReflectionHistoryRejectedPixelCount
+                ).toBeGreaterThan(0);
+                material.metallic = 0.35;
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+
+                const movingMesh = meshes[0];
+                if (movingMesh === undefined) throw new Error('Expected a moving SSR fixture mesh');
+                movingMesh.x += 0.35;
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                const movingDiagnostics = await factory.readDiagnostics();
+                expect(
+                    movingDiagnostics.screenSpaceReflectionHitPixelCount +
+                        movingDiagnostics.screenSpaceReflectionMissPixelCount
+                ).toBe(movingDiagnostics.screenSpaceReflectionActivePixelCount);
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
 
                 camera.setPosition(0.25, 0, 8).lookAt(new Vector3(0, 0, 0));
                 renderer.render(scene, camera);

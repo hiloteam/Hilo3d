@@ -141,7 +141,9 @@ export function snapshotGroundTruthAmbientOcclusionOptions(
 export const GROUND_TRUTH_AMBIENT_OCCLUSION_REQUIREMENTS = Object.freeze({
     requiredTextureFormats: Object.freeze([
         Object.freeze({ format: 'rgba16float' as const, use: 'color-attachment' as const }),
-        Object.freeze({ format: 'rgba16float' as const, use: 'filterable-sampled' as const })
+        Object.freeze({ format: 'rgba16float' as const, use: 'filterable-sampled' as const }),
+        Object.freeze({ format: 'rgba8unorm' as const, use: 'color-attachment' as const }),
+        Object.freeze({ format: 'rgba8unorm' as const, use: 'filterable-sampled' as const })
     ])
 }) satisfies Readonly<RenderPipelineRequirements>;
 
@@ -173,6 +175,7 @@ layout(location = 0) out vec4 gtaoResult;
 const float PI = 3.141592653589793;
 
 vec3 decodeOctahedralNormal(vec2 encoded) {
+    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -386,6 +389,7 @@ uniform sampler2D u_materialAttributes;
 uniform sampler2D u_motionDepth;
 layout(location = 0) out vec4 filtered;
 vec3 decodeOctahedralNormal(vec2 encoded) {
+    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -435,6 +439,7 @@ uniform sampler2D u_materialAttributes;
 uniform sampler2D u_motionDepth;
 layout(location = 0) out vec4 fullResolutionAO;
 vec3 decodeOctahedralNormal(vec2 encoded) {
+    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -891,7 +896,7 @@ class GroundTruthAmbientOcclusionRuntime implements ForwardRenderPipelineFeature
         const sceneScale = context.resources.sceneScale;
         const extent = Object.freeze({ relativeTo: 'output' as const, scale: sceneScale });
         const attributes = pipeline.graph.createTexture('GTAO material attributes', {
-            format: 'rgba16float',
+            format: 'rgba8unorm',
             extent,
             sampleCount: 1
         });
@@ -902,7 +907,7 @@ class GroundTruthAmbientOcclusionRuntime implements ForwardRenderPipelineFeature
             texture: attributes,
             loadOp: 'clear',
             storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 1, a: 0 }
+            clearValue: { r: 0.5, g: 0.5, b: 1, a: 0 }
         });
         attributeParameters.depthStencilAttachment = this.depthAttachment(pipeline, depth, false);
         pipeline.graph.addPass(this.#attributesPass, attributeParameters);

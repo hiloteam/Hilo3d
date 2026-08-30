@@ -39,6 +39,9 @@ void main(void) {
         #else
             hilo_FragColor = hiloMaterialAttributes(vec3(0.0, 0.0, 1.0), 1.0, 0.0, 0.0);
         #endif
+        #ifdef HILO_SSR_MATERIAL_DATA
+            hiloWriteMaterialReflectionData(vec3(0.0), vec3(0.0));
+        #endif
         #include "./chunk/logDepth_main.frag"
     #else
         #if defined(HILO_VERTEX_TYPE_POSITION)

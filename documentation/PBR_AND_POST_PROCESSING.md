@@ -204,16 +204,26 @@ buffer，也不执行对应 clear/write，保持默认 Clustered 路径无 TAA �
 
 `ClusteredForwardPlusPipelineFactory.screenSpaceReflections` 显式启用 WebGPU high-end Hi-Z
 SSR，并要求同时启用 `hiZ` 与 `temporalAA`。GPU Scene opaque PBR 在 color MRT 写 view
-normal、roughness 和 receiver/metallic；ordinary Forward opaque PBR 通过同一 `material-attributes`
-semantic pass 补写。current-frame RG32F min/max Hi-Z 驱动 hierarchical coarse-to-fine
-trace，四级 HDR radiance cone 近似粗糙反射；screen edge、distance、roughness 共同生成 hit
-confidence。
+normal、roughness、receiver/metallic、view-dependent reflection response 和已有 environment/probe
+specular baseline；ordinary Forward opaque PBR 通过同一 `material-attributes` semantic
+pass 补写。attributes 使用 `rgba8unorm`，两个 reflection MRT 优先使用 `rg11b10ufloat`。8×8
+response-aware receiver classification 先写 tile mask，再以 coherent prefix compaction 生成 active
+list，并在 GPU 上转换成单维不超过 65,535 的二维 indirect dispatch；current-frame RG32F min/max
+Hi-Z 由 indirect 低粗糙度确定性镜面与每帧四条 32-phase rotated low-discrepancy visible-GGX
+coarse-to-fine trace，四级 HDR radiance cone 近似粗糙反射，并执行 refined depth、hit-normal
+facing 和 uncertainty validation。
 
-SSR 使用 motion/log-depth 做 history reprojection、relative-depth reject 和 neighborhood
-clamp，在线性 HDR opaque color 中合成后再进入 TAA/TAAU。camera cut、camera
-identity、projection/depth convention、resize、失败 submission 与 device
-recovery 都遵守 history 初始化/回滚合同。默认关闭时没有 attribute、trace、cone 或 history 成本。屏幕外和完全遮挡内容返回零贡献；当前没有 probe/BVH/SDF
-fallback。完整参数、packing 和证据见
+SSR 同时评估 receiver 与 reflection-hit motion domain 的 history candidate，加上真实 previous
+normal/roughness/depth、reflection response/packed material、reactive mask、YCoCg variance/firefly
+clamp 和 roughness-adaptive sample count 做 reprojection/reject；confidence
+reconstruction、variance-guided stability、bounded residual-coverage cleanup 与 full-resolution
+resolve 完成 hole fill。最终 additive delta 为
+`gate * intensity * SSR - gate * confidence * fallback`，低 confidence 通过 smoothstep 淡回 forward
+baseline，因此 intensity 不会缩放 fallback removal；ordinary Forward baseline 与主 PBR 使用相同 GTAO
+visibility 和 iridescence 参数，之后再进入 TAA/TAAU。camera cut、camera identity、projection/depth
+convention、resize、失败 submission 与 device
+recovery 都遵守 history 初始化/回滚合同。默认关闭时没有 attribute、trace、cone 或 history 成本。屏幕外和完全遮挡内容保留 forward
+environment/probe fallback；当前没有 BVH/SDF fallback。完整参数、packing 和证据见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md)。
 
 `ClusteredForwardPlusPipelineFactory.volumetricLighting`

@@ -184,7 +184,9 @@ export function snapshotScreenSpaceGlobalIlluminationOptions(
 export const SCREEN_SPACE_GLOBAL_ILLUMINATION_REQUIREMENTS = Object.freeze({
     requiredTextureFormats: Object.freeze([
         Object.freeze({ format: 'rgba16float' as const, use: 'color-attachment' as const }),
-        Object.freeze({ format: 'rgba16float' as const, use: 'filterable-sampled' as const })
+        Object.freeze({ format: 'rgba16float' as const, use: 'filterable-sampled' as const }),
+        Object.freeze({ format: 'rgba8unorm' as const, use: 'color-attachment' as const }),
+        Object.freeze({ format: 'rgba8unorm' as const, use: 'filterable-sampled' as const })
     ])
 }) satisfies Readonly<RenderPipelineRequirements>;
 
@@ -233,6 +235,7 @@ vec2 ssgiProjectViewPosition(vec3 position) {
     return ssgiUVForNDC(clip.xy / max(abs(clip.w), 1e-6) * sign(clip.w));
 }
 vec3 ssgiDecodeNormal(vec2 encoded) {
+    encoded = encoded * 2.0 - 1.0;
     vec3 normal = vec3(encoded, 1.0 - abs(encoded.x) - abs(encoded.y));
     if (normal.z < 0.0) {
         vec2 original = normal.xy;
@@ -977,7 +980,7 @@ class ScreenSpaceGlobalIlluminationRuntime implements ForwardRenderPipelineFeatu
         let attributes = context.resources.materialAttributes;
         if (attributes === null) {
             attributes = pipeline.graph.createTexture('SSGI material attributes', {
-                format: 'rgba16float',
+                format: 'rgba8unorm',
                 extent,
                 sampleCount: 1
             });
@@ -988,7 +991,7 @@ class ScreenSpaceGlobalIlluminationRuntime implements ForwardRenderPipelineFeatu
                 texture: attributes,
                 loadOp: 'clear',
                 storeOp: 'store',
-                clearValue: { r: 0, g: 0, b: 1, a: 0 }
+                clearValue: { r: 0.5, g: 0.5, b: 1, a: 0 }
             });
             parameters.depthStencilAttachment = {
                 texture: sceneDepth,

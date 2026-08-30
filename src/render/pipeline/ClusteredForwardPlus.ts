@@ -131,6 +131,7 @@ import type {
     ScriptableRenderPassContext
 } from './ScriptableRenderGraph';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
+import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import {
     TEMPORAL_AA_REQUIREMENTS,
     TEMPORAL_MOTION_CLEAR,
@@ -558,6 +559,22 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly volumetricFroxelCount: number;
     /** Whether the latest submitted volumetric resolve consumed temporal history. */
     readonly volumetricHistoryUsed: boolean;
+    /** Eight-by-eight SSR trace tiles containing at least one eligible receiver. */
+    readonly screenSpaceReflectionActiveTileCount: number;
+    /** Eligible SSR receiver pixels classified by the latest submitted frame. */
+    readonly screenSpaceReflectionActivePixelCount: number;
+    /** Eligible SSR receiver pixels that produced a valid screen-space hit. */
+    readonly screenSpaceReflectionHitPixelCount: number;
+    /** Eligible SSR receiver pixels that missed or left the screen. */
+    readonly screenSpaceReflectionMissPixelCount: number;
+    /** SSR misses whose hierarchy crossing could not be validated precisely. */
+    readonly screenSpaceReflectionUncertainPixelCount: number;
+    /** SSR candidates rejected because the hit surface faced away from the ray. */
+    readonly screenSpaceReflectionBackfaceRejectedPixelCount: number;
+    /** SSR temporal pixels that consumed valid surface- or hit-domain history. */
+    readonly screenSpaceReflectionHistoryAcceptedPixelCount: number;
+    /** SSR temporal pixels that rejected every available history candidate. */
+    readonly screenSpaceReflectionHistoryRejectedPixelCount: number;
     /** Latest adapted exposure in EV stops, or zero when auto exposure is disabled. */
     readonly autoExposureEV: number;
     /** Latest histogram-derived target exposure in EV stops, or zero when disabled. */
@@ -1113,6 +1130,15 @@ function bufferRequirementPlan(
             maxBufferSize = Math.max(maxBufferSize, largestGeometryBuffer);
         }
     }
+    const maximumSSRTileCount =
+        options.screenSpaceReflections === null
+            ? 1
+            : Math.ceil(
+                  (options.maxViewportWidth * options.screenSpaceReflections.resolutionScale) / 8
+              ) *
+              Math.ceil(
+                  (options.maxViewportHeight * options.screenSpaceReflections.resolutionScale) / 8
+              );
     const maxComputeWorkgroupsPerDimension = Math.max(
         Math.ceil(options.maxObjects / CULL_WORKGROUP_SIZE),
         Math.ceil(options.maxLights / CULL_WORKGROUP_SIZE),
@@ -1121,6 +1147,8 @@ function bufferRequirementPlan(
         capacity.maxTilesY,
         Math.ceil(options.maxViewportWidth / 8),
         Math.ceil(options.maxViewportHeight / 8),
+        Math.min(maximumSSRTileCount, 65_535),
+        Math.ceil(maximumSSRTileCount / 65_535),
         1
     );
     return Object.freeze({
@@ -2938,11 +2966,12 @@ float hiloClusteredShadow(
 function gpuScenePBRShader(
     variant: Readonly<PBRMaterialVariant>,
     withMaterialAttributes: boolean,
+    withReflectionData: boolean,
     withGroundTruthAmbientOcclusion: boolean,
     withCloudShadow: boolean,
     withShadows: boolean
 ): StorageGraphicsShader {
-    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|cloud-shadow=${withCloudShadow ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}`;
+    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|reflections=${withReflectionData ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|cloud-shadow=${withCloudShadow ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}`;
     const cached = GPU_SCENE_PBR_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
@@ -3153,6 +3182,12 @@ flat in uint v_objectFlags;
 flat in uint v_objectLayer;
 layout(location=0) out vec4 color;
 ${withMaterialAttributes ? 'layout(location=1) out vec4 materialAttributes;' : ''}
+${
+    withReflectionData
+        ? `layout(location=${withMaterialAttributes ? '2' : '1'}) out vec4 reflectionResponse;
+layout(location=${withMaterialAttributes ? '3' : '2'}) out vec4 reflectionFallbackSpecular;`
+        : ''
+}
 ${encodingSource}
 ${portableCoordinatesSource}
 float hiloMaterialChannel(vec4 value, int channel) {
@@ -3370,11 +3405,12 @@ void main() {
         );
         encodedNormal = (1.0 - abs(encodedNormal.yx)) * octahedralSign;
     }
-    float metallicBits = floor(clamp(surface.metallic, 0.0, 1.0) * 255.0 + 0.5);
+    encodedNormal = encodedNormal * 0.5 + 0.5;
+    float metallicBits = floor(clamp(surface.metallic, 0.0, 1.0) * 127.0 + 0.5);
     materialAttributes = vec4(
         encodedNormal,
         surface.roughness,
-        1.0 + metallicBits * 2.0
+        (1.0 + metallicBits * 2.0) / 255.0
     );`
             : ''
     }
@@ -3396,6 +3432,21 @@ void main() {
     }
     vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
         ambientOcclusion * HILO_INVERSE_PI;
+    ${
+        withReflectionData
+            ? `float reflectionNdotV = max(abs(dot(normal, viewDirection)), 0.0001);
+    vec3 ssrReflectionResponse = hiloFresnelSchlick(
+        surface.specularColor,
+        reflectionNdotV
+    );
+    vec3 ssrFallbackSpecular = frameData.values[31u].rgb *
+        ssrReflectionResponse *
+        mix(1.0, 0.35, surface.roughness) * ambientOcclusion;
+    lighting += ssrFallbackSpecular;
+    reflectionResponse = vec4(ssrReflectionResponse, 1.0);
+    reflectionFallbackSpecular = vec4(ssrFallbackSpecular, 1.0);`
+            : ''
+    }
     float cloudShadow = 1.0;
     ${
         withCloudShadow
@@ -3425,9 +3476,11 @@ void main() {
 }
 
 function gpuSceneMaterialAttributesShader(
-    variant: Readonly<PBRMaterialVariant>
+    variant: Readonly<PBRMaterialVariant>,
+    withReflectionData: boolean
 ): StorageGraphicsShader {
-    const cached = GPU_SCENE_ATTRIBUTES_SHADER_CACHE.get(variant.key);
+    const cacheKey = `${variant.key}|reflections=${withReflectionData ? '1' : '0'}`;
+    const cached = GPU_SCENE_ATTRIBUTES_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
         .map(binding => `uniform sampler2D ${binding.shaderName};`)
@@ -3513,6 +3566,7 @@ layout(location=0) in vec3 a_position;
 layout(location=1) in vec3 a_normal;
 ${vertexUVDeclarations}
 out vec3 v_viewNormal;
+out vec3 v_viewPosition;
 flat out uint v_materialIndex;
 ${GPU_SCENE_POSITION_TRANSFORM_SOURCE}
 ${GPU_SCENE_VISIBLE_INDEX_SOURCE}
@@ -3522,9 +3576,12 @@ mat3 readObjectNormalMatrix(uint base) {
 void main() {
     uint objectIndex = gpuSceneVisibleObjectIndex();
     uint objectBase = objectIndex * 13u;
-    mat3 viewNormalMatrix = mat3(readFrameMatrix(8u)) * readObjectNormalMatrix(objectBase);
+    mat4 model = readObjectMatrix(objectBase);
+    mat4 view = readFrameMatrix(8u);
+    mat3 viewNormalMatrix = mat3(view) * readObjectNormalMatrix(objectBase);
     vec3 viewNormal = normalize(viewNormalMatrix * a_normal);
     v_viewNormal = viewNormal;
+    v_viewPosition = (view * model * vec4(a_position, 1.0)).xyz;
     v_materialIndex = floatBitsToUint(objects.values[objectBase + 12u].w);
     ${vertexUVWrites}
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
@@ -3532,12 +3589,15 @@ void main() {
         fragmentSource: `#version 310 es
 precision highp float;
 precision highp int;
+layout(std430) readonly buffer FrameDataBlock { vec4 values[]; } frameData;
 layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
 ${textureDeclarations}
 in vec3 v_viewNormal;
+in vec3 v_viewPosition;
 ${fragmentUVDeclarations}
 flat in uint v_materialIndex;
 layout(location=0) out vec4 materialAttributes;
+${withReflectionData ? 'layout(location=1) out vec4 reflectionResponse;\nlayout(location=2) out vec4 reflectionFallbackSpecular;' : ''}
 ${encodingSource}
 float hiloMaterialChannel(vec4 value, int channel) {
     if (channel == 0) return value.r;
@@ -3604,16 +3664,32 @@ void main() {
         );
         encodedNormal = (1.0 - abs(encodedNormal.yx)) * octahedralSign;
     }
-    float metallicBits = floor(clamp(metallic, 0.0, 1.0) * 255.0 + 0.5);
+    encodedNormal = encodedNormal * 0.5 + 0.5;
+    float metallicBits = floor(clamp(metallic, 0.0, 1.0) * 127.0 + 0.5);
     materialAttributes = vec4(
         encodedNormal,
         clamp(roughness, 0.045, 1.0),
-        1.0 + metallicBits * 2.0
+        (1.0 + metallicBits * 2.0) / 255.0
     );
+    ${
+        withReflectionData
+            ? `vec3 baseColor = baseMetallic.rgb * baseColorSample.rgb;
+    float ior = max(materialParameters.x, 1.0);
+    float dielectricF0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+    vec3 reflectionF0 = mix(vec3(dielectricF0), baseColor, clamp(metallic, 0.0, 1.0));
+    float reflectionNdotV = max(abs(dot(normal, normalize(-v_viewPosition))), 0.0001);
+    vec3 response = reflectionF0 + (vec3(1.0) - reflectionF0) *
+        pow(1.0 - reflectionNdotV, 5.0);
+    vec3 fallbackSpecular = frameData.values[31u].rgb * response *
+        mix(1.0, 0.35, clamp(roughness, 0.045, 1.0));
+    reflectionResponse = vec4(response, 1.0);
+    reflectionFallbackSpecular = vec4(fallbackSpecular, 1.0);`
+            : ''
+    }
 }`,
         bindings
     });
-    GPU_SCENE_ATTRIBUTES_SHADER_CACHE.set(variant.key, shader);
+    GPU_SCENE_ATTRIBUTES_SHADER_CACHE.set(cacheKey, shader);
     return shader;
 }
 
@@ -4324,6 +4400,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
     readonly #screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationController | null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
+    readonly #reflectionDataFormat: RenderPipelineTextureFormat;
     readonly #volumetricLighting: VolumetricLightingController | null;
     readonly #autoExposure: AutoExposureController | null;
     readonly #atmosphere: AtmosphereWeatherController | null;
@@ -4599,11 +4676,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 : new ScreenSpaceGlobalIlluminationController(
                       options.screenSpaceGlobalIllumination
                   );
+        this.#reflectionDataFormat =
+            context.capabilities.supportsTextureFormat('rg11b10ufloat', 'color-attachment') &&
+            context.capabilities.supportsTextureFormat('rg11b10ufloat', 'filterable-sampled')
+                ? 'rg11b10ufloat'
+                : 'rgba16float';
         this.#screenSpaceReflections =
             options.screenSpaceReflections === null
                 ? null
                 : new ScreenSpaceReflectionsController(
                       options.screenSpaceReflections,
+                      context,
                       options.temporalAA?.renderScale ?? 1,
                       options.hiZLevelCount
                   );
@@ -4967,7 +5050,23 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             this.#groundTruthAmbientOcclusion === null
                 ? null
                 : context.graph.createTexture('Clustered Forward+ material attributes', {
-                      format: 'rgba16float',
+                      format: 'rgba8unorm',
+                      extent: { relativeTo: 'output', scale: sceneScale },
+                      sampleCount: 1
+                  });
+        const reflectionResponse =
+            this.#screenSpaceReflections === null
+                ? null
+                : context.graph.createTexture('Clustered Forward+ reflection response', {
+                      format: this.#reflectionDataFormat,
+                      extent: { relativeTo: 'output', scale: sceneScale },
+                      sampleCount: 1
+                  });
+        const fallbackSpecular =
+            this.#screenSpaceReflections === null
+                ? null
+                : context.graph.createTexture('Clustered Forward+ fallback environment specular', {
+                      format: this.#reflectionDataFormat,
                       extent: { relativeTo: 'output', scale: sceneScale },
                       sampleCount: 1
                   });
@@ -5134,14 +5233,19 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 materials,
                 indirect,
                 sceneDepth,
-                materialAttributes
+                materialAttributes,
+                reflectionResponse: null,
+                fallbackSpecular: null
             });
             if (fallbackCulling !== null && this.#fallbackHasOpaque) {
                 this.recordFallbackMaterialAttributes(
                     context,
                     fallbackCulling,
                     materialAttributes,
-                    sceneDepth
+                    null,
+                    null,
+                    sceneDepth,
+                    null
                 );
             }
         }
@@ -5222,6 +5326,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneColor,
             sceneDepth,
             materialAttributes: groundTruthAmbientOcclusion === null ? materialAttributes : null,
+            reflectionResponse,
+            fallbackSpecular,
             ambientOcclusion,
             cloudShadow: atmospherePrerequisites?.cloudShadow ?? null,
             shadowResources
@@ -5249,16 +5355,19 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.recordGPUParticles(context, sceneColor, sceneDepth, 'opaque');
         if (
-            groundTruthAmbientOcclusion === null &&
             materialAttributes !== null &&
             fallbackCulling !== null &&
-            this.#fallbackHasOpaque
+            this.#fallbackHasOpaque &&
+            (groundTruthAmbientOcclusion === null || this.#screenSpaceReflections !== null)
         ) {
             this.recordFallbackMaterialAttributes(
                 context,
                 fallbackCulling,
                 materialAttributes,
-                sceneDepth
+                reflectionResponse,
+                fallbackSpecular,
+                sceneDepth,
+                ambientOcclusion
             );
         }
         let globallyIlluminatedSceneColor = sceneColor;
@@ -5279,7 +5388,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         let reflectedSceneColor = globallyIlluminatedSceneColor;
         if (this.#screenSpaceReflections !== null) {
-            if (temporalFrame === null || temporalMotion === null || materialAttributes === null) {
+            if (
+                temporalFrame === null ||
+                temporalMotion === null ||
+                materialAttributes === null ||
+                reflectionResponse === null ||
+                fallbackSpecular === null ||
+                combinedTemporalReactiveMask === null
+            ) {
                 throw new Error('Clustered Forward+ screen-space reflection inputs are missing');
             }
             reflectedSceneColor = this.#screenSpaceReflections.record(context, {
@@ -5287,7 +5403,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 sceneColor: globallyIlluminatedSceneColor,
                 sceneDepth,
                 materialAttributes,
+                reflectionResponse,
+                fallbackSpecular,
                 motionDepth: temporalMotion,
+                reactiveMask: combinedTemporalReactiveMask,
                 sceneScale,
                 hiZ: histories.current,
                 historyValid: temporalFrame.historyValid && this.#committedCamera === context.camera
@@ -5515,6 +5634,19 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       sampleCount: 0
                   })
                 : await this.#autoExposure.readDiagnostics();
+        const reflections =
+            this.#screenSpaceReflections === null
+                ? Object.freeze({
+                      activeTileCount: 0,
+                      activePixelCount: 0,
+                      hitPixelCount: 0,
+                      missPixelCount: 0,
+                      uncertainPixelCount: 0,
+                      backfaceRejectedPixelCount: 0,
+                      historyAcceptedPixelCount: 0,
+                      historyRejectedPixelCount: 0
+                  })
+                : await this.#screenSpaceReflections.readDiagnostics();
         const cullValues = new Uint32Array(
             cull.data.buffer,
             cull.data.byteOffset,
@@ -5543,6 +5675,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 this.#temporal?.dynamicResolutionDiagnostics?.smoothedGPUFrameTimeMs ?? null,
             volumetricFroxelCount: this.#volumetricLighting?.froxelCount ?? 0,
             volumetricHistoryUsed: this.#volumetricLighting?.historyUsed ?? false,
+            screenSpaceReflectionActiveTileCount: reflections.activeTileCount,
+            screenSpaceReflectionActivePixelCount: reflections.activePixelCount,
+            screenSpaceReflectionHitPixelCount: reflections.hitPixelCount,
+            screenSpaceReflectionMissPixelCount: reflections.missPixelCount,
+            screenSpaceReflectionUncertainPixelCount: reflections.uncertainPixelCount,
+            screenSpaceReflectionBackfaceRejectedPixelCount: reflections.backfaceRejectedPixelCount,
+            screenSpaceReflectionHistoryAcceptedPixelCount: reflections.historyAcceptedPixelCount,
+            screenSpaceReflectionHistoryRejectedPixelCount: reflections.historyRejectedPixelCount,
             autoExposureEV: exposure.actualEV,
             autoExposureTargetEV: exposure.targetEV,
             warmedMaterialVariantCount: this.#warmedMaterialVariantCount,
@@ -5850,6 +5990,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 (this.#options.screenSpaceReflections !== null ||
                     this.#options.screenSpaceGlobalIllumination !== null) &&
                     this.#options.groundTruthAmbientOcclusion === null,
+                this.#options.screenSpaceReflections !== null,
                 this.#options.groundTruthAmbientOcclusion !== null,
                 this.#options.atmosphere !== null && this.#options.atmosphere.clouds !== null,
                 withShadows
@@ -5872,7 +6013,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (this.#options.groundTruthAmbientOcclusion === null) return null;
         return new GPUDrivenRenderPass({
             name: `GPU Scene GTAO material attributes ${String(physicalIndex)}`,
-            shader: gpuSceneMaterialAttributesShader(variant),
+            shader: gpuSceneMaterialAttributesShader(variant, false),
             pipelineState: Object.freeze({
                 ...requireBucketPassState(logical.material, 'forward'),
                 depthWrite: false
@@ -6854,7 +6995,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#frameFloats[124] = Math.min(this.#frameFloats[124] ?? 0, 4);
         this.#frameFloats[125] = Math.min(this.#frameFloats[125] ?? 0, 4);
         this.#frameFloats[126] = Math.min(this.#frameFloats[126] ?? 0, 4);
-        this.#frameFloats[127] = 0;
+        this.#frameFloats[127] = this.#frameSerial % 32;
         const outputMapping = FRAME_OUTPUT_MAPPING_VEC4 * 4;
         this.#frameFloats[outputMapping] = context.output.width;
         this.#frameFloats[outputMapping + 1] = context.output.height;
@@ -7308,6 +7449,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             indirect: RenderGraphBufferHandle;
             sceneDepth: RenderGraphTextureHandle;
             materialAttributes: RenderGraphTextureHandle;
+            reflectionResponse: RenderGraphTextureHandle | null;
+            fallbackSpecular: RenderGraphTextureHandle | null;
         }>
     ): void {
         const batch = context.acquirePassParameters(this.#materialAttributesBatchPool);
@@ -7315,13 +7458,38 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             texture: resources.materialAttributes,
             loadOp: 'clear',
             storeOp: 'store',
-            clearValue: { r: 0, g: 0, b: 1, a: 0 }
+            clearValue: { r: 0.5, g: 0.5, b: 1, a: 0 }
         };
+        if ((resources.reflectionResponse === null) !== (resources.fallbackSpecular === null)) {
+            throw new Error('GPU Scene reflection material targets are incomplete');
+        }
+        const reflectionResponseAttachment: RenderPipelineColorAttachment | null =
+            resources.reflectionResponse === null
+                ? null
+                : {
+                      texture: resources.reflectionResponse,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                  };
+        const fallbackSpecularAttachment: RenderPipelineColorAttachment | null =
+            resources.fallbackSpecular === null
+                ? null
+                : {
+                      texture: resources.fallbackSpecular,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                  };
         const depthAttachment: RenderPipelineDepthStencilAttachment = {
             texture: resources.sceneDepth,
             depthReadOnly: true
         };
         batch.colorAttachments[0] = colorAttachment;
+        if (reflectionResponseAttachment !== null && fallbackSpecularAttachment !== null) {
+            batch.colorAttachments[1] = reflectionResponseAttachment;
+            batch.colorAttachments[2] = fallbackSpecularAttachment;
+        }
         batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
@@ -7373,8 +7541,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
-            parameters.colorAttachments.length = 1;
+            parameters.colorAttachments.length = reflectionResponseAttachment === null ? 1 : 3;
             parameters.colorAttachments[0] = colorAttachment;
+            if (reflectionResponseAttachment !== null && fallbackSpecularAttachment !== null) {
+                parameters.colorAttachments[1] = reflectionResponseAttachment;
+                parameters.colorAttachments[2] = fallbackSpecularAttachment;
+            }
             parameters.depthStencilAttachment = depthAttachment;
             batch.add(attributesPass, parameters);
         }
@@ -7396,6 +7568,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             sceneColor: RenderGraphTextureHandle;
             sceneDepth: RenderGraphTextureHandle;
             materialAttributes: RenderGraphTextureHandle | null;
+            reflectionResponse: RenderGraphTextureHandle | null;
+            fallbackSpecular: RenderGraphTextureHandle | null;
             ambientOcclusion: RenderGraphTextureHandle | null;
             cloudShadow: RenderGraphTextureHandle | null;
             shadowResources: Readonly<RenderPipelineShadowResources> | null;
@@ -7415,7 +7589,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       texture: resources.materialAttributes,
                       loadOp: 'clear',
                       storeOp: 'store',
-                      clearValue: { r: 0, g: 0, b: 1, a: 0 }
+                      clearValue: { r: 0.5, g: 0.5, b: 1, a: 0 }
+                  };
+        if ((resources.reflectionResponse === null) !== (resources.fallbackSpecular === null)) {
+            throw new Error('Clustered PBR reflection material targets are incomplete');
+        }
+        const reflectionResponseAttachment: RenderPipelineColorAttachment | null =
+            resources.reflectionResponse === null
+                ? null
+                : {
+                      texture: resources.reflectionResponse,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                  };
+        const fallbackSpecularAttachment: RenderPipelineColorAttachment | null =
+            resources.fallbackSpecular === null
+                ? null
+                : {
+                      texture: resources.fallbackSpecular,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
                   };
         const depthAttachment: RenderPipelineDepthStencilAttachment = {
             texture: resources.sceneDepth,
@@ -7426,6 +7621,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         batch.colorAttachments[0] = colorAttachment;
         if (materialAttributesAttachment !== null) {
             batch.colorAttachments[1] = materialAttributesAttachment;
+        }
+        if (reflectionResponseAttachment !== null && fallbackSpecularAttachment !== null) {
+            const reflectionAttachmentIndex = materialAttributesAttachment === null ? 1 : 2;
+            batch.colorAttachments[reflectionAttachmentIndex] = reflectionResponseAttachment;
+            batch.colorAttachments[reflectionAttachmentIndex + 1] = fallbackSpecularAttachment;
         }
         batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
@@ -7522,10 +7722,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             parameters.indexBuffer.buffer = context.graph.importStorageBuffer(bucket.index);
             parameters.draw.buffer = resources.indirect;
             parameters.draw.byteOffset = index * INDIRECT_ARGUMENT_BYTES;
-            parameters.colorAttachments.length = materialAttributesAttachment === null ? 1 : 2;
+            parameters.colorAttachments.length =
+                reflectionResponseAttachment !== null
+                    ? materialAttributesAttachment === null
+                        ? 3
+                        : 4
+                    : materialAttributesAttachment === null
+                      ? 1
+                      : 2;
             parameters.colorAttachments[0] = colorAttachment;
             if (materialAttributesAttachment !== null) {
                 parameters.colorAttachments[1] = materialAttributesAttachment;
+            }
+            if (reflectionResponseAttachment !== null && fallbackSpecularAttachment !== null) {
+                const reflectionAttachmentIndex = materialAttributesAttachment === null ? 1 : 2;
+                parameters.colorAttachments[reflectionAttachmentIndex] =
+                    reflectionResponseAttachment;
+                parameters.colorAttachments[reflectionAttachmentIndex + 1] =
+                    fallbackSpecularAttachment;
             }
             parameters.depthStencilAttachment = depthAttachment;
             batch.add(bucket.colorPass, parameters);
@@ -7838,7 +8052,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         cullingResults: CullingResultsHandle,
         materialAttributes: RenderGraphTextureHandle,
-        sceneDepth: RenderGraphTextureHandle
+        reflectionResponse: RenderGraphTextureHandle | null,
+        fallbackSpecular: RenderGraphTextureHandle | null,
+        sceneDepth: RenderGraphTextureHandle,
+        ambientOcclusion: RenderGraphTextureHandle | null
     ): void {
         this.#fallbackMaterialAttributesListDescriptor.cullingResults = cullingResults;
         const rendererList = context.createRendererList(
@@ -7851,10 +8068,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             throw new Error('Forward fallback material attributes attachment is unavailable');
         }
         color.texture = materialAttributes;
+        if ((reflectionResponse === null) !== (fallbackSpecular === null)) {
+            throw new Error('Forward fallback reflection material targets are incomplete');
+        }
+        if (reflectionResponse !== null && fallbackSpecular !== null) {
+            parameters.colorAttachments[1] = {
+                texture: reflectionResponse,
+                loadOp: 'load',
+                storeOp: 'store'
+            };
+            parameters.colorAttachments[2] = {
+                texture: fallbackSpecular,
+                loadOp: 'load',
+                storeOp: 'store'
+            };
+        }
         parameters.depthStencilAttachment = {
             texture: sceneDepth,
             depthReadOnly: true
         };
+        if (ambientOcclusion !== null) {
+            parameters.ambientOcclusionTexture = ambientOcclusion;
+        }
         context.graph.addPass(this.#fallbackMaterialAttributesPass, parameters);
     }
 
@@ -7964,6 +8199,20 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     format: 'rgba16float' as const,
                     use: 'filterable-sampled' as const
                 }),
+                ...(groundTruthAmbientOcclusion ||
+                screenSpaceGlobalIllumination ||
+                screenSpaceReflections
+                    ? [
+                          Object.freeze({
+                              format: 'rgba8unorm' as const,
+                              use: 'color-attachment' as const
+                          }),
+                          Object.freeze({
+                              format: 'rgba8unorm' as const,
+                              use: 'filterable-sampled' as const
+                          })
+                      ]
+                    : []),
                 ...(this.#options.temporalAA === null
                     ? []
                     : TEMPORAL_AA_REQUIREMENTS.requiredTextureFormats),
@@ -8004,7 +8253,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                         6 +
                         (cloudShadows ? 2 : 0),
                     screenSpaceReflections
-                        ? 1 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels + 1 + 1
+                        ? 3 + SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 4 + reflectionHiZLevels + 1 + 2
                         : 0,
                     volumetricLighting ? 9 : 0,
                     autoExposure ? 5 : 0,
@@ -8018,7 +8267,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                         3 +
                         (cloudShadows ? 1 : 0),
                     screenSpaceReflections
-                        ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 2 + reflectionHiZLevels
+                        ? SCREEN_SPACE_REFLECTION_COLOR_LEVELS + 4 + reflectionHiZLevels
                         : 0,
                     volumetricLighting ? 4 : 0,
                     autoExposure ? 3 : 0,
@@ -8031,8 +8280,11 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     (cloudShadows ? 1 : 0),
                 ...(hiZ || volumetricLighting || autoExposure || atmosphere
                     ? {
-                          maxStorageTexturesPerShaderStage:
-                              screenSpaceReflections || volumetricLighting || atmosphere ? 2 : 1
+                          maxStorageTexturesPerShaderStage: screenSpaceReflections
+                              ? 4
+                              : volumetricLighting || atmosphere
+                                ? 2
+                                : 1
                       }
                     : {}),
                 maxStorageBufferBindingSize: requirements.maxStorageBufferBindingSize,

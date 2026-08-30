@@ -40,6 +40,19 @@
 
 ### Changes
 
+- Upgrade WebGPU high-end SSR with response-aware 8×8 tile masks, coherent prefix compaction,
+  indirect stochastic visible-GGX tracing, roughness-adaptive ray budgets, refined depth crossings,
+  hit-normal facing validation, and explicit uncertain/backface outcomes. Evaluate receiver- and
+  hit-motion-domain history candidates against real previous material/depth state, authored reactive
+  masks, YCoCg neighborhood variance and roughness-adaptive sample counts; replace four fixed
+  filters with one adaptive bilateral hole-fill and a full-resolution edge-aware resolve. Align
+  clearcoat/anisotropy trace lobes with forward IBL, keep fallback removal independent from SSR
+  intensity, replace absolute half-float hit UVs with motion/depth state, compress material
+  attributes to `rgba8unorm`, prefer `rg11b10ufloat` reflection MRTs when supported, and expose
+  mutually exclusive uncertain/backface and history diagnostics alongside active/hit/miss counters.
+  Cap compacted active-tile indirect work to a two-dimensional 65,535-wide dispatch, retain
+  reflection-response/material identity in temporal history and spatial filtering, and make ordinary
+  Forward reflection MRTs reuse the main PBR GTAO visibility and iridescence parameters.
 - Add the first S0 production shadow-cache slice. Stable atlas tiles now use exact light/caster
   snapshots, scissored portable depth clears, per-slice invalidation, submission commit/rollback,
   recovery invalidation, and `RendererDiagnostics.caches.shadowAtlas`; static slices issue no shadow
@@ -184,17 +197,17 @@
   non-black and on/off pixel coverage. Keep the deployed glTF beside its external binary payload,
   and make the site link gate validate nested glTF buffer, image, and extension URIs before publish.
 - Add production WebGPU high-end screen-space reflections to `ClusteredForwardPlusPipelineFactory`.
-  The opt-in path adds a strict built-in `material-attributes` `rgba16float` ABI, GPU Scene MRT and
-  ordinary Forward fallback coverage, RG32F min/max Hi-Z, hierarchical coarse-to-fine tracing,
-  roughness radiance cones, edge/distance/roughness confidence, motion/log-depth temporal rejection
-  and confidence-aware depth/normal à-trous filtering before HDR composition and TAA/TAAU. Keep the
-  disabled path allocation- and pass-free, fail closed without Hi-Z or TemporalAA, and reset history
-  across camera cuts/identity changes, resize, discarded frames and device recovery. Feed ordinary
-  Forward opaque through a `depth-only` fallback prepass before current Hi-Z construction so layered
-  PBR objects are present in both the radiance source and hierarchical depth trace. Add `rg32float`
-  to the public compute storage-texture formats, add the repository-bundled Khronos Car Concept to
-  the dedicated Afterimage SSR showcase, and cover real WebGPU on/off pixels plus GPU validation.
-  The existing Temporal Observatory remains focused on TAA/TAAU.
+  The opt-in path adds a strict built-in `material-attributes` `rgba8unorm` ABI, matching HDR GPU
+  Scene MRT and ordinary Forward fallback coverage, RG32F min/max Hi-Z, hierarchical coarse-to-fine
+  tracing, roughness radiance cones, edge/distance/roughness confidence, motion/log-depth temporal
+  rejection and confidence-aware depth/normal à-trous filtering before HDR composition and TAA/TAAU.
+  Keep the disabled path allocation- and pass-free, fail closed without Hi-Z or TemporalAA, and
+  reset history across camera cuts/identity changes, resize, discarded frames and device recovery.
+  Feed ordinary Forward opaque through a `depth-only` fallback prepass before current Hi-Z
+  construction so layered PBR objects are present in both the radiance source and hierarchical depth
+  trace. Add `rg32float` to the public compute storage-texture formats, add the repository-bundled
+  Khronos Car Concept to the dedicated Afterimage SSR showcase, and cover real WebGPU on/off pixels
+  plus GPU validation. The existing Temporal Observatory remains focused on TAA/TAAU.
 - Add the `TemporalAA` Forward feature with native-resolution TAA and fixed-scale TAAU. Built-in
   opaque/masked materials now expose a strict single-sample `rgba16float` motion pass containing
   current-to-previous UV velocity, expected previous logarithmic view depth, and current logarithmic

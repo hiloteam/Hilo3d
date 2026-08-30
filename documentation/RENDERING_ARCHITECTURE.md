@@ -132,14 +132,24 @@ XY 是 current-to-previous UV velocity，Z 是 expected previous `log2(1 + viewD
 `log2(1 + viewDepth)`。它复用 current/previous camera、model、instance、skin、morph 与 coverage
 ABI；首次出现、显隐/提交间断或任一 transform history 失效时写 invalid history
 marker，不能消费陈旧 pose；reactive 值来自材质的 `temporalReactiveFactor`（0–1）。内置
-`material-attributes` pass 固定接受 single-sample `rgba16float`，输出 octahedral view
-normal、perceptual roughness、metallic 与 reflection receiver flag；portable Forward
-GTAO 与 Clustered Hi-Z SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion
-depth 执行 horizon visibility、temporal rejection、edge-aware filter 与 depth/normal
+`material-attributes` pass 默认接受一个 single-sample `rgba8unorm`，输出映射到 `[0, 1]`
+的 octahedral view normal、perceptual roughness、7-bit metallic 与 reflection receiver
+flag；SSR 启用时扩展两个 matching HDR MRT（优先 `rg11b10ufloat`，否则
+`rgba16float`），额外输出 view-dependent reflection response 和 forward environment/probe specular
+baseline。portable Forward GTAO 与 Clustered Hi-Z
+SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
+visibility、temporal rejection、edge-aware filter 与 depth/normal
 upsample；SSGI 在 opaque 后复用或生成 attributes/motion，执行随机 view-space diffuse ray
 trace、YCoCg variance-clipped temporal resolve、depth/normal/luminance-aware a-trous
-filter、bilateral
-upsample 与线性 HDR 合成；SSR 用它们约束 confidence-aware 多尺度空间 filter。未启用对应 effect 时不创建 attribute、AO/GI/filter
+filter、bilateral upsample 与线性 HDR 合成；SSR 以 response-aware tile mask 和 coherent
+compaction 生成受单维 65,535 上限约束的二维间接 dispatch，执行低粗糙度确定性镜面与每帧四条 32-phase
+rotated low-discrepancy visible-GGX Hi-Z trace，区分 valid/uncertain/backface
+hit，以 receiver 和 reflection-hit 两端的 motion/depth/material response/packed identity
+continuity、reactive mask、YCoCg variance、firefly clamp 和 sample count 约束 temporal
+history，再用 confidence reconstruction、roughness-adaptive stability 与有界 residual-coverage
+cleanup 三级 filter 加 full-resolution bilateral resolve 完成 hole fill，并通过 additive
+delta 原位替换已有 fallback specular；ordinary Forward reflection MRT 与主 PBR 共享 GTAO
+visibility 和 iridescence 参数。未启用对应 effect 时不创建 attribute、AO/GI/filter
 target、history 或 fallback pass。
 
 portable material UBO 分为 448-byte `MaterialBlock` 与 1,920-byte

@@ -202,12 +202,16 @@ export class MaterialCompiler {
         }
         if (
             pass.fragmentOutput === 'material-attributes' &&
-            (request.target.colorFormats.length !== 1 ||
-                request.target.colorFormats[0] !== 'rgba16float' ||
-                request.target.sampleCount !== 1)
+            (request.target.sampleCount !== 1 ||
+                request.target.colorFormats[0] !== 'rgba8unorm' ||
+                (request.target.colorFormats.length !== 1 &&
+                    (request.target.colorFormats.length !== 3 ||
+                        request.target.colorFormats[1] !== request.target.colorFormats[2] ||
+                        (request.target.colorFormats[1] !== 'rgba16float' &&
+                            request.target.colorFormats[1] !== 'rg11b10ufloat'))))
         ) {
             throw new TypeError(
-                'Material attributes role requires one single-sample rgba16float color target'
+                'Material attributes role requires single-sample rgba8unorm attributes and optional matching HDR reflection targets'
             );
         }
         const state = role === 'forward' ? resolveForwardState(instance, pass) : pass.state;
