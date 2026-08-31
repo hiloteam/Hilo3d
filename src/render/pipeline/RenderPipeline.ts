@@ -306,6 +306,8 @@ export interface RenderPipelineContext {
     readonly output: RenderPipelineOutput;
     /** Effective capabilities for the current device generation. */
     readonly capabilities: RenderPipelineCapabilities;
+    /** Whether scene depth uses the renderer's logarithmic depth encoding. */
+    readonly useLogDepth: boolean;
     /** Backend-neutral graph facade for this invocation. */
     readonly graph: ScriptableRenderGraph;
 

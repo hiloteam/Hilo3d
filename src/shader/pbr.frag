@@ -212,10 +212,21 @@ void main(void) {
                         vec2 reflectionGTAOUV =
                             (gl_FragCoord.xy - u_viewport.xy) /
                             max(u_viewport.zw, vec2(1.0));
-                        reflectionAO *= clamp(
-                            texture(u_gtaoTexture, reflectionGTAOUV).b,
+                        vec4 reflectionGTAOSample = texture(
+                            u_gtaoTexture,
+                            reflectionGTAOUV
+                        );
+                        float reflectionGTAOVisibility = clamp(
+                            reflectionGTAOSample.b,
                             0.0,
                             1.0
+                        );
+                        reflectionAO *= hiloGTAOSpecularVisibility(
+                            reflectionGTAOVisibility,
+                            hiloDecodeGTAOBentNormal(reflectionGTAOSample.xy),
+                            normal,
+                            reflectionView,
+                            reflectionTraceRoughness
                         );
                     #endif
                     #ifdef HILO_PBR_SPECULAR_GLOSSINESS

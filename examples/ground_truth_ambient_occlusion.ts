@@ -382,15 +382,28 @@ class ToggleableGroundTruthAmbientOcclusion implements Hilo3d.ForwardRenderPipel
 }
 
 const gtao = new ToggleableGroundTruthAmbientOcclusion(gtaoEnabled, {
+    quality: testMode ? 'medium' : 'ultra',
     resolutionScale: testMode ? 0.5 : 0.7,
     radius: 1.12,
     falloffStart: 0.66,
-    thickness: 0.065,
-    directionCount: testMode ? 4 : 8,
-    stepCount: testMode ? 3 : 5,
-    power: 3.05,
+    thickness: 0.045,
+    thicknessBlend: 0.58,
+    directionCount: testMode ? 3 : 6,
+    stepCount: testMode ? 5 : 8,
+    intensity: 1.06,
+    power: 1.18,
+    bias: 0.03,
+    contactRadiusScale: 0.18,
+    contactStrength: 0.3,
+    normalSource: 'hybrid',
+    geometricNormalWeight: 0.64,
+    bentNormalStrength: 0.94,
+    multiBounce: 0.92,
+    distanceFadeStart: 36,
+    distanceFadeEnd: 54,
     historyWeight: 0.9,
-    depthThreshold: 0.025
+    depthThreshold: 0.025,
+    normalThreshold: 0.84
 });
 
 const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
@@ -420,8 +433,9 @@ const mobileCameraPosition = new Hilo3d.Vector3(11.2, 4.65, 16.4);
 const viewTarget = new Hilo3d.Vector3(1.55, 0.18, -4.62);
 const initialCameraPosition = mobileLayout.matches ? mobileCameraPosition : desktopCameraPosition;
 
-const { stage, renderer, directionLight, ambientLight, orbitControls } = await createExampleContext(
-    {
+const { stage, renderer, directionLight, ambientLight, orbitControls, ticker } =
+    await createExampleContext({
+        autoStart: false,
         camera: {
             fov: 32,
             near: 0.05,
@@ -431,6 +445,8 @@ const { stage, renderer, directionLight, ambientLight, orbitControls } = await c
             z: initialCameraPosition.z
         },
         stage: {
+            width: testMode ? 640 : window.innerWidth,
+            height: testMode ? 360 : window.innerHeight,
             pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.5),
             clearColor: new Hilo3d.Color(0.032, 0.012, 0.011),
             renderPipeline: pipeline
@@ -445,8 +461,7 @@ const { stage, renderer, directionLight, ambientLight, orbitControls } = await c
             rotateSpeed: 0.38,
             zoomSpeed: 0.55
         }
-    }
-);
+    });
 
 renderer.clearColor.set(0.032, 0.012, 0.011, 1);
 directionLight.amount = 0.42;
@@ -568,7 +583,7 @@ const searchLabel = requireElement('#gtaoSearchLabel');
 toggle.setAttribute('aria-pressed', String(gtaoEnabled));
 toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
 backendLabel.textContent = BACKEND_LABELS[renderer.backend];
-searchLabel.textContent = testMode ? '4 × 3' : '8 × 5';
+searchLabel.textContent = testMode ? '3 × 5' : '6 × 8';
 toggle.addEventListener('click', () => {
     gtaoEnabled = !gtaoEnabled;
     gtao.enabled = gtaoEnabled;
@@ -576,6 +591,7 @@ toggle.addEventListener('click', () => {
     toggleLabel.textContent = gtaoEnabled ? 'GTAO on' : 'GTAO off';
     document.body.dataset['gtao'] = gtaoEnabled ? 'enabled' : 'disabled';
     history.replaceState(history.state, '', buildUrl(location.href, { gtao: gtaoEnabled }));
+    if (testMode) stage.tick(1000 / 60);
 });
 mobileLayout.addEventListener('change', event => {
     orbitControls.setView(event.matches ? mobileCameraPosition : desktopCameraPosition, viewTarget);
@@ -583,5 +599,8 @@ mobileLayout.addEventListener('change', event => {
 
 document.body.dataset['gtao'] = gtaoEnabled ? 'enabled' : 'disabled';
 document.body.dataset['backend'] = renderer.backend;
-document.body.dataset['gtaoPhase'] = 'ready';
 orbitControls.setView(initialCameraPosition, viewTarget);
+stage.tick(1000 / 60);
+await renderer.waitForIdle();
+if (!testMode) ticker.start();
+document.body.dataset['gtaoPhase'] = 'ready';

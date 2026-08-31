@@ -112,6 +112,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'screen_space_global_illumination_chapel.html':
         'Prismatic Vespers — Screen-space Global Illumination',
     'ground_truth_ambient_occlusion.html': 'The Silent Dragon — Ground-truth Ambient Occlusion',
+    'gtao_acceptance_lab.html': 'GTAO Acceptance Lab',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
     'compute_particles.html': 'Hilo3D Compute Particle Field',
@@ -154,6 +155,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Enter a procedural brutalist chapel where portable stochastic SSGI transports cyan, vermilion, violet, and warm emissive radiance across pale stone.',
     'ground_truth_ambient_occlusion.html':
         'Read scales, claws, coils, layered stone contacts, and a deep architectural niche through portable temporal GTAO.',
+    'gtao_acceptance_lab.html':
+        'Validate contact scale, thin geometry, depth edges, normal detail, material response, and temporal rejection in a deterministic dual-backend GTAO fixture.',
     'temporal_aa_observatory.html':
         'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
     'compute_eclipse_shrine.html':
@@ -243,6 +246,7 @@ const FEATURED_PATHS = new Set([
     'screen_space_reflections_palace.html',
     'screen_space_global_illumination_chapel.html',
     'ground_truth_ambient_occlusion.html',
+    'gtao_acceptance_lab.html',
     'temporal_aa_observatory.html',
     'compute_eclipse_shrine.html',
     'compute_particles.html',
@@ -280,7 +284,7 @@ function categoryForPath(path: string): ExampleCategoryId {
         return 'textures';
     }
     if (
-        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|screen_space_|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|gtao_acceptance|screen_space_|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
             normalized
         )
     ) {

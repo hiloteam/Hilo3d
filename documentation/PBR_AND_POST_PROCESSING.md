@@ -102,14 +102,19 @@ ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation �
 
 `GroundTruthAmbientOcclusion` 是 `before-opaque` feature。普通 Forward 在 WebGPU 与 WebGL
 2 上先记录共享 `depth-only`、`material-attributes` 与 `motion-vector` semantic
-pass，再以可配置的 4/6/8 个旋转 slice、每侧 3–6 个 sample 搜索 view-space
-horizon。半分辨率结果包含 signed-octahedral bent normal、ambient visibility 与 logarithmic view
-depth，随后经过 submission-aware temporal reprojection、relative-depth rejection、neighborhood
-clamp、两级 edge-aware filter 和有界 depth/normal bilateral upsample。
+pass，再以可配置的旋转 slice 和 sparse sample 搜索 view-space horizon。当前 public
+budget 提供 low/medium/high/ultra
+preset、2/3/4/6/8 个 slice 与每侧 3/4/5/6/8/10/12 个 sample。每条 view-relative
+slice 双向搜索 horizon，再对 projected normal hemisphere 做 analytic visible-arc
+integral；主尺度和 contact 尺度独立合成，并输出可见 arc 的 bent-normal 一阶矩。半分辨率结果包含 signed-octahedral
+bent normal、ambient visibility 与 logarithmic view depth，随后经过 closest-depth motion
+selection、depth/normal rejection、variance clip、两级 joint bilateral filter 和有界 depth/normal
+upsample。普通、reversed 与 renderer log-depth 都使用显式 view-position reconstruction 合同。
 
-full-resolution GTAO 通过 graph-prepare 后的 pass-global texture 进入 opaque
-PBR。它只调制 ambient/diffuse IBL 与现有 specular AO，并以 bent normal 查询 diffuse
-environment；direct
+full-resolution GTAO 通过 graph-prepare 后的 pass-global texture 进入 opaque PBR。它以 bent
+normal 查询 diffuse environment，应用 base-color-aware multi-bounce diffuse
+visibility，并以 bent-normal cone、reflection direction 和 roughness 约束 specular IBL/SSR
+fallback；direct
 light、shadow 和 emission 不乘 visibility。默认关闭时不创建 prepass、transient、history 或材质 shader
 variant。Clustered Forward+ 复用同一个 GTAO controller 与 GPU Scene attributes，并要求同时启用
 `temporalAA` 以复用融合的 motion/log-depth 和 camera-cut

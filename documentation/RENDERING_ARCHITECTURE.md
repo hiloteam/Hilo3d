@@ -155,8 +155,10 @@ flag；SSR 启用时扩展两个 matching HDR MRT（优先 `rg11b10ufloat`，否
 `rgba16float`），额外输出 view-dependent reflection response 和 forward environment/probe specular
 baseline。portable Forward GTAO 与 Clustered Hi-Z
 SSR/GTAO/SSGI 按需消费它。GTAO 以相同 attributes 和 logarithmic motion depth 执行 horizon
-visibility、temporal rejection、edge-aware filter 与 depth/normal
-upsample；SSGI 在 opaque 后复用或生成 attributes/motion，执行随机 view-space diffuse ray
+visible-arc integral、bent-normal moment、closest-depth/variance-clipped temporal rejection、joint
+depth/normal filter 与 bilateral upsample；full-resolution result 再以 multi-bounce
+diffuse 和 bent-cone specular
+visibility 进入 PBR。SSGI 在 opaque 后复用或生成 attributes/motion，执行随机 view-space diffuse ray
 trace、YCoCg variance-clipped temporal resolve、depth/normal/luminance-aware a-trous
 filter、bilateral upsample 与线性 HDR 合成；SSR 以 response-aware tile mask 和 coherent
 compaction 生成受单维 65,535 上限约束的二维间接 dispatch，执行低粗糙度确定性镜面与每帧四条 32-phase
@@ -245,9 +247,12 @@ transfer。
 texture，再把该 texture 作为 pass-global binding 交给 transparent PBR transmission/volume draw。可选
 `GroundTruthAmbientOcclusion` 在 opaque 前复用共享 culling，记录 depth、material
 attributes 与 motion/log-depth，随后执行 rotated horizon search、submission-aware temporal
-resolve、两级 edge-aware filter 和 bounded bilateral upsample。full-resolution
-bent-normal/visibility 通过 pass-global binding 只进入 opaque
-PBR 的 ambient/IBL；普通 Forward 的同一 portable raster 实现覆盖 WebGPU/WebGL 2，完整合同见
+resolve、两级 joint bilateral filter 和 bounded bilateral upsample。horizon
+search 使用 view-relative 双侧 horizon 与 projected-normal analytic visible-arc
+integral，并显式支持普通、reversed 和 logarithmic depth；per-Camera
+pass/UBO/history 状态互相隔离。full-resolution bent-normal/visibility/multi-bounce
+strength 通过 pass-global binding 只进入 opaque PBR 的 ambient/IBL；普通 Forward 的同一 portable
+raster 实现覆盖 WebGPU/WebGL 2，完整合同见
 [`GROUND_TRUTH_AMBIENT_OCCLUSION.md`](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)。可选 `TemporalAA`
 在 opaque 后记录 `rgba16float` motion/log-depth，并用 `rgba16float` 双缓冲 color history 和
 `r32float` 双缓冲 log-view-depth history 完成 reprojection、relative-depth disocclusion、YCoCg

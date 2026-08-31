@@ -3965,6 +3965,11 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.capabilities;
     }
 
+    get useLogDepth(): boolean {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.services.renderer.useLogDepth;
+    }
+
     get graph(): ScriptableRenderGraph {
         this.#owner.assertLeaseActive(this.#lease);
         return this;

@@ -1,0 +1,207 @@
+:root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    background: #0b0d0f;
+    color: #ebe7df;
+}
+
+body {
+    overflow: hidden;
+    margin: 0;
+    background: #0b0d0f;
+}
+
+#container,
+#container canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.labHeader {
+    position: fixed;
+    z-index: 3;
+    top: 28px;
+    right: 34px;
+    left: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgb(235 231 223 / 22%);
+    padding-bottom: 13px;
+    color: rgb(235 231 223 / 68%);
+    font:
+        600 10px/1.2 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.labHeader a {
+    color: inherit;
+    text-decoration: none;
+    pointer-events: auto;
+}
+
+.labIntro {
+    position: fixed;
+    z-index: 2;
+    top: 88px;
+    left: 34px;
+    width: min(350px, calc(100vw - 68px));
+    pointer-events: none;
+}
+
+.labIntro > p:first-child {
+    margin: 0 0 13px;
+    color: #e5ad72;
+    font:
+        650 10px/1.2 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.labIntro h1 {
+    margin: 0;
+    font:
+        300 clamp(42px, 5.7vw, 78px) / 0.86 Georgia,
+        serif;
+    letter-spacing: -0.055em;
+}
+
+.labIntro h1 em {
+    color: #e5ad72;
+    font:
+        600 11px/1 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.08em;
+    vertical-align: top;
+}
+
+.labSummary {
+    width: 300px;
+    max-width: 80vw;
+    margin: 22px 0 0;
+    color: rgb(235 231 223 / 58%);
+    font-size: 12px;
+    line-height: 1.65;
+}
+
+.labControls {
+    position: fixed;
+    z-index: 4;
+    right: 34px;
+    bottom: 34px;
+    display: flex;
+    gap: 8px;
+}
+
+.labControls button {
+    min-width: 108px;
+    border: 1px solid rgb(235 231 223 / 24%);
+    border-radius: 999px;
+    padding: 11px 16px;
+    background: rgb(11 13 15 / 72%);
+    color: rgb(235 231 223 / 72%);
+    font:
+        600 9px/1 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+}
+
+.labControls button[aria-pressed='true'] {
+    border-color: #e5ad72;
+    color: #f5c795;
+}
+
+.labCases {
+    position: fixed;
+    z-index: 2;
+    right: 34px;
+    top: 92px;
+    display: grid;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    color: rgb(235 231 223 / 55%);
+    font:
+        500 9px/1.25 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.08em;
+    list-style: none;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.labCases b {
+    display: inline-block;
+    width: 24px;
+    color: #e5ad72;
+    font-weight: 500;
+}
+
+.labHint {
+    position: fixed;
+    z-index: 2;
+    bottom: 38px;
+    left: 34px;
+    margin: 0;
+    color: rgb(235 231 223 / 44%);
+    font:
+        500 9px/1.2 ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        monospace;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+@media (max-width: 760px) {
+    .labHeader,
+    .labIntro,
+    .labHint {
+        left: 18px;
+    }
+
+    .labHeader,
+    .labControls,
+    .labCases {
+        right: 18px;
+    }
+
+    .labCases {
+        display: none;
+    }
+
+    .labControls {
+        bottom: 18px;
+        left: 18px;
+    }
+
+    .labControls button {
+        min-width: 0;
+        flex: 1;
+        padding-inline: 10px;
+    }
+
+    .labHint {
+        display: none;
+    }
+}

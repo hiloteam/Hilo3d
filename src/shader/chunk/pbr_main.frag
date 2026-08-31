@@ -137,13 +137,27 @@ vec3 areaSpecularColor = specularColor;
 ao = hiloEvaluatePBROcclusion(ao, u_occlusionStrength);
 #endif
 
+float materialAmbientOcclusion = ao;
 vec3 indirectDiffuseNormal = N;
+vec3 gtaoDiffuseVisibility = vec3(1.0);
+float gtaoSpecularVisibility = 1.0;
 #ifdef HILO_GTAO
 vec2 gtaoUV = (gl_FragCoord.xy - u_viewport.xy) / max(u_viewport.zw, vec2(1.0));
 vec4 gtaoSample = texture(u_gtaoTexture, gtaoUV);
 float gtaoVisibility = clamp(gtaoSample.b, 0.0, 1.0);
-ao *= gtaoVisibility;
 indirectDiffuseNormal = hiloDecodeGTAOBentNormal(gtaoSample.xy);
+gtaoDiffuseVisibility = hiloGTAOMultiBounceVisibility(
+    gtaoVisibility,
+    clamp(baseColor.rgb, 0.0, 1.0),
+    clamp(gtaoSample.a, 0.0, 1.0)
+);
+gtaoSpecularVisibility = hiloGTAOSpecularVisibility(
+    gtaoVisibility,
+    indirectDiffuseNormal,
+    N,
+    V,
+    roughness
+);
 #endif
 
 vec3 anisotropyT = N;
@@ -458,7 +472,11 @@ for (uint clusteredIndex = 0u; clusteredIndex < clusteredLocalLightCount; cluste
 }
 #endif
 
-vec3 indirectDiffuse = hiloGetIBLDiffuse(indirectDiffuseNormal, iblDiffuseColor, ao);
+vec3 indirectDiffuse = hiloGetIBLDiffuse(
+    indirectDiffuseNormal,
+    iblDiffuseColor,
+    materialAmbientOcclusion
+) * gtaoDiffuseVisibility;
 vec3 indirectSpecular = hiloGetIBLSpecular(
     N,
     V,
@@ -469,13 +487,15 @@ vec3 indirectSpecular = hiloGetIBLSpecular(
     iridescenceFactor,
     iridescenceIor,
     iridescenceThickness,
-    ao
+    materialAmbientOcclusion * gtaoSpecularVisibility
 );
 
 #if defined(HILO_CLUSTERED_FORWARD) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
-indirectDiffuse += clusterFrameData.values[31u].rgb * iblDiffuseColor * ao * HILO_INVERSE_PI;
+indirectDiffuse += clusterFrameData.values[31u].rgb * iblDiffuseColor *
+    materialAmbientOcclusion * gtaoDiffuseVisibility * HILO_INVERSE_PI;
 #elif defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
-indirectDiffuse += u_ambientLightsColor * iblDiffuseColor * ao * HILO_INVERSE_PI;
+indirectDiffuse += u_ambientLightsColor * iblDiffuseColor *
+    materialAmbientOcclusion * gtaoDiffuseVisibility * HILO_INVERSE_PI;
 #endif
 
 #ifdef HILO_LIGHT_MAP

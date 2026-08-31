@@ -87,6 +87,45 @@ async function assertFinalGraphicsHealth(
     });
 }
 
+test('GTAO acceptance lab keeps WebGL2 and WebGPU output within the parity budget', async ({
+    page
+}) => {
+    test.setTimeout(240_000);
+    await installRenderHealthProbe(page);
+    const failures = await installPageFailureMonitor(page);
+    try {
+        const captures: Buffer[] = [];
+        for (const backend of backends) {
+            await page.goto(`/examples/gtao_acceptance_lab.html?backend=${backend}&test=1`, {
+                waitUntil: 'domcontentloaded'
+            });
+            await expect(page.locator('body')).toHaveAttribute(
+                'data-ao-acceptance-phase',
+                'ready',
+                { timeout: 45_000 }
+            );
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+            captures.push(await canvas.screenshot({ type: 'png' }));
+            await assertFinalGraphicsHealth(page, backend, `GTAO acceptance parity on ${backend}`);
+        }
+        const webgl2Capture = captures[0];
+        const webgpuCapture = captures[1];
+        if (webgl2Capture === undefined || webgpuCapture === undefined) {
+            throw new Error('GTAO acceptance parity captures are incomplete');
+        }
+        const parity = compareCanvasPixels(webgpuCapture, webgl2Capture);
+        expect(parity.changedPixelCount).toBeLessThan(parity.pixelCount * 0.2);
+        expect(parity.meanChannelDelta).toBeLessThan(3);
+
+        await page.goto('about:blank');
+        failures.assertEmpty('GTAO acceptance backend-parity failures');
+    } finally {
+        await failures.dispose();
+    }
+});
+
 for (const backend of backends) {
     test(`GTAO produces stable non-black contact visibility on ${backend} @${backend}`, async ({
         page
@@ -158,6 +197,83 @@ for (const backend of backends) {
 
             await page.goto('about:blank');
             failures.assertEmpty(`GTAO browser failures on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+
+    test(`GTAO acceptance lab covers spatial, temporal, edge, and log-depth cases on ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(240_000);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            const canvasSelector = `canvas[data-hilo3d-backend="${backend}"]`;
+            await page.goto(`/examples/gtao_acceptance_lab.html?backend=${backend}&test=1`, {
+                waitUntil: 'domcontentloaded'
+            });
+            await expect(page.locator('body')).toHaveAttribute(
+                'data-ao-acceptance-phase',
+                'ready',
+                { timeout: 45_000 }
+            );
+            const canvas = page.locator(canvasSelector);
+            await expect(canvas).toBeVisible();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const enabled = await canvas.screenshot({ type: 'png' });
+            await assertFinalGraphicsHealth(page, backend, `GTAO acceptance enabled on ${backend}`);
+
+            await page.getByRole('button', { name: 'AO enabled' }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-ao', 'disabled');
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            const disabled = await canvas.screenshot({ type: 'png' });
+            const aoDifference = compareCanvasPixels(enabled, disabled);
+            expect(aoDifference.changedPixelCount).toBeGreaterThan(aoDifference.pixelCount * 0.03);
+            expect(aoDifference.darkenedPixelCount).toBeGreaterThan(aoDifference.pixelCount * 0.02);
+            expect(aoDifference.meanChannelDelta).toBeGreaterThan(0.75);
+
+            await page.getByRole('button', { name: 'AO disabled' }).click();
+            const beforeMotion = await currentProgress(page, backend);
+            await page.getByRole('button', { name: 'start motion' }).click();
+            await expect(page.locator('body')).toHaveAttribute('data-motion', 'running');
+            await expectActionProgress(
+                page,
+                backend,
+                beforeMotion,
+                `GTAO moving-occluder progress on ${backend}`
+            );
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await assertFinalGraphicsHealth(page, backend, `GTAO moving occluder on ${backend}`);
+
+            await page.getByRole('button', { name: 'edge view' }).click();
+            await expect(page.getByRole('button', { name: 'hero view' })).toHaveAttribute(
+                'aria-pressed',
+                'true'
+            );
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await assertFinalGraphicsHealth(page, backend, `GTAO screen-edge view on ${backend}`);
+
+            await page.goto(
+                `/examples/gtao_acceptance_lab.html?backend=${backend}&test=1&logDepth=true`,
+                { waitUntil: 'domcontentloaded' }
+            );
+            await expect(page.locator('body')).toHaveAttribute(
+                'data-ao-acceptance-phase',
+                'ready',
+                { timeout: 45_000 }
+            );
+            await expect(page.locator('#backendLabel')).toContainText('log depth');
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await assertFinalGraphicsHealth(page, backend, `GTAO logarithmic depth on ${backend}`);
+
+            await page.goto('about:blank');
+            failures.assertEmpty(`GTAO acceptance browser failures on ${backend}`);
         } finally {
             await failures.dispose();
         }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <title>Hilo3D GTAO Acceptance Lab</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./gtao_acceptance_lab.css" />
+    </head>
+    <body data-ao-acceptance-phase="loading" data-ao="enabled" data-motion="paused">
+        <div id="container"></div>
+
+        <header class="labHeader">
+            <a href="./index.html" aria-label="Back to Hilo3D examples">Hilo3D / rendering lab</a>
+            <span id="backendLabel">detecting</span>
+        </header>
+
+        <main class="labIntro">
+            <p>Ground-truth ambient occlusion</p>
+            <h1>Acceptance<br />Lab <em>01</em></h1>
+            <p class="labSummary">
+                Deterministic production fixture for contact scale, thin geometry, depth edges,
+                normal detail, material response and temporal rejection.
+            </p>
+        </main>
+
+        <section class="labControls" aria-label="GTAO acceptance controls">
+            <button id="aoToggle" type="button" aria-pressed="true">AO enabled</button>
+            <button id="motionToggle" type="button" aria-pressed="false">start motion</button>
+            <button id="viewToggle" type="button" aria-pressed="false">edge view</button>
+        </section>
+
+        <ol class="labCases" aria-label="Acceptance geometry">
+            <li><b>01</b> perpendicular corner</li>
+            <li><b>02</b> thin cards</li>
+            <li><b>03</b> parallel slabs</li>
+            <li><b>04</b> stair contacts</li>
+            <li><b>05</b> normal detail</li>
+            <li><b>06</b> rough / metal</li>
+            <li><b>07</b> moving occluder</li>
+        </ol>
+
+        <p class="labHint">Drag to orbit · wheel to inspect · fixed exposure</p>
+        <script type="module" src="./gtao_acceptance_lab.ts"></script>
+    </body>
+</html>
