@@ -23,7 +23,7 @@ import {
 } from '../render/internal/RenderPipelineBackendSelection';
 import { setCameraCompositionSingleSample } from '../render/internal/CameraCompositionPolicy';
 import { getRenderNodeExtension } from '../render/pipeline/RenderNodeExtension';
-import { StagePluginHost, type StagePlugin } from './StagePlugin';
+import { StageSystemRegistry, type StageSystem } from './StageSystem';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
 const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
@@ -188,8 +188,8 @@ export interface StageCommonParameters extends NodeParameters {
     gameMode?: boolean;
     /** Renderer-local scriptable pipeline factory snapshotted during Stage.create(). */
     renderPipeline?: RenderPipelineFactory;
-    /** Optional Stage plugins initialized transactionally before `Stage.create()` resolves. */
-    plugins?: readonly StagePlugin[];
+    /** Optional Stage Systems initialized transactionally before `Stage.create()` resolves. */
+    systems?: readonly StageSystem[];
 }
 
 /** Requested backend policy. `auto` probes WebGPU first and otherwise selects WebGL 2. */
@@ -250,7 +250,7 @@ function snapshotStageParameters(
     return {
         ...params,
         ...(renderPipeline === undefined ? {} : { renderPipeline }),
-        ...(params.plugins === undefined ? {} : { plugins: [...params.plugins] }),
+        ...(params.systems === undefined ? {} : { systems: [...params.systems] }),
         ...(requiredFeatureSet.size === 0 ? {} : { requiredFeatures: [...requiredFeatureSet] }),
         ...(Object.keys(requiredLimits).length === 0 ? {} : { requiredLimits })
     };
@@ -354,8 +354,8 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * 渲染器
      */
     renderer: Renderer<Backend>;
-    /** Per-Stage owner for optional addon lifecycles and typed services. */
-    readonly pluginHost: StagePluginHost;
+    /** Per-Stage scheduler and service registry for optional addon Systems. */
+    readonly systems: StageSystemRegistry;
     /** Resolves when the selected graphics backend is ready for rendering. */
     readonly ready: Promise<void>;
     /** Ordered cameras rendered by `tick()`. */
@@ -448,14 +448,14 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         if (token !== STAGE_CONSTRUCTION_TOKEN) {
             throw new TypeError('Stage cannot be constructed directly; use await Stage.create()');
         }
-        const { camera, cameras, plugins: _plugins, ...stageParameters } = params;
-        void _plugins;
+        const { camera, cameras, systems: _systems, ...stageParameters } = params;
+        void _systems;
         Object.assign(this, stageParameters);
         if (cameras !== undefined) this.setCameras(cameras);
         else this.camera = camera ?? null;
         this.canvas = canvas;
         this.renderer = renderer;
-        this.pluginHost = new StagePluginHost(this);
+        this.systems = new StageSystemRegistry(this);
         this.canvas.dataset['hilo3dBackend'] = renderer.backend;
         this.ready = renderer.ready;
         this.resize(this.width, this.height, this.pixelRatio, true);
@@ -496,14 +496,14 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         } as RendererOptions);
         const stage = new Stage(resolvedParams, canvas, renderer, STAGE_CONSTRUCTION_TOKEN);
         try {
-            await stage.pluginHost.initialize(parameterSnapshot.plugins ?? []);
+            await stage.systems.initialize(parameterSnapshot.systems ?? []);
         } catch (cause) {
             try {
                 stage.destroy();
             } catch (destroyCause) {
                 throw new AggregateError(
                     [cause, destroyCause],
-                    'Stage plugin initialization and Stage cleanup both failed.',
+                    'Stage System initialization and Stage cleanup both failed.',
                     { cause: destroyCause }
                 );
             }
@@ -575,11 +575,11 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @returns 舞台本身。链式调用支持。
      */
     tick(dt: number): this {
-        this.pluginHost.runBeforeUpdate(dt);
+        this.systems.runBeforeUpdate(dt);
         this.prepareAddonRendererResources();
         this.traverseUpdate(dt);
-        this.pluginHost.runAfterUpdate(dt);
-        this.pluginHost.runBeforeRender();
+        this.systems.runAfterUpdate(dt);
+        this.systems.runBeforeRender();
         try {
             this.sortCameras();
             const cameras = this.cameras;
@@ -596,29 +596,29 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
             }
         } catch (cause) {
             try {
-                this.pluginHost.runAfterRender();
+                this.systems.runAfterRender();
             } catch (afterRenderCause) {
                 throw new AggregateError(
                     [cause, afterRenderCause],
-                    'Stage rendering and an afterRender plugin hook both failed.',
+                    'Stage rendering and an afterRender System hook both failed.',
                     { cause: afterRenderCause }
                 );
             }
             throw cause;
         }
-        this.pluginHost.runAfterRender();
+        this.systems.runAfterRender();
         return this;
     }
 
     /** Install one optional addon after this Stage is ready. */
-    async installPlugin(plugin: StagePlugin): Promise<this> {
-        await this.pluginHost.install(plugin);
+    async installSystem(system: StageSystem): Promise<this> {
+        await this.systems.install(system);
         return this;
     }
 
-    /** Remove one leaf addon. Plugins that depend on it must be removed first. */
-    uninstallPlugin(id: string): this {
-        this.pluginHost.uninstall(id);
+    /** Remove one leaf addon System. Hard dependants must be removed first. */
+    uninstallSystem(id: string): this {
+        this.systems.uninstall(id);
         return this;
     }
 
@@ -867,7 +867,7 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         this.enableDOMEvent([...this._enabledDOMEvents], false);
         this._eventTargets.clear();
         try {
-            this.pluginHost.destroy();
+            this.systems.destroy();
         } catch (cause) {
             errors.push(cause);
         }

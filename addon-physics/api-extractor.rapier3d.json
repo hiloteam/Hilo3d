@@ -1,0 +1,8 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/rapier3d.d.ts",
+  "apiReport": {
+    "reportFileName": "addon-physics-rapier3d.api.md"
+  }
+}

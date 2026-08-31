@@ -1,13 +1,13 @@
 import {
     PHYSICS_WORLD_2D_SERVICE,
     bindNode2D,
-    createRapier2DPhysicsPlugin,
+    createRapier2DPhysicsSystem,
     type PhysicsRigidBody
 } from '@hilo3d/addon-physics/rapier2d';
 import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext } from '../shared/init';
 
-const plugin = createRapier2DPhysicsPlugin({
+const physicsSystem = createRapier2DPhysicsSystem({
     gravity: { x: 0, y: -8.5 },
     fixedTimeStep: 1 / 60,
     maxSubSteps: 5,
@@ -16,10 +16,10 @@ const plugin = createRapier2DPhysicsPlugin({
 const { stage, camera, directionLight, ambientLight, orbitControls, ticker } =
     await createExampleContext({
         camera: { x: 0, y: 0.2, z: 15.5, far: 60 },
-        stage: { plugins: [plugin], useInstanced: true },
+        stage: { systems: [physicsSystem], useInstanced: true },
         controls: { target: new Hilo3d.Vector3(0, 0.2, 0), minDistance: 12, maxDistance: 20 }
     });
-const physics = stage.pluginHost.get(PHYSICS_WORLD_2D_SERVICE);
+const physics = stage.systems.get(PHYSICS_WORLD_2D_SERVICE);
 orbitControls.setView(camera.position, new Hilo3d.Vector3(0, 0.2, 0));
 directionLight.amount = 4.8;
 directionLight.direction = new Hilo3d.Vector3(-0.4, -0.7, -1);

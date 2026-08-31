@@ -6,13 +6,37 @@ import type {
 } from './ForwardRenderPipeline';
 import type { RenderPipelineContext, RenderPipelineCreateContext } from './RenderPipeline';
 
+class AddonGPUFrameTransaction {
+    readonly #recorded = new Set<RenderNodeGPUExtension>();
+
+    record(gpu: RenderNodeGPUExtension): void {
+        this.#recorded.add(gpu);
+    }
+
+    submitted(frameIndex: number): void {
+        for (const gpu of this.#recorded) gpu.frameSubmitted(frameIndex);
+        this.#recorded.clear();
+    }
+
+    discarded(frameIndex: number): void {
+        for (const gpu of this.#recorded) gpu.frameDiscarded(frameIndex);
+        this.#recorded.clear();
+    }
+
+    clear(): void {
+        this.#recorded.clear();
+    }
+}
+
+const pendingTransactions = new WeakMap<RenderPipelineCreateContext, AddonGPUFrameTransaction>();
+
 class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime {
     readonly #supported: boolean;
-    readonly #recorded = new Set<RenderNodeGPUExtension>();
 
     constructor(
         context: RenderPipelineCreateContext,
-        readonly phase: 'opaque' | 'transparent'
+        readonly phase: 'opaque' | 'transparent',
+        readonly transaction: AddonGPUFrameTransaction
     ) {
         this.#supported =
             context.capabilities.supportsCapability('storage-buffer') &&
@@ -50,6 +74,7 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
             const gpu = getRenderNodeExtension(node)?.gpu;
             if (gpu === null || gpu === undefined) return;
             if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) return;
+            this.transaction.record(gpu);
             gpu.record(
                 context.pipeline,
                 context.resources.color as NonNullable<typeof context.resources.color>,
@@ -57,22 +82,19 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
                 gpu.isVisible(context.pipeline.camera),
                 this.phase
             );
-            this.#recorded.add(gpu);
         });
     }
 
     frameSubmitted(frameIndex: number): void {
-        for (const gpu of this.#recorded) gpu.frameSubmitted(frameIndex);
-        this.#recorded.clear();
+        this.transaction.submitted(frameIndex);
     }
 
     frameDiscarded(frameIndex: number): void {
-        for (const gpu of this.#recorded) gpu.frameDiscarded(frameIndex);
-        this.#recorded.clear();
+        this.transaction.discarded(frameIndex);
     }
 
     destroy(): void {
-        this.#recorded.clear();
+        this.transaction.clear();
     }
 }
 
@@ -86,7 +108,12 @@ export const addonGPUSceneFeature: ForwardRenderPipelineFeature = Object.freeze(
         splitScene: false
     }),
     create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime {
-        return new AddonGPUSceneFeatureRuntime(context, 'transparent');
+        const transaction = pendingTransactions.get(context);
+        pendingTransactions.delete(context);
+        if (transaction === undefined) {
+            throw new Error('Addon GPU transparent feature was created without its opaque phase.');
+        }
+        return new AddonGPUSceneFeatureRuntime(context, 'transparent', transaction);
     }
 });
 
@@ -100,6 +127,8 @@ export const addonGPUOpaqueSceneFeature: ForwardRenderPipelineFeature = Object.f
         splitScene: false
     }),
     create(context: RenderPipelineCreateContext): ForwardRenderPipelineFeatureRuntime {
-        return new AddonGPUSceneFeatureRuntime(context, 'opaque');
+        const transaction = new AddonGPUFrameTransaction();
+        pendingTransactions.set(context, transaction);
+        return new AddonGPUSceneFeatureRuntime(context, 'opaque', transaction);
     }
 });

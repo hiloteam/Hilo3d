@@ -25,14 +25,14 @@ import {
     ParticleCurve,
     ParticleGradient,
     ParticleSystemDefinition,
-    createParticleStagePlugin
+    createParticleStageSystem
 } from '@hilo3d/addon-particle';
 
-const particlePlugin = createParticleStagePlugin();
+const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({
     backend: 'auto',
     camera,
-    plugins: [particlePlugin]
+    systems: [particleSystem]
 });
 
 const definition = ParticleSystemDefinition.create({
@@ -82,9 +82,7 @@ const definition = ParticleSystemDefinition.create({
     ]
 });
 
-const particles = stage.pluginHost
-    .get(PARTICLE_STAGE_SERVICE)
-    .createSystem({ definition, seed: 42 });
+const particles = stage.systems.get(PARTICLE_STAGE_SERVICE).createSystem({ definition, seed: 42 });
 particles
     .emit(32)
     .pause()
@@ -92,11 +90,11 @@ particles
     .play();
 ```
 
-The plugin owns its systems, applies one optional frame-wide quality budget before updates, and
-destroys their render bridges before the Stage releases its renderer. Standalone `ParticleSystem`
-construction remains available for applications with another explicit owner, but those applications
-must call `destroy(renderer)` themselves. A managed system may only be attached below its owning
-Stage and cannot be shared by multiple particle runtimes.
+The Stage System owns its particle nodes, applies one optional frame-wide quality budget before
+updates, and destroys their render bridges before the Stage releases its renderer. Standalone
+`ParticleSystem` construction remains available for applications with another explicit owner, but
+those applications must call `destroy(renderer)` themselves. A managed system may only be attached
+below its owning Stage and cannot be shared by multiple particle runtimes.
 
 ## Versioned JSON and upgrades
 
@@ -287,7 +285,7 @@ matrix; the Event Horizon page is explicitly WebGPU-only because it requires com
 raster, sampled depth, and indirect draws.
 
 All five authored pages import `@hilo3d/addon-particle` explicitly. The Elemental Forge page also
-demonstrates the Stage plugin owner. The lower-level `compute_particles` page remains a general
+demonstrates the Stage System owner. The lower-level `compute_particles` page remains a general
 WebGPU compute/Render Graph example rather than an authored particle-addon consumer.
 
 ## Core integration boundary

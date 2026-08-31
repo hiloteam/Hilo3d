@@ -10,10 +10,10 @@ import * as Hilo3d from 'hilo3d';
 import {
     PHYSICS_WORLD_3D_SERVICE,
     bindNode3D,
-    createRapier3DPhysicsPlugin
+    createRapier3DPhysicsSystem
 } from '@hilo3d/addon-physics/rapier3d';
 
-const physicsPlugin = createRapier3DPhysicsPlugin({
+const physicsSystem = createRapier3DPhysicsSystem({
     gravity: { x: 0, y: -9.81, z: 0 },
     fixedTimeStep: 1 / 60,
     maxSubSteps: 4
@@ -21,9 +21,9 @@ const physicsPlugin = createRapier3DPhysicsPlugin({
 
 const stage = await Hilo3d.Stage.create({
     camera,
-    plugins: [physicsPlugin]
+    systems: [physicsSystem]
 });
-const world = stage.pluginHost.get(PHYSICS_WORLD_3D_SERVICE);
+const world = stage.systems.get(PHYSICS_WORLD_3D_SERVICE);
 
 const body = world.createRigidBody({
     type: 'dynamic',

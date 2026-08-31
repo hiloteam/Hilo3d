@@ -129,7 +129,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr2.html': 'PBR Material Lab',
     'pbr_layered_materials.html': 'Layered PBR Studio',
     'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
-    'physics/rapier3d.html': 'Rapier 3D Physics Plugin',
+    'physics/rapier3d.html': 'Rapier 3D Physics System',
     'physics/rapier_materials.html': 'Rapier Material Lab',
     'physics/rapier_joints.html': 'Rapier Joint Gallery',
     'physics/rapier2d_marble.html': 'Rapier 2D Marble Machine',
@@ -206,7 +206,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'gltf_material_extensions.html':
         'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
     'physics/rapier3d.html':
-        'Drop rigid bodies through the optional Rapier 3D Stage plugin with fixed-step simulation, interpolation, collision events, CCD, and backend-neutral diagnostics.',
+        'Drop rigid bodies through the optional Rapier 3D Stage System with fixed-step simulation, interpolation, collision events, CCD, and backend-neutral diagnostics.',
     'physics/rapier_materials.html':
         'Compare restitution and friction coefficients through synchronized bounce columns and parallel sliding lanes.',
     'physics/rapier_joints.html':

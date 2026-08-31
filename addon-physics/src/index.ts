@@ -33,9 +33,9 @@ export {
 } from './PhysicsWorld.js';
 export { HiloNodeTransform2D, HiloNodeTransform3D } from './HiloNodeTransform.js';
 export {
-    createPhysicsStagePlugin,
+    createPhysicsStageSystem,
     PHYSICS_WORLD_2D_SERVICE,
     PHYSICS_WORLD_3D_SERVICE,
-    type PhysicsStagePluginOptions
-} from './PhysicsStagePlugin.js';
+    type PhysicsStageSystemOptions
+} from './PhysicsStageSystem.js';
 export type * from './types.js';

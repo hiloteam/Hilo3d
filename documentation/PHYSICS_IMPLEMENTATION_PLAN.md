@@ -16,24 +16,25 @@ slices. The status column describes the current repository state.
 
 | Slice | Scope                                                                                            | Status      | Evidence required                                   |
 | ----- | ------------------------------------------------------------------------------------------------ | ----------- | --------------------------------------------------- |
-| P0    | generic Stage plugin ABI, dependencies, typed services, async setup rollback, reverse teardown   | Implemented | core unit tests, typecheck, API report              |
+| P0    | generic Stage System ABI, ordering, typed services, async setup rollback, reverse teardown       | Implemented | core unit tests, typecheck, API report              |
 | P1    | optional addon package, portable backend/world contracts, fixed scheduler, bindings, diagnostics | Implemented | scheduler/conformance unit tests, package checks    |
 | P2    | Rapier 2D/3D bodies, colliders, joints, events, queries, controllers, snapshots and debug        | Implemented | real WASM integration tests in both dimensions      |
 | P3    | Hilo node bridges and a maintained Rapier 3D browser example; remove Cannon                      | Implemented | examples build and browser smoke                    |
 | P4    | shape/overlap/point queries and portable character controller                                    | Implemented | 2D/3D WASM movement and query fixtures              |
 | P5    | mesh cooking/cache, rollback identity and command capture                                        | Planned     | asset fixtures, replay checks, bounded memory tests |
 
-## P0 — domain-neutral Stage plugin ABI
+## P0 — domain-neutral Stage System ABI
 
 1. Add versioned descriptors, typed service tokens, setup context, and frame/lifetime hooks.
-2. Validate all IDs and dependencies before initial setup.
+2. Validate all IDs, hard `requires`, soft `before`/`after` ordering, cycles, and declared service
+   providers before initial setup.
 3. Topologically initialize; publish services only when setup commits; roll back partial setup and
    Stage construction on failure.
 4. Reject reentrant dispatch and dependency-breaking uninstall.
 5. Run finalizers in reverse dependency order, dispose runtimes that complete after host teardown,
    and aggregate teardown errors.
 
-Exit gate: the base engine contains no physics reference and can host an unrelated test plugin.
+Exit gate: the base engine contains no physics reference and can host an unrelated test System.
 
 ## P1 — portable physics runtime
 
@@ -66,7 +67,7 @@ snapshot, and destroy cleanly.
    Rapier as optional peer dependencies.
 2. Integrate addon build/typecheck/package checks into the monorepo without adding an export from
    `hilo3d`.
-3. Replace the Cannon example with a Rapier 3D plugin example showing fixed stepping, interpolation,
+3. Replace the Cannon example with a Rapier 3D System example showing fixed stepping, interpolation,
    CCD, events, diagnostics, and automatic Stage teardown.
 4. Remove `cannon-es` and every maintained Cannon instruction from dependencies, docs, and the
    `hilo3d-game` skill.
@@ -100,7 +101,7 @@ native extensions that cannot be replayed deterministically.
 - `npm run format:check`
 - `npm run lint`
 - `npm run typecheck`
-- targeted Stage plugin and physics Vitest suites
+- targeted Stage System and physics Vitest suites
 - `npm run test:skill`
 - `npm run examples:build`
 - `npm run api:update && npm run api:check`

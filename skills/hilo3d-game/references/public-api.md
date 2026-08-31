@@ -294,14 +294,14 @@ The `hilo3d` root does not export physics or authored-particle implementations. 
 the game needs them:
 
 - `@hilo3d/addon-particle` provides immutable definitions, CPU/WebGPU runtimes, authoring helpers,
-  and `createParticleStagePlugin()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
+  and `createParticleStageSystem()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
   [Particle effects](particle-effects.md).
 - `@hilo3d/addon-physics` provides backend-neutral 2D/3D contracts. Import
   `@hilo3d/addon-physics/rapier2d` or `/rapier3d` to select one dimension without loading the other.
   See [3D games](3d-games.md).
 
-Both addons integrate through `StageParameters.plugins`. Retrieve their typed service through
-`stage.pluginHost`, and let `stage.destroy()` tear plugin runtimes down before the renderer. A game
+Both addons integrate through `StageParameters.systems`. Retrieve their typed service through
+`stage.systems`, and let `stage.destroy()` tear System runtimes down before the renderer. A game
 that uses neither addon should list and import neither package.
 
 ## Math

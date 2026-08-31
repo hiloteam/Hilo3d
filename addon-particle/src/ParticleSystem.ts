@@ -170,6 +170,8 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     override className = 'ParticleSystem';
     readonly definition: ParticleSystemDefinition;
     readonly compiledPlan: Readonly<ParticleCompiledPlan>;
+    /** Backend targeted by compilation, or undefined for a portable CPU-first plan. */
+    readonly compilationBackend: 'webgl2' | 'webgpu' | undefined;
     readonly seed: number;
     readonly parameters: ParticleParameterSet;
     readonly budgetId: string;
@@ -228,6 +230,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         this.#compilationEnvironment = Object.freeze({
             ...(parameters.compilationEnvironment ?? {})
         });
+        this.compilationBackend = this.#compilationEnvironment.backend;
         const eventReadbackCapacity = parameters.eventReadbackCapacity ?? 1024;
         if (
             !Number.isSafeInteger(eventReadbackCapacity) ||

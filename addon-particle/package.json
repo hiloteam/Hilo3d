@@ -18,12 +18,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rimraf dist .cache && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rimraf dist .cache"
   },
   "peerDependencies": {
-    "hilo3d": ">=2.0.0-alpha.4 <3"
+    "hilo3d": ">=2.0.0-alpha.5 <3"
+  },
+  "devDependencies": {
+    "hilo3d": "file:.."
   },
   "engines": {
     "node": ">=20.19.0"

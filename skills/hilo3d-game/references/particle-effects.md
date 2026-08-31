@@ -14,16 +14,16 @@ import * as Hilo3d from 'hilo3d';
 import {
     PARTICLE_STAGE_SERVICE,
     ParticleSystemDefinition,
-    createParticleStagePlugin
+    createParticleStageSystem
 } from '@hilo3d/addon-particle';
 
-const particlePlugin = createParticleStagePlugin();
+const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({
     backend: 'auto',
     camera,
-    plugins: [particlePlugin]
+    systems: [particleSystem]
 });
-const particles = stage.pluginHost.get(PARTICLE_STAGE_SERVICE);
+const particles = stage.systems.get(PARTICLE_STAGE_SERVICE);
 
 const definition = ParticleSystemDefinition.create({
     emitters: [
@@ -62,10 +62,10 @@ deterministic compatibility or explicit stateful WebGPU only when the effect req
 GPU modules and the game has a clear unsupported-device result. Unsupported module/backend pairs
 fail compilation; do not catch that failure and silently remove required behavior.
 
-The Stage plugin owns registered systems, applies its optional frame-wide quality budget before node
-updates, and destroys particle render resources before the renderer. Use standalone `ParticleSystem`
-construction only when another owner will call `destroy(stage.renderer)` before the renderer is
-released. Never share a managed system between Stages.
+The Stage System owns registered particle nodes, applies its optional frame-wide quality budget
+before node updates, and destroys particle render resources before the renderer. Use standalone
+`ParticleSystem` construction only when another owner will call `destroy(stage.renderer)` before the
+renderer is released. Never share a managed system between Stages.
 
 Reuse immutable definitions across systems, pool short-lived systems, and update declared
 `ParticleParameter` values instead of rebuilding definitions every frame. Use bounded capacities and
@@ -74,6 +74,6 @@ authoring APIs should be adopted only when the effect needs them; inspect the in
 for their exact versioned contracts.
 
 Release or pool application-owned systems when their gameplay owner leaves the scene; whole-Stage
-shutdown is handled by the plugin. Exercise CPU and the selected WebGPU path separately before
+shutdown is handled by the System. Exercise CPU and the selected WebGPU path separately before
 making parity, event, recovery, or performance claims. Do not add the addon dependency to games that
 have no authored particles.

@@ -232,7 +232,7 @@ the active playfield and give canvas and DOM input one explicit focus policy.
 
 - 2D arcade: axis-aligned boxes, circles, grids, or spatial hashes.
 - Simple 3D: spheres, AABBs, rays, and Hilo3D picking.
-- Dynamic rigid bodies: use `@hilo3d/addon-physics` with its dimension-specific Rapier plugin.
+- Dynamic rigid bodies: use `@hilo3d/addon-physics` with its dimension-specific Rapier System.
 
 Separate collision shape from render geometry. Approximate complex art with stable simple shapes.
 Use layer or category masks to skip impossible pairs.

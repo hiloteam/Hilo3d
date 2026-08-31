@@ -1,7 +1,7 @@
-import type { Node, Stage, StagePlugin } from 'hilo3d';
+import type { Node, Stage, StageSystem } from 'hilo3d';
 import type { PhysicsTransformBindingOptions } from './PhysicsBackend.js';
 import { HiloNodeTransform2D } from './HiloNodeTransform.js';
-import { createPhysicsStagePlugin, PHYSICS_WORLD_2D_SERVICE } from './PhysicsStagePlugin.js';
+import { createPhysicsStageSystem, PHYSICS_WORLD_2D_SERVICE } from './PhysicsStageSystem.js';
 import type { PhysicsRigidBody, PhysicsWorld, PhysicsWorldOptions } from './PhysicsWorld.js';
 import {
     RAPIER_2D_NATIVE_EXTENSION,
@@ -12,14 +12,14 @@ import {
 export * from './index.js';
 export { RAPIER_2D_NATIVE_EXTENSION, Rapier2DBackend, type Rapier2DNativeExtension };
 
-export type Rapier2DPhysicsPluginOptions = Omit<PhysicsWorldOptions<'2d'>, 'backend'> & {
+export type Rapier2DPhysicsSystemOptions = Omit<PhysicsWorldOptions<'2d'>, 'backend'> & {
     readonly setup?: (world: PhysicsWorld<'2d'>, stage: Stage) => void | Promise<void>;
 };
 
-/** Create the standard Rapier 2D Stage plugin without importing the 3D WASM module. */
-export function createRapier2DPhysicsPlugin(options: Rapier2DPhysicsPluginOptions): StagePlugin {
+/** Create the standard Rapier 2D Stage System without importing the 3D WASM module. */
+export function createRapier2DPhysicsSystem(options: Rapier2DPhysicsSystemOptions): StageSystem {
     const { setup, ...worldOptions } = options;
-    return createPhysicsStagePlugin({
+    return createPhysicsStageSystem({
         id: '@hilo3d/addon-physics/rapier2d',
         service: PHYSICS_WORLD_2D_SERVICE,
         world: { ...worldOptions, backend: new Rapier2DBackend() },
