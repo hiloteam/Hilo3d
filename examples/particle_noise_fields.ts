@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 import { createExampleContext } from './shared/init';
 import {
     addParticlePedestal,
@@ -39,7 +40,7 @@ addParticlePedestal(stage, new Hilo3d.Color(0.022, 0.046, 0.11));
 
 const texture = createParticleTexture({ style: 'disc' });
 const spark = createParticleTexture({ style: 'spark' });
-const fade = new Hilo3d.ParticleCurve(
+const fade = new Particle.ParticleCurve(
     [
         { time: 0, value: 0 },
         { time: 0.12, value: 1 },
@@ -56,10 +57,10 @@ interface FieldParameters {
     readonly mode: 'position-offset' | 'force';
     readonly field: 'vector' | 'curl';
     readonly color: readonly [number, number, number, number];
-    readonly strength: Hilo3d.ParticleVector3;
+    readonly strength: Particle.ParticleVector3;
     readonly frequency: number;
     readonly octaves: 1 | 2 | 3 | 4;
-    readonly scroll: Hilo3d.ParticleVector3;
+    readonly scroll: Particle.ParticleVector3;
     readonly damping?: number;
 }
 
@@ -116,13 +117,13 @@ const fields: readonly FieldParameters[] = [
 ];
 
 const systems = fields.map((field, index) => {
-    const gradient = new Hilo3d.ParticleGradient([
+    const gradient = new Particle.ParticleGradient([
         { time: 0, color: [1, 1, 1, 0] },
         { time: 0.16, color: field.color },
         { time: 0.72, color: [field.color[0] * 0.5, field.color[1] * 0.5, field.color[2], 0.72] },
         { time: 1, color: [field.color[0] * 0.18, field.color[1] * 0.18, field.color[2] * 0.32, 0] }
     ]);
-    const definition = Hilo3d.ParticleSystemDefinition.create({
+    const definition = Particle.ParticleSystemDefinition.create({
         emitters: [
             {
                 name: field.name,
@@ -178,7 +179,7 @@ const systems = fields.map((field, index) => {
             }
         ]
     });
-    return new Hilo3d.ParticleSystem({
+    return new Particle.ParticleSystem({
         x: field.position[0],
         y: field.position[1],
         z: field.position[2],

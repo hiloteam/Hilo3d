@@ -129,6 +129,10 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr2.html': 'PBR Material Lab',
     'pbr_layered_materials.html': 'Layered PBR Studio',
     'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
+    'physics/rapier3d.html': 'Rapier 3D Physics Plugin',
+    'physics/rapier_materials.html': 'Rapier Material Lab',
+    'physics/rapier_joints.html': 'Rapier Joint Gallery',
+    'physics/rapier2d_marble.html': 'Rapier 2D Marble Machine',
     'cascaded_shadows.html': 'Cascaded Sunset Garden',
     'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
     'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
@@ -201,6 +205,14 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'Toggle anisotropy, clearcoat, transmission and volume across a cinematic engine-owned HDR material studio.',
     'gltf_material_extensions.html':
         'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
+    'physics/rapier3d.html':
+        'Drop rigid bodies through the optional Rapier 3D Stage plugin with fixed-step simulation, interpolation, collision events, CCD, and backend-neutral diagnostics.',
+    'physics/rapier_materials.html':
+        'Compare restitution and friction coefficients through synchronized bounce columns and parallel sliding lanes.',
+    'physics/rapier_joints.html':
+        'Put revolute constraints, a damped spring, and a motorized hinge in motion inside one fixed-step Rapier world.',
+    'physics/rapier2d_marble.html':
+        'Run a colorful 2D marble machine with circle and box colliders, angled obstacles, CCD, and a non-solid sensor gate.',
     'cascaded_shadows.html':
         'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.',
     'particle_elemental_forge.html':
@@ -236,7 +248,10 @@ const FEATURED_PATHS = new Set([
     'shaderToy.html',
     'mesh_picker.html',
     'glTFViewer/index.html',
-    'physics/cannon.html',
+    'physics/rapier3d.html',
+    'physics/rapier_materials.html',
+    'physics/rapier_joints.html',
+    'physics/rapier2d_marble.html',
     'video.html',
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',

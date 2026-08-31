@@ -1,0 +1,52 @@
+{
+  "name": "@hilo3d/addon-physics",
+  "version": "0.1.0",
+  "description": "Optional backend-neutral 2D/3D physics addon for Hilo3D with Rapier adapters.",
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./rapier2d": {
+      "types": "./dist/rapier2d.d.ts",
+      "import": "./dist/rapier2d.js",
+      "default": "./dist/rapier2d.js"
+    },
+    "./rapier3d": {
+      "types": "./dist/rapier3d.d.ts",
+      "import": "./dist/rapier3d.js",
+      "default": "./dist/rapier3d.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist .cache"
+  },
+  "peerDependencies": {
+    "@dimforge/rapier2d-compat": "^0.20.0",
+    "@dimforge/rapier3d-compat": "^0.20.0",
+    "hilo3d": ">=2.0.0-alpha.4 <3"
+  },
+  "peerDependenciesMeta": {
+    "@dimforge/rapier2d-compat": {
+      "optional": true
+    },
+    "@dimforge/rapier3d-compat": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "license": "MIT"
+}

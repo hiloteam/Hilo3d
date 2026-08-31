@@ -28,6 +28,16 @@ export {
     type NodeTraverseResult
 } from './core/Node';
 export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
+export {
+    createStagePluginService,
+    STAGE_PLUGIN_API_VERSION,
+    type StagePlugin,
+    type StagePluginDescriptor,
+    StagePluginHost,
+    type StagePluginRuntime,
+    StagePluginService,
+    type StagePluginSetupContext
+} from './core/StagePlugin';
 export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
 export {
     default as Stage,
@@ -64,131 +74,6 @@ export {
     type PerspectiveCameraParameters
 } from './camera/PerspectiveCamera';
 export { default as OrbitControls, type OrbitControlsOptions } from './controls/OrbitControls';
-
-export {
-    compileParticleSystemDefinition,
-    type ParticleAdvancedQualityPlan,
-    type ParticleCompilationEnvironment
-} from './particle/ParticleCompiler';
-export {
-    compileParticleAuthoringGraph,
-    createParticleAuthoringGraph,
-    PARTICLE_AUTHORING_JSON_SCHEMA,
-    PARTICLE_AUTHORING_SCHEMA,
-    PARTICLE_AUTHORING_VERSION,
-    type ParticleAuthoringCompileFailure,
-    type ParticleAuthoringCompileOptions,
-    type ParticleAuthoringCompileResult,
-    type ParticleAuthoringCompileSuccess,
-    type ParticleAuthoringDiagnostic,
-    type ParticleAuthoringEdge,
-    type ParticleAuthoringEmitterIR,
-    type ParticleAuthoringGraph,
-    type ParticleAuthoringIR,
-    type ParticleAuthoringNode,
-    type ParticleAuthoringNodeKind,
-    type ParticleAuthoringPort
-} from './particle/ParticleAuthoring';
-export {
-    PARTICLE_PREVIEW_PROTOCOL_VERSION,
-    ParticleAuthoringPreviewController,
-    type ParticleAuthoringPreviewCommand,
-    type ParticleAuthoringPreviewCompileRequest,
-    type ParticleAuthoringPreviewControllerOptions,
-    type ParticleAuthoringPreviewControlRequest,
-    type ParticleAuthoringPreviewRequest,
-    type ParticleAuthoringPreviewResponse,
-    type ParticleAuthoringPreviewSeekRequest,
-    type ParticleAuthoringPreviewState,
-    type ParticleAuthoringPreviewStepRequest,
-    type ParticleAuthoringPreviewSystemFactory
-} from './particle/ParticleAuthoringPreview';
-export {
-    PARTICLE_BAKE_VERSION,
-    type ParticleBakedMeshEmitter,
-    type ParticleBakeTimelineOptions,
-    type ParticleFlipbook,
-    type ParticleFlipbookFrameContext,
-    type ParticleFlipbookOptions,
-    type ParticleMeshCache,
-    type ParticleMeshCacheOptions
-} from './particle/ParticleBaking';
-export {
-    deserializeParticleSystemDefinition,
-    parseParticleSystemDefinitionJSON,
-    PARTICLE_DEFINITION_SCHEMA,
-    serializeParticleSystemDefinition,
-    type ParticleDefinitionDeserializationOptions,
-    type ParticleDefinitionJSONParameter,
-    type ParticleDefinitionJSONRecord,
-    type ParticleDefinitionJSONValue,
-    type ParticleDefinitionResource,
-    type ParticleDefinitionResourceKind,
-    type ParticleDefinitionSerializationOptions,
-    type ParticleDefinitionUpgrade,
-    type ParticleSystemDefinitionJSON
-} from './particle/ParticleDefinitionSerialization';
-export type {
-    ParticleAttributeLayout,
-    ParticleAttributeName,
-    ParticleCompiledEmitterPlan,
-    ParticleCompiledPlan,
-    ParticleCurveLUT,
-    ParticleGradientLUT
-} from './particle/ParticleCompiledPlan';
-export {
-    default as ParticleCurve,
-    type ParticleCurveInterpolation,
-    type ParticleCurveKeyframe,
-    type ParticleCurveOptions,
-    type ParticleCurveWrapMode
-} from './particle/ParticleCurve';
-export { default as ParticleEmitterDefinition } from './particle/ParticleEmitterDefinition';
-export {
-    ParticleEventChannel,
-    type ParticleEventChannelParameters,
-    type ParticleEventChannelPayload,
-    type ParticleEventChannelSchema,
-    type ParticleEventFieldType,
-    type ParticleEventFieldValue
-} from './particle/ParticleEventChannel';
-export {
-    ParticleBudgetManager,
-    type ParticleBudgetDecision,
-    type ParticleBudgetProfile,
-    type ParticleBudgetRequest
-} from './particle/ParticleBudget';
-export { default as ParticleGradient, type ParticleGradientKey } from './particle/ParticleGradient';
-export {
-    ParticleParameter,
-    ParticleParameterSet,
-    type ParticleParameterType,
-    type ParticleParameterValue
-} from './particle/ParticleParameter';
-export {
-    PARTICLE_SIMULATION_CACHE_VERSION,
-    type ParticleSimulationCache
-} from './particle/ParticleSimulationCache';
-export {
-    default as ParticleSystem,
-    type ParticleSystemEmitCommand,
-    type ParticleSystemParameters,
-    type ParticleSystemSimulateOptions
-} from './particle/ParticleSystem';
-export type {
-    ParticleEventAggregate,
-    ParticleEventRecord
-} from './particle/cpu/ParticleCPUEventBuffer';
-export { default as ParticleSystemDefinition } from './particle/ParticleSystemDefinition';
-export { ParticleSystemPool } from './particle/ParticleSystemPool';
-export {
-    analyzeParticleStatelessEligibility,
-    particleStatelessBlockingDiagnostics,
-    type ParticleStatelessModuleMetadata,
-    type ParticleStatelessSupport
-} from './particle/ParticleStateless';
-export { PARTICLE_DEFINITION_VERSION } from './particle/ParticleTypes';
-export type * from './particle/ParticleTypes';
 
 export {
     default as BoxGeometry,
@@ -296,6 +181,7 @@ export {
     type ShaderTextureViewDimension
 } from './render/compute/ComputeShader';
 export {
+    createStorageGraphicsShaderFromPortable,
     default as StorageGraphicsShader,
     type StorageGraphicsShaderDescriptor
 } from './render/compute/StorageGraphicsShader';
@@ -635,4 +521,5 @@ export {
     webglConstants,
     webglExtensionConstants
 } from './constants';
+export { TRIANGLES } from './constants/webgl';
 export * from './math/';

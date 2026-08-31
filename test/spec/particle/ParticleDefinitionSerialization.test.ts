@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
-import ParticleCurve from '../../../src/particle/ParticleCurve';
+import ParticleCurve from '../../../addon-particle/src/ParticleCurve';
 import {
     deserializeParticleSystemDefinition,
     parseParticleSystemDefinitionJSON,
     PARTICLE_DEFINITION_SCHEMA,
     serializeParticleSystemDefinition,
     type ParticleDefinitionJSONRecord
-} from '../../../src/particle/ParticleDefinitionSerialization';
-import ParticleGradient from '../../../src/particle/ParticleGradient';
-import { ParticleParameter } from '../../../src/particle/ParticleParameter';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
+} from '../../../addon-particle/src/ParticleDefinitionSerialization';
+import ParticleGradient from '../../../addon-particle/src/ParticleGradient';
+import { ParticleParameter } from '../../../addon-particle/src/ParticleParameter';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
 import Texture from '../../../src/texture/Texture';
 
 function simpleDefinition(): ParticleSystemDefinition {

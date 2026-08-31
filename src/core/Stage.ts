@@ -22,6 +22,8 @@ import {
     describeWebGPUOnlyRendererFeature
 } from '../render/internal/RenderPipelineBackendSelection';
 import { setCameraCompositionSingleSample } from '../render/internal/CameraCompositionPolicy';
+import { getRenderNodeExtension } from '../render/pipeline/RenderNodeExtension';
+import { StagePluginHost, type StagePlugin } from './StagePlugin';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
 const STAGE_CONSTRUCTION_TOKEN = Symbol('Stage construction');
@@ -186,6 +188,8 @@ export interface StageCommonParameters extends NodeParameters {
     gameMode?: boolean;
     /** Renderer-local scriptable pipeline factory snapshotted during Stage.create(). */
     renderPipeline?: RenderPipelineFactory;
+    /** Optional Stage plugins initialized transactionally before `Stage.create()` resolves. */
+    plugins?: readonly StagePlugin[];
 }
 
 /** Requested backend policy. `auto` probes WebGPU first and otherwise selects WebGL 2. */
@@ -246,6 +250,7 @@ function snapshotStageParameters(
     return {
         ...params,
         ...(renderPipeline === undefined ? {} : { renderPipeline }),
+        ...(params.plugins === undefined ? {} : { plugins: [...params.plugins] }),
         ...(requiredFeatureSet.size === 0 ? {} : { requiredFeatures: [...requiredFeatureSet] }),
         ...(Object.keys(requiredLimits).length === 0 ? {} : { requiredLimits })
     };
@@ -349,6 +354,8 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * 渲染器
      */
     renderer: Renderer<Backend>;
+    /** Per-Stage owner for optional addon lifecycles and typed services. */
+    readonly pluginHost: StagePluginHost;
     /** Resolves when the selected graphics backend is ready for rendering. */
     readonly ready: Promise<void>;
     /** Ordered cameras rendered by `tick()`. */
@@ -441,12 +448,14 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         if (token !== STAGE_CONSTRUCTION_TOKEN) {
             throw new TypeError('Stage cannot be constructed directly; use await Stage.create()');
         }
-        const { camera, cameras, ...stageParameters } = params;
+        const { camera, cameras, plugins: _plugins, ...stageParameters } = params;
+        void _plugins;
         Object.assign(this, stageParameters);
         if (cameras !== undefined) this.setCameras(cameras);
         else this.camera = camera ?? null;
         this.canvas = canvas;
         this.renderer = renderer;
+        this.pluginHost = new StagePluginHost(this);
         this.canvas.dataset['hilo3dBackend'] = renderer.backend;
         this.ready = renderer.ready;
         this.resize(this.width, this.height, this.pixelRatio, true);
@@ -485,7 +494,22 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
             backend,
             domElement: canvas
         } as RendererOptions);
-        return new Stage(resolvedParams, canvas, renderer, STAGE_CONSTRUCTION_TOKEN);
+        const stage = new Stage(resolvedParams, canvas, renderer, STAGE_CONSTRUCTION_TOKEN);
+        try {
+            await stage.pluginHost.initialize(parameterSnapshot.plugins ?? []);
+        } catch (cause) {
+            try {
+                stage.destroy();
+            } catch (destroyCause) {
+                throw new AggregateError(
+                    [cause, destroyCause],
+                    'Stage plugin initialization and Stage cleanup both failed.',
+                    { cause: destroyCause }
+                );
+            }
+            throw cause;
+        }
+        return stage;
     }
     /**
      * 缩放舞台
@@ -551,29 +575,57 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @returns 舞台本身。链式调用支持。
      */
     tick(dt: number): this {
-        this.prepareParticleRendererResources();
+        this.pluginHost.runBeforeUpdate(dt);
+        this.prepareAddonRendererResources();
         this.traverseUpdate(dt);
-        this.sortCameras();
-        const cameras = this.cameras;
-        if (cameras.length === 1) {
-            const camera = cameras[0];
-            if (camera) this.renderer.render(this, camera, true);
-        } else if (cameras.length > 1) {
-            for (const camera of cameras) setCameraCompositionSingleSample(camera, true);
-            try {
-                this.renderer.renderFrame(this._renderCameraComposition);
-            } finally {
-                for (const camera of cameras) setCameraCompositionSingleSample(camera, false);
+        this.pluginHost.runAfterUpdate(dt);
+        this.pluginHost.runBeforeRender();
+        try {
+            this.sortCameras();
+            const cameras = this.cameras;
+            if (cameras.length === 1) {
+                const camera = cameras[0];
+                if (camera) this.renderer.render(this, camera, true);
+            } else if (cameras.length > 1) {
+                for (const camera of cameras) setCameraCompositionSingleSample(camera, true);
+                try {
+                    this.renderer.renderFrame(this._renderCameraComposition);
+                } finally {
+                    for (const camera of cameras) setCameraCompositionSingleSample(camera, false);
+                }
             }
+        } catch (cause) {
+            try {
+                this.pluginHost.runAfterRender();
+            } catch (afterRenderCause) {
+                throw new AggregateError(
+                    [cause, afterRenderCause],
+                    'Stage rendering and an afterRender plugin hook both failed.',
+                    { cause: afterRenderCause }
+                );
+            }
+            throw cause;
         }
+        this.pluginHost.runAfterRender();
         return this;
     }
 
-    private prepareParticleRendererResources(): void {
+    /** Install one optional addon after this Stage is ready. */
+    async installPlugin(plugin: StagePlugin): Promise<this> {
+        await this.pluginHost.install(plugin);
+        return this;
+    }
+
+    /** Remove one leaf addon. Plugins that depend on it must be removed first. */
+    uninstallPlugin(id: string): this {
+        this.pluginHost.uninstall(id);
+        return this;
+    }
+
+    private prepareAddonRendererResources(): void {
         this.traverse(node => {
-            if (Reflect.get(node, 'hasGPUEmitters') !== true) return;
-            const prepare: unknown = Reflect.get(node, 'prepareGPU');
-            if (typeof prepare === 'function') Reflect.apply(prepare, node, [this.renderer]);
+            const extension = getRenderNodeExtension(node);
+            extension?.prepareRenderer?.(this.renderer);
         });
     }
     /**
@@ -811,15 +863,26 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @returns this
      */
     override destroy(): this {
+        const errors: unknown[] = [];
         this.enableDOMEvent([...this._enabledDOMEvents], false);
         this._eventTargets.clear();
+        try {
+            this.pluginHost.destroy();
+        } catch (cause) {
+            errors.push(cause);
+        }
         super.destroy(this.renderer);
         this.traverse(child => {
             child.off();
             child.parent = null;
         });
         this.children.length = 0;
-        this.renderer.destroy();
+        try {
+            this.renderer.destroy();
+        } catch (cause) {
+            errors.push(cause);
+        }
+        if (errors.length > 0) throw new AggregateError(errors, 'Stage destruction failed.');
         return this;
     }
 }

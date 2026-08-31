@@ -1,0 +1,55 @@
+.physics-panel {
+    position: fixed;
+    inset: 20px auto auto 20px;
+    z-index: 2;
+    width: min(370px, calc(100vw - 40px));
+    box-sizing: border-box;
+    padding: 15px 17px;
+    color: #dcecff;
+    background: linear-gradient(145deg, rgb(5 10 24 / 91%), rgb(10 20 38 / 78%));
+    border: 1px solid rgb(115 205 255 / 32%);
+    border-radius: 14px;
+    box-shadow: 0 18px 55px rgb(0 0 0 / 28%);
+    font:
+        13px/1.55 Inter,
+        ui-sans-serif,
+        system-ui,
+        sans-serif;
+    pointer-events: none;
+    backdrop-filter: blur(14px);
+}
+
+.physics-panel strong {
+    display: block;
+    margin-bottom: 3px;
+    color: #8ce6ff;
+    font-size: 14px;
+    letter-spacing: 0.02em;
+}
+
+.physics-panel .metric {
+    color: #fff2ad;
+    font-variant-numeric: tabular-nums;
+}
+
+.physics-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 9px;
+}
+
+.physics-legend span {
+    padding: 2px 7px;
+    color: #b9cee8;
+    background: rgb(255 255 255 / 7%);
+    border-radius: 999px;
+}
+
+@media (max-width: 620px) {
+    .physics-panel {
+        inset: 12px 12px auto;
+        width: auto;
+        padding: 11px 13px;
+    }
+}

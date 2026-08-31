@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ParticleParameter, ParticleParameterSet } from '../../../src/particle/ParticleParameter';
+import {
+    ParticleParameter,
+    ParticleParameterSet
+} from '../../../addon-particle/src/ParticleParameter';
 import {
     PARTICLE_SIMULATION_CACHE_VERSION,
     type ParticleSimulationCache
-} from '../../../src/particle/ParticleSimulationCache';
-import ParticleSystem from '../../../src/particle/ParticleSystem';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
+} from '../../../addon-particle/src/ParticleSimulationCache';
+import ParticleSystem from '../../../addon-particle/src/ParticleSystem';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
 
 function cpuDefinition(): ParticleSystemDefinition {
     return ParticleSystemDefinition.create({

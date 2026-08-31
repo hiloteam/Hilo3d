@@ -35,6 +35,10 @@ work. It also warns when invoked with Node.js older than 20.19.0; upgrade Node b
 dependencies or running the generated game. Startup failures replace the loading status with a
 visible error while preserving the full exception in the developer console.
 
+Generated starters intentionally depend only on `hilo3d`. Add `@hilo3d/addon-particle` or
+`@hilo3d/addon-physics` and the selected Rapier peer only when the requested game actually uses
+those systems; never make either addon a default starter dependency.
+
 After generation:
 
 ```sh

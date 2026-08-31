@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Hilo3D Rapier 2D Marble Machine</title>
+        <link rel="stylesheet" href="../example.css" />
+        <link rel="stylesheet" href="./showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <aside class="physics-panel">
+            <strong>Marble Machine · Rapier 2D</strong>
+            2D circle and box colliders drive 3D presentation on one XY plane. The cyan gate is a
+            non-solid collision sensor.
+            <div class="physics-legend">
+                <span>marbles <b class="metric" id="marbles">0</b></span>
+                <span>sensor hits <b class="metric" id="sensor-hits">0</b></span>
+            </div>
+        </aside>
+        <script type="module" src="./rapier2d_marble.ts"></script>
+    </body>
+</html>

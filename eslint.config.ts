@@ -9,6 +9,8 @@ export default defineConfig(
         '.cache/**',
         'coverage/**',
         'dist/**',
+        'addon-particle/dist/**',
+        'addon-physics/dist/**',
         'dist-examples/**',
         'docs/**',
         'node_modules/**',

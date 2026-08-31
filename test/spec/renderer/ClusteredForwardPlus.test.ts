@@ -19,8 +19,8 @@ import Color from '../../../src/math/Color';
 import Matrix3 from '../../../src/math/Matrix3';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
-import ParticleSystem from '../../../src/particle/ParticleSystem';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
+import ParticleSystem from '../../../addon-particle/src/ParticleSystem';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
 import Renderer from '../../../src/render/Renderer';
 import {
     registerRendererDiagnostics,

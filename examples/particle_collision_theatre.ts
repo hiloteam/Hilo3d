@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 import {
     createParticleTexture,
@@ -7,8 +8,8 @@ import {
 } from './shared/particleShowcase';
 
 type RainPayload = Readonly<{
-    position: Hilo3d.ParticleVector3;
-    velocity: Hilo3d.ParticleVector3;
+    position: Particle.ParticleVector3;
+    velocity: Particle.ParticleVector3;
 }>;
 
 type ColliderFinish = 'anisotropy' | 'clearcoat' | 'gem' | 'lacquer';
@@ -20,7 +21,7 @@ type CollisionLane = Readonly<{
     phase: number;
     burstCounts: readonly [number, number, number];
     color: readonly [number, number, number];
-    collider: Hilo3d.ParticleAnalyticCollider;
+    collider: Particle.ParticleAnalyticCollider;
 }>;
 
 const compactViewport = window.matchMedia('(max-width: 720px)').matches;
@@ -343,7 +344,7 @@ new Hilo3d.Mesh({
 
 function addColliderMesh(
     geometry: Hilo3d.Geometry,
-    position: Hilo3d.ParticleVector3,
+    position: Particle.ParticleVector3,
     color: readonly [number, number, number],
     rotationZ = 0,
     metallic = 0.5,
@@ -597,7 +598,7 @@ if (capsuleStart?.type !== 'capsule') throw new Error('Collision theatre capsule
 const capsuleDx = capsuleStart.end[0] - capsuleStart.start[0];
 const capsuleDy = capsuleStart.end[1] - capsuleStart.start[1];
 const capsuleLength = Math.hypot(capsuleDx, capsuleDy);
-const capsuleCenter: Hilo3d.ParticleVector3 = [
+const capsuleCenter: Particle.ParticleVector3 = [
     (capsuleStart.start[0] + capsuleStart.end[0]) * 0.5,
     (capsuleStart.start[1] + capsuleStart.end[1]) * 0.5,
     0
@@ -652,7 +653,7 @@ const meteorTexture = createParticleTexture({ style: 'comet' });
 const glowTexture = createParticleTexture({ style: 'disc' });
 const sparkTexture = createParticleTexture({ style: 'spark' });
 const shockwaveTexture = createParticleTexture({ style: 'ring' });
-const fadeCurve = new Hilo3d.ParticleCurve(
+const fadeCurve = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.12 },
         { time: 0.1, value: 1 },
@@ -660,7 +661,7 @@ const fadeCurve = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-const sparkFadeCurve = new Hilo3d.ParticleCurve(
+const sparkFadeCurve = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.72 },
         { time: 0.08, value: 1 },
@@ -669,7 +670,7 @@ const sparkFadeCurve = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-const shockwaveSizeCurve = new Hilo3d.ParticleCurve(
+const shockwaveSizeCurve = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.35 },
         { time: 0.18, value: 2.4 },
@@ -677,7 +678,7 @@ const shockwaveSizeCurve = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-const shockwaveFadeCurve = new Hilo3d.ParticleCurve(
+const shockwaveFadeCurve = new Particle.ParticleCurve(
     [
         { time: 0, value: 0 },
         { time: 0.08, value: 1 },
@@ -686,8 +687,8 @@ const shockwaveFadeCurve = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-function collisionEmitter(lane: CollisionLane): Hilo3d.ParticleEmitterDefinitionInput {
-    const triggerModule: readonly Hilo3d.ParticleModule[] =
+function collisionEmitter(lane: CollisionLane): Particle.ParticleEmitterDefinitionInput {
+    const triggerModule: readonly Particle.ParticleModule[] =
         lane.emitter === 'sphere-stream'
             ? [
                   {
@@ -753,7 +754,7 @@ function collisionEmitter(lane: CollisionLane): Hilo3d.ParticleEmitterDefinition
             { type: 'size-by-speed', speedRange: [0, 4], curve: fadeCurve },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     {
                         time: 0,
                         color: [lane.color[0] * 1.8, lane.color[1] * 1.8, lane.color[2] * 1.8, 1]
@@ -791,7 +792,7 @@ function collisionEmitter(lane: CollisionLane): Hilo3d.ParticleEmitterDefinition
     };
 }
 
-const definition = Hilo3d.ParticleSystemDefinition.create({
+const definition = Particle.ParticleSystemDefinition.create({
     emitters: [
         ...lanes.map(collisionEmitter),
         {
@@ -835,7 +836,7 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'size-by-speed', speedRange: [0, 5], curve: fadeCurve },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [1.45, 1.8, 2.3, 1] },
                         { time: 0.55, color: [0.36, 0.9, 1.5, 0.95] },
                         { time: 1, color: [1, 0.24, 0.025, 0.7] }
@@ -886,7 +887,7 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'alpha-over-lifetime', curve: sparkFadeCurve },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [2.4, 2.1, 1.25, 1] },
                         { time: 0.28, color: [2.2, 0.62, 0.04, 1] },
                         { time: 0.72, color: [1.2, 0.12, 0.015, 0.9] },
@@ -931,7 +932,7 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'alpha-over-lifetime', curve: shockwaveFadeCurve },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [1.8, 1.05, 0.46, 0.9] },
                         { time: 0.4, color: [1.2, 0.58, 0.18, 0.62] },
                         { time: 1, color: [0.52, 0.18, 0.06, 0] }
@@ -953,13 +954,13 @@ const definition = Hilo3d.ParticleSystemDefinition.create({
     ]
 });
 
-const particles = new Hilo3d.ParticleSystem({
+const particles = new Particle.ParticleSystem({
     definition,
     seed: 991,
     eventReadbackCapacity: 12_288
 }).addTo(stage);
 
-const rainChannel = new Hilo3d.ParticleEventChannel<RainPayload>({
+const rainChannel = new Particle.ParticleEventChannel<RainPayload>({
     name: 'theatre-rain',
     capacity: 192,
     overflow: 'drop-oldest',

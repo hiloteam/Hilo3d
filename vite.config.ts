@@ -8,6 +8,29 @@ const shaderPattern = /\.(?:frag|glsl|vert)$/u;
 const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';
 const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
 
+export const addonAliases = [
+    {
+        find: '@hilo3d/addon-particle',
+        replacement: fileURLToPath(new URL('./addon-particle/src/index.ts', import.meta.url))
+    },
+    {
+        find: '@hilo3d/addon-physics/rapier2d',
+        replacement: fileURLToPath(new URL('./addon-physics/src/rapier2d.ts', import.meta.url))
+    },
+    {
+        find: '@hilo3d/addon-physics/rapier3d',
+        replacement: fileURLToPath(new URL('./addon-physics/src/rapier3d.ts', import.meta.url))
+    },
+    {
+        find: '@hilo3d/addon-physics',
+        replacement: fileURLToPath(new URL('./addon-physics/src/index.ts', import.meta.url))
+    },
+    {
+        find: 'hilo3d',
+        replacement: fileURLToPath(new URL('./src/Hilo3d.ts', import.meta.url))
+    }
+] as const;
+
 function collectHtmlPaths(directory: string, root: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
         const path = join(directory, entry.name);
@@ -105,6 +128,7 @@ const runtimeDependencies = ['gl-matrix'] as const;
 export function createViteConfig(): UserConfig {
     return {
         plugins: [shaderIncludePlugin(), exampleManifestPlugin()],
+        resolve: { alias: [...addonAliases] },
         optimizeDeps: {
             include: [...runtimeDependencies]
         },

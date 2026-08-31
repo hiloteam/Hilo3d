@@ -31,7 +31,6 @@ import encodingSource from '../../shader/method/encoding.glsl';
 import getAreaLightSource from '../../shader/method/getAreaLight.glsl';
 import portableCoordinatesSource from '../../shader/method/portableCoordinates.glsl';
 import type Texture from '../../texture/Texture';
-import ParticleSystem from '../../particle/ParticleSystem';
 import {
     CLAMP_TO_EDGE,
     LINEAR,
@@ -130,6 +129,7 @@ import type {
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from './ScriptableRenderGraph';
+import { getRenderNodeExtension, type RenderNodeGPUExtension } from './RenderNodeExtension';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import {
@@ -4920,7 +4920,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #materialAttributeExcludedMeshes: Mesh[] = [];
     readonly #fallbackTemporalParticipation = new WeakMap<Mesh, number>();
     readonly #pendingFallbackTemporalMeshes = new Set<Mesh>();
-    readonly #recordedGPUParticleSystems = new Set<ParticleSystem>();
+    readonly #recordedGPUSceneParticipants = new Set<RenderNodeGPUExtension>();
     readonly #objectByMesh = new Map<Mesh, GPUSceneObjectRecord>();
     readonly #freeObjectSlots: number[] = [];
     readonly #objectData: ArrayBuffer;
@@ -6002,7 +6002,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ambientOcclusion
             );
         }
-        this.recordGPUParticles(context, sceneColor, sceneDepth, 'opaque');
+        this.recordGPUSceneParticipants(context, sceneColor, sceneDepth, 'opaque');
         if (
             materialAttributes !== null &&
             fallbackCulling !== null &&
@@ -6131,13 +6131,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 temporalFrame.historyValid && this.#committedCamera === context.camera
             );
         }
-        if (this.hasGPUParticleSystems(context)) {
+        if (this.hasGPUSceneParticipants(context)) {
             if (
                 temporalFrame === null ||
                 this.#transparentTemporal === null ||
                 this.#particleTemporal === null
             ) {
-                this.recordGPUParticles(
+                this.recordGPUSceneParticipants(
                     context,
                     resolvedSceneColor,
                     resolvedSceneDepth,
@@ -6149,7 +6149,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     context,
                     resolvedSceneDepth
                 );
-                this.recordGPUParticles(context, particleOverlay, particleDepth, 'transparent');
+                this.recordGPUSceneParticipants(
+                    context,
+                    particleOverlay,
+                    particleDepth,
+                    'transparent'
+                );
                 const particleMask = this.#transparentTemporal.createParticleMask(
                     context,
                     particleOverlay
@@ -6198,10 +6203,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#pendingRejectedMaterialVariants.clear();
         this.#materialDatabase.frameSubmitted(frameIndex);
-        for (const system of this.#recordedGPUParticleSystems) {
-            system.gpuFrameSubmitted(frameIndex);
+        for (const participant of this.#recordedGPUSceneParticipants) {
+            participant.frameSubmitted(frameIndex);
         }
-        this.#recordedGPUParticleSystems.clear();
+        this.#recordedGPUSceneParticipants.clear();
         for (const mesh of this.#pendingFallbackTemporalMeshes) {
             this.#fallbackTemporalParticipation.set(mesh, committedSubmission);
         }
@@ -6252,10 +6257,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#pendingMaterialVariants.clear();
         this.#pendingRejectedMaterialVariants.clear();
         this.#materialDatabase.frameDiscarded(frameIndex);
-        for (const system of this.#recordedGPUParticleSystems) {
-            system.gpuFrameDiscarded(frameIndex);
+        for (const participant of this.#recordedGPUSceneParticipants) {
+            participant.frameDiscarded(frameIndex);
         }
-        this.#recordedGPUParticleSystems.clear();
+        this.#recordedGPUSceneParticipants.clear();
         this.#pendingFallbackTemporalMeshes.clear();
         for (const record of this.#objectByMesh.values()) {
             record.pendingWorldVersion = -1;
@@ -6354,7 +6359,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
-        this.#recordedGPUParticleSystems.clear();
+        this.#recordedGPUSceneParticipants.clear();
         this.#pendingMaterialVariants.clear();
         this.#pendingRejectedMaterialVariants.clear();
         const buffers: StorageBuffer[] = [
@@ -7171,10 +7176,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     }
 
-    private hasGPUParticleSystems(context: RenderPipelineContext): boolean {
+    private hasGPUSceneParticipants(context: RenderPipelineContext): boolean {
         let result = false;
         context.scene.traverse(node => {
-            if (node instanceof ParticleSystem && node.hasGPUEmitters) result = true;
+            const participant = getRenderNodeExtension(node)?.gpu;
+            if (participant !== undefined && participant !== null) result = true;
         });
         return result;
     }
@@ -7182,31 +7188,28 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     private hasVisibleGPUOpaqueParticles(context: RenderPipelineContext): boolean {
         let result = false;
         context.scene.traverse(node => {
-            if (
-                node instanceof ParticleSystem &&
-                node.hasGPUEmitters &&
-                node.hasGPUOpaqueRenderers &&
-                node.isGPUVisible(context.camera)
-            ) {
+            const participant = getRenderNodeExtension(node)?.gpu;
+            if (participant?.hasOpaqueRenderers === true && participant.isVisible(context.camera)) {
                 result = true;
             }
         });
         return result;
     }
 
-    private recordGPUParticles(
+    private recordGPUSceneParticipants(
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
         phase: 'opaque' | 'transparent'
     ): void {
         context.scene.traverse(node => {
-            if (!(node instanceof ParticleSystem) || !node.hasGPUEmitters) return;
-            if (phase === 'opaque' && !node.hasGPUOpaqueRenderers) return;
-            // Register before recording so a partial emitter update is rolled back when recording
+            const participant = getRenderNodeExtension(node)?.gpu;
+            if (participant === null || participant === undefined) return;
+            if (phase === 'opaque' && !participant.hasOpaqueRenderers) return;
+            // Register before recording so a partial addon update is rolled back when recording
             // throws before the Render Graph can be submitted.
-            this.#recordedGPUParticleSystems.add(node);
-            node.recordGPU(context, color, depth, node.isGPUVisible(context.camera), phase);
+            this.#recordedGPUSceneParticipants.add(participant);
+            participant.record(context, color, depth, participant.isVisible(context.camera), phase);
         });
     }
 

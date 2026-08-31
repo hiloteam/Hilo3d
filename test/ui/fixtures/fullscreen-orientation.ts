@@ -1,4 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 
 function createFullscreenPass(
     renderer: Hilo3d.Renderer,
@@ -228,8 +229,8 @@ const particleCamera = new Hilo3d.OrthographicCamera({
     z: 3
 });
 particleCamera.lookAt(new Hilo3d.Vector3(0, 0, 0));
-const particleSystem = new Hilo3d.ParticleSystem({
-    definition: Hilo3d.ParticleSystemDefinition.create({
+const particleSystem = new Particle.ParticleSystem({
+    definition: Particle.ParticleSystemDefinition.create({
         emitters: [
             {
                 name: 'orientation-sprite',

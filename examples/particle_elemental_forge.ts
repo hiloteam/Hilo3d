@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 import { createExampleContext } from './shared/init';
 import {
     addParticlePedestal,
@@ -7,9 +8,11 @@ import {
     installExampleDisposal
 } from './shared/particleShowcase';
 
+const particlePlugin = Particle.createParticleStagePlugin({ budget: false });
 const context = await createExampleContext({
     camera: { fov: 44, near: 0.1, far: 80, x: 0, y: 1.15, z: 9.2 },
     stage: {
+        plugins: [particlePlugin],
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
             bloom: { threshold: 0.72, knee: 0.5, intensity: 0.66, scatter: 0.7, maxLevels: 6 },
             colorUber: {
@@ -32,6 +35,7 @@ const context = await createExampleContext({
     }
 });
 const { stage, renderer, directionLight, ambientLight } = context;
+const particles = stage.pluginHost.get(Particle.PARTICLE_STAGE_SERVICE);
 
 renderer.clearColor.set(0.002, 0.004, 0.014, 1);
 directionLight.amount = 2.2;
@@ -45,7 +49,7 @@ const ringTexture = createParticleTexture({ style: 'ring' });
 const smokeTexture = createParticleTexture({ style: 'smoke' });
 const atlasTexture = createParticleAtlas();
 
-const growThenFade = new Hilo3d.ParticleCurve(
+const growThenFade = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.05 },
         { time: 0.18, value: 1 },
@@ -54,12 +58,12 @@ const growThenFade = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-const emberSize = new Hilo3d.ParticleCurve([
+const emberSize = new Particle.ParticleCurve([
     { time: 0, value: 0.25 },
     { time: 0.12, value: 1 },
     { time: 1, value: 0.08 }
 ]);
-const spinCurve = new Hilo3d.ParticleCurve(
+const spinCurve = new Particle.ParticleCurve(
     [
         { time: 0, value: -1.2 },
         { time: 0.5, value: 1.4 },
@@ -69,17 +73,20 @@ const spinCurve = new Hilo3d.ParticleCurve(
 );
 
 function createSystem(
-    definition: Readonly<Hilo3d.ParticleEmitterDefinitionInput>,
+    definition: Readonly<Particle.ParticleEmitterDefinitionInput>,
     position: readonly [number, number, number],
     seed: number
-): Hilo3d.ParticleSystem {
-    return new Hilo3d.ParticleSystem({
-        x: position[0],
-        y: position[1],
-        z: position[2],
-        definition: Hilo3d.ParticleSystemDefinition.create({ emitters: [definition] }),
-        seed
-    }).addTo(stage);
+): Particle.ParticleSystem {
+    return particles.createSystem(
+        {
+            x: position[0],
+            y: position[1],
+            z: position[2],
+            definition: Particle.ParticleSystemDefinition.create({ emitters: [definition] }),
+            seed
+        },
+        stage
+    );
 }
 
 const fire = createSystem(
@@ -113,7 +120,7 @@ const fire = createSystem(
             { type: 'size-over-lifetime', curve: growThenFade },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [1, 0.96, 0.72, 1] },
                     { time: 0.22, color: [1, 0.32, 0.025, 0.95] },
                     { time: 0.72, color: [0.72, 0.03, 0.018, 0.55] },
@@ -160,7 +167,7 @@ createSystem(
             { type: 'size-over-lifetime', curve: growThenFade },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [1, 1, 0.8, 1] },
                     { time: 0.35, color: [1, 0.3, 0.04, 0.92] },
                     { time: 1, color: [0.8, 0.02, 0.12, 0] }
@@ -204,7 +211,7 @@ createSystem(
             { type: 'size-over-lifetime', curve: growThenFade },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [0.92, 1, 1, 0] },
                     { time: 0.18, color: [0.35, 0.92, 1, 0.9] },
                     { time: 0.72, color: [0.25, 0.42, 1, 0.48] },
@@ -248,7 +255,7 @@ createSystem(
             {
                 type: 'color-by-speed',
                 speedRange: [0, 2],
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [0.2, 0.12, 1, 0.5] },
                     { time: 0.55, color: [0.7, 0.18, 1, 0.9] },
                     { time: 1, color: [0.2, 0.92, 1, 1] }
@@ -290,7 +297,7 @@ createSystem(
             { type: 'size-over-lifetime', curve: emberSize },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [1, 0.55, 0.08, 1] },
                     { time: 0.7, color: [0.28, 0.62, 1, 0.62] },
                     { time: 1, color: [0.08, 0.15, 0.4, 0] }
@@ -395,7 +402,7 @@ createSystem(
             { type: 'size-over-lifetime', curve: growThenFade },
             {
                 type: 'color-over-lifetime',
-                gradient: new Hilo3d.ParticleGradient([
+                gradient: new Particle.ParticleGradient([
                     { time: 0, color: [0.18, 0.38, 0.8, 0] },
                     { time: 0.3, color: [0.22, 0.5, 1, 0.2] },
                     { time: 1, color: [0.5, 0.16, 0.8, 0] }

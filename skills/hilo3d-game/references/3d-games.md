@@ -9,7 +9,7 @@
 - [Load glTF assets](#load-gltf-assets)
 - [Drive character and camera movement](#drive-character-and-camera-movement)
 - [Use picking for world interaction](#use-picking-for-world-interaction)
-- [Integrate physics with cannon-es](#integrate-physics-with-cannon-es)
+- [Integrate the optional Rapier plugin](#integrate-the-optional-rapier-plugin)
 - [Design a complete 3D vertical slice](#design-a-complete-3d-vertical-slice)
 
 ## Create a world with visible scale
@@ -202,34 +202,45 @@ interactable.on('click', event => {
 For aiming or editor-like tools, call `stage.getMeshResultAtPoint(x, y, true)` with Stage logical
 coordinates. Use `Ray` and `Mesh.raycast()` for explicit ray tests.
 
-## Integrate physics with cannon-es
+## Integrate the optional Rapier plugin
 
-Hilo3D does not hide physics behind render objects. Keep one mapping from Mesh to physics Body:
+Install `@hilo3d/addon-physics` and the dimension-specific Rapier peer. The addon owns fixed-step
+scheduling and keeps native Rapier objects behind a portable API:
 
-```ts
-import * as CANNON from 'cannon-es';
-
-const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.8, 0)
-});
-
-const body = new CANNON.Body({
-    mass: 1,
-    shape: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))
-});
-world.addBody(body);
+```sh
+npm install @hilo3d/addon-physics @dimforge/rapier3d-compat
 ```
 
-Fixed-step the world and copy transforms into the Mesh before Stage rendering:
-
 ```ts
-world.step(1 / 60, Math.min(dtMilliseconds, 100) / 1000, 3);
-mesh.position.set(body.position.x, body.position.y, body.position.z);
-mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+import {
+    PHYSICS_WORLD_3D_SERVICE,
+    bindNode3D,
+    createRapier3DPhysicsPlugin
+} from '@hilo3d/addon-physics/rapier3d';
+
+const physicsPlugin = createRapier3DPhysicsPlugin({
+    gravity: { x: 0, y: -9.81, z: 0 },
+    fixedTimeStep: 1 / 60,
+    maxSubSteps: 4
+});
+const stage = await Hilo3d.Stage.create({
+    backend: 'auto',
+    camera,
+    plugins: [physicsPlugin]
+});
+
+const world = stage.pluginHost.get(PHYSICS_WORLD_3D_SERVICE);
+const body = world.createRigidBody({
+    type: 'dynamic',
+    position: { x: 0, y: 4, z: 0 }
+});
+world.createCollider({ shape: { type: 'cuboid', halfExtents: { x: 0.5, y: 0.5, z: 0.5 } } }, body);
+bindNode3D(world, body, mesh);
 ```
 
-Use simple collision shapes and remove bodies when entities despawn. Avoid allocating vectors in the
-synchronization loop.
+Use `@hilo3d/addon-physics/rapier2d` for XY simulation. Keep gameplay identity outside native
+handles, use simple or convex shapes for dynamic objects, remove bodies when entities despawn, and
+let `stage.destroy()` own plugin teardown. Import neither addon when the game does not need physics.
 
 ## Design a complete 3D vertical slice
 

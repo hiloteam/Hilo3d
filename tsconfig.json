@@ -2,6 +2,8 @@
   "files": [],
   "references": [
     { "path": "./tsconfig.lib.json" },
+    { "path": "./addon-particle/tsconfig.json" },
+    { "path": "./addon-physics/tsconfig.json" },
     { "path": "./tsconfig.test.json" },
     { "path": "./tsconfig.examples.json" },
     { "path": "./tsconfig.node.json" }
