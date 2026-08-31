@@ -993,7 +993,7 @@ metadata，也不支持任意可执行 graph。
 ```text
 addon-particle/src/
   index.ts
-  ParticleStagePlugin.ts
+  ParticleStageSystem.ts
   ParticleAuthoring.ts
   ParticleAuthoringPreview.ts
   ParticleBaking.ts

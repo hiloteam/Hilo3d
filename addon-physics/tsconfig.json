@@ -4,8 +4,9 @@
   "compilerOptions": {
     "composite": true,
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "sourceMap": true,
+    "inlineSources": true,
     "rootDir": "./src",
     "outDir": "./dist",
     "tsBuildInfoFile": "./.cache/tsconfig.tsbuildinfo",

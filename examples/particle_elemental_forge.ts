@@ -8,11 +8,11 @@ import {
     installExampleDisposal
 } from './shared/particleShowcase';
 
-const particlePlugin = Particle.createParticleStagePlugin({ budget: false });
+const particleSystem = Particle.createParticleStageSystem({ budget: false });
 const context = await createExampleContext({
     camera: { fov: 44, near: 0.1, far: 80, x: 0, y: 1.15, z: 9.2 },
     stage: {
-        plugins: [particlePlugin],
+        systems: [particleSystem],
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
             bloom: { threshold: 0.72, knee: 0.5, intensity: 0.66, scatter: 0.7, maxLevels: 6 },
             colorUber: {
@@ -35,7 +35,7 @@ const context = await createExampleContext({
     }
 });
 const { stage, renderer, directionLight, ambientLight } = context;
-const particles = stage.pluginHost.get(Particle.PARTICLE_STAGE_SERVICE);
+const particles = stage.systems.get(Particle.PARTICLE_STAGE_SERVICE);
 
 renderer.clearColor.set(0.002, 0.004, 0.014, 1);
 directionLight.amount = 2.2;

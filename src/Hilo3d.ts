@@ -29,15 +29,15 @@ export {
 } from './core/Node';
 export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
 export {
-    createStagePluginService,
-    STAGE_PLUGIN_API_VERSION,
-    type StagePlugin,
-    type StagePluginDescriptor,
-    StagePluginHost,
-    type StagePluginRuntime,
-    StagePluginService,
-    type StagePluginSetupContext
-} from './core/StagePlugin';
+    createStageSystemService,
+    STAGE_SYSTEM_API_VERSION,
+    type StageSystem,
+    type StageSystemDescriptor,
+    StageSystemRegistry,
+    type StageSystemRuntime,
+    StageSystemService,
+    type StageSystemSetupContext
+} from './core/StageSystem';
 export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
 export {
     default as Stage,

@@ -40,13 +40,13 @@
 
 ### Changes
 
-- Add the versioned, dependency-aware public Stage plugin ABI with typed services, transactional
+- Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
   asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
   teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded
   fixed stepping, interpolated Hilo node bindings, bodies, colliders, joints, events, filtered ray
   and shape queries, bounded overlaps, point projection, kinematic character controllers, snapshots,
   debug geometry, diagnostics, and independently importable Rapier 2D/3D adapters. Replace the
-  Cannon example and dependency with a Rapier 3D plugin example.
+  Cannon example and dependency with a Rapier 3D System example.
 - Move the authored particle runtime out of the `hilo3d` entry into the independently tree-shakable
   `@hilo3d/addon-particle` ESM package. Add a Stage-owned particle runtime and frame budget service,
   route addon rendering through a generic core render-node capability, migrate maintained particle

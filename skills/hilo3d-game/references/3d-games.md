@@ -9,7 +9,7 @@
 - [Load glTF assets](#load-gltf-assets)
 - [Drive character and camera movement](#drive-character-and-camera-movement)
 - [Use picking for world interaction](#use-picking-for-world-interaction)
-- [Integrate the optional Rapier plugin](#integrate-the-optional-rapier-plugin)
+- [Integrate the optional Rapier System](#integrate-the-optional-rapier-system)
 - [Design a complete 3D vertical slice](#design-a-complete-3d-vertical-slice)
 
 ## Create a world with visible scale
@@ -202,7 +202,7 @@ interactable.on('click', event => {
 For aiming or editor-like tools, call `stage.getMeshResultAtPoint(x, y, true)` with Stage logical
 coordinates. Use `Ray` and `Mesh.raycast()` for explicit ray tests.
 
-## Integrate the optional Rapier plugin
+## Integrate the optional Rapier System
 
 Install `@hilo3d/addon-physics` and the dimension-specific Rapier peer. The addon owns fixed-step
 scheduling and keeps native Rapier objects behind a portable API:
@@ -215,10 +215,10 @@ npm install @hilo3d/addon-physics @dimforge/rapier3d-compat
 import {
     PHYSICS_WORLD_3D_SERVICE,
     bindNode3D,
-    createRapier3DPhysicsPlugin
+    createRapier3DPhysicsSystem
 } from '@hilo3d/addon-physics/rapier3d';
 
-const physicsPlugin = createRapier3DPhysicsPlugin({
+const physicsSystem = createRapier3DPhysicsSystem({
     gravity: { x: 0, y: -9.81, z: 0 },
     fixedTimeStep: 1 / 60,
     maxSubSteps: 4
@@ -226,10 +226,10 @@ const physicsPlugin = createRapier3DPhysicsPlugin({
 const stage = await Hilo3d.Stage.create({
     backend: 'auto',
     camera,
-    plugins: [physicsPlugin]
+    systems: [physicsSystem]
 });
 
-const world = stage.pluginHost.get(PHYSICS_WORLD_3D_SERVICE);
+const world = stage.systems.get(PHYSICS_WORLD_3D_SERVICE);
 const body = world.createRigidBody({
     type: 'dynamic',
     position: { x: 0, y: 4, z: 0 }
@@ -240,7 +240,7 @@ bindNode3D(world, body, mesh);
 
 Use `@hilo3d/addon-physics/rapier2d` for XY simulation. Keep gameplay identity outside native
 handles, use simple or convex shapes for dynamic objects, remove bodies when entities despawn, and
-let `stage.destroy()` own plugin teardown. Import neither addon when the game does not need physics.
+let `stage.destroy()` own System teardown. Import neither addon when the game does not need physics.
 
 ## Design a complete 3D vertical slice
 

@@ -119,9 +119,9 @@ export { ParticleSystemPool } from './ParticleSystemPool.js';
 export {
     PARTICLE_STAGE_SERVICE,
     ParticleStageRuntime,
-    createParticleStagePlugin,
-    type ParticleStagePluginOptions
-} from './ParticleStagePlugin.js';
+    createParticleStageSystem,
+    type ParticleStageSystemOptions
+} from './ParticleStageSystem.js';
 export {
     analyzeParticleStatelessEligibility,
     particleStatelessBlockingDiagnostics,

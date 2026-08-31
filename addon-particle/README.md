@@ -8,15 +8,15 @@ import * as Hilo3d from 'hilo3d';
 import {
     PARTICLE_STAGE_SERVICE,
     ParticleSystemDefinition,
-    createParticleStagePlugin
+    createParticleStageSystem
 } from '@hilo3d/addon-particle';
 
-const particlePlugin = createParticleStagePlugin();
+const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({
     camera,
-    plugins: [particlePlugin]
+    systems: [particleSystem]
 });
-const particles = stage.pluginHost.get(PARTICLE_STAGE_SERVICE);
+const particles = stage.systems.get(PARTICLE_STAGE_SERVICE);
 const definition = ParticleSystemDefinition.create({
     emitters: [
         {
@@ -33,6 +33,6 @@ const definition = ParticleSystemDefinition.create({
 particles.createSystem({ definition, seed: 42 });
 ```
 
-The Stage plugin owns registered systems, applies one optional frame-wide budget, and destroys
-renderer resources before Stage teardown. `ParticleSystem` can still be used directly when an
-application explicitly owns its lifecycle.
+The Stage System owns registered particle nodes, applies one optional frame-wide budget, and
+destroys renderer resources before Stage teardown. `ParticleSystem` can still be used directly when
+an application explicitly owns its lifecycle.

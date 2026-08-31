@@ -4,8 +4,8 @@ import type { RendererContract } from '../Renderer';
 import type { RenderPipelineContext } from './RenderPipeline';
 import type { RenderGraphTextureHandle } from './ScriptableRenderGraph';
 
-/** Stable symbol used by optional addons to attach renderer lifecycle behavior to a scene node. */
-export const RENDER_NODE_EXTENSION = Symbol('hilo3d.render-node-extension.v1');
+/** Process-global symbol used by optional addons to attach renderer behavior across package copies. */
+export const RENDER_NODE_EXTENSION = Symbol.for('hilo3d.render-node-extension.v1');
 
 /** GPU graph contribution owned by an optional scene-node addon. */
 export interface RenderNodeGPUExtension {

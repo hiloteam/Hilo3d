@@ -1757,7 +1757,7 @@ export const constants: {
 export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public
-export function createStagePluginService<T>(name: string): StagePluginService<T>;
+export function createStageSystemService<T>(name: string): StageSystemService<T>;
 
 // @public (undocumented)
 export function createStd140Layout<const Schema extends Std140Schema>(schema: Schema): Std140Layout<Schema>;
@@ -8241,13 +8241,12 @@ export class Stage<Backend extends RendererBackend = RendererBackend> extends No
     fog: Fog | null;
     getMeshResultAtPoint(x: number, y: number, eventMode?: boolean): NodeRaycastInfo | null;
     height: number;
-    installPlugin(plugin: StagePlugin): Promise<this>;
+    installSystem(system: StageSystem): Promise<this>;
     // (undocumented)
     isStage: boolean;
     offsetX: number;
     offsetY: number;
     pixelRatio: number;
-    readonly pluginHost: StagePluginHost;
     readonly ready: Promise<void>;
     releaseGPUResources(): this;
     removeCamera(camera: Camera): this;
@@ -8259,17 +8258,18 @@ export class Stage<Backend extends RendererBackend = RendererBackend> extends No
     resize(width: number, height: number, pixelRatio?: number, force?: boolean): this;
     setCameras(cameras: readonly Camera[]): this;
     setOffset(x: number, y: number): this;
+    readonly systems: StageSystemRegistry;
     tick(dt: number): this;
     // (undocumented)
     static readonly typeName: string;
-    uninstallPlugin(id: string): this;
+    uninstallSystem(id: string): this;
     updateDomViewport(): DOMViewport;
     viewport(x: number, y: number, width: number, height: number): this;
     width: number;
 }
 
 // @public
-export const STAGE_PLUGIN_API_VERSION: 1;
+export const STAGE_SYSTEM_API_VERSION: 1;
 
 // @public
 export type StageBackend = RendererBackend | 'auto';
@@ -8319,13 +8319,13 @@ export interface StageCommonParameters extends NodeParameters {
     height?: number;
     // (undocumented)
     pixelRatio?: number;
-    plugins?: readonly StagePlugin[];
     // (undocumented)
     premultipliedAlpha?: boolean;
     renderingProfile?: RendererRenderingProfile;
     renderPipeline?: RenderPipelineFactory;
     // (undocumented)
     stencil?: boolean;
+    systems?: readonly StageSystem[];
     // (undocumented)
     useInstanced?: boolean;
     // (undocumented)
@@ -8338,61 +8338,6 @@ export interface StageCommonParameters extends NodeParameters {
 export type StageParameters<Backend extends StageBackend = 'auto'> = StageCommonParameters & {
     backend?: Backend;
 } & StageBackendParameters<Backend>;
-
-// @public
-export interface StagePlugin {
-    readonly descriptor: StagePluginDescriptor;
-    setup(context: StagePluginSetupContext): StagePluginRuntime | Promise<StagePluginRuntime>;
-}
-
-// @public
-export interface StagePluginDescriptor {
-    readonly apiVersion: typeof STAGE_PLUGIN_API_VERSION;
-    readonly id: string;
-    readonly requires?: readonly string[];
-    readonly version: string;
-}
-
-// @public
-export class StagePluginHost {
-    constructor(stage: Stage);
-    destroy(): void;
-    get<T>(service: StagePluginService<T>): T;
-    getOptional<T>(service: StagePluginService<T>): T | undefined;
-    getRuntime(id: string): StagePluginRuntime | undefined;
-    has(id: string): boolean;
-    initialize(plugins: readonly StagePlugin[]): Promise<void>;
-    install(plugin: StagePlugin): Promise<void>;
-    runAfterRender(): void;
-    runAfterUpdate(deltaTimeMilliseconds: number): void;
-    runBeforeRender(): void;
-    runBeforeUpdate(deltaTimeMilliseconds: number): void;
-    readonly stage: Stage;
-    uninstall(id: string): void;
-}
-
-// @public
-export interface StagePluginRuntime {
-    afterRender?(): void;
-    afterUpdate?(deltaTimeMilliseconds: number): void;
-    beforeRender?(): void;
-    beforeUpdate?(deltaTimeMilliseconds: number): void;
-    destroy?(): void;
-}
-
-// @public
-export class StagePluginService<T> {
-    constructor(name: string);
-    readonly name: string;
-}
-
-// @public
-export interface StagePluginSetupContext {
-    get<T>(service: StagePluginService<T>): T;
-    getOptional<T>(service: StagePluginService<T>): T | undefined;
-    provide<T>(service: StagePluginService<T>, value: T): void;
-    readonly stage: Stage;
-}
 
 // @public (undocumented)
 export interface StagePointerEvent extends NodePointerEvent {
@@ -8408,6 +8353,64 @@ export interface StagePointerEvent extends NodePointerEvent {
     stageY: number;
     // (undocumented)
     stopPropagation(): void;
+}
+
+// @public
+export interface StageSystem {
+    readonly descriptor: StageSystemDescriptor;
+    setup(context: StageSystemSetupContext): StageSystemRuntime | Promise<StageSystemRuntime>;
+}
+
+// @public
+export interface StageSystemDescriptor {
+    readonly after?: readonly string[];
+    readonly apiVersion: typeof STAGE_SYSTEM_API_VERSION;
+    readonly before?: readonly string[];
+    readonly id: string;
+    readonly provides?: readonly StageSystemService<unknown>[];
+    readonly requires?: readonly string[];
+    readonly version: string;
+}
+
+// @public
+export class StageSystemRegistry {
+    constructor(stage: Stage);
+    destroy(): void;
+    get<T>(service: StageSystemService<T>): T;
+    getOptional<T>(service: StageSystemService<T>): T | undefined;
+    getRuntime(id: string): StageSystemRuntime | undefined;
+    has(id: string): boolean;
+    initialize(systems: readonly StageSystem[]): Promise<void>;
+    install(system: StageSystem): Promise<void>;
+    runAfterRender(): void;
+    runAfterUpdate(deltaTimeMilliseconds: number): void;
+    runBeforeRender(): void;
+    runBeforeUpdate(deltaTimeMilliseconds: number): void;
+    readonly stage: Stage;
+    uninstall(id: string): void;
+}
+
+// @public
+export interface StageSystemRuntime {
+    afterRender?(): void;
+    afterUpdate?(deltaTimeMilliseconds: number): void;
+    beforeRender?(): void;
+    beforeUpdate?(deltaTimeMilliseconds: number): void;
+    destroy?(): void;
+}
+
+// @public
+export class StageSystemService<T> {
+    constructor(name: string);
+    readonly name: string;
+}
+
+// @public
+export interface StageSystemSetupContext {
+    get<T>(service: StageSystemService<T>): T;
+    getOptional<T>(service: StageSystemService<T>): T | undefined;
+    provide<T>(service: StageSystemService<T>, value: T): void;
+    readonly stage: Stage;
 }
 
 // @public (undocumented)

@@ -1,9 +1,9 @@
 import {
-    STAGE_PLUGIN_API_VERSION,
-    createStagePluginService,
+    STAGE_SYSTEM_API_VERSION,
+    createStageSystemService,
     type Node,
     type Stage,
-    type StagePlugin
+    type StageSystem
 } from 'hilo3d';
 import {
     ParticleBudgetManager,
@@ -13,15 +13,15 @@ import {
 import ParticleSystem, { type ParticleSystemParameters } from './ParticleSystem.js';
 
 /** Stage service that owns optional particle systems and their frame-wide quality budget. */
-export const PARTICLE_STAGE_SERVICE = createStagePluginService<ParticleStageRuntime>(
+export const PARTICLE_STAGE_SERVICE = createStageSystemService<ParticleStageRuntime>(
     '@hilo3d/addon-particle/runtime'
 );
 
-/** Configuration for the standard optional particle Stage plugin. */
-export interface ParticleStagePluginOptions {
+/** Configuration for the standard optional particle Stage System. */
+export interface ParticleStageSystemOptions {
     /** Frame-wide quality budget. Pass `false` to disable automatic allocation. */
     readonly budget?: Readonly<ParticleBudgetProfile> | false;
-    /** Create initial systems while plugin setup is still transactional. */
+    /** Create initial systems while System setup is still transactional. */
     readonly setup?: (runtime: ParticleStageRuntime, stage: Stage) => void | Promise<void>;
 }
 
@@ -44,7 +44,7 @@ export class ParticleStageRuntime {
         return Object.freeze([...this.#systems]);
     }
 
-    /** Create, register, and attach one particle system. */
+    /** Create, register, and attach one particle system compiled for the owning Stage backend. */
     createSystem(
         parameters: Readonly<ParticleSystemParameters>,
         parent: Node = this.stage
@@ -55,7 +55,20 @@ export class ParticleStageRuntime {
                 'ParticleStageRuntime.createSystem owns attachment; pass the parent argument instead.'
             );
         }
-        const system = new ParticleSystem(parameters);
+        const backend = this.stage.renderer.backend;
+        const requestedBackend = parameters.compilationEnvironment?.backend;
+        if (requestedBackend !== undefined && requestedBackend !== backend) {
+            throw new TypeError(
+                `Particle compilation backend ${requestedBackend} conflicts with owning Stage backend ${backend}.`
+            );
+        }
+        const system = new ParticleSystem({
+            ...parameters,
+            compilationEnvironment: {
+                ...parameters.compilationEnvironment,
+                backend
+            }
+        });
         try {
             this.manage(system, parent);
         } catch (cause) {
@@ -65,9 +78,15 @@ export class ParticleStageRuntime {
         return system;
     }
 
-    /** Register an existing system and attach it to an application-owned scene parent. */
+    /** Register an existing compatible system and attach it to an application-owned scene parent. */
     manage(system: ParticleSystem, parent: Node = this.stage): ParticleSystem {
         this.requireActive();
+        const compiledBackend = system.compilationBackend;
+        if (compiledBackend !== undefined && compiledBackend !== this.stage.renderer.backend) {
+            throw new TypeError(
+                `ParticleSystem compiled for ${compiledBackend} cannot be managed by a ${this.stage.renderer.backend} Stage.`
+            );
+        }
         let ancestor: Node | null = parent;
         while (ancestor.parent !== null) ancestor = ancestor.parent;
         if (ancestor !== this.stage) {
@@ -126,20 +145,21 @@ export class ParticleStageRuntime {
     }
 }
 
-/** Create the standard particle plugin without adding particle code to the Hilo3D entry. */
-export function createParticleStagePlugin(
-    options: Readonly<ParticleStagePluginOptions> = {}
-): StagePlugin {
+/** Create the standard particle System without adding particle code to the Hilo3D entry. */
+export function createParticleStageSystem(
+    options: Readonly<ParticleStageSystemOptions> = {}
+): StageSystem {
     return {
         descriptor: {
             id: '@hilo3d/addon-particle',
             version: '0.1.0',
-            apiVersion: STAGE_PLUGIN_API_VERSION
+            apiVersion: STAGE_SYSTEM_API_VERSION,
+            provides: [PARTICLE_STAGE_SERVICE]
         },
         async setup(context) {
             const runtime = new ParticleStageRuntime(context.stage, options.budget ?? {});
-            context.provide(PARTICLE_STAGE_SERVICE, runtime);
             try {
+                context.provide(PARTICLE_STAGE_SERVICE, runtime);
                 await options.setup?.(runtime, context.stage);
             } catch (cause) {
                 try {
@@ -147,7 +167,7 @@ export function createParticleStagePlugin(
                 } catch (destroyCause) {
                     throw new AggregateError(
                         [cause, destroyCause],
-                        'Particle plugin setup and rollback both failed.',
+                        'Particle System setup and rollback both failed.',
                         { cause: destroyCause }
                     );
                 }

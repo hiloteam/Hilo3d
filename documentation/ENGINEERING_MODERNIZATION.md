@@ -69,6 +69,25 @@
 | CI/发布  | 老版本 Actions、Node 与零散命令                         | 固定 Node 20.19.0、npm 10、Chromium 与单一完整发布门禁                     |
 | 文档站点 | 跟踪旧生成物                                            | CI 现场生成 TypeDoc 与 Vite 示例站点并部署 Pages                           |
 
+### 多包与 workspace 决策
+
+仓库采用一个 Git 仓库、一个 lockfile 和一组根级质量门禁管理多个独立发布包，也就是 npm workspaces
+monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布边界是根目录的 `hilo3d` 核心包，以及
+`addon-particle/`、`addon-physics/` 两个 workspace：
+
+- 粒子和物理，尤其 Rapier WASM，保持独立包和显式导入，未使用的能力不会进入核心依赖图；
+- addon 用 peer dependency 声明支持的核心版本，用本地 `file:..` dev
+  dependency 解析同仓核心，避免开发与 CI 意外加载 npm registry 中的旧版 `hilo3d`；
+- 每个公开 export 都有 API Extractor 报告；JavaScript source map 内嵌 source
+  content，addon 不发布会引用缺失 `../src` 的 declaration map；
+- 发布门禁把核心与 addon 的实际 tarball 安装进空 consumer，并运行所有根入口和 Rapier
+  subpath 的真实 ESM import。仅做 `publint`、声明检查或 dry-run 不足以证明 peer 版本可运行。
+
+保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前三个包尚不足以证明把根核心整体搬到
+`packages/hilo3d/`
+的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
+`packages/*`，不改变上述发布边界。
+
 ## 语言与架构
 
 ### 严格 TypeScript 全覆盖
@@ -133,10 +152,11 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
   `logGLResource()` 已从公共入口和源码删除。
 - 物理能力位于独立的 `@hilo3d/addon-physics` ESM workspace；主 `hilo3d`
   入口不引用物理代码或 WASM。当前 `/rapier2d` 与 `/rapier3d` 入口分别使用 Rapier 的 2D/3D
-  compat 包，并通过公共 Stage 插件 ABI 接入；原 Cannon 依赖与示例已删除。原 Draco 示例适配器及演示资产已退出：上游只提供 UMD/CommonJS 风格的浏览器 wrapper，而可用的纯 TypeScript 候选无法通过本仓库的严格 TypeScript
+  compat 包，并通过公共 Stage System
+  ABI 接入；原 Cannon 依赖与示例已删除。原 Draco 示例适配器及演示资产已退出：上游只提供 UMD/CommonJS 风格的浏览器 wrapper，而可用的纯 TypeScript 候选无法通过本仓库的严格 TypeScript
   6 声明检查；不通过构建期字符串改写、假声明或 `skipLibCheck` 伪装成现代模块。
 - 粒子能力位于独立的 `@hilo3d/addon-particle` ESM workspace；主入口仅保留通用的
-  `RenderNodeExtension` 和 Stage 插件 ABI，不导入粒子系统。粒子包通过 typed Stage
+  `RenderNodeExtension` 和 Stage System ABI，不导入粒子系统。粒子包通过 typed Stage
   service 托管系统、帧级预算与 renderer-before-teardown 销毁，也保留显式生命周期的独立构造方式。
 - 示例画廊只保留仍能说明当前引擎能力的加载路径。OSG、SMD、TGA 等历史格式示例及其大体积专用资产已经移除；glTF、CanvasTexture、HDR 与压缩纹理示例继续使用严格 TypeScript 和受支持的公共 API。
 - 示例运行时资源来自仓库或 npm 依赖，不依赖第三方 CDN 才能通过测试。

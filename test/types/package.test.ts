@@ -8,6 +8,7 @@ import {
     ComputeSampler,
     ComputeShader,
     constants,
+    createStageSystemService,
     createStorageLayout,
     DEFAULT_MATERIAL_PIPELINE_STATE,
     DirectionalLight,
@@ -25,6 +26,7 @@ import {
     SCENE_STORAGE_BIND_GROUP,
     SceneRenderPass,
     Stage,
+    STAGE_SYSTEM_API_VERSION,
     SpotLight,
     StorageGraphicsShader,
     TemporalAA,
@@ -83,6 +85,7 @@ import {
     type ScriptableRenderGraph,
     type StageParameters,
     type StageBackend,
+    type StageSystem,
     type StagePointerEvent,
     type ShadowCastingLightParameters,
     type TextureCompressionFormat,
@@ -102,9 +105,11 @@ import {
     ParticleSystem,
     ParticleSystemDefinition,
     ParticleSystemPool,
+    PARTICLE_STAGE_SERVICE,
     analyzeParticleStatelessEligibility,
     compileParticleAuthoringGraph,
     createParticleAuthoringGraph,
+    createParticleStageSystem,
     deserializeParticleSystemDefinition,
     parseParticleSystemDefinitionJSON,
     PARTICLE_DEFINITION_SCHEMA,
@@ -137,6 +142,9 @@ import {
     type ParticleSystemDefinitionInput,
     type ParticleSystemParameters
 } from '@hilo3d/addon-particle';
+import { createPhysicsStageSystem } from '@hilo3d/addon-physics';
+import { createRapier2DPhysicsSystem } from '@hilo3d/addon-physics/rapier2d';
+import { createRapier3DPhysicsSystem } from '@hilo3d/addon-physics/rapier3d';
 
 const clusteredGeometry = new BoxGeometry();
 const clusteredMaterial = new PBRMaterial({ clearcoatFactor: 0.5 });
@@ -192,12 +200,31 @@ const rendererParameters = {
 } satisfies RendererWebGL2Options;
 const webglRendererPromise: Promise<Renderer<'webgl2'>> = Renderer.create(rendererParameters);
 const renderer = await webglRendererPromise;
+const exampleService = createStageSystemService<number>('example/value');
+const exampleSystem = {
+    descriptor: {
+        id: 'example/system',
+        version: '1.0.0',
+        apiVersion: STAGE_SYSTEM_API_VERSION,
+        provides: [exampleService]
+    },
+    setup(context) {
+        context.provide(exampleService, 1);
+        return {};
+    }
+} satisfies StageSystem;
 const stageParameters = {
     camera,
     width: rendererParameters.width,
-    height: rendererParameters.height
+    height: rendererParameters.height,
+    systems: [exampleSystem]
 } satisfies StageParameters;
 const stage = await Stage.create(stageParameters);
+void PARTICLE_STAGE_SERVICE;
+void createParticleStageSystem;
+void createPhysicsStageSystem;
+void createRapier2DPhysicsSystem;
+void createRapier3DPhysicsSystem;
 const orbitControlsOptions = {
     camera,
     target: new Vector3(0, 0, 0),

@@ -27,7 +27,7 @@ through the typed native extension. These omissions are release boundaries, not 
 application
   ├─ hilo3d                         render/scene core; no physics import
   └─ @hilo3d/addon-physics
-       ├─ package root              portable types, scheduler, plugin, Hilo node bridges
+       ├─ package root              portable types, scheduler, System, Hilo node bridges
        ├─ /rapier2d                 portable API + Rapier 2D WASM adapter only
        └─ /rapier3d                 portable API + Rapier 3D WASM adapter only
 ```
@@ -37,51 +37,59 @@ dependencies. A consumer installing only `hilo3d` receives no physics code; a 3D
 only `/rapier3d` and does not load the 2D module. The package is declared side-effect-free so an
 unused addon can be tree-shaken.
 
-The root engine knows only the small, general `StagePlugin` ABI. It does not mention Rapier, physics
+The root engine knows only the small, general `StageSystem` ABI. It does not mention Rapier, physics
 bodies, or WASM.
 
-## Stage plugin standard
+## Stage System standard
 
-Every plugin is a reusable factory with immutable metadata and a fresh runtime per Stage:
+Every System is a reusable factory with immutable metadata and a fresh runtime per Stage:
 
 ```ts
-interface StagePlugin {
+interface StageSystem {
     readonly descriptor: {
         readonly id: string;
         readonly version: string;
         readonly apiVersion: 1;
         readonly requires?: readonly string[];
+        readonly before?: readonly string[];
+        readonly after?: readonly string[];
+        readonly provides?: readonly StageSystemService<unknown>[];
     };
-    setup(context: StagePluginSetupContext): StagePluginRuntime | Promise<StagePluginRuntime>;
+    setup(context: StageSystemSetupContext): StageSystemRuntime | Promise<StageSystemRuntime>;
 }
 ```
 
 The standard has these invariants:
 
-1. `Stage.create()` snapshots the plugin list, validates unique IDs, missing dependencies, cycles,
-   and the exact plugin ABI before setup starts.
+1. `Stage.create()` snapshots the System list, validates unique IDs, hard dependencies, ordering
+   cycles, declared service-provider conflicts, and the exact System ABI before setup starts.
 2. Setup runs in topological order and may be asynchronous. A failure rolls back already-created
    runtimes in reverse order and destroys the Stage.
-3. Plugins publish values through identity-based `StagePluginService<T>` tokens. Publications stay
-   private to setup and commit atomically with the runtime; string lookup and unchecked global
-   registries are not part of the contract.
-4. Frame hooks are synchronous, non-reentrant, and run in installation order. Mutation during hook
-   dispatch is rejected.
-5. A runtime can be removed only after all dependants. Destruction runs in reverse dependency order;
-   service access remains valid while its runtime is being destroyed.
-6. `Stage.destroy()` owns plugin teardown even when a renderer failure occurs. If destruction races
+3. Systems publish exactly their descriptor-declared, identity-based `StageSystemService<T>` tokens.
+   Publications stay private to setup and commit atomically with the runtime; string lookup and
+   unchecked global registries are not part of the contract.
+4. `requires` is a hard setup/lifecycle edge. `before` and `after` are soft execution edges that are
+   ignored when their target is absent, so independent addons do not need a shared numeric order
+   registry. All present edges participate in cycle detection.
+5. Ordering is compiled only when the installed set changes. Each frame phase walks a flat array of
+   only the callbacks that implement that phase; there is no per-frame graph sort or scan of
+   unrelated runtimes. Hooks are synchronous and non-reentrant, and mutation during a phase is
+   rejected.
+6. A runtime can be removed only after all hard dependants. Destruction runs in reverse compiled
+   order; service access remains valid while its runtime is being destroyed.
+7. `Stage.destroy()` owns System teardown even when a renderer failure occurs. If destruction races
    an asynchronous dynamic setup, the late runtime is destroyed instead of being installed. Multiple
    teardown failures are reported as an `AggregateError`.
 
 The per-frame order is:
 
 ```text
-plugin.beforeUpdate(dt)
+system.beforeUpdate(dt)
   -> Node/particle update
-  -> plugin.afterUpdate(dt)       physics fixed-step and transform output
-  -> plugin.beforeRender()
+  -> system.afterUpdate(dt)       physics fixed-step and transform output
+  -> system.beforeRender()
   -> shared Renderer / Render Graph / RHI
-  -> plugin.afterRender()         also runs when rendering throws
+  -> system.afterRender()         also runs when rendering throws
 ```
 
 This ABI is intentionally domain-neutral. Audio, navigation, networking, analytics, authoring, and
@@ -90,7 +98,7 @@ other optional systems can use the same lifecycle and service rules.
 ## Physics layers
 
 ```text
-Stage plugin / application lifecycle
+Stage System / application lifecycle
                   │
                   ▼
 PhysicsWorld<'2d' | '3d'>
