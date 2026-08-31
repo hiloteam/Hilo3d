@@ -579,7 +579,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         this.stagedMotionParticipation.push(record);
     }
 
-    /** @internal Stage and write one current/previous camera-relative instance transform. */
+    /** @internal Prepare and write one current/previous camera-relative instance transform. */
     writeInstanceModelMatrices(
         mesh: Mesh,
         current: Float32Array,

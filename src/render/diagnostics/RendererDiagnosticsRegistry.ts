@@ -3,7 +3,7 @@ import { RendererDiagnostics } from '../RendererDiagnostics';
 const diagnosticsByCanvas = new WeakMap<HTMLCanvasElement, RendererDiagnostics>();
 
 /**
- * Opt a canvas into renderer diagnostics before constructing its Renderer/Stage.
+ * Opt a canvas into renderer diagnostics before constructing its Renderer/Engine.
  * Registration is a setup-only operation; frame hot paths never consult this WeakMap.
  */
 export function registerRendererDiagnostics(

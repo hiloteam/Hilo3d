@@ -1,172 +1,131 @@
-import Node, { type NodeParameters } from './Node';
-import Ray from '../math/Ray';
-import Matrix4 from '../math/Matrix4';
-import type Vector3 from '../math/Vector3';
+import { BACK, FRONT, FRONT_AND_BACK } from '../constants/webgl';
 import type Geometry from '../geometry/Geometry';
 import type Material from '../material/MaterialInstance';
-import type { Renderer } from '../render/Renderer';
+import Matrix4 from '../math/Matrix4';
+import Ray from '../math/Ray';
+import type Vector3 from '../math/Vector3';
+import Sphere from '../math/Sphere';
 import type { ShaderOptions } from '../render/types';
-import { BACK, FRONT, FRONT_AND_BACK } from '../constants/webgl';
-const tempRay = new Ray();
-const tempMatrix4 = new Matrix4();
+import RenderTransformView, {
+    type RenderTransformViewParameters
+} from '../render/world/RenderTransformView';
 
-export interface MeshParameters extends NodeParameters {
-    geometry?: Geometry | null;
-    material?: Material | null;
-    useInstanced?: boolean;
-    frustumTest?: boolean;
-    renderOrder?: number;
-    castShadows?: boolean;
-    receiveShadows?: boolean;
-    /** Active direct-draw instances when geometry supplies per-instance vertex streams. */
-    instanceCount?: number;
+const TEMP_RAY = new Ray();
+const TEMP_MATRIX = new Matrix4();
+
+/** Parameters used to prepare one renderer-owned mesh view for extension integration. */
+export interface MeshParameters extends RenderTransformViewParameters {
+    readonly geometry?: Geometry | null;
+    readonly material?: Material | null;
+    readonly useInstanced?: boolean;
+    readonly frustumTest?: boolean;
+    readonly renderOrder?: number;
+    readonly castShadows?: boolean;
+    readonly receiveShadows?: boolean;
+    readonly instanceCount?: number;
 }
+
 /**
- * Mesh
- * @example
- * ```ts
- * const mesh = new Hilo3d.Mesh({
- *     geometry: new Hilo3d.BoxGeometry(),
- *     material: new Hilo3d.BasicMaterial({
- *         diffuse: new Hilo3d.Color(0.8, 0, 0)
- *     }),
- *     x:100,
- *     rotationX:30
- * });
- * stage.addChild(mesh);
- * ```
+ * Renderer-owned mesh view populated by RenderExtractionSystem.
+ *
+ * It is intentionally not public scene state and has no hierarchy, event dispatcher, update
+ * callback, component map, or resource-ownership behavior.
  */
-class Mesh extends Node {
-    static override readonly typeName: string = 'Mesh';
-    protected _isDestroyed = false;
-    override isMesh = true;
-    override className = 'Mesh';
+class Mesh extends RenderTransformView {
+    static readonly typeName: string = 'RenderMesh';
+    readonly isMesh = true;
+    isSprite = false;
+    isSkinnedMesh = false;
+    className = 'RenderMesh';
     geometry: Geometry | null = null;
     material: Material | null = null;
-    /**
-     * 是否使用 Instanced
-     */
     useInstanced = false;
-    /**
-     * 是否开启视锥体裁剪
-     */
     frustumTest = true;
-    /** Object ordering policy; it is intentionally independent of material identity. */
     renderOrder = 0;
-    /** Object participation in shadow-caster renderer lists. */
     castShadows = true;
-    /** Whether forward shading consumes scene shadow data for this object. */
     receiveShadows = true;
-    private _instanceCount = 1;
-    /**
-     * Active direct-draw instance count.
-     *
-     * Values above one require at least one `GeometryData` input with `stepMode: 'instance'`.
-     * Planner-owned `useInstanced` batching keeps its existing independent contract.
-     */
-    get instanceCount(): number {
-        return this._instanceCount;
+    readonly isDestroyed = false;
+    spriteUVRect: Float32Array | null = null;
+    spriteSizeAnchor: Float32Array | null = null;
+    spriteTint: ArrayLike<number> | null = null;
+    /** Extracted skin palette. Null for non-skinned render records. @internal */
+    jointMatrices: Float32Array | null = null;
+    /** Extracted morph weights. Null for non-morph render records. @internal */
+    morphWeights: Float32Array | null = null;
+    /** World-space culling sphere populated by RenderWorld extraction. @internal */
+    readonly worldBounds = new Sphere();
+    private instanceCountValue = 1;
+
+    constructor(parameters: MeshParameters = {}) {
+        super('RenderMesh');
+        Object.assign(this, parameters);
     }
-    set instanceCount(value: number) {
-        if (!Number.isSafeInteger(value) || value < 1) {
-            throw new RangeError('Mesh instanceCount must be a positive safe integer');
-        }
-        this._instanceCount = value;
-    }
-    /**
-     * @param params - 初始化参数，所有params都会复制到实例上
-     * - `params.geometry`: 几何体
-     * - `params.material`: 材质
-     */
-    constructor(params: MeshParameters = {}) {
-        super();
-        Object.assign(this, params);
-    }
-    /**
-     * clone 当前mesh
-     * @param isChild - 是否子元素
-     * @returns 返回clone的实例
-     */
-    override clone(isChild?: boolean): Mesh {
-        const node = super.clone(isChild);
-        if (!(node instanceof Mesh)) {
-            throw new TypeError('Mesh subclasses must construct Mesh-compatible instances.');
-        }
-        Object.assign(node, {
+
+    clone(_isChild?: boolean): Mesh {
+        void _isChild;
+        const Constructor = this.constructor as new (parameters?: MeshParameters) => Mesh;
+        const mesh = new Constructor({
+            name: this.name,
             geometry: this.geometry,
             material: this.material,
+            useInstanced: this.useInstanced,
+            frustumTest: this.frustumTest,
+            renderOrder: this.renderOrder,
+            castShadows: this.castShadows,
+            receiveShadows: this.receiveShadows,
             instanceCount: this.instanceCount
         });
-        return node;
+        mesh.worldMatrix.copy(this.worldMatrix);
+        mesh.worldMatrixVersion = this.worldMatrixVersion;
+        mesh.worldBounds.copy(this.worldBounds);
+        mesh.isSkinnedMesh = this.isSkinnedMesh;
+        mesh.jointMatrices = this.jointMatrices?.slice() ?? null;
+        mesh.morphWeights = this.morphWeights?.slice() ?? null;
+        return mesh;
     }
-    /**
-     * raycast
-     * @param ray -
-     * @param sort - 是否按距离排序
-     */
-    override raycast(ray: Ray, sort = true): Vector3[] | null {
-        if (!this.visible) {
-            return null;
-        }
-        const geometry = this.geometry;
-        const material = this.material;
-        const worldMatrix = this.worldMatrix;
-        if (geometry && material) {
-            tempMatrix4.invert(worldMatrix);
-            tempRay.copy(ray);
-            tempRay.transformMat4(tempMatrix4);
-            const cullMode = material.definition.getPass('forward')?.state.cullMode ?? 'back';
-            const raycastSide =
-                cullMode === 'back' ? FRONT : cullMode === 'front' ? BACK : FRONT_AND_BACK;
-            const res = geometry.raycast(tempRay, raycastSide, sort);
-            if (res) {
-                res.forEach(point => {
-                    point.transformMat4(worldMatrix);
-                });
-                return res;
-            }
-        }
-        return null;
+
+    get instanceCount(): number {
+        return this.instanceCountValue;
     }
-    /**
-     * 获取渲染选项值
-     * @param opt - 渲染选项值
-     * @returns 渲染选项值
-     */
-    getRenderOption(opt: ShaderOptions = {}): ShaderOptions {
-        this.geometry?.getRenderOption(opt);
-        return opt;
+
+    set instanceCount(value: number) {
+        if (!Number.isSafeInteger(value) || value < 1) {
+            throw new RangeError('Render mesh instanceCount must be a positive safe integer.');
+        }
+        this.instanceCountValue = value;
     }
-    /**
-     * 是否被销毁
-     */
-    get isDestroyed(): boolean {
-        return this._isDestroyed;
+
+    raycast(ray: Ray, sort = true): Vector3[] | null {
+        if (!this.visible || !this.geometry || !this.material) return null;
+        TEMP_MATRIX.invert(this.worldMatrix);
+        TEMP_RAY.copy(ray).transformMat4(TEMP_MATRIX);
+        const cullMode = this.material.definition.getPass('forward')?.state.cullMode ?? 'back';
+        const side = cullMode === 'back' ? FRONT : cullMode === 'front' ? BACK : FRONT_AND_BACK;
+        const intersections = this.geometry.raycast(TEMP_RAY, side, sort);
+        if (!intersections) return null;
+        for (const point of intersections) point.transformMat4(this.worldMatrix);
+        return intersections;
     }
-    /**
-     * 销毁 Mesh 资源
-     * @param renderer -
-     * @param needDestroyTextures - 是否销毁材质的贴图，默认不销毁
-     * @returns this
-     */
-    override destroy(renderer?: Renderer, needDestroyTextures = false): this {
-        if (this._isDestroyed) {
-            return this;
+
+    getRenderOption(options: ShaderOptions = {}): ShaderOptions {
+        this.geometry?.getRenderOption(options);
+        const jointCount = this.skinJointCount;
+        if (jointCount > 0) options['JOINT_COUNT'] = jointCount;
+        return options;
+    }
+
+    /** Number of 4x4 matrices in the extracted skin palette. */
+    get skinJointCount(): number {
+        return this.jointMatrices === null ? 0 : this.jointMatrices.length / 16;
+    }
+
+    /** Return the already-extracted palette without scene traversal. */
+    getJointMat(): Float32Array {
+        if (!this.jointMatrices || this.jointMatrices.length === 0) {
+            throw new Error('Render mesh has no extracted skin palette.');
         }
-        if (!renderer) {
-            throw new Error('A renderer is required to destroy a Mesh.');
-        }
-        this.removeFromParent();
-        const resourceManager = renderer.resourceManager;
-        resourceManager.destroyMesh(this);
-        if (this.material && needDestroyTextures) {
-            this.material.destroyTextures();
-        }
-        this.off();
-        this.geometry = null;
-        this.material = null;
-        this._isDestroyed = true;
-        return this;
+        return this.jointMatrices;
     }
 }
+
 export default Mesh;

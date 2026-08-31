@@ -2,6 +2,14 @@
 
 ### Breaking changes
 
+- Replace the inheritance-based `Stage`/`Node` scene runtime with a performance-first ECS. `World`
+  now owns generation-safe Entities, typed sparse-set and SoA components, cached queries, resources,
+  fixed-step Systems, and deferred structural commands; `Engine` owns Canvas, Renderer, and frame
+  submission. Rendering consumes one incrementally extracted `RenderWorld` on WebGL 2 and WebGPU.
+  Remove scene-object `Mesh`/Camera/Light/Sprite classes, per-Node update/events, renderer hierarchy
+  traversal, `RenderNodeExtension`, and physics Node bindings without compatibility facades. Scene
+  assets now instantiate as `ScenePrefab` data, and `MeshRenderer + RigidBody + Collider` can
+  coexist on one Entity.
 - Integrate typed particle parameters into emission and spawn initialization across CPU, stateless,
   and stateful WebGPU command generation; runtime value changes no longer require recompilation.
   Apply `ParticleBudgetManager` decisions directly to live capacity, spawn rate, sorting, soft
@@ -57,17 +65,16 @@
   linear-to-sRGB surface transfer in the declared steady draw budget. Keep targeted churn smoke
   bounded to one complete ordinary-mesh replacement cycle unless its 10,000-frame tail is explicitly
   requested; formal enrolled-rig capture still completes the full workload.
-- Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
-  asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
-  teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded
-  fixed stepping, interpolated Hilo node bindings, bodies, colliders, joints, events, filtered ray
-  and shape queries, bounded overlaps, point projection, kinematic character controllers, snapshots,
-  debug geometry, diagnostics, and independently importable Rapier 2D/3D adapters. Replace the
-  Cannon example and dependency with a Rapier 3D System example.
+- Add the versioned, dependency-aware public World System ABI with typed resources, transactional
+  asynchronous setup, synchronous phases, dynamic leaf installation, read/write hazard validation,
+  and reverse-order teardown. Integrate the separately packaged `@hilo3d/addon-physics` 2D/3D
+  runtime through `RigidBody`, `Collider`, `AttachedBody`, and `CharacterController` components,
+  fixed-step authority/interpolation, Entity-addressed events, snapshots, diagnostics, and
+  independently importable Rapier 2D/3D adapters.
 - Move the authored particle runtime out of the `hilo3d` entry into the independently tree-shakable
-  `@hilo3d/addon-particle` ESM package. Add a Stage-owned particle runtime and frame budget service,
-  route addon rendering through a generic core render-node capability, migrate maintained particle
-  examples and package types, and add Rapier material, joint, and 2D sensor showcases.
+  `@hilo3d/addon-particle` ESM package. Add a World-owned particle runtime/resource and component
+  System, route addon rendering through explicitly extracted `RenderExtension` data, and migrate
+  maintained examples and package types to the ECS runtime.
 
 - Rebuild portable GTAO around view-relative dual horizons, projected-normal analytic visible-arc
   integration, depth-derived or hybrid normals, a separately controlled contact lobe, integrated

@@ -1,7 +1,6 @@
 import type Camera from '../camera/Camera';
 import type Fog from '../core/Fog';
 import type Mesh from '../core/Mesh';
-import type Node from '../core/Node';
 import { EventDispatcher, type EventListener } from '../core/EventDispatcher';
 import LightManager from '../light/LightManager';
 import type Material from '../material/MaterialInstance';
@@ -21,6 +20,7 @@ import type {
     RenderTargetSelectionOptions
 } from './RenderTarget';
 import type { StorageBuffer, StorageBufferDescriptor } from './StorageBuffer';
+import type { RenderWorld } from './world/RenderWorld';
 
 export type RendererBackend = 'webgl2' | 'webgpu';
 
@@ -29,8 +29,6 @@ export type RendererViewport = readonly [x: number, y: number, width: number, he
 
 /** Native compressed texture families understood by the engine texture model. */
 export type TextureCompressionFormat = 'bc' | 'etc1' | 'etc2' | 'astc-4x4' | 'pvrtc';
-
-export type RendererScene = Node & { readonly fog?: Fog | null };
 
 /** Backend-neutral snapshot of renderer-managed resource ownership. */
 export interface RendererResourceDiagnostics {
@@ -45,7 +43,7 @@ export interface RendererResourceDiagnostics {
 export interface RendererResourceManager {
     destroyMesh(mesh: Mesh): void;
     destroyIfNoRef(resource: Resource): void;
-    getDiagnostics(rootNode?: Node): RendererResourceDiagnostics;
+    getDiagnostics(renderWorld?: RenderWorld): RendererResourceDiagnostics;
 }
 
 /**
@@ -54,10 +52,10 @@ export interface RendererResourceManager {
  */
 export interface RendererFrame {
     readonly backend: RendererBackend;
-    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    render(renderWorld: RenderWorld, camera: Camera, fireEvent?: boolean): void;
     renderToTarget(
         target: RenderTarget,
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         fireEvent?: boolean
     ): void;
@@ -83,18 +81,18 @@ export function createRendererFrame(
         get backend() {
             return renderer.backend;
         },
-        render(stage: RendererScene, camera: Camera, fireEvent = false) {
+        render(renderWorld: RenderWorld, camera: Camera, fireEvent = false) {
             assertActive();
-            renderer.render(stage, camera, fireEvent);
+            renderer.render(renderWorld, camera, fireEvent);
         },
         renderToTarget(
             target: RenderTarget,
-            stage: RendererScene,
+            renderWorld: RenderWorld,
             camera: Camera,
             fireEvent = false
         ) {
             assertActive();
-            renderer.renderToTarget(target, stage, camera, fireEvent);
+            renderer.renderToTarget(target, renderWorld, camera, fireEvent);
         },
         present(target?: RenderTarget, options?: RenderTargetPresentationOptions) {
             assertActive();
@@ -122,7 +120,7 @@ export function invokeRendererFrameCallback(
     }
 }
 
-/** Public backend-neutral renderer contract used by Stage and scene resources. */
+/** Public backend-neutral renderer contract used by Engine and RenderWorld resources. */
 export interface RendererContract {
     readonly backend: RendererBackend;
     readonly className: string;
@@ -145,7 +143,7 @@ export interface RendererContract {
     setOffset(x: number, y: number): void;
     /** Return the viewport that numeric shader semantics use for the active render pass. */
     getViewport(): RendererViewport;
-    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    render(renderWorld: RenderWorld, camera: Camera, fireEvent?: boolean): void;
     /** Record resource-ready renderer passes in one synchronous backend frame boundary. */
     renderFrame(callback: RendererFrameCallback): void;
     supportsTextureCompression(format: TextureCompressionFormat): boolean;
@@ -157,7 +155,7 @@ export interface RendererContract {
     present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     renderToTarget(
         target: RenderTarget,
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         fireEvent?: boolean
     ): void;
@@ -232,8 +230,8 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     }
 
     /** Build the allocation-reusing, backend-neutral scene plan once per camera pass. */
-    protected buildFramePlan(stage: RendererScene, camera: Camera): RenderGraphFramePlan {
-        return this.framePlanner.build(stage, camera, this.renderList, this.lightManager);
+    protected buildFramePlan(renderWorld: RenderWorld, camera: Camera): RenderGraphFramePlan {
+        return this.framePlanner.build(renderWorld, camera, this.renderList, this.lightManager);
     }
 
     /** Resolve the setup-only canvas channel once; no WeakMap lookup occurs in frame hot paths. */
@@ -264,7 +262,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     abstract resize(width: number, height: number, force?: boolean): void;
     abstract setOffset(x: number, y: number): void;
     abstract getViewport(): RendererViewport;
-    abstract render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    abstract render(renderWorld: RenderWorld, camera: Camera, fireEvent?: boolean): void;
     abstract renderFrame(callback: RendererFrameCallback): void;
     abstract supportsTextureCompression(format: TextureCompressionFormat): boolean;
     abstract createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
@@ -276,7 +274,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     abstract present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     abstract renderToTarget(
         target: RenderTarget,
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         fireEvent?: boolean
     ): void;

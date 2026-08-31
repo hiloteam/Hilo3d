@@ -1,79 +1,41 @@
-# Build particle effects
+# Particle effects
 
-Install and import `@hilo3d/addon-particle` only for effects that need many sprites, meshes,
-ribbons, trails, or deterministic authored behavior. The core `hilo3d` package deliberately does not
-export particle classes. Keep damage, collision authority, scoring, and save state in the game
-simulation; particle events can request gameplay actions, but particle state is presentation.
-
-```sh
-npm install @hilo3d/addon-particle
-```
+Install the particle addon as a World System:
 
 ```ts
-import * as Hilo3d from 'hilo3d';
-import {
-    PARTICLE_STAGE_SERVICE,
-    ParticleSystemDefinition,
-    createParticleStageSystem
-} from '@hilo3d/addon-particle';
-
-const particleSystem = createParticleStageSystem();
-const stage = await Hilo3d.Stage.create({
-    backend: 'auto',
-    camera,
-    systems: [particleSystem]
-});
-const particles = stage.systems.get(PARTICLE_STAGE_SERVICE);
+import { ParticleSystemDefinition, createParticleWorldSystem } from '@hilo3d/addon-particle';
 
 const definition = ParticleSystemDefinition.create({
     emitters: [
         {
             name: 'spark-burst',
             capacity: 512,
-            execution: 'auto',
             emission: { rateOverTime: 0, bursts: [{ time: 0, count: 80 }] },
-            shape: { type: 'sphere', radius: 0.12, distribution: 'volume' },
+            shape: { type: 'sphere', radius: 0.12 },
             initialize: {
                 lifetime: { min: 0.35, max: 0.8 },
                 speed: { min: 1.5, max: 4 },
                 size: { min: 0.025, max: 0.07 },
                 color: [1, 0.45, 0.08, 1]
             },
-            modules: [
-                { type: 'gravity', force: [0, -4, 0] },
-                { type: 'drag', coefficient: 0.2 }
-            ],
-            renderers: [{ type: 'sprite', blend: 'additive', depthWrite: false }]
+            modules: [{ type: 'gravity', force: [0, -4, 0] }],
+            renderers: [{ type: 'sprite', blend: 'additive' }]
         }
     ]
 });
 
-const sparks = particles.createSystem({
-    definition,
-    seed: 42,
-    autoPlay: false
+const particles = createParticleWorldSystem({
+    setup(runtime): void {
+        runtime.create({ definition });
+    }
 });
-
-sparks.setPosition(hit.x, hit.y, hit.z).restart().play();
 ```
 
-Choose `execution: 'auto'` when the definition has a valid portable path. Use explicit CPU for
-deterministic compatibility or explicit stateful WebGPU only when the effect requires its supported
-GPU modules and the game has a clear unsupported-device result. Unsupported module/backend pairs
-fail compilation; do not catch that failure and silently remove required behavior.
+Pass the particle System to `World.create()` before transform and render extraction. It owns its
+runtime resource and exposes rendering only through the explicit ECS render-extension component;
+there is no scene-node registration table.
 
-The Stage System owns registered particle nodes, applies its optional frame-wide quality budget
-before node updates, and destroys particle render resources before the renderer. Use standalone
-`ParticleSystem` construction only when another owner will call `destroy(stage.renderer)` before the
-renderer is released. Never share a managed system between Stages.
-
-Reuse immutable definitions across systems, pool short-lived systems, and update declared
-`ParticleParameter` values instead of rebuilding definitions every frame. Use bounded capacities and
-quality budgets. Advanced mesh, ribbon, collision, event, checkpoint, baking, JSON, and external
-authoring APIs should be adopted only when the effect needs them; inspect the installed declarations
-for their exact versioned contracts.
-
-Release or pool application-owned systems when their gameplay owner leaves the scene; whole-Stage
-shutdown is handled by the System. Exercise CPU and the selected WebGPU path separately before
-making parity, event, recovery, or performance claims. Do not add the addon dependency to games that
-have no authored particles.
+Use bounded capacities and event/readback budgets. Prefer portable CPU execution when both backends
+must match; select advanced stateful/stateless GPU paths only when their declared capability gates
+pass. Destroy the World to release the installed particle runtime, then destroy application-owned
+textures or geometry.

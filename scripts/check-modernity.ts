@@ -20,6 +20,8 @@ const forbiddenLegacyPaths = [
     'examples/glTFViewer/js',
     'src/core/Class.ts',
     'src/core/EventMixin.ts',
+    'src/core/Node.ts',
+    'src/core/Stage.ts',
     'src/renderer',
     'src/rhi'
 ] as const;
@@ -40,7 +42,16 @@ const publicContractRules = [
             }
         ]
     },
-    ...['src/core/Stage.ts', 'src/render/RendererCore.ts'].map(path => ({
+    {
+        path: 'website/index.html',
+        rules: [
+            {
+                label: 'legacy public scene runtime in website',
+                pattern: /(?:Hilo3d\.(?:Stage|Node)|new\s+Hilo3d\.Mesh|examples\/list\.html)/u
+            }
+        ]
+    },
+    ...['src/core/Engine.ts', 'src/render/RendererCore.ts'].map(path => ({
         path,
         rules: [
             {

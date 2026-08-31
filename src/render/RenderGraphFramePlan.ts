@@ -1,10 +1,9 @@
 import type Camera from '../camera/Camera';
-import Light from '../light/Light';
+import type Light from '../light/Light';
 import type LightManager from '../light/LightManager';
-import Mesh from '../core/Mesh';
-import Node from '../core/Node';
+import type Mesh from '../core/Mesh';
 import type RenderList from './RenderList';
-import type { RendererScene } from './Renderer';
+import type { RenderWorld } from './world/RenderWorld';
 
 /**
  * Reusable, backend-neutral result of scene traversal for one render pass.
@@ -31,7 +30,7 @@ export class RenderGraphFramePlanner {
     });
 
     build(
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         renderList: RenderList,
         lightManager: LightManager,
@@ -44,16 +43,28 @@ export class RenderGraphFramePlanner {
         lightManager.reset();
         const cameraVisibility = camera.visibility >>> 0;
 
-        stage.traverse(node => {
-            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
-            const layerVisible = (cameraVisibility & (node.layer >>> 0)) !== 0;
-            if (node instanceof Mesh) {
-                if (!node.isDestroyed && layerVisible) this.meshes.push(node);
-            } else if (node instanceof Light) {
-                if (layerVisible) this.lights.push(node);
+        for (let index = 0; index < renderWorld.length; index++) {
+            const mesh = renderWorld.meshes[index];
+            if (mesh && mesh.visible && (cameraVisibility & (mesh.layer >>> 0)) !== 0) {
+                this.meshes.push(mesh);
             }
-            return Node.TRAVERSE_STOP_NONE;
-        });
+        }
+        for (const extension of renderWorld.extensions) {
+            const meshes = extension.meshes;
+            if (!meshes) continue;
+            for (const mesh of meshes) {
+                if (mesh.visible && (cameraVisibility & (mesh.layer >>> 0)) !== 0) {
+                    this.meshes.push(mesh);
+                }
+            }
+        }
+        const extractedLights = renderWorld.lights.lights;
+        for (let index = 0; index < renderWorld.lights.length; index++) {
+            const light = extractedLights[index];
+            if (light && (cameraVisibility & (light.layer >>> 0)) !== 0) {
+                this.lights.push(light);
+            }
+        }
 
         for (const mesh of this.meshes) renderList.addMesh(mesh, camera, frustumCulling);
         renderList.sort();

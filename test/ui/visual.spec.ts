@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
-    test(`@visual renders a deterministic lit PBR scene through ${backend}`, async ({ page }) => {
+    test(`@visual renders a deterministic ECS PBR scene through ${backend}`, async ({ page }) => {
         const consoleErrors: string[] = [];
         const pageErrors: string[] = [];
         page.on('console', message => {
@@ -19,7 +19,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         expect(await page.evaluate(() => window.__HILO3D_VISUAL_FIRST_FRAME__?.backend)).toBe(
             backend
         );
-        await expect(page.locator('canvas')).toHaveScreenshot(`lit-pbr-scene-${backend}.png`, {
+        await expect(page.locator('canvas')).toHaveScreenshot(`ecs-lit-pbr-scene-${backend}.png`, {
             animations: 'disabled',
             maxDiffPixelRatio: 0.005
         });
@@ -36,7 +36,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     });
 }
 
-test('@visual WebGPU first-frame output matches WebGL2 exactly', async ({ page }) => {
+test('@visual WebGPU ECS output matches WebGL2 exactly', async ({ page }) => {
     const failures: string[] = [];
     page.on('console', message => {
         if (message.type() === 'error') failures.push(message.text());

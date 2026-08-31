@@ -1,331 +1,92 @@
-# Hilo3D 2.0.0 public API
+# Hilo3D 2.x ECS public API
 
-This is a task-oriented map, not a replacement for the installed declarations. When exact types
-matter, inspect `node_modules/hilo3d/dist/Hilo3d.d.ts`.
+Inspect the installed `dist/Hilo3d.d.ts` for exact signatures. Import the core from `hilo3d` and
+optional features only from their addon package roots.
 
-## Contents
-
-- [Imports and initialization](#imports-and-initialization)
-- [Scene graph](#scene-graph)
-- [Stage and cameras](#stage-and-cameras)
-- [Loop and time](#loop-and-time)
-- [Geometry](#geometry)
-- [Materials](#materials)
-- [Lights](#lights)
-- [Textures and loaders](#textures-and-loaders)
-- [2D](#2d)
-- [Optional addons](#optional-addons)
-- [Math](#math)
-- [Renderer-level features](#renderer-level-features)
-
-## Imports and initialization
-
-Use the package root:
+## Initialization
 
 ```ts
 import * as Hilo3d from 'hilo3d';
-```
 
-The package is ESM-only. Create rendering entry points asynchronously:
-
-```ts
-const stage = await Hilo3d.Stage.create({
+const world = await Hilo3d.World.create({
+    systems: [Hilo3d.createTransformSystem(), Hilo3d.createRenderExtractionSystem()]
+});
+const engine = await Hilo3d.Engine.create({
     backend: 'auto',
     container,
     width,
-    height,
-    camera
-});
-
-const renderer = await Hilo3d.Renderer.create({
-    backend: 'webgl2',
-    domElement: canvas
+    height
 });
 ```
 
-Prefer `Stage` for games because it owns the scene root, cameras, renderer, DOM picking, update
-traversal, resize, and teardown.
+`World.update(dt)` is headless. `engine.frame(world, dt)` performs World phases, renders every
+enabled camera, commits successful transform history, and runs cleanup.
 
-## Scene graph
-
-`Node` is the base of scene objects.
-
-Common constructor fields:
-
-- identity and data: `name`, `userData`;
-- transform: `x`, `y`, `z`, `scaleX/Y/Z`, `rotationX/Y/Z`, `pivotX/Y/Z`;
-- behavior: `visible`, `layer`, `pointerEnabled`, `pointerChildren`, `useHandCursor`, `onUpdate`;
-- 2D display order: `sortingLayer`, then `zIndex`, then stable scene-tree order;
-- hierarchy: `parent`.
-
-Common methods:
+## Entity composition
 
 ```ts
-parent.addChild(child);
-parent.removeChild(child);
-child.addTo(parent);
-child.removeFromParent();
-child.setPosition(x, y, z);
-child.setScale(uniformScale);
-child.setRotation(xDegrees, yDegrees, zDegrees);
-child.lookAt(target);
-child.on(type, listener);
-child.off(type, listener);
-```
-
-Use `Node` containers to group transforms and game entities. Share render resources across many
-`Mesh` or `Sprite` instances.
-
-`Mesh` combines a `Geometry` and `MaterialInstance`. Built-in material classes create and retain an
-immutable `MaterialDefinition`; application code normally constructs `PBRMaterial`, `BasicMaterial`,
-or another built-in instance rather than authoring a definition directly:
-
-```ts
-const mesh = new Hilo3d.Mesh({
-    geometry,
-    material,
-    useInstanced: false,
-    frustumTest: true,
+const entity = world.createEntity();
+world.add(entity, Hilo3d.LocalTransform, { position: [0, 2, 0] });
+world.add(entity, Hilo3d.MeshRenderer, {
+    geometry: new Hilo3d.BoxGeometry(),
+    material: new Hilo3d.PBRMaterial({
+        baseColor: new Hilo3d.Color(0.2, 0.65, 1),
+        metallic: 0.2,
+        roughness: 0.55
+    }),
     castShadows: true,
-    receiveShadows: true,
-    renderOrder: 0,
-    layer: 1
+    receiveShadows: true
 });
+world.add(entity, Hilo3d.RenderOrder, { renderOrder: 0 });
 ```
 
-Destroy a standalone mesh with a renderer:
+`LocalTransform`, `Hierarchy`, visibility, order, camera, light, animation, interaction, 2D,
+physics, and particle integration are independent components. `WorldTransform` is derived.
+
+## Cameras and lights
 
 ```ts
-mesh.destroy(stage.renderer, true);
-```
-
-The second argument destroys its textures. Use it only when those textures are not shared.
-Destroying the whole `Stage` is the normal application teardown.
-
-## Stage and cameras
-
-Useful Stage options include:
-
-- `backend: 'auto' | 'webgl2' | 'webgpu'`;
-- `container` or `canvas`;
-- `camera` for one camera or `cameras` for a composition;
-- `width`, `height`, `pixelRatio`;
-- `clearColor`, `alpha`, `depth`, `stencil`, `antialias`;
-- `useInstanced`, `useLogDepth`, `gameMode`.
-
-Useful methods:
-
-```ts
-stage.tick(dtMilliseconds);
-stage.resize(width, height, pixelRatio?);
-stage.setCameras(cameras);
-stage.addCamera(camera);
-stage.removeCamera(camera);
-stage.enableDOMEvent(['pointerdown', 'pointermove', 'pointerup']);
-stage.getMeshResultAtPoint(x, y, true);
-stage.releaseGPUResources();
-stage.destroy();
-```
-
-Camera fields shared by 2D and 3D:
-
-- `visibility`: layer bit mask;
-- `priority`: lower values render first;
-- `clearColor`, `clearDepth`, `clearStencil`.
-
-Create 3D cameras with:
-
-```ts
-const camera = new Hilo3d.PerspectiveCamera({
-    fov: 50,
+const camera = world.createEntity();
+world.add(camera, Hilo3d.LocalTransform, { position: [0, 2, 6] });
+world.add(camera, Hilo3d.PerspectiveCamera, {
+    fov: 55,
     aspect: width / height,
     near: 0.1,
-    far: 200,
-    z: 6
+    far: 500,
+    priority: 0
+});
+world.add(camera, Hilo3d.CameraOutput, { enabled: true });
+
+const light = world.createEntity();
+world.add(light, Hilo3d.LocalTransform, {});
+world.add(light, Hilo3d.DirectionalLight, {
+    color: [1, 0.95, 0.85],
+    amount: 3,
+    direction: [-1, -1, -0.5]
 });
 ```
 
-Create pixel-space 2D cameras with:
+Use `OrthographicCamera` for pixel/world-space 2D. Multiple enabled cameras are ordered by priority
+inside one Engine submission.
+
+## Systems and commands
+
+Systems declare phase, dependencies, and component/resource access. Cache stores and queries during
+setup. During execution, use `world.commands` for structural mutations; direct `world.add/remove` is
+rejected while a phase dispatches.
+
+## Assets and teardown
+
+`GLTFLoader.load()` returns a model whose prefab instantiates into a World. Shared Geometry,
+Material, Texture, and clips remain resources rather than Entities.
+
+Destroy in ownership order:
 
 ```ts
-const camera = new Hilo3d.Camera2D({
-    width,
-    height,
-    priority: 100,
-    visibility: Hilo3d.DEFAULT_2D_LAYER,
-    clearColor: false
-});
+controls.destroy();
+engine.destroy();
+world.destroy();
+texture.destroy();
 ```
 
-`Camera2D` uses a top-left origin, right-growing X, and down-growing Y. Call
-`camera.resize(width, height)` after Stage resize. Sprite/Text2D anchors still default to
-`(0.5, 0.5)`; set both anchors to `0` when `x/y` represent a UI element's left/top corner.
-
-## Loop and time
-
-`Ticker` dispatches millisecond deltas:
-
-```ts
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(gameSimulation);
-ticker.addTick(Hilo3d.Tween);
-ticker.addTick(Hilo3d.Animation);
-ticker.addTick(stage);
-ticker.start();
-```
-
-Other useful methods are `removeTick`, `pause`, `resume`, `stop`, `nextTick`, `timeout`, and
-`interval`. `pause()` suppresses callbacks without discarding the loop; `stop()` cancels it.
-
-## Geometry
-
-Built-in geometry:
-
-```ts
-new Hilo3d.BoxGeometry({ width: 1, height: 1, depth: 1 });
-new Hilo3d.SphereGeometry({ radius: 0.5, widthSegments: 32, heightSegments: 16 });
-new Hilo3d.PlaneGeometry({ width: 2, height: 2 });
-```
-
-Use `Geometry` and `GeometryData` for custom attributes and indices. Reuse one geometry for objects
-with the same topology. Do not recreate geometry during animation.
-
-## Materials
-
-Use `PBRMaterial` for physically based 3D:
-
-```ts
-const material = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.2, 0.65, 1),
-    metallic: 0.2,
-    roughness: 0.55
-});
-```
-
-Important PBR inputs include `baseColorMap`, `metallicRoughnessMap`, `normalMap`, `occlusionMap`,
-`emission`, `emissionFactor`, `diffuseEnvMap`, `specularEnvMap`, `brdfLUT`, and clearcoat fields.
-
-Use `BasicMaterial` for unlit, Lambert, Phong, or Blinn-Phong rendering:
-
-```ts
-new Hilo3d.BasicMaterial({
-    lightType: 'NONE',
-    diffuse: new Hilo3d.Color(1, 0.4, 0.1),
-    compositing: { mode: 'alpha-blend', premultiplied: true }
-});
-```
-
-Runtime values such as `opacity`, `metallic`, `roughness`, and `temporalReactiveFactor` are mutable
-and advance the instance revision. Texture bindings can be changed with `setTextureSlot(...)` when
-the immutable definition already declares that slot. Shader topology and pipeline choices are
-construction-time inputs: use `coverage` for opaque/alpha-mask coverage, `compositing` for
-opaque/alpha/additive blending, `cullMode`/`frontFace` for raster orientation, and `state` for fixed
-pipeline state. Construct a new material when those choices or enabled texture features change.
-
-Object ordering and shadow participation belong to `Mesh.renderOrder`, `Mesh.castShadows`, and
-`Mesh.receiveShadows`, not to the material.
-
-Use `ShaderMaterial` only when built-in materials cannot express the effect. Portable raster shaders
-use GLSL ES 3.00 and registered std140 uniform blocks; classic numeric uniforms are not a portable
-extension point.
-
-## Lights
-
-Common lights:
-
-```ts
-new Hilo3d.AmbientLight({ color, amount: 0.5 });
-new Hilo3d.DirectionalLight({ color, amount: 3, direction });
-new Hilo3d.PointLight({ color, amount: 5, range: 12 });
-new Hilo3d.SpotLight({ color, amount: 8, range: 20 });
-new Hilo3d.AreaLight({ color, amount: 2 });
-```
-
-Directional, point, and spot lights support shadow configuration. Shadows consume passes and texture
-memory; add them selectively.
-
-## Textures and loaders
-
-Load an image as a texture:
-
-```ts
-const texture = await new Hilo3d.TextureLoader().load({
-    src: new URL('./assets/player.png', import.meta.url).href,
-    flipY: true
-});
-```
-
-Or load the image and configure the texture explicitly:
-
-```ts
-const image = await new Hilo3d.BasicLoader().loadImg(url);
-const texture = new Hilo3d.Texture({
-    image,
-    flipY: true,
-    premultiplyAlpha: true,
-    minFilter: Hilo3d.constants.webgl.LINEAR,
-    magFilter: Hilo3d.constants.webgl.LINEAR
-});
-```
-
-Other public loaders include `GLTFLoader`, `HDRLoader`, `KTXLoader`, `CubeTextureLoader`,
-`LoadQueue`, and `Loader`.
-
-Load glTF:
-
-```ts
-const model = await new Hilo3d.GLTFLoader().load({ src: modelUrl });
-await model.ready;
-model.node.addTo(stage);
-model.anim?.play();
-```
-
-The result exposes `node`, `scene`, `meshes`, `cameras`, `lights`, `textures`, `materials`, optional
-`anim` and `bounds`, `ready`, and `resourceErrors`.
-
-## 2D
-
-Core 2D types are `Camera2D`, `Sprite`, `SpriteFrame`, `SpriteMaterial`, and `Text2D`. See
-[2D games](2d-games.md) for complete patterns.
-
-## Optional addons
-
-The `hilo3d` root does not export physics or authored-particle implementations. Add them only when
-the game needs them:
-
-- `@hilo3d/addon-particle` provides immutable definitions, CPU/WebGPU runtimes, authoring helpers,
-  and `createParticleStageSystem()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
-  [Particle effects](particle-effects.md).
-- `@hilo3d/addon-physics` provides backend-neutral 2D/3D contracts. Import
-  `@hilo3d/addon-physics/rapier2d` or `/rapier3d` to select one dimension without loading the other.
-  See [3D games](3d-games.md).
-
-Both addons integrate through `StageParameters.systems`. Retrieve their typed service through
-`stage.systems`, and let `stage.destroy()` tear System runtimes down before the renderer. A game
-that uses neither addon should list and import neither package.
-
-## Math
-
-Common public math types include `Color`, `Vector2`, `Vector3`, `Vector4`, `Euler`, `Quaternion`,
-`Matrix3`, `Matrix4`, `Ray`, `Plane`, `Sphere`, and `Frustum`.
-
-Reuse temporary math instances inside hot loops:
-
-```ts
-const velocity = new Hilo3d.Vector3();
-const target = new Hilo3d.Vector3();
-```
-
-## Renderer-level features
-
-The Stage exposes `stage.renderer`. Public renderer features include:
-
-- `backend`, `renderInfo`, and `resourceManager.getDiagnostics(...)`;
-- `renderFrame(...)` for application-owned multi-pass work;
-- `createRenderTarget(...)` and `createStorageBuffer(...)`;
-- `renderToTarget(...)`, `present(...)`, and `waitForIdle()`;
-- checked native extensions through `getExtension(...)`;
-- `releaseGPUResources()` and `destroy()`.
-
-Stay at Stage/scene level unless the game genuinely needs render targets, post-processing, readback,
-compute, storage buffers, or custom pipeline orchestration.
+There is no Stage/Node facade or scene-object physics binding API.

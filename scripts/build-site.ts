@@ -17,7 +17,7 @@ await cp(resolve(projectRoot, 'CNAME'), resolve(siteDirectory, 'CNAME'));
 
 await Promise.all([
     access(resolve(siteDirectory, 'docs/index.html')),
-    access(resolve(siteDirectory, 'examples/list.html')),
+    access(resolve(siteDirectory, 'examples/index.html')),
     access(resolve(siteDirectory, 'assets')),
     access(resolve(siteDirectory, 'CNAME')),
     access(resolve(siteDirectory, 'index.html')),

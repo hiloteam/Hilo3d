@@ -141,7 +141,7 @@ pass-global texture 在 graph prepare 后绑定；WebGPU 使用固定 group 3 bi
 
 [`ground_truth_ambient_occlusion.html`](../examples/ground_truth_ambient_occlusion.html)
 是围绕仓库内置 1.2 MB Stanford Dragon 构建的 The Silent
-Dragon 博物馆展陈。单色烧陶材质让鳞片、趾爪、盘曲空腔、雕塑落台与同心石台边缘成为主要 contact-visibility 读数，深色壁龛只提供次级的建筑尺度对照。按钮在同一 Stage、相机、模型和 canvas 上即时启停 GTAO，地址栏的
+Dragon 博物馆展陈。单色烧陶材质让鳞片、趾爪、盘曲空腔、雕塑落台与同心石台边缘成为主要 contact-visibility 读数，深色壁龛只提供次级的建筑尺度对照。按钮在同一 Engine、World、相机和 canvas 上即时启停 GTAO，地址栏的
 `gtao=false` 仅保存当前状态并作为自动化测试的初始值，不触发页面刷新。`backend=webgl2|webgpu`
 可显式选择后端；窄屏使用独立相机 framing 和不遮挡主体的 UI 排版。
 
@@ -152,7 +152,7 @@ graph 集成，以及双后端非黑屏和 on/off 像素差异的 Playwright 图
 [`gtao_acceptance_lab.html`](../examples/gtao_acceptance_lab.html)
 是专用、确定性的验收 fixture，固定曝光并同时放置 90° concavity、薄片、平行窄缝、重复台阶、normal-map
 surface、rough dielectric、glossy
-metal、屏幕边缘对象和移动遮挡体。页面可在不重建 Stage/canvas 的情况下切换 AO、运动和 edge
+metal、屏幕边缘对象和移动遮挡体。页面可在不重建 Engine/World/canvas 的情况下切换 AO、运动和 edge
 view，并通过 `logDepth=true` 进入对数深度路径。Playwright 门禁覆盖 WebGL2/WebGPU health、AO on/off
 material difference、运动进度、edge view、log-depth 以及双后端像素 parity budget。
 

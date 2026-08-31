@@ -4,7 +4,8 @@ import type DirectionalLight from '../../light/DirectionalLight';
 import type PointLight from '../../light/PointLight';
 import type SpotLight from '../../light/SpotLight';
 import type { RendererFeatureName } from '../RendererOptions';
-import type { RendererScene, RendererViewport } from '../RendererCore';
+import type { RendererViewport } from '../RendererCore';
+import type { RenderWorld } from '../world/RenderWorld';
 import type {
     RenderTargetColor,
     RenderTargetColorFormat,
@@ -295,7 +296,7 @@ export interface RenderPipelineContext {
     /** Monotonic application frame index. */
     readonly frameIndex: number;
     /** Scene supplied to the current renderer invocation. */
-    readonly scene: RendererScene;
+    readonly scene: RenderWorld;
     /** Camera supplied to the current renderer invocation. */
     readonly camera: Camera;
     /** Active viewport in physical pixels. */

@@ -117,11 +117,13 @@ export type { ParticleEventAggregate, ParticleEventRecord } from './cpu/Particle
 export { default as ParticleSystemDefinition } from './ParticleSystemDefinition.js';
 export { ParticleSystemPool } from './ParticleSystemPool.js';
 export {
-    PARTICLE_STAGE_SERVICE,
-    ParticleStageRuntime,
-    createParticleStageSystem,
-    type ParticleStageSystemOptions
-} from './ParticleStageSystem.js';
+    PARTICLE_RUNTIME,
+    ParticleEmitter,
+    ParticleRuntime,
+    createParticleWorldSystem,
+    type ParticleEmitterValue,
+    type ParticleWorldSystemOptions
+} from './ParticleWorldSystem.js';
 export {
     analyzeParticleStatelessEligibility,
     particleStatelessBlockingDiagnostics,

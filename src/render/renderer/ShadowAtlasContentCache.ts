@@ -1,5 +1,4 @@
 import Mesh from '../../core/Mesh';
-import SkinnedMesh from '../../core/SkinnedMesh';
 import type Geometry from '../../geometry/Geometry';
 import type GeometryData from '../../geometry/GeometryData';
 import MorphGeometry from '../../geometry/MorphGeometry';
@@ -191,9 +190,10 @@ function collectNumericState(target: number[], mesh: Mesh): void {
     appendNumbers(target, mesh.worldMatrix.elements);
     const geometry = mesh.geometry;
     appendNumbers(target, geometry?.positionDecodeMat ?? null);
-    if (geometry instanceof MorphGeometry) appendNumbers(target, geometry.weights);
+    if (geometry instanceof MorphGeometry)
+        appendNumbers(target, mesh.morphWeights ?? geometry.weights);
     else appendNumbers(target, null);
-    if (mesh instanceof SkinnedMesh && mesh.skeleton !== null) {
+    if (mesh.isSkinnedMesh && mesh.jointMatrices !== null) {
         appendNumbers(target, mesh.getJointMat());
     } else appendNumbers(target, null);
 }
@@ -530,7 +530,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
             previous.material !== material ||
             previous.materialRevision !== (material?.revision ?? -1) ||
             previous.instanceCount !== mesh.instanceCount ||
-            previous.skeleton !== (mesh instanceof SkinnedMesh ? mesh.skeleton : null)
+            previous.skeleton !== mesh.jointMatrices
         ) {
             return 'caster-material';
         }
@@ -564,7 +564,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         target.material = material;
         target.materialRevision = material?.revision ?? -1;
         target.instanceCount = mesh.instanceCount;
-        target.skeleton = mesh instanceof SkinnedMesh ? mesh.skeleton : null;
+        target.skeleton = mesh.jointMatrices;
         target.geometrySourceCount = this.#geometryScratch.length;
         target.geometrySources.length = this.#geometryScratch.length;
         target.geometrySourceRevisions.length = this.#geometryScratch.length;
@@ -667,7 +667,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         if (
             geometry === null ||
             !mesh.frustumTest ||
-            mesh instanceof SkinnedMesh ||
+            mesh.isSkinnedMesh ||
             geometry instanceof MorphGeometry ||
             (record.pendingChanged && record.pendingReason === 'caster-geometry')
         ) {

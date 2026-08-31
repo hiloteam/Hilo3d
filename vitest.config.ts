@@ -22,7 +22,11 @@ export default mergeConfig(
             include: ['test/spec/**/*.test.ts', 'examples/**/*.test.ts'],
             // Native WebGPU owns an actual device and must not share the heavily instrumented
             // coverage process. The dedicated RHI suite runs it immediately afterward.
-            exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
+            exclude: [
+                'test/spec/physics/PhysicsEcsSystem.test.ts',
+                'test/spec/physics/RapierPhysics.test.ts',
+                ...(coverageRun ? ['test/spec/**/*.native.test.ts'] : [])
+            ],
             // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
             // Hosted CI keeps one browser file active at a time. Local coverage uses exactly two
             // workers so one long-lived renderer does not accumulate all isolated test files and

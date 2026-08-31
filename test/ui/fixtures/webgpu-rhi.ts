@@ -185,7 +185,7 @@ function addLayoutEntry(
 
 /**
  * Runs the extended sampler corpus entirely through RHI resources, commands and readback.
- * Native validation errors are observed by the UI render-health probe installed before Stage
+ * Native validation errors are observed by the UI render-health probe installed before Engine
  * requests its device; this routine additionally fails on every synchronous RHI validation error
  * and submission/map failure.
  */

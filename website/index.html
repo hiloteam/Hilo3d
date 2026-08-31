@@ -83,7 +83,7 @@
                         <a class="button buttonPrimary" href="./docs/">
                             Start building <span aria-hidden="true">→</span>
                         </a>
-                        <a class="button buttonSecondary" href="./examples/list.html">
+                        <a class="button buttonSecondary" href="./examples/index.html">
                             Explore 70+ examples
                         </a>
                     </div>
@@ -144,13 +144,13 @@
                         <p class="eyebrow"><span></span> Live engine studies</p>
                         <h2>Light, materials and compute—in motion.</h2>
                     </div>
-                    <a class="textLink" href="./examples/list.html">Browse 70+ examples →</a>
+                    <a class="textLink" href="./examples/index.html">Browse ECS examples →</a>
                 </div>
 
                 <div class="exampleGrid">
                     <a
                         class="exampleCard exampleCardFeatured exampleCardBloom"
-                        href="./examples/bloom.html?backend=webgpu"
+                        href="./examples/quickStart.html?backend=webgpu"
                     >
                         <div class="exampleMedia">
                             <img
@@ -163,20 +163,14 @@
                             />
                         </div>
                         <div class="exampleCopy">
-                            <span>WebGPU · Bloom · Compute</span>
-                            <h3>Garden of the Last Star</h3>
-                            <p>
-                                32,768 compute-driven fireflies feed a linear HDR scene before the
-                                engine shapes that energy into light.
-                            </p>
+                            <span>WebGPU · WebGL 2 · ECS</span>
+                            <h3>World to first frame</h3>
+                            <p>Compose a renderable Entity and submit one extracted RenderWorld.</p>
                         </div>
                         <b aria-hidden="true">↗</b>
                     </a>
 
-                    <a
-                        class="exampleCard exampleCardGltf"
-                        href="./examples/gltf_material_extensions.html"
-                    >
+                    <a class="exampleCard exampleCardGltf" href="./examples/gltf.html">
                         <div class="exampleMedia">
                             <img
                                 src="./assets/example-gltf-materials.webp"
@@ -189,15 +183,15 @@
                         </div>
                         <div class="exampleCopy">
                             <span>WebGPU · WebGL 2 · glTF</span>
-                            <h3>Real assets. Layered materials.</h3>
-                            <p>Clearcoat, transmission, volume and anisotropy on Khronos assets.</p>
+                            <h3>Assets become Entities.</h3>
+                            <p>Load a glTF prefab and instantiate it directly into a World.</p>
                         </div>
                         <b aria-hidden="true">↗</b>
                     </a>
 
                     <a
                         class="exampleCard exampleCardRaytracing"
-                        href="./examples/compute_raytracing.html?backend=webgpu"
+                        href="./examples/physics.html?backend=webgpu"
                     >
                         <div class="exampleMedia">
                             <img
@@ -210,11 +204,9 @@
                             />
                         </div>
                         <div class="exampleCopy">
-                            <span>WebGPU · Compute · Path tracing</span>
-                            <h3>Progressive light transport</h3>
-                            <p>
-                                Denoised tracing, spectral caustics and HDR output in one GPU path.
-                            </p>
+                            <span>WebGPU · WebGL 2 · Rapier</span>
+                            <h3>Physics without bindings</h3>
+                            <p>Put MeshRenderer, RigidBody, and Collider on the same Entity.</p>
                         </div>
                         <b aria-hidden="true">↗</b>
                     </a>
@@ -243,9 +235,9 @@
                     </div>
                     <div class="architecturePath">
                         <div class="architectureNode">
-                            <small>Public scene</small>
-                            <strong>Stage</strong>
-                            <span>Nodes · Cameras · Lights</span>
+                            <small>Simulation + extraction</small>
+                            <strong>World ECS</strong>
+                            <span>Entities · Components · Systems</span>
                         </div>
                         <i class="architectureConnector" aria-hidden="true">→</i>
                         <div class="architectureNode architectureNodeShared">
@@ -419,13 +411,13 @@
                     <p class="eyebrow"><span></span> Start building</p>
                     <h2>From install to <br />first frame.</h2>
                     <p>
-                        Create one asynchronous stage. Auto mode selects a compatible WebGPU adapter
+                        Create a World and Engine. Auto mode selects a compatible WebGPU adapter
                         first and uses WebGL 2 when WebGPU is unavailable.
                     </p>
                     <div class="resourceLinks">
                         <a href="./docs/">Documentation <span>→</span></a>
                         <a href="./docs/modules/Hilo3d.html">API reference <span>→</span></a>
-                        <a href="./examples/list.html">Examples gallery <span>→</span></a>
+                        <a href="./examples/index.html">Examples gallery <span>→</span></a>
                         <a href="./docs/documents/README_ZH.html">中文文档 <span>→</span></a>
                         <a href="./docs/documents/CHANGELOG.html"
                             >Breaking changes <span>→</span></a
@@ -441,16 +433,28 @@
                     </div>
                     <pre><code><span class="codePurple">import</span> * <span class="codePurple">as</span> Hilo3d <span class="codePurple">from</span> <span class="codeGreen">'hilo3d'</span>;
 
-<span class="codePurple">const</span> stage = <span class="codePurple">await</span> Hilo3d.Stage.create({
+<span class="codePurple">const</span> world = <span class="codePurple">await</span> Hilo3d.World.create({
+    systems: [
+        Hilo3d.createTransformSystem(),
+        Hilo3d.createRenderExtractionSystem()
+    ]
+});
+<span class="codePurple">const</span> engine = <span class="codePurple">await</span> Hilo3d.Engine.create({
     backend: <span class="codeGreen">'auto'</span>,
-    container,
-    camera
+    container
 });
 
-<span class="codePurple">new</span> Hilo3d.Mesh({
+<span class="codePurple">const</span> cube = world.createEntity();
+world.add(cube, Hilo3d.LocalTransform, {});
+world.add(cube, Hilo3d.MeshRenderer, {
     geometry: <span class="codePurple">new</span> Hilo3d.BoxGeometry(),
     material: <span class="codePurple">new</span> Hilo3d.PBRMaterial()
-}).addTo(stage);</code></pre>
+});
+<span class="codePurple">const</span> camera = world.createEntity();
+world.add(camera, Hilo3d.LocalTransform, { position: [0, 0, 5] });
+world.add(camera, Hilo3d.PerspectiveCamera, { aspect: 16 / 9 });
+world.add(camera, Hilo3d.CameraOutput, { enabled: <span class="codePurple">true</span> });
+engine.frame(world, 0);</code></pre>
                     <div class="codeFooter">
                         <span><i></i> Ready</span>
                         <span>webgpu → webgl2</span>
@@ -488,7 +492,7 @@
             <nav aria-label="Footer navigation">
                 <a href="./docs/">Docs</a>
                 <a href="./docs/modules/Hilo3d.html">API</a>
-                <a href="./examples/list.html">Examples</a>
+                <a href="./examples/index.html">Examples</a>
                 <a href="https://github.com/hiloteam/Hilo3d">GitHub</a>
             </nav>
         </footer>

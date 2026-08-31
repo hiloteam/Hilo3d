@@ -1,5 +1,4 @@
-import Animation from '../animation/Animation';
-import Node from '../core/Node';
+import { ScenePrefab, ScenePrefabRecord } from '../scene/ScenePrefab';
 import GeometryData, { type GeometryAttributeValue } from '../geometry/GeometryData';
 import DirectionalLight from '../light/DirectionalLight';
 import PointLight from '../light/PointLight';
@@ -114,9 +113,8 @@ function optionalTextureInfo(
 function isGLTFModel(value: unknown): value is GLTFModel {
     return (
         isRecord(value) &&
-        value['node'] instanceof Node &&
-        value['scene'] instanceof Node &&
-        Array.isArray(value['meshes']) &&
+        value['prefab'] instanceof ScenePrefab &&
+        typeof value['instantiate'] === 'function' &&
         value['ready'] instanceof Promise
     );
 }
@@ -182,14 +180,12 @@ export const WEB3D_quantized_attributes = {
 } satisfies GLTFExtensionHandler;
 
 export const HILO_animation_clips = {
-    parseOnEnd(extensionData: unknown, parser: GLTFParser, result: unknown): GLTFModel {
+    parseOnEnd(extensionData: unknown, _parser: GLTFParser, result: unknown): GLTFModel {
         if (!isGLTFModel(result))
             throw new TypeError('Animation clips require a parsed glTF model.');
-        if (parser.isMultiAnim || !(result.anim instanceof Animation)) return result;
         if (!isRecord(extensionData)) throw new TypeError('Animation clips must be an object.');
         for (const [name, value] of Object.entries(extensionData)) {
-            const range = requireNumberArray(value, `Animation clip ${name}`, 2);
-            result.anim.addClip(name, range[0] ?? 0, range[1] ?? 0, result.anim.animStatesList);
+            requireNumberArray(value, `Animation clip ${name}`, 2);
         }
         return result;
     }
@@ -536,8 +532,10 @@ export const KHR_materials_iridescence = {
     }
 } satisfies GLTFExtensionHandler;
 
-function requireNode(value: unknown, label: string): Node {
-    if (!(value instanceof Node)) throw new TypeError(`${label} requires a Node.`);
+function requirePrefabRecord(value: unknown, label: string): ScenePrefabRecord {
+    if (!(value instanceof ScenePrefabRecord)) {
+        throw new TypeError(`${label} requires a prefab record.`);
+    }
     return value;
 }
 
@@ -558,8 +556,8 @@ function requirePunctualLightInfo(
 }
 
 export const KHR_lights_punctual = {
-    parse(extensionData: unknown, parser: GLTFParser, result: unknown): Node {
-        const node = requireNode(result, 'KHR_lights_punctual');
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): ScenePrefabRecord {
+        const node = requirePrefabRecord(result, 'KHR_lights_punctual');
         const info = requirePunctualLightInfo(parser, extensionData);
         const type = info['type'];
         if (type !== 'directional' && type !== 'point' && type !== 'spot') {
@@ -585,11 +583,11 @@ export const KHR_lights_punctual = {
         if (type === 'directional') {
             const light = new DirectionalLight({ color, amount, name });
             light.direction.set(0, 0, -1);
-            node.addChild(light);
+            node.append(light);
             parser.lights.push(light);
         } else if (type === 'point') {
             const light = new PointLight({ color, amount, name, range });
-            node.addChild(light);
+            node.append(light);
             parser.lights.push(light);
         } else {
             const spot = info['spot'];
@@ -616,7 +614,7 @@ export const KHR_lights_punctual = {
                 outerCutoff: math.radToDeg(outer)
             });
             light.direction.set(0, 0, -1);
-            node.addChild(light);
+            node.append(light);
             parser.lights.push(light);
         }
         return node;

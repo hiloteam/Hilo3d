@@ -4,14 +4,13 @@ import {
     ComputeRenderPass,
     ComputeSampler,
     DEFAULT_MATERIAL_PIPELINE_STATE,
-    DirectionalLight,
     GPUDrivenRenderPass,
-    Light,
     MaterialBlendPreset,
     RenderPassParameterPool,
     UniformBuffer,
     createStd140Layout,
-    type Camera,
+    type RenderCamera,
+    type RenderDirectionalLight,
     type ComputeBufferBinding,
     type ComputeRenderPassParameters,
     type ComputeShader,
@@ -19,7 +18,6 @@ import {
     type EventListener,
     type GPUDrivenRenderPassParameters,
     type MaterialPipelineState,
-    type Node,
     type RenderGraphBufferHandle,
     type RenderGraphTextureHandle,
     type RenderPipelineColorAttachment,
@@ -28,6 +26,10 @@ import {
     type RendererContract,
     type StorageBuffer
 } from 'hilo3d';
+
+interface ParticleTransformView {
+    readonly worldMatrix: { readonly elements: ArrayLike<number> };
+}
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan.js';
 import { compileParticleGPUPlan, type ParticleGPUCompiledPlan } from './ParticleGPUPlan.js';
 import {
@@ -451,7 +453,7 @@ function importBuffers(
     };
 }
 
-function cameraPosition(camera: Camera, target: Float32Array): void {
+function cameraPosition(camera: RenderCamera, target: Float32Array): void {
     const elements = camera.worldMatrix.elements;
     target[0] = elements[12];
     target[1] = elements[13];
@@ -862,7 +864,7 @@ export class ParticleGPUEmitterRuntime {
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        system: Node,
+        system: ParticleTransformView,
         drawVisible: boolean,
         phase: 'opaque' | 'transparent'
     ): void {
@@ -1041,7 +1043,7 @@ export class ParticleGPUEmitterRuntime {
     private recordSimulation(
         context: RenderPipelineContext,
         imported: ParticleGPUImportedBuffers,
-        system: Node,
+        system: ParticleTransformView,
         depth: RenderGraphTextureHandle | null
     ): void {
         const spawnCount = this.controller.pendingSpawnCount;
@@ -1056,7 +1058,7 @@ export class ParticleGPUEmitterRuntime {
             staged.clockSeconds,
             this.compiled.emitter.definition.fixedStep
         ]);
-        values.emitterPosition.set([world[12], world[13], world[14], 1]);
+        values.emitterPosition.set([world[12] ?? 0, world[13] ?? 0, world[14] ?? 0, 1]);
         values.emitterVelocity.set(this.controller.emitterVelocity);
         values.spawn.set([
             spawnCount,
@@ -1160,7 +1162,7 @@ export class ParticleGPUEmitterRuntime {
         imported: ParticleGPUImportedBuffers,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        system: Node,
+        system: ParticleTransformView,
         phase: 'opaque' | 'transparent'
     ): void {
         context.camera.updateViewProjectionMatrix();
@@ -1327,7 +1329,7 @@ export class ParticleGPUEmitterRuntime {
     private writeViewUniform(
         viewUniform: UniformBuffer,
         context: RenderPipelineContext,
-        system: Node
+        system: ParticleTransformView
     ): void {
         viewUniform.set('u_viewMatrix', context.camera.viewMatrix.elements);
         viewUniform.set('u_projectionMatrix', context.camera.jitteredProjectionMatrix.elements);
@@ -1355,19 +1357,20 @@ export class ParticleGPUEmitterRuntime {
         this.#viewDirectionalDirections.fill(0);
         this.#viewAmbient[3] = this.#budgetSoftParticles ? 1 : 0;
         let directionalIndex = 0;
-        context.scene.traverse(node => {
-            if (!(node instanceof Light) || !node.enabled) return;
-            const red = node.color.r * node.amount;
-            const green = node.color.g * node.amount;
-            const blue = node.color.b * node.amount;
-            if (node.isAmbientLight) {
+        for (let index = 0; index < context.scene.lights.length; index++) {
+            const light = context.scene.lights.lights[index];
+            if (!light?.enabled) continue;
+            const red = light.color.r * light.amount;
+            const green = light.color.g * light.amount;
+            const blue = light.color.b * light.amount;
+            if (light.isAmbientLight) {
                 this.#viewAmbient[0] = (this.#viewAmbient[0] ?? 0) + red;
                 this.#viewAmbient[1] = (this.#viewAmbient[1] ?? 0) + green;
                 this.#viewAmbient[2] = (this.#viewAmbient[2] ?? 0) + blue;
-                return;
+                continue;
             }
-            if (!(node instanceof DirectionalLight) || directionalIndex >= 4) return;
-            const direction = node.getWorldDirection();
+            if (!light.isDirectionalLight || directionalIndex >= 4) continue;
+            const direction = (light as RenderDirectionalLight).getWorldDirection();
             const offset = directionalIndex * 4;
             this.#viewDirectionalColors[offset] = red;
             this.#viewDirectionalColors[offset + 1] = green;
@@ -1376,7 +1379,7 @@ export class ParticleGPUEmitterRuntime {
             this.#viewDirectionalDirections[offset + 1] = direction.y;
             this.#viewDirectionalDirections[offset + 2] = direction.z;
             directionalIndex++;
-        });
+        }
     }
 
     private writeParticleUniform(parameters: ParticleComputeParameters): void {

@@ -333,9 +333,6 @@ function validateBatch(
         if (!(mesh instanceof Mesh)) {
             throw new TypeError(`Instance batch entry ${String(index)} must be a Mesh instance`);
         }
-        if (mesh.isDestroyed) {
-            throw new TypeError(`Instance batch mesh ${mesh.name || mesh.id} is destroyed`);
-        }
         if (!mesh.useInstanced) {
             throw new TypeError(
                 `Instance batch mesh ${mesh.name || mesh.id} has not opted into instancing`

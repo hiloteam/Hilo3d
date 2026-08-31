@@ -169,20 +169,6 @@ export interface PhysicsBackendWorldOptions<D extends PhysicsDimension> {
     readonly maxCcdSubsteps: number;
 }
 
-export interface PhysicsTransformTarget<D extends PhysicsDimension> {
-    readPose(): PhysicsPose<D>;
-    writePose(pose: PhysicsPose<D>): void;
-    invalidateHistory?(): void;
-}
-
-export type PhysicsTransformSyncMode = 'auto' | 'physics-to-target' | 'target-to-physics' | 'none';
-
-export interface PhysicsTransformBindingOptions {
-    readonly sync?: PhysicsTransformSyncMode;
-    /** Interpolate dynamic poses between fixed simulation states. */
-    readonly interpolate?: boolean;
-}
-
 export interface PhysicsWorldSnapshot {
     readonly version: 1;
     readonly backendId: string;

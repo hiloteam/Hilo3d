@@ -72,4 +72,5 @@ const url = new URL('./assets/player.png', import.meta.url).href;
 ```
 
 - Do not use remote CDN imports or global `Hilo3d` variables.
-- Keep one owner for the ticker, resize listener, input listeners, and Stage teardown.
+- Keep one owner for the ticker, resize listener, input listeners, Engine teardown, and World
+  teardown.

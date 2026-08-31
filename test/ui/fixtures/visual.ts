@@ -1,17 +1,23 @@
 import {
     AmbientLight,
     BoxGeometry,
+    CameraOutput,
     Color,
     DirectionalLight,
+    Engine,
+    Euler,
     Geometry,
     GeometryData,
-    Mesh,
-    Node,
+    LocalTransform,
+    MeshRenderer,
     PBRMaterial,
     PerspectiveCamera,
+    Quaternion,
+    RENDER_WORLD,
     ShaderMaterial,
-    Stage,
-    Vector3
+    World,
+    createRenderExtractionSystem,
+    createTransformSystem
 } from '../../../src/Hilo3d';
 import cameraBlockSource from '../../../src/shader/chunk/cameraBlock.glsl?raw';
 
@@ -22,44 +28,64 @@ if (backendValue !== 'webgl2' && backendValue !== 'webgpu') {
     throw new TypeError('Visual fixture requires backend=webgl2 or backend=webgpu.');
 }
 
+function rotation(
+    degreeX: number,
+    degreeY: number,
+    degreeZ: number
+): readonly [number, number, number, number] {
+    const elements = new Quaternion().fromEuler(
+        new Euler().setDegree(degreeX, degreeY, degreeZ)
+    ).elements;
+    return [elements[0], elements[1], elements[2], elements[3]];
+}
+
+async function createRenderWorld(): Promise<World> {
+    return World.create({ systems: [createTransformSystem(), createRenderExtractionSystem()] });
+}
+
 const clearColor = new Color(0.08, 0.1, 0.14);
-const camera = new PerspectiveCamera({ aspect: 4 / 3, near: 0.1, far: 100, z: 4 });
-const stage = await Stage.create({
+const world = await createRenderWorld();
+const cameraEntity = world.createEntity();
+world.add(cameraEntity, LocalTransform, { position: [0, 0, 4] });
+world.add(cameraEntity, PerspectiveCamera, { aspect: 4 / 3, near: 0.1, far: 100 });
+world.add(cameraEntity, CameraOutput, { enabled: true });
+
+const meshEntity = world.createEntity();
+world.add(meshEntity, LocalTransform, { rotation: rotation(22, 35, 0) });
+world.add(meshEntity, MeshRenderer, {
+    geometry: new BoxGeometry(),
+    material: new PBRMaterial({
+        baseColor: new Color(0.82, 0.19, 0.12),
+        metallic: 0.2,
+        roughness: 0.55
+    })
+});
+
+const ambientEntity = world.createEntity();
+world.add(ambientEntity, AmbientLight, { color: [1, 1, 1], amount: 0.45 });
+const directionalEntity = world.createEntity();
+world.add(directionalEntity, LocalTransform, {});
+world.add(directionalEntity, DirectionalLight, {
+    color: [1, 0.96, 0.9],
+    amount: 3,
+    direction: [-1, -0.8, -0.5]
+});
+
+const engine = await Engine.create({
     backend: backendValue,
     container,
-    camera,
     width: 640,
     height: 480,
     pixelRatio: 1,
     antialias: false,
     clearColor
 });
-
-const mesh = new Mesh({
-    geometry: new BoxGeometry(),
-    material: new PBRMaterial({
-        baseColor: new Color(0.82, 0.19, 0.12),
-        metallic: 0.2,
-        roughness: 0.55
-    }),
-    rotationX: 22,
-    rotationY: 35
-});
-stage.addChild(mesh);
-stage.addChild(new AmbientLight({ color: new Color(1, 1, 1), amount: 0.45 }));
-const directionalLight = new DirectionalLight({
-    color: new Color(1, 0.96, 0.9),
-    amount: 3,
-    direction: new Vector3(-1, -0.8, -0.5)
-});
-stage.addChild(directionalLight);
-
-stage.tick(0);
-await stage.renderer.waitForIdle();
-window.__HILO3D_VISUAL_FIRST_FRAME__ = { backend: stage.renderer.backend };
+engine.frame(world, 0);
+await engine.renderer.waitForIdle();
+window.__HILO3D_VISUAL_FIRST_FRAME__ = { backend: engine.renderer.backend };
 
 async function runReadbackDiagnostics(): Promise<void> {
-    const readbackTarget = stage.renderer.createRenderTarget({
+    const readbackTarget = engine.renderer.createRenderTarget({
         width: 160,
         height: 120,
         colorAttachments: [
@@ -74,17 +100,20 @@ async function runReadbackDiagnostics(): Promise<void> {
             }
         ],
         depthStencilAttachment: { format: 'depth24plus' },
-        label: 'Visual PBR diagnostics'
+        label: 'Visual ECS PBR diagnostics'
     });
 
     async function renderAndRead(): Promise<Uint8Array> {
-        stage.renderer.renderToTarget(readbackTarget, stage, camera);
+        const renderWorld = world.getResource(RENDER_WORLD);
+        const camera = renderWorld.cameras.get(world.entityIndex(cameraEntity));
+        engine.renderer.renderToTarget(readbackTarget, renderWorld, camera);
         return (await readbackTarget.readColorAttachment()).data;
     }
 
     function changedPixelCount(left: Uint8Array, right: Uint8Array, threshold = 2): number {
-        if (left.length !== right.length)
+        if (left.length !== right.length) {
             throw new RangeError('Visual readbacks must have equal sizes.');
+        }
         let count = 0;
         for (let offset = 0; offset < left.length; offset += 4) {
             if (
@@ -117,40 +146,53 @@ async function runReadbackDiagnostics(): Promise<void> {
     }
 
     async function readViewportSemantic(): Promise<number[]> {
-        const viewportTarget = stage.renderer.createRenderTarget({
+        const viewportTarget = engine.renderer.createRenderTarget({
             width: 37,
             height: 23,
             depthStencilAttachment: false,
-            label: 'CameraBlock viewport diagnostics'
+            label: 'ECS CameraBlock viewport diagnostics'
         });
-        const viewportScene = new Node();
-        viewportScene.addChild(
-            new Mesh({
-                geometry: new Geometry({
-                    vertices: new GeometryData(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3)
-                }),
-                material: new ShaderMaterial({
-                    sourceRevision: 'ViewportSemanticDiagnostics',
-                    state: { depthTest: false, depthWrite: false, cullMode: 'none' },
-                    attributes: { a_position: 'POSITION' },
-                    vs: `#version 300 es
-                        in vec3 a_position;
-                        void main(void) {
-                            gl_Position = vec4(a_position, 1.0);
-                        }
-                    `,
-                    fs: `#version 300 es
-                        precision highp float;
-                        ${cameraBlockSource}
-                        layout(location = 0) out vec4 fragmentColor;
-                        void main(void) {
-                            fragmentColor = u_viewport / 255.0;
-                        }
-                    `
-                })
+        const diagnosticWorld = await createRenderWorld();
+        const diagnosticCamera = diagnosticWorld.createEntity();
+        diagnosticWorld.add(diagnosticCamera, LocalTransform, {});
+        diagnosticWorld.add(diagnosticCamera, PerspectiveCamera, {
+            aspect: 37 / 23,
+            near: 0.1,
+            far: 10
+        });
+        const diagnosticMesh = diagnosticWorld.createEntity();
+        diagnosticWorld.add(diagnosticMesh, LocalTransform, {});
+        diagnosticWorld.add(diagnosticMesh, MeshRenderer, {
+            geometry: new Geometry({
+                vertices: new GeometryData(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3)
+            }),
+            material: new ShaderMaterial({
+                sourceRevision: 'EcsViewportSemanticDiagnostics',
+                state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+                attributes: { a_position: 'POSITION' },
+                vs: `#version 300 es
+                    in vec3 a_position;
+                    void main(void) {
+                        gl_Position = vec4(a_position, 1.0);
+                    }
+                `,
+                fs: `#version 300 es
+                    precision highp float;
+                    ${cameraBlockSource}
+                    layout(location = 0) out vec4 fragmentColor;
+                    void main(void) {
+                        fragmentColor = u_viewport / 255.0;
+                    }
+                `
             })
+        });
+        diagnosticWorld.update(0);
+        const renderWorld = diagnosticWorld.getResource(RENDER_WORLD);
+        engine.renderer.renderToTarget(
+            viewportTarget,
+            renderWorld,
+            renderWorld.cameras.get(diagnosticWorld.entityIndex(diagnosticCamera))
         );
-        stage.renderer.renderToTarget(viewportTarget, viewportScene, camera);
         const bytes = Array.from(
             (
                 await viewportTarget.readColorAttachment({
@@ -162,22 +204,29 @@ async function runReadbackDiagnostics(): Promise<void> {
             ).data
         );
         viewportTarget.destroy();
+        diagnosticWorld.destroy();
         return bytes;
     }
 
     const rotatedLit = await renderAndRead();
-    mesh.setRotation(0, 0, 0);
+    world.set(meshEntity, LocalTransform, {});
+    world.update(0);
     const unrotatedLit = await renderAndRead();
-    mesh.setRotation(22, 35, 0);
-    directionalLight.enabled = false;
+    world.set(meshEntity, LocalTransform, { rotation: rotation(22, 35, 0) });
+    world.set(directionalEntity, DirectionalLight, {
+        color: [1, 0.96, 0.9],
+        amount: 3,
+        enabled: false,
+        direction: [-1, -0.8, -0.5]
+    });
+    world.update(0);
     const rotatedAmbientOnly = await renderAndRead();
-    directionalLight.enabled = true;
     readbackTarget.destroy();
     const viewportBytes = await readViewportSemantic();
 
     const backgroundPixel = Array.from(rotatedLit.subarray(0, 4));
     window.__HILO3D_VISUAL_RESULT__ = {
-        backend: stage.renderer.backend,
+        backend: engine.renderer.backend,
         readback: {
             backgroundPixel,
             transformedPixelCount: changedPixelCount(rotatedLit, unrotatedLit),
@@ -188,23 +237,32 @@ async function runReadbackDiagnostics(): Promise<void> {
     };
 }
 
-window.__HILO3D_VISUAL_CONTINUE__ = () => {
+window.__HILO3D_VISUAL_CONTINUE__ = (): void => {
     delete window.__HILO3D_VISUAL_CONTINUE__;
     void runReadbackDiagnostics();
 };
 
+addEventListener(
+    'beforeunload',
+    () => {
+        engine.destroy();
+        world.destroy();
+    },
+    { once: true }
+);
+
 declare global {
     interface Window {
-        __HILO3D_VISUAL_FIRST_FRAME__?: { backend: string };
+        __HILO3D_VISUAL_FIRST_FRAME__?: { readonly backend: string };
         __HILO3D_VISUAL_CONTINUE__?: () => void;
         __HILO3D_VISUAL_RESULT__?: {
-            backend: string;
-            readback: {
-                backgroundPixel: number[];
-                transformedPixelCount: number;
-                directionalLightPixelCount: number;
-                litForegroundColorCount: number;
-                viewportBytes: number[];
+            readonly backend: string;
+            readonly readback: {
+                readonly backgroundPixel: number[];
+                readonly transformedPixelCount: number;
+                readonly directionalLightPixelCount: number;
+                readonly litForegroundColorCount: number;
+                readonly viewportBytes: number[];
             };
         };
     }

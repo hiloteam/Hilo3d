@@ -4,57 +4,60 @@
 
 ```ts
 
+import { ComponentType } from 'hilo3d';
 import { DispatchEvent } from 'hilo3d';
+import { Entity } from 'hilo3d';
 import { EventDispatcher } from 'hilo3d';
-import { Node as Node_2 } from 'hilo3d';
 import RAPIER from '@dimforge/rapier2d-compat';
-import { Stage } from 'hilo3d';
-import { StageSystem } from 'hilo3d';
-import { StageSystemService } from 'hilo3d';
+import { WorldResource } from 'hilo3d';
+import { WorldSystem } from 'hilo3d';
+
+// @public (undocumented)
+export const AttachedBody: ComponentType<AttachedBodyValue>;
 
 // @public
-export function bindNode2D(world: PhysicsWorld<'2d'>, body: PhysicsRigidBody<'2d'>, node: Node_2, options?: PhysicsTransformBindingOptions): HiloNodeTransform2D;
+export interface AttachedBodyValue {
+    // (undocumented)
+    readonly body: Entity;
+}
+
+// @public (undocumented)
+export const CharacterController: ComponentType<CharacterControllerValue>;
+
+// @public
+export interface CharacterControllerValue {
+    // (undocumented)
+    readonly collider: Entity;
+    // (undocumented)
+    readonly dimension: '2d' | '3d';
+    // (undocumented)
+    readonly options: PhysicsCharacterControllerOptions<'2d' | '3d'>;
+}
+
+// @public (undocumented)
+export const Collider: ComponentType<ColliderValue>;
+
+// @public
+export type ColliderValue = (PhysicsColliderDescriptor2D & {
+    readonly dimension?: '2d';
+}) | (PhysicsColliderDescriptor3D & {
+    readonly dimension?: '3d';
+});
 
 // @public
 export function createPhysicsBackendExtension<T>(name: string): PhysicsBackendExtension<T>;
 
 // @public
-export function createPhysicsStageSystem<D extends PhysicsDimension>(options: PhysicsStageSystemOptions<D>): StageSystem;
+export function createPhysicsSystem<D extends PhysicsDimension>(options: PhysicsSystemOptions<D>): WorldSystem;
 
 // @public
-export function createRapier2DPhysicsSystem(options: Rapier2DPhysicsSystemOptions): StageSystem;
-
-// @public
-export class HiloNodeTransform2D implements PhysicsTransformTarget<'2d'> {
-    constructor(node: Node_2);
-    // (undocumented)
-    invalidateHistory(): void;
-    // (undocumented)
-    readonly node: Node_2;
-    // (undocumented)
-    readPose(): PhysicsPose2D;
-    // (undocumented)
-    writePose(pose: PhysicsPose2D): void;
-}
-
-// @public
-export class HiloNodeTransform3D implements PhysicsTransformTarget<'3d'> {
-    constructor(node: Node_2);
-    // (undocumented)
-    invalidateHistory(): void;
-    // (undocumented)
-    readonly node: Node_2;
-    // (undocumented)
-    readPose(): PhysicsPose3D;
-    // (undocumented)
-    writePose(pose: PhysicsPose3D): void;
-}
+export function createRapier2DPhysicsSystem(options: Rapier2DPhysicsSystemOptions): WorldSystem;
 
 // @public (undocumented)
-export const PHYSICS_WORLD_2D_SERVICE: StageSystemService<PhysicsWorld<"2d">>;
+export const PHYSICS_RUNTIME_2D: WorldResource<PhysicsRuntime<"2d">>;
 
 // @public (undocumented)
-export const PHYSICS_WORLD_3D_SERVICE: StageSystemService<PhysicsWorld<"3d">>;
+export const PHYSICS_RUNTIME_3D: WorldResource<PhysicsRuntime<"3d">>;
 
 // @public (undocumented)
 export interface PhysicsAdvanceResult {
@@ -508,6 +511,30 @@ export interface PhysicsDebugGeometry {
 // @public
 export type PhysicsDimension = '2d' | '3d';
 
+// @public
+export interface PhysicsEcsSnapshot {
+    // (undocumented)
+    readonly backend: PhysicsWorldSnapshot;
+    // (undocumented)
+    readonly bodyEntities: Uint32Array;
+    // (undocumented)
+    readonly bodyHandles: Uint32Array;
+    // (undocumented)
+    readonly colliderEntities: Uint32Array;
+    // (undocumented)
+    readonly colliderHandles: Uint32Array;
+}
+
+// @public
+export interface PhysicsEntityEvent<D extends PhysicsDimension> {
+    // (undocumented)
+    readonly collider1: Entity;
+    // (undocumented)
+    readonly collider2: Entity;
+    // (undocumented)
+    readonly event: PhysicsBackendEvent<D>;
+}
+
 // @public (undocumented)
 export interface PhysicsHalfspaceShape2D {
     // (undocumented)
@@ -887,6 +914,39 @@ export type PhysicsRigidBodyType = 'dynamic' | 'fixed' | 'kinematic-position' | 
 // @public (undocumented)
 export type PhysicsRotation<D extends PhysicsDimension> = D extends '2d' ? number : PhysicsQuaternion;
 
+// @public
+export class PhysicsRuntime<D extends PhysicsDimension> {
+    constructor(physicsWorld: PhysicsWorld<D>, entityCapacity: number);
+    bodyHandle(entityIndex: number): number | null;
+    colliderHandle(entityIndex: number): number | null;
+    // @internal
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    readonly events: PhysicsEntityEvent<D>[];
+    getDiagnostics(): PhysicsRuntimeDiagnostics;
+    // (undocumented)
+    readonly physicsWorld: PhysicsWorld<D>;
+    restoreSnapshot(snapshot: PhysicsEcsSnapshot): void;
+    // @internal (undocumented)
+    setBodyHandle(entityIndex: number, handle: number | null): void;
+    // @internal (undocumented)
+    setColliderHandle(entityIndex: number, handle: number | null): void;
+    // @internal
+    setRestoreHandler(handler: (() => void) | null): void;
+    // @internal (undocumented)
+    setStepDiagnostics(structuralSyncCount: number, dependentColliderVisitCount: number, poseWriteCount: number): void;
+    takeSnapshot(): PhysicsEcsSnapshot;
+}
+
+// @public
+export interface PhysicsRuntimeDiagnostics {
+    readonly bodyCount: number;
+    readonly colliderCount: number;
+    readonly dependentColliderVisitCount: number;
+    readonly poseWriteCount: number;
+    readonly structuralSyncCount: number;
+}
+
 // @public (undocumented)
 export interface PhysicsSegmentShape2D {
     // (undocumented)
@@ -951,34 +1011,13 @@ export interface PhysicsShapeCastOptions {
 }
 
 // @public (undocumented)
-export interface PhysicsStageSystemOptions<D extends PhysicsDimension> {
+export interface PhysicsSystemOptions<D extends PhysicsDimension> {
     // (undocumented)
-    readonly id: string;
+    readonly id?: string;
     // (undocumented)
-    readonly service: StageSystemService<PhysicsWorld<D>>;
-    readonly setup?: (world: PhysicsWorld<D>, stage: Stage) => void | Promise<void>;
+    readonly resource?: WorldResource<PhysicsRuntime<D>>;
     // (undocumented)
     readonly world: PhysicsWorldOptions<D>;
-}
-
-// @public (undocumented)
-export interface PhysicsTransformBindingOptions {
-    readonly interpolate?: boolean;
-    // (undocumented)
-    readonly sync?: PhysicsTransformSyncMode;
-}
-
-// @public (undocumented)
-export type PhysicsTransformSyncMode = 'auto' | 'physics-to-target' | 'target-to-physics' | 'none';
-
-// @public (undocumented)
-export interface PhysicsTransformTarget<D extends PhysicsDimension> {
-    // (undocumented)
-    invalidateHistory?(): void;
-    // (undocumented)
-    readPose(): PhysicsPose<D>;
-    // (undocumented)
-    writePose(pose: PhysicsPose<D>): void;
 }
 
 // @public (undocumented)
@@ -1035,8 +1074,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
     advance(deltaTimeMilliseconds: number): PhysicsAdvanceResult;
     // (undocumented)
     readonly backendWorld: PhysicsBackendWorld<D>;
-    // (undocumented)
-    bindTransform(body: PhysicsRigidBody<D>, target: PhysicsTransformTarget<D>, options?: PhysicsTransformBindingOptions): this;
     // (undocumented)
     castRay(origin: PhysicsVector<D>, direction: PhysicsVector<D>, maxDistance: number, solid?: boolean, filter?: PhysicsQueryFilter): PhysicsRaycastHit<D> | null;
     castShape(pose: PhysicsPose<D>, velocity: PhysicsVector<D>, shape: PhysicsShape<D>, options?: PhysicsShapeCastOptions): PhysicsShapeCastHit<D> | null;
@@ -1096,8 +1133,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
     removeJoint(joint: PhysicsJoint<D>, wakeUp?: boolean): void;
     // (undocumented)
     removeRigidBody(body: PhysicsRigidBody<D>): void;
-    // (undocumented)
-    resetBindingPose(handle: number, pose: PhysicsPose<D>, invalidateHistory: boolean): void;
     restoreSnapshot(snapshot: PhysicsWorldSnapshot): void;
     // (undocumented)
     setGravity(gravity: PhysicsVector<D>): this;
@@ -1106,16 +1141,12 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
     // (undocumented)
     get timeScale(): number;
     set timeScale(value: number);
-    // (undocumented)
-    unbindTransform(body: PhysicsRigidBody<D>): this;
 }
 
 // @public (undocumented)
 export interface PhysicsWorldDiagnostics {
     // (undocumented)
     readonly accumulatorSeconds: number;
-    // (undocumented)
-    readonly bindingCount: number;
     // (undocumented)
     readonly bodyCount: number;
     // (undocumented)
@@ -1187,12 +1218,22 @@ export interface Rapier2DNativeExtension {
 }
 
 // @public (undocumented)
-export type Rapier2DPhysicsSystemOptions = Omit<PhysicsWorldOptions<'2d'>, 'backend'> & {
-    readonly setup?: (world: PhysicsWorld<'2d'>, stage: Stage) => void | Promise<void>;
-};
+export type Rapier2DPhysicsSystemOptions = Omit<PhysicsWorldOptions<'2d'>, 'backend'>;
 
 // @public (undocumented)
 export const RAPIER_2D_NATIVE_EXTENSION: PhysicsBackendExtension<Rapier2DNativeExtension>;
+
+// @public (undocumented)
+export const RigidBody: ComponentType<RigidBodyValue>;
+
+// @public
+export type RigidBodyValue = (PhysicsRigidBodyDescriptor2D & {
+    readonly dimension?: '2d';
+    readonly interpolate?: boolean;
+}) | (PhysicsRigidBodyDescriptor3D & {
+    readonly dimension?: '3d';
+    readonly interpolate?: boolean;
+});
 
 // (No @packageDocumentation comment for this package)
 

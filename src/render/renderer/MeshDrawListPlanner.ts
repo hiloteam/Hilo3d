@@ -123,7 +123,7 @@ function compare2DOrder(a: Mesh, b: Mesh): number {
 }
 
 function isSpriteMesh(mesh: Mesh): boolean {
-    return Reflect.get(mesh, 'isSprite') === true;
+    return Reflect.get(mesh, 'isSprite');
 }
 
 /**
@@ -422,9 +422,6 @@ export class MeshDrawListPlanner {
                     throw new TypeError(
                         `Mesh draw-list entry ${String(index)} must be a Mesh instance`
                     );
-                }
-                if (mesh.isDestroyed) {
-                    throw new Error(`Mesh ${mesh.id} is destroyed`);
                 }
                 const geometry = mesh.geometry;
                 const material = materialOverride ?? mesh.material;

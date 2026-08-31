@@ -14,10 +14,10 @@ import {
     default as RendererCore,
     type RendererBackend,
     type RendererFrameCallback,
-    type RendererScene,
     type RendererViewport,
     type TextureCompressionFormat
 } from '../RendererCore';
+import type { RenderWorld } from '../world/RenderWorld';
 import type {
     RendererContextPowerPreference,
     RendererFeatureName,
@@ -30,7 +30,6 @@ import type {
     RenderPipelineContext,
     RenderPipelineFactory
 } from '../pipeline/RenderPipeline';
-import { getRenderNodeExtension } from '../pipeline/RenderNodeExtension';
 import type {
     RenderTarget,
     RenderTargetColorAttachmentReadback,
@@ -340,9 +339,9 @@ class SharedRendererDriver
         null;
     #surface: RHISurface | null = null;
     #resources: RenderingResources | null = null;
-    #lastStage: RendererScene | null = null;
+    #lastRenderWorld: RenderWorld | null = null;
     #lastCamera: Camera | null = null;
-    #pendingPresentationStage: RendererScene | null = null;
+    #pendingPresentationRenderWorld: RenderWorld | null = null;
     #pendingPresentationCamera: Camera | null = null;
     #presentationViewport: Readonly<RHIViewport> | null = null;
     #initialized = false;
@@ -533,11 +532,11 @@ class SharedRendererDriver
         ];
     }
 
-    override render(stage: RendererScene, camera: Camera, fireEvent = false): void {
-        this.prepareAddonRendererResources(stage, camera);
+    override render(renderWorld: RenderWorld, camera: Camera, fireEvent = false): void {
+        this.prepareAddonRendererResources(renderWorld, camera);
         this.recordFrameCommand(() => {
             const selected = this.renderTarget;
-            this.#pipelineHost.recordPipeline(stage, camera, selected, fireEvent);
+            this.#pipelineHost.recordPipeline(renderWorld, camera, selected, fireEvent);
             if (selected !== null && this.#autoPresentRenderTarget) {
                 this.presentInternal(selected, this.#selectedTargetColorEncoding);
             }
@@ -586,7 +585,7 @@ class SharedRendererDriver
         this.#shadowBindingAttachedThisFrame = false;
         this.#applicationPassCount = 0;
         this.#applicationFaceCount = 0;
-        this.#pendingPresentationStage = null;
+        this.#pendingPresentationRenderWorld = null;
         this.#pendingPresentationCamera = null;
         this.#usedTargets.length = 0;
         this.#scriptablePipelineContextCursor = 0;
@@ -695,7 +694,7 @@ class SharedRendererDriver
         this.#fullscreenFrameStarted = false;
         this.#surfaceRequested = false;
         this.#shadowBindingAttachedThisFrame = false;
-        this.#pendingPresentationStage = null;
+        this.#pendingPresentationRenderWorld = null;
         this.#pendingPresentationCamera = null;
         this.#activeScriptablePipelineContext = null;
         this.#scriptableResourcesFrameStarted = false;
@@ -716,7 +715,7 @@ class SharedRendererDriver
     }
 
     createPipelineContext(
-        scene: RendererScene,
+        scene: RenderWorld,
         camera: Camera,
         target: RenderTarget | null,
         fireEvent: boolean,
@@ -892,9 +891,8 @@ class SharedRendererDriver
         this.#fullscreenFrameStarted = true;
     }
 
-    prepareScriptableCullingScene(scene: RendererScene, camera: Camera): void {
+    prepareScriptableCullingScene(scene: RenderWorld, camera: Camera): void {
         this.fog = scene.fog ?? null;
-        scene.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
     }
 
@@ -916,7 +914,6 @@ class SharedRendererDriver
             this.fire('beforeRender');
             this.fire('beforeRenderScene');
         }
-        for (const mesh of meshes) mesh.fire('beforeRender', mesh);
     }
 
     recordScriptableShadows(
@@ -945,16 +942,16 @@ class SharedRendererDriver
         if (enabled) this.queueAfterSceneEvents(meshes, true);
     }
 
-    retainScriptablePresentation(scene: RendererScene, camera: Camera): void {
-        this.#pendingPresentationStage = scene;
+    retainScriptablePresentation(scene: RenderWorld, camera: Camera): void {
+        this.#pendingPresentationRenderWorld = scene;
         this.#pendingPresentationCamera = camera;
     }
 
     private commitPendingPresentation(): void {
-        const stage = this.#pendingPresentationStage;
+        const renderWorld = this.#pendingPresentationRenderWorld;
         const camera = this.#pendingPresentationCamera;
-        if (stage === null || camera === null) return;
-        this.#lastStage = stage;
+        if (renderWorld === null || camera === null) return;
+        this.#lastRenderWorld = renderWorld;
         this.#lastCamera = camera;
     }
 
@@ -1101,14 +1098,14 @@ class SharedRendererDriver
 
     override renderToTarget(
         target: RenderTarget,
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         fireEvent = false
     ): void {
-        this.prepareAddonRendererResources(stage, camera);
+        this.prepareAddonRendererResources(renderWorld, camera);
         this.recordFrameCommand(() => {
             this.#pipelineHost.recordPipeline(
-                stage,
+                renderWorld,
                 camera,
                 this.requireOwnedTarget(target),
                 fireEvent
@@ -1116,12 +1113,9 @@ class SharedRendererDriver
         });
     }
 
-    private prepareAddonRendererResources(scene: RendererScene, camera: Camera): void {
-        scene.traverse(node => {
-            const extension = getRenderNodeExtension(node);
-            extension?.prepareRenderer?.(this);
-            extension?.prepareView?.(camera);
-        });
+    private prepareAddonRendererResources(scene: RenderWorld, camera: Camera): void {
+        void scene;
+        void camera;
     }
 
     override onInit(callback: (renderer: this) => void): void {
@@ -1865,12 +1859,12 @@ class SharedRendererDriver
 
     private renderSceneToTarget(
         target: RHIRenderTarget,
-        stage: RendererScene,
+        renderWorld: RenderWorld,
         camera: Camera,
         fireEvent: boolean
     ): void {
         const resources = this.requireResources();
-        const visible = this.prepareScene(stage, camera);
+        const visible = this.prepareScene(renderWorld, camera);
         const context = this.createContext(camera, {
             x: 0,
             y: 0,
@@ -2049,13 +2043,12 @@ class SharedRendererDriver
         });
     }
 
-    private prepareScene(stage: RendererScene, camera: Camera): readonly Mesh[] {
+    private prepareScene(renderWorld: RenderWorld, camera: Camera): readonly Mesh[] {
         if (!this.#pipelineHost.recording) this.resetDiagnosticsFrame();
         this.configureCameraProfile(camera);
-        this.fog = stage.fog ?? null;
-        stage.updateMatrixWorld();
+        this.fog = renderWorld.fog ?? null;
         camera.updateViewProjectionMatrix();
-        this.buildFramePlan(stage, camera);
+        this.buildFramePlan(renderWorld, camera);
         const visible = this.#visibleMeshes;
         visible.length = 0;
         this.renderList.traverse(this.#collectVisibleMesh);
@@ -2067,12 +2060,12 @@ class SharedRendererDriver
     }
 
     private executeRetainedPresentation(): void {
-        const stage = this.#lastStage;
+        const renderWorld = this.#lastRenderWorld;
         const camera = this.#lastCamera;
-        if (stage === null || camera === null) {
+        if (renderWorld === null || camera === null) {
             throw new Error('No completed presentation inputs are available for repetition');
         }
-        this.render(stage, camera, false);
+        this.render(renderWorld, camera, false);
     }
 
     private setPresentationViewport(viewport: Readonly<RHIViewport> | null): void {
@@ -2180,12 +2173,10 @@ class SharedRendererDriver
         if (!enabled) return;
         this.fire('beforeRender');
         this.fire('beforeRenderScene');
-        for (const mesh of meshes) mesh.fire('beforeRender', mesh);
     }
 
     private fireAfterSceneEvents(meshes: readonly Mesh[], enabled: boolean): void {
         if (!enabled) return;
-        for (const mesh of meshes) mesh.fire('afterRender', mesh);
         this.fire('afterRender');
     }
 

@@ -209,18 +209,76 @@ async function checkDocumentationContracts(): Promise<void> {
         'utf8'
     );
 
-    assert(twoDimensional.includes("typeof event.stopPropagation === 'function'"));
-    assert(threeDimensional.includes('event.hitPoint instanceof Hilo3d.Vector3'));
-    assert(rendering.includes('renderer.renderToTarget(target, scene, camera);'));
-    assert(!rendering.includes('renderer.renderToTarget(scene, camera, target);'));
+    assert(twoDimensional.includes('Hilo3d.SpriteRenderer'));
+    assert(twoDimensional.includes('OrthographicCamera'));
+    assert(rendering.includes('renderer.renderToTarget(target, renderWorld, camera);'));
     assert(threeDimensional.includes("coverage: { mode: 'mask', cutoff: 0.5 }"));
-    assert(threeDimensional.includes('relevant `Mesh` objects'));
-    assert(!publicApi.includes('transparent: true'));
-    assert(!publicApi.includes('castShadows: true,\n    receiveShadows: true\n});'));
+    assert(threeDimensional.includes('world.add(body, RigidBody'));
+    assert(threeDimensional.includes('world.add(body, Hilo3d.MeshRenderer'));
+    assert(threeDimensional.includes('No `bind()` call'));
+    assert(publicApi.includes('Hilo3d.World.create'));
+    assert(publicApi.includes('Hilo3d.Engine.create'));
     assert(particles.includes('ParticleSystemDefinition.create'));
+    assert(particles.includes('createParticleWorldSystem'));
     assert(particles.includes("from '@hilo3d/addon-particle'"));
     assert(threeDimensional.includes("from '@hilo3d/addon-physics/rapier3d'"));
     assert(!threeDimensional.includes('cannon-es'));
+}
+
+function compileStrictSources(
+    rootNames: readonly string[],
+    virtualSources = new Map<string, string>()
+): void {
+    const configPath = join(repositoryRoot, 'tsconfig.lib.json');
+    const config = ts.readConfigFile(configPath, fileName => ts.sys.readFile(fileName));
+    if (config.error) {
+        throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
+    }
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
+    const options: ts.CompilerOptions = {
+        ...parsed.options,
+        noEmit: true,
+        composite: false,
+        declaration: false,
+        declarationMap: false,
+        emitDeclarationOnly: false,
+        rootDir: repositoryRoot,
+        paths: { hilo3d: [join(repositoryRoot, 'src', 'Hilo3d.ts')] }
+    };
+    const host = ts.createCompilerHost(options);
+    const defaultFileExists = host.fileExists.bind(host);
+    const defaultGetSourceFile = host.getSourceFile.bind(host);
+    const defaultReadFile = host.readFile.bind(host);
+    host.fileExists = fileName => virtualSources.has(fileName) || defaultFileExists(fileName);
+    host.readFile = fileName => virtualSources.get(fileName) ?? defaultReadFile(fileName);
+    host.getSourceFile = (
+        fileName,
+        languageVersionOrOptions,
+        onError,
+        shouldCreateNewSourceFile
+    ) => {
+        const source = virtualSources.get(fileName);
+        return source === undefined
+            ? defaultGetSourceFile(
+                  fileName,
+                  languageVersionOrOptions,
+                  onError,
+                  shouldCreateNewSourceFile
+              )
+            : ts.createSourceFile(fileName, source, languageVersionOrOptions, true);
+    };
+
+    const program = ts.createProgram([...parsed.fileNames, ...rootNames], options, host);
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    assert.equal(
+        diagnostics.length,
+        0,
+        ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+            getCanonicalFileName: fileName => fileName,
+            getCurrentDirectory: () => repositoryRoot,
+            getNewLine: () => '\n'
+        })
+    );
 }
 
 function checkStrictPublicApiSnippets(): void {
@@ -229,12 +287,7 @@ function checkStrictPublicApiSnippets(): void {
 import * as Hilo3d from './Hilo3d';
 import * as Particle from '../addon-particle/src/index';
 
-declare const button: Hilo3d.Sprite;
-declare const dragTarget: Hilo3d.Vector2;
-declare const interactable: Hilo3d.Mesh;
 declare const renderer: Hilo3d.Renderer;
-declare const scene: Hilo3d.Node;
-declare const camera: Hilo3d.Camera;
 
 const material = new Hilo3d.PBRMaterial({
     baseColor: new Hilo3d.Color(0.2, 0.65, 1),
@@ -242,13 +295,6 @@ const material = new Hilo3d.PBRMaterial({
     roughness: 0.55,
     coverage: { mode: 'mask', cutoff: 0.5 }
 });
-const mesh = new Hilo3d.Mesh({
-    material,
-    castShadows: true,
-    receiveShadows: true,
-    renderOrder: 0
-});
-void mesh;
 
 const particleDefinition = Particle.ParticleSystemDefinition.create({
     emitters: [{
@@ -270,85 +316,61 @@ const particleDefinition = Particle.ParticleSystemDefinition.create({
         renderers: [{ type: 'sprite', blend: 'additive', depthWrite: false }]
     }]
 });
-new Particle.ParticleSystem({ definition: particleDefinition, seed: 42, autoPlay: false });
-
-button.on('click', event => {
-    if ('stopPropagation' in event && typeof event.stopPropagation === 'function') {
-        event.stopPropagation();
+const particles = Particle.createParticleWorldSystem({
+    setup(runtime): void {
+        runtime.create({ definition: particleDefinition, seed: 42, autoPlay: false });
     }
 });
 
-button.on('pointerdown', event => {
-    if (
-        'stageX' in event &&
-        typeof event.stageX === 'number' &&
-        'stageY' in event &&
-        typeof event.stageY === 'number'
-    ) {
-        dragTarget.set(event.stageX, event.stageY);
-    }
-});
-
-interactable.on('click', event => {
-    if (!('hitPoint' in event) || !(event.hitPoint instanceof Hilo3d.Vector3)) return;
-    const point = event.hitPoint;
-    void point;
-});
-
-const target = renderer.createRenderTarget({
-    width: renderer.width,
-    height: renderer.height
-});
-renderer.renderToTarget(target, scene, camera);
-target.destroy();
+async function exercisePublicEcs(): Promise<void> {
+    const world = await Hilo3d.World.create({
+        systems: [
+            particles,
+            Hilo3d.createInteractionSystem(),
+            Hilo3d.createTransformSystem(),
+            Hilo3d.createRenderExtractionSystem()
+        ]
+    });
+    const cameraEntity = world.createEntity();
+    world.add(cameraEntity, Hilo3d.LocalTransform, { position: [0, 2, 6] });
+    world.add(cameraEntity, Hilo3d.PerspectiveCamera, { aspect: 1 });
+    world.add(cameraEntity, Hilo3d.CameraOutput, { enabled: true });
+    const entity = world.createEntity();
+    world.add(entity, Hilo3d.LocalTransform, {});
+    world.add(entity, Hilo3d.MeshRenderer, {
+        geometry: new Hilo3d.BoxGeometry(),
+        material,
+        castShadows: true,
+        receiveShadows: true
+    });
+    world.add(entity, Hilo3d.PointerTarget, { propagation: 'ancestors' });
+    world.update(0);
+    const renderWorld = world.getResource(Hilo3d.RENDER_WORLD);
+    const camera = renderWorld.cameras.get(world.entityIndex(cameraEntity));
+    const target = renderer.createRenderTarget({
+        width: renderer.width,
+        height: renderer.height
+    });
+    renderer.renderToTarget(target, renderWorld, camera);
+    target.destroy();
+    world.destroy();
+}
+void exercisePublicEcs;
 `;
-    const configPath = join(repositoryRoot, 'tsconfig.lib.json');
-    const config = ts.readConfigFile(configPath, fileName => ts.sys.readFile(fileName));
-    if (config.error) {
-        throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
-    }
-    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
-    const options: ts.CompilerOptions = {
-        ...parsed.options,
-        noEmit: true,
-        composite: false,
-        declaration: false,
-        declarationMap: false,
-        emitDeclarationOnly: false,
-        rootDir: repositoryRoot,
-        paths: { hilo3d: [join(repositoryRoot, 'src', 'Hilo3d.ts')] }
-    };
-    const host = ts.createCompilerHost(options);
-    const defaultFileExists = host.fileExists.bind(host);
-    const defaultGetSourceFile = host.getSourceFile.bind(host);
-    const defaultReadFile = host.readFile.bind(host);
-    host.fileExists = fileName => fileName === virtualFile || defaultFileExists(fileName);
-    host.readFile = fileName => (fileName === virtualFile ? source : defaultReadFile(fileName));
-    host.getSourceFile = (
-        fileName,
-        languageVersionOrOptions,
-        onError,
-        shouldCreateNewSourceFile
-    ) =>
-        fileName === virtualFile
-            ? ts.createSourceFile(fileName, source, languageVersionOrOptions, true)
-            : defaultGetSourceFile(
-                  fileName,
-                  languageVersionOrOptions,
-                  onError,
-                  shouldCreateNewSourceFile
-              );
+    compileStrictSources([virtualFile], new Map([[virtualFile, source]]));
+}
 
-    const program = ts.createProgram([...parsed.fileNames, virtualFile], options, host);
-    const diagnostics = ts.getPreEmitDiagnostics(program);
-    assert.equal(
-        diagnostics.length,
-        0,
-        ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-            getCanonicalFileName: fileName => fileName,
-            getCurrentDirectory: () => repositoryRoot,
-            getNewLine: () => '\n'
-        })
+async function checkStarterVariantsCompile(): Promise<void> {
+    const variantRoot = join(skillRoot, 'assets', 'starter', 'variants');
+    const variants = ['2d', '3d', 'hybrid'].map(type => join(variantRoot, `main-${type}.ts`));
+    const virtualStartup = join(variantRoot, 'startup.ts');
+    const startupSource = await readFile(
+        join(skillRoot, 'assets', 'starter', 'src', 'startup.ts'),
+        'utf8'
+    );
+    compileStrictSources(
+        [...variants, virtualStartup, join(skillRoot, 'assets', 'starter', 'src', 'vite-env.d.ts')],
+        new Map([[virtualStartup, startupSource]])
     );
 }
 
@@ -381,6 +403,10 @@ async function checkStableSelectionAndVariants(): Promise<void> {
             );
             const mainSource = await readFile(join(output, 'src', 'main.ts'), 'utf8');
             assert(mainSource.includes("import { reportStartupFailure } from './startup';"));
+            assert(mainSource.includes('Hilo3d.World.create'));
+            assert(mainSource.includes('Hilo3d.Engine.create'));
+            assert(!mainSource.includes('Hilo3d.Stage'));
+            assert(!mainSource.includes('Hilo3d.Node'));
             await stat(join(output, 'src', 'startup.ts'));
         }
     } finally {
@@ -457,6 +483,7 @@ async function main(): Promise<void> {
         await checkStructure();
         await checkDocumentationContracts();
         checkStrictPublicApiSnippets();
+        await checkStarterVariantsCompile();
         await checkNextPrereleaseSelection();
         await checkStableSelectionAndVariants();
         await checkInvalidNextTagFailure();

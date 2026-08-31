@@ -1,7 +1,7 @@
 import {
     Geometry,
     GeometryData,
-    Mesh,
+    RenderMesh,
     ShaderMaterial,
     Sphere,
     type Bounds,
@@ -290,7 +290,7 @@ function compareParticle(
 
 /** Internal CPU mesh-bucket instance writer. */
 export class ParticleCPUMeshInstanceWriter {
-    readonly mesh: Mesh;
+    readonly mesh: RenderMesh;
     readonly #state: ParticleCPUState;
     readonly #renderer: ParticleMeshRendererDefinition;
     readonly #bucketIndex: number;
@@ -398,18 +398,16 @@ export class ParticleCPUMeshInstanceWriter {
                   }
                 : {})
         });
-        this.mesh = new Mesh({
+        this.mesh = new RenderMesh({
             name: `${plan.definition.name}:mesh:${String(rendererIndex)}:${String(bucketIndex)}`,
             geometry,
             material,
             frustumTest: true,
-            pointerEnabled: false,
             castShadows: false,
             receiveShadows: renderer.lighting === 'lambert',
             renderOrder: renderer.renderOrder ?? 0,
             instanceCount: 1,
-            visible: false,
-            autoUpdateWorldMatrix: plan.definition.simulationSpace === 'local'
+            visible: false
         });
     }
 
@@ -484,6 +482,6 @@ export class ParticleCPUMeshInstanceWriter {
     }
 
     destroy(renderer: Renderer): void {
-        this.mesh.destroy(renderer);
+        renderer.resourceManager.destroyMesh(this.mesh);
     }
 }

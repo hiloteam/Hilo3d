@@ -1,14 +1,16 @@
 import * as Hilo3d from '../src/Hilo3d';
+import PerspectiveCamera from '../src/camera/PerspectiveCamera';
+import RenderMesh from '../src/core/Mesh';
 import { constructRenderer } from '../src/render/internal/RendererFactory';
 
 /** Shared fixture backed by the production WebGL2 RHI path. */
 export interface RendererTestEnvironment {
-    camera: Hilo3d.PerspectiveCamera;
+    camera: PerspectiveCamera;
     renderer: Hilo3d.Renderer<'webgl2'>;
     shaderRenderer: Hilo3d.ShaderRenderer;
     geometry: Hilo3d.MorphGeometry;
     material: Hilo3d.BasicMaterial;
-    mesh: Hilo3d.Mesh;
+    mesh: RenderMesh;
     fog: Hilo3d.Fog;
 }
 
@@ -22,7 +24,7 @@ export function createHilo3dEnvironment(forceNew = false): RendererTestEnvironme
             width: 64,
             height: 64
         }) as Hilo3d.Renderer<'webgl2'>;
-        const camera = new Hilo3d.PerspectiveCamera();
+        const camera = new PerspectiveCamera();
         const shaderRenderer: Hilo3d.ShaderRenderer = {
             vertexPrecision: 'highp',
             fragmentPrecision: 'highp',
@@ -30,7 +32,7 @@ export function createHilo3dEnvironment(forceNew = false): RendererTestEnvironme
         };
         const material = new Hilo3d.BasicMaterial();
         const geometry = new Hilo3d.MorphGeometry();
-        const mesh = new Hilo3d.Mesh({ material, geometry });
+        const mesh = new RenderMesh({ material, geometry });
         const fog = new Hilo3d.Fog();
 
         environment = { camera, renderer, shaderRenderer, geometry, material, mesh, fog };

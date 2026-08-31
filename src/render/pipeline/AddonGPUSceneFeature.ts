@@ -1,4 +1,4 @@
-import { getRenderNodeExtension, type RenderNodeGPUExtension } from './RenderNodeExtension';
+import type { RenderGPUExtension } from './RenderExtension';
 import type {
     ForwardRenderFeatureContext,
     ForwardRenderPipelineFeature,
@@ -7,9 +7,9 @@ import type {
 import type { RenderPipelineContext, RenderPipelineCreateContext } from './RenderPipeline';
 
 class AddonGPUFrameTransaction {
-    readonly #recorded = new Set<RenderNodeGPUExtension>();
+    readonly #recorded = new Set<RenderGPUExtension>();
 
-    record(gpu: RenderNodeGPUExtension): void {
+    record(gpu: RenderGPUExtension): void {
         this.#recorded.add(gpu);
     }
 
@@ -46,43 +46,43 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
 
     requiresSampledDepth(context: RenderPipelineContext): boolean {
         let required = false;
-        context.scene.traverse(node => {
-            const gpu = getRenderNodeExtension(node)?.gpu;
+        for (const extension of context.scene.extensions) {
+            const gpu = extension.gpu;
             if (
                 gpu?.requiresSampledDepth === true &&
                 (gpu.hasPendingWork || gpu.isVisible(context.camera))
             ) {
                 required = true;
             }
-        });
+        }
         return required;
     }
 
     requiresSplitScene(context: RenderPipelineContext): boolean {
         if (!this.#supported || this.phase !== 'opaque') return false;
         let required = false;
-        context.scene.traverse(node => {
-            const gpu = getRenderNodeExtension(node)?.gpu;
+        for (const extension of context.scene.extensions) {
+            const gpu = extension.gpu;
             if (gpu?.hasOpaqueRenderers === true && gpu.isVisible(context.camera)) required = true;
-        });
+        }
         return required;
     }
 
     record(context: ForwardRenderFeatureContext): void {
         if (!this.#supported || context.resources.color === null) return;
-        context.pipeline.scene.traverse(node => {
-            const gpu = getRenderNodeExtension(node)?.gpu;
-            if (gpu === null || gpu === undefined) return;
-            if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) return;
+        for (const extension of context.pipeline.scene.extensions) {
+            const gpu = extension.gpu;
+            if (gpu === null) continue;
+            if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) continue;
             this.transaction.record(gpu);
             gpu.record(
                 context.pipeline,
-                context.resources.color as NonNullable<typeof context.resources.color>,
+                context.resources.color,
                 context.resources.depth,
                 gpu.isVisible(context.pipeline.camera),
                 this.phase
             );
-        });
+        }
     }
 
     frameSubmitted(frameIndex: number): void {
@@ -98,7 +98,7 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
     }
 }
 
-/** Built-in bridge for transparent GPU work supplied by optional scene-node addons. */
+/** Built-in bridge for transparent GPU work supplied by optional render extensions. */
 export const addonGPUSceneFeature: ForwardRenderPipelineFeature = Object.freeze({
     name: '__hilo3d-addon-gpu-scene',
     injectionPoint: 'after-transparent',
@@ -117,7 +117,7 @@ export const addonGPUSceneFeature: ForwardRenderPipelineFeature = Object.freeze(
     }
 });
 
-/** Built-in bridge for opaque GPU work supplied by optional scene-node addons. */
+/** Built-in bridge for opaque GPU work supplied by optional render extensions. */
 export const addonGPUOpaqueSceneFeature: ForwardRenderPipelineFeature = Object.freeze({
     name: '__hilo3d-addon-gpu-scene-opaque',
     injectionPoint: 'after-opaque',

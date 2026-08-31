@@ -5,23 +5,24 @@
 ```ts
 
 import type { Bounds } from 'hilo3d';
-import { Camera } from 'hilo3d';
+import { ComponentType } from 'hilo3d';
+import { EventDispatcher } from 'hilo3d';
 import { Geometry } from 'hilo3d';
-import { Node as Node_2 } from 'hilo3d';
-import { NodeParameters } from 'hilo3d';
-import { RENDER_NODE_EXTENSION } from 'hilo3d';
+import { Matrix4 } from 'hilo3d';
+import { RenderCamera } from 'hilo3d';
 import { Renderer } from 'hilo3d';
 import { RendererContract } from 'hilo3d';
+import { RenderExtension } from 'hilo3d';
+import { RenderGPUExtension } from 'hilo3d';
 import { RenderGraphTextureHandle } from 'hilo3d';
-import { RenderNodeExtension } from 'hilo3d';
-import { RenderNodeGPUExtension } from 'hilo3d';
+import { RenderMesh } from 'hilo3d';
 import { RenderPipelineContext } from 'hilo3d';
 import type { RenderTargetColorAttachmentReadback } from 'hilo3d';
 import type { RenderTargetColorFormat } from 'hilo3d';
-import { Stage } from 'hilo3d';
-import { StageSystem } from 'hilo3d';
-import { StageSystemService } from 'hilo3d';
 import { Texture } from 'hilo3d';
+import { World } from 'hilo3d';
+import { WorldResource } from 'hilo3d';
+import { WorldSystem } from 'hilo3d';
 
 // @public
 export function analyzeParticleStatelessEligibility(emitter: ParticleEmitterDefinition): readonly Readonly<ParticleStatelessModuleMetadata>[];
@@ -36,7 +37,7 @@ export function compileParticleSystemDefinition(definition: ParticleSystemDefini
 export function createParticleAuthoringGraph(definition: ParticleSystemDefinition, options?: Readonly<ParticleDefinitionSerializationOptions>): Readonly<ParticleAuthoringGraph>;
 
 // @public
-export function createParticleStageSystem(options?: Readonly<ParticleStageSystemOptions>): StageSystem;
+export function createParticleWorldSystem(options?: Readonly<ParticleWorldSystemOptions>): WorldSystem;
 
 // @public
 export function deserializeParticleSystemDefinition(source: unknown, options?: Readonly<ParticleDefinitionDeserializationOptions>): ParticleSystemDefinition;
@@ -66,10 +67,10 @@ export const PARTICLE_DEFINITION_VERSION: 1;
 export const PARTICLE_PREVIEW_PROTOCOL_VERSION: 1;
 
 // @public
-export const PARTICLE_SIMULATION_CACHE_VERSION: 1;
+export const PARTICLE_RUNTIME: WorldResource<ParticleRuntime>;
 
 // @public
-export const PARTICLE_STAGE_SERVICE: StageSystemService<ParticleStageRuntime>;
+export const PARTICLE_SIMULATION_CACHE_VERSION: 1;
 
 // @public
 export interface ParticleAdvancedQualityPlan {
@@ -470,7 +471,7 @@ export interface ParticleBudgetDecision {
 // @public
 export class ParticleBudgetManager {
     constructor(profile?: Readonly<ParticleBudgetProfile>);
-    apply(systems: readonly ParticleSystem[], camera?: Camera): readonly Readonly<ParticleBudgetDecision>[];
+    apply(systems: readonly ParticleSystem[], camera?: RenderCamera): readonly Readonly<ParticleBudgetDecision>[];
     // (undocumented)
     readonly profile: Readonly<Required<ParticleBudgetProfile>>;
     resolve(requests: readonly Readonly<ParticleBudgetRequest>[]): readonly Readonly<ParticleBudgetDecision>[];
@@ -805,6 +806,9 @@ export interface ParticleEmissionDefinition {
     readonly rateOverTime?: ParticleScalarSource;
 }
 
+// @public (undocumented)
+export const ParticleEmitter: ComponentType<ParticleEmitterValue>;
+
 // @public
 export class ParticleEmitterDefinition {
     constructor(input: Readonly<ParticleEmitterDefinitionInput>);
@@ -894,6 +898,12 @@ export interface ParticleEmitterDefinitionInput {
     readonly simulationSpace?: ParticleSimulationSpace;
     // (undocumented)
     readonly startDelay?: number;
+}
+
+// @public
+export interface ParticleEmitterValue {
+    // (undocumented)
+    readonly system: ParticleSystem;
 }
 
 // @public
@@ -1357,6 +1367,23 @@ export interface ParticleRotateAroundPointModule {
 }
 
 // @public
+export class ParticleRuntime {
+    constructor(world: World, budget: Readonly<ParticleBudgetProfile> | false, backend: 'webgl2' | 'webgpu' | undefined);
+    // (undocumented)
+    readonly budget: ParticleBudgetManager | null;
+    create(parameters: Readonly<ParticleSystemParameters>): ParticleSystem;
+    // (undocumented)
+    destroy(): void;
+    own(system: ParticleSystem): void;
+    // (undocumented)
+    get systems(): readonly ParticleSystem[];
+    // (undocumented)
+    updateBudget(systems: readonly ParticleSystem[]): readonly Readonly<ParticleBudgetDecision>[];
+    // (undocumented)
+    readonly world: World;
+}
+
+// @public
 export interface ParticleScalarBySpeedModule {
     // (undocumented)
     readonly curve: ParticleCurve;
@@ -1483,27 +1510,6 @@ export interface ParticleSpriteRendererDefinition {
 }
 
 // @public
-export class ParticleStageRuntime {
-    constructor(stage: Stage, budget?: Readonly<ParticleBudgetProfile> | false);
-    // (undocumented)
-    readonly budget: ParticleBudgetManager | null;
-    createSystem(parameters: Readonly<ParticleSystemParameters>, parent?: Node_2): ParticleSystem;
-    destroy(): void;
-    manage(system: ParticleSystem, parent?: Node_2): ParticleSystem;
-    release(system: ParticleSystem, destroyTextures?: boolean): void;
-    // (undocumented)
-    readonly stage: Stage;
-    get systems(): readonly ParticleSystem[];
-    updateBudget(): readonly Readonly<ParticleBudgetDecision>[];
-}
-
-// @public
-export interface ParticleStageSystemOptions {
-    readonly budget?: Readonly<ParticleBudgetProfile> | false;
-    readonly setup?: (runtime: ParticleStageRuntime, stage: Stage) => void | Promise<void>;
-}
-
-// @public
 export function particleStatelessBlockingDiagnostics(metadata: readonly Readonly<ParticleStatelessModuleMetadata>[]): readonly string[];
 
 // @public
@@ -1539,9 +1545,7 @@ export interface ParticleSubEmitterModule {
 export type ParticleSurfaceCoverage = 'opaque' | 'masked' | 'transparent';
 
 // @public
-export class ParticleSystem extends Node_2 implements RenderNodeExtension, RenderNodeGPUExtension {
-    // @internal
-    get [RENDER_NODE_EXTENSION](): RenderNodeExtension;
+export class ParticleSystem extends EventDispatcher implements RenderExtension, RenderGPUExtension {
     constructor(parameters: Readonly<ParticleSystemParameters>);
     get aliveCount(): number;
     // @internal
@@ -1554,19 +1558,17 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     readonly budgetPriority: number;
     captureSimulation(): ParticleSimulationCache;
     // (undocumented)
-    className: string;
-    // (undocumented)
-    clone(isChild?: boolean): ParticleSystem;
+    clone(): ParticleSystem;
     readonly compilationBackend: 'webgl2' | 'webgpu' | undefined;
     // (undocumented)
     readonly compiledPlan: Readonly<ParticleCompiledPlan>;
     get completed(): boolean;
     // @internal
-    createBudgetRequests(camera?: Camera): readonly Readonly<ParticleBudgetRequest>[];
+    createBudgetRequests(camera?: RenderCamera): readonly Readonly<ParticleBudgetRequest>[];
     // (undocumented)
     readonly definition: ParticleSystemDefinition;
     // (undocumented)
-    destroy(renderer?: Renderer, destroyTextures?: boolean): this;
+    destroy(renderer?: Renderer): this;
     get elapsedSeconds(): number;
     emit(count: number, emitter?: string): this;
     // (undocumented)
@@ -1580,7 +1582,7 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     // @internal
     frameSubmitted(frameIndex: number): void;
     // @internal
-    get gpu(): RenderNodeGPUExtension | null;
+    get gpu(): RenderGPUExtension | null;
     // @internal
     gpuFrameDiscarded(frameIndex: number): void;
     // @internal
@@ -1596,9 +1598,15 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     // @internal
     get hasPendingWork(): boolean;
     // @internal
-    isGPUVisible(camera: Camera): boolean;
+    isGPUVisible(camera: RenderCamera): boolean;
     // @internal
-    isVisible(camera: Camera): boolean;
+    isVisible(camera: RenderCamera): boolean;
+    // (undocumented)
+    layer: number;
+    // @internal
+    get meshes(): readonly RenderMesh[];
+    // (undocumented)
+    name: string;
     // (undocumented)
     readonly parameters: ParticleParameterSet;
     // (undocumented)
@@ -1611,7 +1619,7 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     // @internal
     prepareRenderer(renderer: RendererContract): void;
     // @internal
-    prepareView(camera: Camera): void;
+    prepareView(camera: RenderCamera): void;
     readEvents(maxEvents?: number): Promise<ParticleEventAggregate>;
     // @internal
     record(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
@@ -1629,7 +1637,12 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     // (undocumented)
     readonly seed: number;
     sendEvent(name: string, payload?: unknown): this;
+    setWorldMatrix(source: ArrayLike<number>, offset?: number): void;
+    // @internal
+    setWorldTransform(source: ArrayLike<number>, offset: number, _revision: number): void;
     simulate(seconds: number, options?: Readonly<ParticleSystemSimulateOptions>): this;
+    // (undocumented)
+    sortingLayer: number;
     stateHash(emitter?: string): string;
     // (undocumented)
     stop(): this;
@@ -1637,9 +1650,13 @@ export class ParticleSystem extends Node_2 implements RenderNodeExtension, Rende
     get timeScale(): number;
     set timeScale(value: number);
     // (undocumented)
-    static readonly typeName = "ParticleSystem";
-    // (undocumented)
     update(deltaTimeMilliseconds: number): void;
+    // (undocumented)
+    visible: boolean;
+    // (undocumented)
+    readonly worldMatrix: Matrix4;
+    // (undocumented)
+    zIndex: number;
 }
 
 // @public
@@ -1683,7 +1700,7 @@ export interface ParticleSystemEmitCommand {
 }
 
 // @public
-export interface ParticleSystemParameters extends NodeParameters {
+export interface ParticleSystemParameters {
     // (undocumented)
     readonly autoPlay?: boolean;
     readonly budgetId?: string;
@@ -1692,11 +1709,21 @@ export interface ParticleSystemParameters extends NodeParameters {
     // (undocumented)
     readonly definition: ParticleSystemDefinition;
     readonly eventReadbackCapacity?: number;
+    // (undocumented)
+    readonly layer?: number;
+    // (undocumented)
+    readonly name?: string;
     readonly parameters?: ParticleParameterSet;
     // (undocumented)
     readonly seed?: number;
     // (undocumented)
+    readonly sortingLayer?: number;
+    // (undocumented)
     readonly timeScale?: number;
+    // (undocumented)
+    readonly visible?: boolean;
+    // (undocumented)
+    readonly zIndex?: number;
 }
 
 // @public
@@ -1795,6 +1822,16 @@ export interface ParticleVelocityModule {
     readonly type: 'velocity-over-lifetime';
     // (undocumented)
     readonly velocity: ParticleVector3Value;
+}
+
+// @public (undocumented)
+export interface ParticleWorldSystemOptions {
+    // (undocumented)
+    readonly backend?: 'webgl2' | 'webgpu';
+    // (undocumented)
+    readonly budget?: Readonly<ParticleBudgetProfile> | false;
+    // (undocumented)
+    readonly setup?: (runtime: ParticleRuntime, world: World) => void | Promise<void>;
 }
 
 // @public

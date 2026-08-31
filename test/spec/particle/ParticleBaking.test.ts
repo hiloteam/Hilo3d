@@ -234,7 +234,7 @@ describe('particle P6 baking', () => {
         expect(system.stateHash()).toBe(before);
     });
 
-    it('suppresses Stage advancement and completion side effects during asynchronous baking', async () => {
+    it('suppresses runtime advancement and completion side effects during asynchronous baking', async () => {
         const system = new ParticleSystem({
             definition: ParticleSystemDefinition.create({
                 emitters: [

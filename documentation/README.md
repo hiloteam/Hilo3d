@@ -1,49 +1,36 @@
 # Hilo3D engineering documentation
 
-This directory contains the repository's hand-written engineering and architecture documents.
-Generated API documentation is written to the root `docs/` directory and must not be edited or
-committed.
+This directory contains reviewed source documentation. Generated TypeDoc output is written to
+`docs/` and must not be edited or committed.
 
 ## Start here
 
-| Document                                                                        | Purpose                                                                                                                             |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [Rendering architecture](./RENDERING_ARCHITECTURE.md)                           | Current production rendering path: shared renderer, Render Graph, portable RHI, and WebGPU/WebGL2 backends                          |
-| [PBR, HDR, and post-processing](./PBR_AND_POST_PROCESSING.md)                   | Layered glTF materials, modern PBR lighting, opaque scene texture, Bloom, Color Uber, and linear color contracts                    |
-| [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)             | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap          |
-| [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)         | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap                 |
-| [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)           | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence               |
-| [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                       | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence          |
-| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Analytic horizon GTAO, bent/multi-bounce PBR integration, log-depth temporal lifecycle, acceptance fixture, and release boundaries  |
-| [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)       | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries             |
-| [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers           |
-| [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |
-| [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks                        |
-| [Physics architecture](./PHYSICS_ARCHITECTURE.md)                               | Optional Stage System ABI, backend-neutral 2D/3D ownership, fixed-step simulation, Rapier adapters, synchronization, and lifecycle  |
-| [Physics implementation plan](./PHYSICS_IMPLEMENTATION_PLAN.md)                 | Delivered physics slices, packaging and Cannon migration, advanced queries/character motion, acceptance and remaining release gates |
-| [Particle system](./PARTICLE_SYSTEM.md)                                         | Optional addon package, Stage System lifecycle, P0-P5 runtime, P6 authoring, deterministic checkpoints and baking contracts         |
-| [Particle system implementation plan](./PARTICLE_SYSTEM_IMPLEMENTATION_PLAN.md) | Unity 6.5/UE 5.8.1 feature analysis and a phased portable CPU, WebGPU stateful, and stateless particle architecture                 |
-| [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)      | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence              |
-| [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)       | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration                     |
-| [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                     | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                                     |
-| [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                     | RHI design goals, invariants, migration phases, and acceptance criteria                                                             |
+| Document                                                      | Purpose                                                                                               |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [ECS architecture](./ECS_ARCHITECTURE_MIGRATION_PLAN.md)      | Production Entity/component/System model, performance evidence, migration record, and final contracts |
+| [Rendering architecture](./RENDERING_ARCHITECTURE.md)         | `Engine -> World -> RenderWorld -> Render Graph -> RHI` production flow                               |
+| [Physics architecture](./PHYSICS_ARCHITECTURE.md)             | Backend-neutral 2D/3D ownership and ECS synchronization                                               |
+| [Particle system](./PARTICLE_SYSTEM.md)                       | World-owned particle resources and render-extension extraction                                        |
+| [2D rendering](./2D_RENDERING.md)                             | Sprite, text, sorting, pointer, and multi-camera component contracts                                  |
+| [Engineering modernization](./ENGINEERING_MODERNIZATION.md)   | TypeScript, ESM, packaging, validation, and contributor baseline                                      |
+| [Material system](./MATERIAL_SYSTEM_MODERNIZATION.md)         | Material Definition/Instance and shader semantics                                                     |
+| [PBR and post-processing](./PBR_AND_POST_PROCESSING.md)       | PBR, HDR, and post-processing contracts                                                               |
+| [Modern WebGPU roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md) | GPU Scene, temporal, lighting, and virtualization work                                                |
+| [Compute/storage](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)   | Direct WGSL compute and storage-aware raster                                                          |
+| [RHI refactor](./RHI_REFACTOR_PLAN.md)                        | Portable RHI invariants and historical migration record                                               |
+
+The ECS, rendering, physics, particle, 2D, and engineering documents describe current production
+behavior. Files named `*_PLAN.md` other than the completed ECS migration record may contain
+historical rationale; current source, tests, and the production architecture documents take
+precedence.
 
 ## Source-of-truth order
 
-When documents disagree, use this order:
+1. Current source and executable tests.
+2. `ECS_ARCHITECTURE_MIGRATION_PLAN.md` for runtime ownership and performance gates.
+3. `RENDERING_ARCHITECTURE.md` for frame, graph, RHI, shader, and recovery contracts.
+4. Domain architecture documents for physics, particles, 2D, and materials.
+5. Historical implementation plans and roadmaps.
 
-1. Current source code and executable tests.
-2. `RENDERING_ARCHITECTURE.md` for the production rendering path.
-3. `MATERIAL_SYSTEM_MODERNIZATION.md` for current material ownership, semantic-pass, variant,
-   texture-slot and GPU-data contracts plus the remaining long-term roadmap.
-4. `PHYSICS_ARCHITECTURE.md` for the optional Stage System and portable physics contracts.
-5. `ENGINEERING_MODERNIZATION.md` for the maintained engineering baseline.
-6. `COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md` for the implemented compute/storage and GPU-driven
-   rendering contract, first-release boundaries, acceptance fixtures, and validation record.
-7. `RHI_REFACTOR_PLAN.md` for design intent and acceptance criteria not superseded above.
-8. `SCRIPTABLE_RENDER_PIPELINE_PLAN.md` for the implemented SRP design rationale, rollout record,
-   acceptance checklist, and the integration points now used by compute/storage.
-
-Update the relevant document whenever a change alters an architectural invariant, public workflow,
-backend policy, or validation requirement. Keep diagrams in [`assets/`](./assets/) and reference
-them with relative links.
+Update the relevant production document whenever a change alters a public API, architecture
+invariant, backend policy, or validation requirement.

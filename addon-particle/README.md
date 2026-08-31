@@ -1,38 +1,43 @@
 # @hilo3d/addon-particle
 
-Optional CPU, stateless, and stateful WebGPU particle systems for Hilo3D. Installing or importing
-`hilo3d` alone does not load this package.
+Optional production particle simulation and rendering for Hilo3D's ECS runtime.
 
 ```ts
-import * as Hilo3d from 'hilo3d';
+import { LocalTransform, World, createRenderExtractionSystem, createTransformSystem } from 'hilo3d';
 import {
-    PARTICLE_STAGE_SERVICE,
+    ParticleEmitter,
+    ParticleSystem,
     ParticleSystemDefinition,
-    createParticleStageSystem
+    createParticleWorldSystem
 } from '@hilo3d/addon-particle';
 
-const particleSystem = createParticleStageSystem();
-const stage = await Hilo3d.Stage.create({
-    camera,
-    systems: [particleSystem]
+const world = await World.create({
+    systems: [
+        createParticleWorldSystem({ backend: 'webgpu' }),
+        createTransformSystem(),
+        createRenderExtractionSystem()
+    ]
 });
-const particles = stage.systems.get(PARTICLE_STAGE_SERVICE);
 const definition = ParticleSystemDefinition.create({
     emitters: [
         {
-            name: 'spark',
-            capacity: 256,
-            execution: 'auto',
-            emission: { rateOverTime: 0, bursts: [{ time: 0, count: 64 }] },
-            initialize: { lifetime: 0.8, speed: 3, size: 0.05 },
+            name: 'sparks',
+            capacity: 4096,
+            emission: { rateOverTime: 200 },
+            initialize: { lifetime: 2, speed: 4 },
+            modules: [{ type: 'gravity', force: [0, -9.81, 0] }],
             renderers: [{ type: 'sprite', blend: 'additive' }]
         }
     ]
 });
-
-particles.createSystem({ definition, seed: 42 });
+const emitter = world.createEntity();
+world.add(emitter, LocalTransform, {});
+world.add(emitter, ParticleEmitter, {
+    system: new ParticleSystem({ definition })
+});
 ```
 
-The Stage System owns registered particle nodes, applies one optional frame-wide budget, and
-destroys renderer resources before Stage teardown. `ParticleSystem` can still be used directly when
-an application explicitly owns its lifecycle.
+The World System owns optional created resources, applies one frame-wide budget, and synchronizes an
+explicit render extension into `RenderWorld`. Particles remain packed simulation records rather than
+per-particle Entities. Portable CPU, stateful WebGPU, stateless WebGPU, mesh/sprite/ribbon,
+authoring, serialization, preview, cache, and baking APIs share the same definition contract.

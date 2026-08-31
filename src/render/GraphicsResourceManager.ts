@@ -1,7 +1,7 @@
 import { EventDispatcher } from '../core/EventDispatcher';
-import Mesh from '../core/Mesh';
-import type Node from '../core/Node';
+import type Mesh from '../core/Mesh';
 import type { RendererResourceDiagnostics } from './Renderer';
+import type { RenderWorld } from './world/RenderWorld';
 
 export interface ManagedResource {
     readonly id?: string;
@@ -323,25 +323,26 @@ class GraphicsResourceManager extends EventDispatcher {
         return this;
     }
 
-    getUsedResources(rootNode?: Node): ManagedResource[] {
-        if (!rootNode) return [...this.getTrackedResourceSet()];
+    getUsedResources(renderWorld?: RenderWorld): ManagedResource[] {
+        if (!renderWorld) return [...this.getTrackedResourceSet()];
         const resources: ManagedResource[] = [];
-        rootNode.traverse(node => {
-            if (node instanceof Mesh && !node.isDestroyed) this.getMeshResources(node, resources);
-        });
+        for (let index = 0; index < renderWorld.length; index++) {
+            const mesh = renderWorld.meshes[index];
+            if (mesh) this.getMeshResources(mesh, resources);
+        }
         return resources;
     }
 
     /** Return stable backend-neutral lifecycle counts for diagnostics and tooling. */
-    getDiagnostics(rootNode?: Node): RendererResourceDiagnostics {
+    getDiagnostics(renderWorld?: RenderWorld): RendererResourceDiagnostics {
         const meshIds = new Set(this.meshResources.keys());
         const trackedResources = this.getTrackedResourceSet();
         for (const [meshId, state] of this.frameResources ?? []) {
             meshIds.add(meshId);
             this.addStateResources(state, trackedResources);
         }
-        const usedResourceCount = rootNode
-            ? new Set(this.getUsedResources(rootNode)).size
+        const usedResourceCount = renderWorld
+            ? new Set(this.getUsedResources(renderWorld)).size
             : trackedResources.size;
         return Object.freeze({
             trackedMeshCount: meshIds.size,
@@ -352,7 +353,7 @@ class GraphicsResourceManager extends EventDispatcher {
         });
     }
 
-    destroyUnusedResource(_rootNode?: Node): this {
+    destroyUnusedResource(_renderWorld?: RenderWorld): this {
         if (this.needDestroyResources.length === 0) return this;
         // Resource ownership is renderer-wide: a program, shader or buffer may be shared by meshes
         // rendered through different scene roots. A queued resource is safe to destroy only after

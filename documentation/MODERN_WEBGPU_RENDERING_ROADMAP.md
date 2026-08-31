@@ -338,7 +338,7 @@ fallback。仓库未引入新的内置 subgroup/f16 kernel，因此不存在需�
   frame 使用同一个主相机 origin，避免多 camera/pass 改写 object UBO；
 - `CameraBlock`、`ModelBlock`、`SkinningBlock`、`MorphBlock` 与 WebGPU `InstanceBlock`
   同时携带 current/previous transform；origin 与 history-valid 也进入固定 ABI；
-- 首次出现、spawn 和显式 `Node.invalidateTransformHistory()`
+- 首次出现、spawn 和显式 `TransformStore.invalidateWorldHistory(entityIndex)`
   后 previous=current；正常 motion 读取最后一次成功 submission；失败 build/prepare/execute 回滚 pending
   history，device recovery 递增 generation。despawn 不生成 draw，重新出现按 owner
   history 或显式 invalidation 处理；skinning/morph 遵守同一提交边界。

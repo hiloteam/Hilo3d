@@ -27,7 +27,8 @@ import type {
     RenderTargetLoadOp,
     RenderTargetStoreOp
 } from '../RenderTarget';
-import type { RendererCore, RendererScene, RendererViewport } from '../RendererCore';
+import type { RendererCore, RendererViewport } from '../RendererCore';
+import type { RenderWorld } from '../world/RenderWorld';
 import {
     RHIBufferUsage,
     RHITextureUsage,
@@ -479,7 +480,7 @@ export interface ScriptableRenderPipelineServices {
     beginScriptableResourcePass(context: RenderGraphFrameContext): void;
     beginScriptableMeshPass(context: RenderGraphFrameContext): void;
     beginScriptableFullscreenPass(context: RenderGraphFrameContext): void;
-    prepareScriptableCullingScene(scene: RendererScene, camera: Camera): void;
+    prepareScriptableCullingScene(scene: RenderWorld, camera: Camera): void;
     markScriptableTargetUsed(record: Readonly<RenderTargetResourceRecord>): void;
     markScriptableSurfaceRequested(): void;
     fireScriptableBeforeScene(
@@ -498,7 +499,7 @@ export interface ScriptableRenderPipelineServices {
     recordScriptablePass(passCount: number): void;
     recordScriptableFaces(meshes: readonly Mesh[]): void;
     queueScriptableAfterScene(meshes: readonly Mesh[], enabled: boolean): void;
-    retainScriptablePresentation(scene: RendererScene, camera: Camera): void;
+    retainScriptablePresentation(scene: RenderWorld, camera: Camera): void;
 }
 
 /** @internal Exact renderer-owned atlas build attached to the current application graph. */
@@ -1342,14 +1343,14 @@ class CullingSlot {
     handle = 0 as CullingResultsHandle;
     frameIndex = -1;
     camera: Camera | null = null;
-    scene: RendererScene | null = null;
+    scene: RenderWorld | null = null;
     lights: readonly Light[] = EMPTY_LIGHTS;
     used = false;
 
     build(
         handle: CullingResultsHandle,
         frameIndex: number,
-        scene: RendererScene,
+        scene: RenderWorld,
         camera: Camera,
         lightManager: LightManager,
         useInstanced: boolean,
@@ -3935,7 +3936,7 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         return this.#owner.frameIndex;
     }
 
-    get scene(): RendererScene {
+    get scene(): RenderWorld {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.scene;
     }
@@ -4155,7 +4156,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     readonly #shadowSliceRecords: MutableRenderPipelineShadowSlice[] = [];
 
     #scope: RenderGraphFrameBuildScope | null = null;
-    #scene: RendererScene | null = null;
+    #scene: RenderWorld | null = null;
     #camera: Camera | null = null;
     #target: RenderTarget | null = null;
     #fireEvent = false;
@@ -4190,7 +4191,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return this.requireScope().context.frameIndex;
     }
 
-    get scene(): RendererScene {
+    get scene(): RenderWorld {
         this.assertActive();
         return this.requireScene();
     }
@@ -4216,7 +4217,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     }
 
     begin(
-        scene: RendererScene,
+        scene: RenderWorld,
         camera: Camera,
         target: RenderTarget | null,
         fireEvent: boolean,
@@ -5953,7 +5954,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return this.#scope;
     }
 
-    private requireScene(): RendererScene {
+    private requireScene(): RenderWorld {
         if (this.#scene === null) throw new Error('Pipeline context has no scene');
         return this.#scene;
     }

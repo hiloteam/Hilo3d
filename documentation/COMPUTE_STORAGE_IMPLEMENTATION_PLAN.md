@@ -680,7 +680,7 @@ pipeline。禁止只 parse 后跳过验证，或用宽松正则猜测任意 WGSL
 
 ## 7. RHI Core 设计
 
-### 7.1 Stage、capability 与 limits
+### 7.1 Shader stage、capability 与 limits
 
 增加：
 

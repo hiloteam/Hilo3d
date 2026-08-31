@@ -1,11 +1,9 @@
-import type Animation from '../animation/Animation';
-import type Camera from '../camera/Camera';
 import type Geometry from '../geometry/Geometry';
 import type GeometryData from '../geometry/GeometryData';
-import type Light from '../light/Light';
 import type Material from '../material/MaterialInstance';
 import type Mesh from '../core/Mesh';
-import type Node from '../core/Node';
+import type World from '../ecs/World';
+import type { SceneInstance, ScenePrefab } from '../scene/ScenePrefab';
 import type Texture from '../texture/Texture';
 import type { JsonValue } from './BasicLoader';
 
@@ -383,15 +381,14 @@ export interface GLTFBounds {
 }
 
 export interface GLTFModel {
-    node: Node;
-    scene: Node;
-    meshes: Mesh[];
+    prefab: ScenePrefab;
+    instantiate(world: World): SceneInstance;
+    meshCount: number;
+    cameraCount: number;
+    lightCount: number;
     json: GLTFRoot;
-    cameras: Camera[];
-    lights: Light[];
     textures: Texture[];
     materials: Material[];
-    anim?: Animation;
     bounds?: GLTFBounds;
     /** Settles when progressive textures and compressed geometry finish. */
     ready: Promise<void>;

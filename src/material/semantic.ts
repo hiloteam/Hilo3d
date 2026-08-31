@@ -1499,7 +1499,7 @@ const semantic = {
             if (!(geometry instanceof MorphGeometry)) {
                 return undefined;
             }
-            return geometry.weights;
+            return mesh.morphWeights ?? geometry.weights;
         }
     },
 

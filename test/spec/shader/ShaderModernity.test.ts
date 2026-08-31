@@ -36,12 +36,21 @@ const uiFixtureShaderSources = import.meta.glob<string>('../../../test/ui/fixtur
     query: '?raw',
     import: 'default'
 });
+const rendererFixtureShaderSources = import.meta.glob<string>(
+    '../../../test/spec/renderer/fixtures/**/*.ts',
+    {
+        eager: true,
+        query: '?raw',
+        import: 'default'
+    }
+);
 
 const shaderSources = { ...engineShaderSources, ...exampleShaderSources };
 const builtInBlockSources = {
     ...engineShaderContainerSources,
     ...exampleShaderSources,
-    ...uiFixtureShaderSources
+    ...uiFixtureShaderSources,
+    ...rendererFixtureShaderSources
 };
 const builtInBlockLayouts = {
     CameraBlock: cameraBlockLayout,
@@ -204,15 +213,14 @@ describe('WebGL 2 shader contract', () => {
         expect(visualFixture ?? '').toContain('${cameraBlockSource}');
     });
 
-    it('renders snow as instanced billboard triangles with built-in frame and camera blocks', () => {
-        const snow = Object.entries(exampleShaderSources).find(([path]) =>
-            path.endsWith('/examples/snow.ts')
+    it('keeps the instanced billboard translation corpus on triangles and built-in blocks', () => {
+        const snow = Object.entries(rendererFixtureShaderSources).find(([path]) =>
+            path.endsWith('/renderer/fixtures/ModernShaderCorpus.ts')
         )?.[1];
         expect(snow).toBeTypeOf('string');
-        expect(snow).not.toMatch(/constants\.POINTS\b/u);
-        expect(snow).toContain('useInstanced: true');
-        expect(snow).not.toContain('renderer.useInstanced = true');
-        expect(snow).toContain('mode: Hilo3d.constants.TRIANGLES');
+        expect(snow).not.toMatch(/\bPOINTS\b/u);
+        expect(snow).toContain("primitiveMode: 'triangles'");
+        expect(snow).toContain('in vec4 u_particleData');
         expect(snow).toContain('layout(std140) uniform FrameBlock');
         expect(snow).toContain('layout(std140) uniform CameraBlock');
     });

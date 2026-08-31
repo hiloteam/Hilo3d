@@ -1,7 +1,6 @@
 import ShaderMaterial, { type ShaderMaterialParameters } from '../material/ShaderMaterial';
 import type Material from '../material/MaterialInstance';
 import Texture from '../texture/Texture';
-import type Sprite from './Sprite';
 import { MaterialAttributeSemantic } from '../material/MaterialSemantics';
 
 const materialsByTexture = new WeakMap<Texture, SpriteMaterial>();
@@ -61,11 +60,36 @@ void main() {
 }
 `;
 
-function requireSprite(mesh: object): Sprite {
-    if (Reflect.get(mesh, 'isSprite') !== true) {
-        throw new TypeError('SpriteMaterial instance bindings require a Sprite.');
+interface RenderSpriteMesh {
+    readonly isSprite: boolean;
+    readonly spriteUVRect: Float32Array;
+    readonly spriteSizeAnchor: Float32Array;
+    readonly spriteTint: ArrayLike<number>;
+}
+
+function readMeshProperty(mesh: object, key: PropertyKey): unknown {
+    return Reflect.get(mesh, key);
+}
+
+function requireSprite(mesh: object): RenderSpriteMesh {
+    const uv = readMeshProperty(mesh, 'spriteUVRect');
+    const size = readMeshProperty(mesh, 'spriteSizeAnchor');
+    const tint = readMeshProperty(mesh, 'spriteTint');
+    if (
+        readMeshProperty(mesh, 'isSprite') !== true ||
+        !(uv instanceof Float32Array) ||
+        !(size instanceof Float32Array) ||
+        (typeof tint !== 'object' && typeof tint !== 'function') ||
+        tint === null
+    ) {
+        throw new TypeError('SpriteMaterial requires an extracted sprite render record.');
     }
-    return mesh as Sprite;
+    return {
+        isSprite: true,
+        spriteUVRect: uv,
+        spriteSizeAnchor: size,
+        spriteTint: tint as ArrayLike<number>
+    };
 }
 
 function requireSpriteMaterial(material: Material): SpriteMaterial {

@@ -20,19 +20,16 @@ import type {
 } from '../../../benchmarks/rhi/result-schema';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
-import Node from '../../../src/core/Node';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
-import AmbientLight from '../../../src/light/AmbientLight';
-import DirectionalLight from '../../../src/light/DirectionalLight';
-import PointLight from '../../../src/light/PointLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import ShaderMaterial from '../../../src/material/ShaderMaterial';
 import Color from '../../../src/math/Color';
-import Vector3 from '../../../src/math/Vector3';
-import RendererCore, { type RendererScene } from '../../../src/render/RendererCore';
+import RendererCore from '../../../src/render/RendererCore';
+import { RenderWorld } from '../../../src/render/world/RenderWorld';
+import { TransformStore } from '../../../src/scene/components/Transform';
 import type {
     RendererCacheCountersSnapshot,
     RendererDiagnostics,
@@ -113,7 +110,7 @@ function fixtureManifest(value: unknown): RHIBenchmarkManifest {
     ) {
         fixtureFailure('benchmark manifest is invalid');
     }
-    // The Node preflight performs the complete schema/fingerprint validation before this browser
+    // The host preflight performs the complete schema/fingerprint validation before this browser
     // module is served. This local guard deliberately stays browser-only (no node:* imports).
     return value as RHIBenchmarkManifest;
 }
@@ -515,15 +512,38 @@ function createRenderer(
           });
 }
 
-function addLights(scene: Node, quality: RHIBenchmarkQuality): void {
-    if (quality.lightCount === 0) return;
-    scene.addChild(new AmbientLight({ amount: 0.2 }));
+function addLights(
+    scene: RenderWorld,
+    transforms: TransformStore,
+    quality: RHIBenchmarkQuality,
+    firstEntityIndex: number
+): number {
+    if (quality.lightCount === 0) return firstEntityIndex;
+    let entityIndex = firstEntityIndex;
+    transforms.add(entityIndex, {});
+    transforms.updateWorldMatrices();
+    scene.lights.synchronize(
+        entityIndex,
+        { amount: 0.2 },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        transforms
+    );
+    entityIndex++;
     for (let index = 1; index < quality.lightCount; index += 1) {
+        transforms.add(entityIndex, {
+            position: index <= 4 ? [0, 0, 0] : [(index % 3) - 1, 1 + (index % 2), 2]
+        });
+        transforms.updateWorldMatrices();
         if (index <= 4) {
-            scene.addChild(
-                new DirectionalLight({
+            scene.lights.synchronize(
+                entityIndex,
+                undefined,
+                {
                     amount: 0.8,
-                    direction: new Vector3(-1 + index * 0.1, -1, -0.5),
+                    direction: [-1 + index * 0.1, -1, -0.5],
                     ...(index === 1 && quality.shadowMapSize > 0
                         ? {
                               shadow: {
@@ -532,20 +552,29 @@ function addLights(scene: Node, quality: RHIBenchmarkQuality): void {
                               }
                           }
                         : {})
-                })
+                },
+                undefined,
+                undefined,
+                undefined,
+                transforms
             );
         } else {
-            scene.addChild(
-                new PointLight({
+            scene.lights.synchronize(
+                entityIndex,
+                undefined,
+                undefined,
+                {
                     amount: 1.2,
-                    x: (index % 3) - 1,
-                    y: 1 + (index % 2),
-                    z: 2,
                     range: 12
-                })
+                },
+                undefined,
+                undefined,
+                transforms
             );
         }
+        entityIndex++;
     }
+    return entityIndex;
 }
 
 class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
@@ -555,11 +584,13 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
     readonly #diagnostics: RendererDiagnostics;
     readonly #probe: TimingProbe;
     readonly #scenario: RHIBenchmarkScenarioManifest;
-    readonly #scene = new Node() as RendererScene;
+    readonly #scene: RenderWorld;
+    readonly #transforms: TransformStore;
     readonly #camera: PerspectiveCamera;
     readonly #textures: BenchmarkTexture[] = [];
     readonly #materials: (BasicMaterial | PBRMaterial | ShaderMaterial)[] = [];
     readonly #meshes: Mesh[] = [];
+    readonly #meshEntityIndices: number[] = [];
     readonly #nativeWebGL: () => WebGL2RenderingContext | null;
     #target: RenderTarget | null = null;
     #mrtMSAAPostProcess: MRTMSAAPostProcessWorkload | null = null;
@@ -576,6 +607,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
     #firstFrameRecorded = false;
     #allocationSampling = false;
     #destroyed = false;
+    #nextEntityIndex = 0;
 
     private constructor(
         metadata: RHIBenchmarkFixtureMetadata,
@@ -593,6 +625,9 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         this.#diagnostics = diagnostics;
         this.#probe = probe;
         this.#nativeWebGL = nativeWebGL;
+        const entityCapacity = scenario.quality.drawCount + scenario.quality.lightCount;
+        this.#scene = new RenderWorld(entityCapacity, entityCapacity);
+        this.#transforms = new TransformStore(entityCapacity, entityCapacity);
         this.#camera = new PerspectiveCamera({
             aspect: scenario.quality.width / scenario.quality.height,
             near: 0.1,
@@ -726,7 +761,12 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         if (shadowsEnabled && this.#materials.length < 2) {
             fixtureFailure('a shadow benchmark requires a dedicated caster material');
         }
-        addLights(this.#scene, quality);
+        this.#nextEntityIndex = addLights(
+            this.#scene,
+            this.#transforms,
+            quality,
+            this.#nextEntityIndex
+        );
         if (this.#scenario.id === 'large-instancing') {
             this.buildInstancingScene();
         } else {
@@ -766,8 +806,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                     frustumTest: false,
                     z: benchmarkMeshDepth(index, this.#scenario.id === 'scene-churn-10000-frame')
                 });
-                this.#meshes.push(mesh);
-                this.#scene.addChild(mesh);
+                this.addMesh(mesh);
             }
         }
         if (quality.mrtColorAttachments > 1 || quality.postProcessPassCount > 0) {
@@ -836,8 +875,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                     x: ((index + batch * batchSize) % 100) * 0.001,
                     y: Math.floor((index + batch * batchSize) / 100) * 0.001
                 });
-                this.#meshes.push(mesh);
-                this.#scene.addChild(mesh);
+                this.addMesh(mesh);
             }
         }
     }
@@ -866,7 +904,11 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             const slot = benchmarkChurnMeshSlot(this.#frameIndex, this.#meshes.length);
             const previous = this.#meshes[slot];
             if (!previous) fixtureFailure('scene churn mesh slot is missing');
-            previous.destroy(this.#renderer as never);
+            const entityIndex = this.#meshEntityIndices[slot];
+            if (entityIndex === undefined) fixtureFailure('scene churn Entity slot is missing');
+            this.#scene.remove(entityIndex);
+            this.#renderer.resourceManager.destroyMesh(previous);
+            this.#scene.clearRetiredRenderIds();
             const material = variantMaterial(
                 this.#frameIndex % this.#scenario.quality.shaderVariantCount,
                 this.#textures[this.#frameIndex % Math.max(1, this.#textures.length)] ?? null,
@@ -884,11 +926,64 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             });
             // The replacement mesh owns this transient material reference. Retaining every churn
             // material in the fixture would manufacture an unbounded leak in both architectures.
-            this.#meshes[slot] = replacement;
-            this.#scene.addChild(replacement);
+            this.replaceMesh(slot, entityIndex, replacement);
         }
-        this.#scene.traverseUpdate(1 / 60);
         this.#frameIndex += 1;
+    }
+
+    private addMesh(source: Mesh): void {
+        const entityIndex = this.#nextEntityIndex;
+        this.#nextEntityIndex++;
+        const mesh = this.extractMesh(entityIndex, source);
+        this.#meshEntityIndices.push(entityIndex);
+        this.#meshes.push(mesh);
+    }
+
+    private replaceMesh(slot: number, entityIndex: number, source: Mesh): void {
+        const mesh = this.extractMesh(entityIndex, source, true);
+        this.#meshEntityIndices[slot] = entityIndex;
+        this.#meshes[slot] = mesh;
+    }
+
+    private extractMesh(entityIndex: number, source: Mesh, replacing = false): Mesh {
+        const transform = {
+            position: [source.x, source.y, source.z] as const,
+            rotation: [
+                source.quaternion.x,
+                source.quaternion.y,
+                source.quaternion.z,
+                source.quaternion.w
+            ] as const,
+            scale: [source.scaleX, source.scaleY, source.scaleZ] as const
+        };
+        if (replacing) this.#transforms.set(entityIndex, transform);
+        else this.#transforms.add(entityIndex, transform);
+        this.#transforms.updateWorldMatrices();
+        const geometry = source.geometry;
+        const material = source.material;
+        if (!geometry || !material) fixtureFailure('benchmark render mesh is incomplete');
+        this.#scene.add(
+            entityIndex,
+            {
+                geometry,
+                material,
+                useInstanced: source.useInstanced,
+                frustumTest: source.frustumTest,
+                castShadows: source.castShadows,
+                receiveShadows: source.receiveShadows,
+                instanceCount: source.instanceCount
+            },
+            { visible: source.visible, layer: source.layer },
+            {
+                renderOrder: source.renderOrder,
+                sortingLayer: source.sortingLayer,
+                zIndex: source.zIndex
+            },
+            this.#transforms
+        );
+        const extracted = this.#scene.meshForEntity(entityIndex);
+        if (!extracted) fixtureFailure('benchmark RenderWorld mesh extraction failed');
+        return extracted;
     }
 
     private renderRendererFrame(): void {
