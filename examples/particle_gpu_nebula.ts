@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 import { createExampleContext } from './shared/init';
 import {
     createParticleTexture,
@@ -69,7 +70,7 @@ new Hilo3d.PointLight({
 const softTexture = createParticleTexture({ style: 'disc', size: 64 });
 const sparkTexture = createParticleTexture({ style: 'spark', size: 64 });
 const ringTexture = createParticleTexture({ style: 'ring', size: 64 });
-const fade = new Hilo3d.ParticleCurve(
+const fade = new Particle.ParticleCurve(
     [
         { time: 0, value: 0 },
         { time: 0.08, value: 1 },
@@ -79,7 +80,7 @@ const fade = new Hilo3d.ParticleCurve(
     { interpolation: 'smooth' }
 );
 
-const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
+const gpuDefinition = Particle.ParticleSystemDefinition.create({
     emitters: [
         {
             name: 'resident-nebula',
@@ -166,7 +167,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'size-over-lifetime', curve: fade },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [0.14, 0.72, 1, 0] },
                         { time: 0.12, color: [0.08, 0.9, 1, 0.82] },
                         { time: 0.48, color: [0.34, 0.2, 1, 0.76] },
@@ -229,7 +230,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'size-over-lifetime', curve: fade },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [0.16, 0.92, 1, 0] },
                         { time: 0.12, color: [0.42, 1, 1, 1] },
                         { time: 0.56, color: [0.28, 0.62, 1, 0.92] },
@@ -265,7 +266,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'size-over-lifetime', curve: fade },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [1, 0.9, 0.48, 1] },
                         { time: 0.35, color: [0.22, 0.82, 1, 0.92] },
                         { time: 1, color: [0.62, 0.08, 1, 0] }
@@ -287,7 +288,7 @@ const gpuDefinition = Hilo3d.ParticleSystemDefinition.create({
     ]
 });
 
-const resident = new Hilo3d.ParticleSystem({
+const resident = new Particle.ParticleSystem({
     y: 0,
     rotationX: 58,
     definition: gpuDefinition,
@@ -297,7 +298,7 @@ const resident = new Hilo3d.ParticleSystem({
 resident.emit({ emitter: 'resident-nebula', count: testMode ? 768 : 6_144 });
 resident.emit({ emitter: 'luminous-core', count: testMode ? 512 : 4_096 });
 
-const statelessDefinition = Hilo3d.ParticleSystemDefinition.create({
+const statelessDefinition = Particle.ParticleSystemDefinition.create({
     emitters: [
         {
             name: 'stateless-stars',
@@ -337,7 +338,7 @@ const statelessDefinition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'alpha-over-lifetime', curve: fade },
                 {
                     type: 'color-over-lifetime',
-                    gradient: new Hilo3d.ParticleGradient([
+                    gradient: new Particle.ParticleGradient([
                         { time: 0, color: [0.2, 0.65, 1, 0] },
                         { time: 0.18, color: [0.22, 0.85, 1, 0.72] },
                         { time: 0.65, color: [0.58, 0.28, 1, 0.6] },
@@ -361,7 +362,7 @@ const statelessDefinition = Hilo3d.ParticleSystemDefinition.create({
     ]
 });
 
-const stateless = new Hilo3d.ParticleSystem({
+const stateless = new Particle.ParticleSystem({
     rotationX: 64,
     definition: statelessDefinition,
     seed: 8008,

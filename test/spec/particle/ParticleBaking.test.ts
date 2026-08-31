@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
-import { PARTICLE_BAKE_VERSION, type ParticleFlipbook } from '../../../src/particle/ParticleBaking';
-import ParticleSystem from '../../../src/particle/ParticleSystem';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
+import {
+    PARTICLE_BAKE_VERSION,
+    type ParticleFlipbook
+} from '../../../addon-particle/src/ParticleBaking';
+import ParticleSystem from '../../../addon-particle/src/ParticleSystem';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
 
 function meshDefinition(): ParticleSystemDefinition {
     return ParticleSystemDefinition.create({

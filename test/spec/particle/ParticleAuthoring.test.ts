@@ -6,13 +6,13 @@ import {
     PARTICLE_AUTHORING_SCHEMA,
     PARTICLE_AUTHORING_VERSION,
     type ParticleAuthoringGraph
-} from '../../../src/particle/ParticleAuthoring';
+} from '../../../addon-particle/src/ParticleAuthoring';
 import {
     PARTICLE_PREVIEW_PROTOCOL_VERSION,
     ParticleAuthoringPreviewController
-} from '../../../src/particle/ParticleAuthoringPreview';
-import { ParticleParameter } from '../../../src/particle/ParticleParameter';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
+} from '../../../addon-particle/src/ParticleAuthoringPreview';
+import { ParticleParameter } from '../../../addon-particle/src/ParticleParameter';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
 
 function definition(): ParticleSystemDefinition {
     const shared = new ParticleParameter('authoring.shared', 'float', 4);

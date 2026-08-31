@@ -21,18 +21,20 @@ Preferred stack:
 - Hilo3D 2D composition for scene-integrated UI and effects
 - DOM overlays for text-heavy HUD, menus, settings, and accessibility
 - glTF or GLB for shipped 3D assets
-- `ParticleSystemDefinition` and `ParticleSystem` for scalable authored effects
-- `cannon-es` when meaningful 3D physics is required
+- `@hilo3d/addon-particle` when scalable authored effects are required
+- `@hilo3d/addon-physics` plus the dimension-specific Rapier peer when rigid-body physics is
+  required
 - `backend: 'auto'` unless the task explicitly targets WebGPU or WebGL2
 
 For greenfield projects, resolve `hilo3d@next`, require it to be `2.0.0` or a `2.0.0-*` prerelease,
 and pin that concrete version. Never leave a moving dist-tag in the generated dependency or
 substitute another release line. Use Node.js 20.19.0 or newer for the bundled starter.
 
-Import public API only from `hilo3d`; inspect `node_modules/hilo3d/dist/Hilo3d.d.ts` when a
-signature is uncertain. Never copy private engine internals, generated docs, or repository examples
-into a consumer game. If the engine is not selected, choose the stack first. Do not use this skill
-to modify Hilo3D itself.
+Import engine API only from the `hilo3d` package root and optional feature API only from its addon
+package roots; inspect installed declarations when a signature is uncertain. Do not install or
+import physics or particle addons unless the game uses them. Never copy private engine internals,
+generated docs, or repository examples into a consumer game. If the engine is not selected, choose
+the stack first. Do not use this skill to modify Hilo3D itself.
 
 ## Choose the Track
 
@@ -162,6 +164,7 @@ independent from the skill itself.
 - Forcing dense UI into the canvas without a presentation requirement
 - Scattering asset paths across gameplay code
 - Importing engine internals into a consumer game
+- Importing optional physics or particle addons in a game that does not use those systems
 - Silently changing backend after WebGPU initialization begins
 - Allocating render resources or scratch objects every frame
 - Shipping without restart, resize handling, or teardown
@@ -177,7 +180,7 @@ Load only what the task requires:
 - [2D games](references/2d-games.md): coordinates, anchors, sprites, text, controls, batching, and
   hybrid composition
 - [3D games](references/3d-games.md): scale, meshes, materials, lighting, glTF, cameras, picking,
-  animation, and `cannon-es`
+  animation, and the optional Rapier physics plugin
 - [Particle effects](references/particle-effects.md): portable definitions, runtime selection,
   lifecycle, and authoring boundaries
 - [Rendering and performance](references/rendering-performance.md): backend policy, draw calls,

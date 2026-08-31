@@ -23,7 +23,8 @@ Keep four boundaries:
 
 1. **Input** records buttons, axes, pointer positions, and one-shot actions.
 2. **Simulation** owns authoritative game state, movement, collision, score, and rules.
-3. **Presentation** maps state to Hilo3D nodes, materials, text, particles, and cameras.
+3. **Presentation** maps state to Hilo3D nodes, materials, text, optional addon particles, and
+   cameras.
 4. **Lifecycle** owns loading, start/pause/resume/restart, resize, listeners, and teardown.
 
 For a prototype, these may be classes in one file. Split them once each boundary has independent
@@ -231,10 +232,14 @@ the active playfield and give canvas and DOM input one explicit focus policy.
 
 - 2D arcade: axis-aligned boxes, circles, grids, or spatial hashes.
 - Simple 3D: spheres, AABBs, rays, and Hilo3D picking.
-- Dynamic rigid bodies: integrate a physics library such as `cannon-es`.
+- Dynamic rigid bodies: use `@hilo3d/addon-physics` with its dimension-specific Rapier plugin.
 
 Separate collision shape from render geometry. Approximate complex art with stable simple shapes.
 Use layer or category masks to skip impossible pairs.
+
+Treat physics and authored particles as optional package boundaries as well as runtime boundaries.
+Only the presentation adapter imports `@hilo3d/addon-particle`; only the physics adapter imports
+`@hilo3d/addon-physics`. Projects without those features should not install or import the packages.
 
 ## Load before play
 

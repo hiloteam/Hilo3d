@@ -131,9 +131,13 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 - 资源观测统一为 `renderer.resourceManager.getDiagnostics(rootNode?)`
   返回的后端中立快照，包括已跟踪 mesh/resource、当前使用、待销毁数量和 frame 状态。会读取 WebGL 私有 cache 并产生日志副作用的
   `logGLResource()` 已从公共入口和源码删除。
-- 物理示例使用
-  `cannon-es`。原 Draco 示例适配器及演示资产已退出：上游只提供 UMD/CommonJS 风格的浏览器 wrapper，而可用的纯 TypeScript 候选无法通过本仓库的严格 TypeScript
+- 物理能力位于独立的 `@hilo3d/addon-physics` ESM workspace；主 `hilo3d`
+  入口不引用物理代码或 WASM。当前 `/rapier2d` 与 `/rapier3d` 入口分别使用 Rapier 的 2D/3D
+  compat 包，并通过公共 Stage 插件 ABI 接入；原 Cannon 依赖与示例已删除。原 Draco 示例适配器及演示资产已退出：上游只提供 UMD/CommonJS 风格的浏览器 wrapper，而可用的纯 TypeScript 候选无法通过本仓库的严格 TypeScript
   6 声明检查；不通过构建期字符串改写、假声明或 `skipLibCheck` 伪装成现代模块。
+- 粒子能力位于独立的 `@hilo3d/addon-particle` ESM workspace；主入口仅保留通用的
+  `RenderNodeExtension` 和 Stage 插件 ABI，不导入粒子系统。粒子包通过 typed Stage
+  service 托管系统、帧级预算与 renderer-before-teardown 销毁，也保留显式生命周期的独立构造方式。
 - 示例画廊只保留仍能说明当前引擎能力的加载路径。OSG、SMD、TGA 等历史格式示例及其大体积专用资产已经移除；glTF、CanvasTexture、HDR 与压缩纹理示例继续使用严格 TypeScript 和受支持的公共 API。
 - 示例运行时资源来自仓库或 npm 依赖，不依赖第三方 CDN 才能通过测试。
 - Vite 配置不读取、截断或改写 `node_modules`

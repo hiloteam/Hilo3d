@@ -218,12 +218,16 @@ async function checkDocumentationContracts(): Promise<void> {
     assert(!publicApi.includes('transparent: true'));
     assert(!publicApi.includes('castShadows: true,\n    receiveShadows: true\n});'));
     assert(particles.includes('ParticleSystemDefinition.create'));
+    assert(particles.includes("from '@hilo3d/addon-particle'"));
+    assert(threeDimensional.includes("from '@hilo3d/addon-physics/rapier3d'"));
+    assert(!threeDimensional.includes('cannon-es'));
 }
 
 function checkStrictPublicApiSnippets(): void {
     const virtualFile = join(repositoryRoot, 'src', '__hilo3d-skill-snippets.ts');
     const source = `
 import * as Hilo3d from './Hilo3d';
+import * as Particle from '../addon-particle/src/index';
 
 declare const button: Hilo3d.Sprite;
 declare const dragTarget: Hilo3d.Vector2;
@@ -246,7 +250,7 @@ const mesh = new Hilo3d.Mesh({
 });
 void mesh;
 
-const particleDefinition = Hilo3d.ParticleSystemDefinition.create({
+const particleDefinition = Particle.ParticleSystemDefinition.create({
     emitters: [{
         name: 'spark-burst',
         capacity: 512,
@@ -266,7 +270,7 @@ const particleDefinition = Hilo3d.ParticleSystemDefinition.create({
         renderers: [{ type: 'sprite', blend: 'additive', depthWrite: false }]
     }]
 });
-new Hilo3d.ParticleSystem({ definition: particleDefinition, seed: 42, autoPlay: false });
+new Particle.ParticleSystem({ definition: particleDefinition, seed: 42, autoPlay: false });
 
 button.on('click', event => {
     if ('stopPropagation' in event && typeof event.stopPropagation === 'function') {
@@ -306,7 +310,13 @@ target.destroy();
     const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, repositoryRoot);
     const options: ts.CompilerOptions = {
         ...parsed.options,
-        noEmit: true
+        noEmit: true,
+        composite: false,
+        declaration: false,
+        declarationMap: false,
+        emitDeclarationOnly: false,
+        rootDir: repositoryRoot,
+        paths: { hilo3d: [join(repositoryRoot, 'src', 'Hilo3d.ts')] }
     };
     const host = ts.createCompilerHost(options);
     const defaultFileExists = host.fileExists.bind(host);

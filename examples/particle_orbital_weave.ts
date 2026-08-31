@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import * as Particle from '@hilo3d/addon-particle';
 import { createExampleContext } from './shared/init';
 import { createParticleTexture, installExampleDisposal } from './shared/particleShowcase';
 
@@ -54,7 +55,7 @@ new Hilo3d.PointLight({
 }).addTo(stage);
 
 const ribbonTexture = createParticleTexture({ style: 'ribbon', size: 32 });
-const pulse = new Hilo3d.ParticleCurve(
+const pulse = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.12 },
         { time: 0.18, value: 1 },
@@ -63,14 +64,14 @@ const pulse = new Hilo3d.ParticleCurve(
     ],
     { interpolation: 'smooth' }
 );
-const orbitColor = new Hilo3d.ParticleGradient([
+const orbitColor = new Particle.ParticleGradient([
     { time: 0, color: [0.12, 0.88, 1, 0.95] },
     { time: 0.38, color: [0.24, 0.3, 1, 0.9] },
     { time: 0.72, color: [0.88, 0.16, 1, 0.82] },
     { time: 1, color: [1, 0.44, 0.18, 0] }
 ]);
 
-const trailWidth = new Hilo3d.ParticleCurve(
+const trailWidth = new Particle.ParticleCurve(
     [
         { time: 0, value: 0.08 },
         { time: 0.08, value: 1 },
@@ -80,7 +81,7 @@ const trailWidth = new Hilo3d.ParticleCurve(
     { interpolation: 'smooth' }
 );
 
-const weaveDefinition = Hilo3d.ParticleSystemDefinition.create({
+const weaveDefinition = Particle.ParticleSystemDefinition.create({
     emitters: [
         {
             name: 'lit-orbit-meshes',
@@ -116,7 +117,7 @@ const weaveDefinition = Hilo3d.ParticleSystemDefinition.create({
                 { type: 'drag', coefficient: 0.16 },
                 {
                     type: 'rotation-over-lifetime',
-                    curve: new Hilo3d.ParticleCurve([
+                    curve: new Particle.ParticleCurve([
                         { time: 0, value: 0 },
                         { time: 1, value: 6.28 }
                     ]),
@@ -157,7 +158,7 @@ const weaveDefinition = Hilo3d.ParticleSystemDefinition.create({
     ]
 });
 
-const weave = new Hilo3d.ParticleSystem({
+const weave = new Particle.ParticleSystem({
     y: 0.25,
     definition: weaveDefinition,
     seed: 2026
@@ -166,10 +167,10 @@ const weave = new Hilo3d.ParticleSystem({
 function createOrbitPathDefinition(
     name: string,
     type: 'ribbon' | 'trail',
-    gradient: Hilo3d.ParticleGradient,
+    gradient: Particle.ParticleGradient,
     facing: 'view' | 'world-up'
-): Hilo3d.ParticleSystemDefinition {
-    return Hilo3d.ParticleSystemDefinition.create({
+): Particle.ParticleSystemDefinition {
+    return Particle.ParticleSystemDefinition.create({
         emitters: [
             {
                 name,
@@ -210,11 +211,11 @@ function createOrbitPathDefinition(
     });
 }
 
-const cyanPath = new Hilo3d.ParticleSystem({
+const cyanPath = new Particle.ParticleSystem({
     definition: createOrbitPathDefinition(
         'cyan-trail',
         'trail',
-        new Hilo3d.ParticleGradient([
+        new Particle.ParticleGradient([
             { time: 0, color: [0.75, 1, 1, 1] },
             { time: 0.32, color: [0.04, 0.82, 1, 0.9] },
             { time: 1, color: [0.02, 0.18, 1, 0] }
@@ -223,11 +224,11 @@ const cyanPath = new Hilo3d.ParticleSystem({
     ),
     seed: 404
 }).addTo(stage);
-const magentaPath = new Hilo3d.ParticleSystem({
+const magentaPath = new Particle.ParticleSystem({
     definition: createOrbitPathDefinition(
         'magenta-ribbon',
         'ribbon',
-        new Hilo3d.ParticleGradient([
+        new Particle.ParticleGradient([
             { time: 0, color: [1, 0.9, 1, 1] },
             { time: 0.35, color: [1, 0.08, 0.72, 0.88] },
             { time: 1, color: [0.25, 0.03, 0.8, 0] }
@@ -236,11 +237,11 @@ const magentaPath = new Hilo3d.ParticleSystem({
     ),
     seed: 405
 }).addTo(stage);
-const amberPath = new Hilo3d.ParticleSystem({
+const amberPath = new Particle.ParticleSystem({
     definition: createOrbitPathDefinition(
         'amber-trail',
         'trail',
-        new Hilo3d.ParticleGradient([
+        new Particle.ParticleGradient([
             { time: 0, color: [1, 1, 0.82, 1] },
             { time: 0.3, color: [1, 0.44, 0.06, 0.9] },
             { time: 1, color: [0.76, 0.04, 0.2, 0] }

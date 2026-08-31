@@ -1,6 +1,6 @@
 # Hilo3D 粒子系统实现计划
 
-状态：P0-P5 运行时与 P6 的序列化、capture/cache、baking、外部创作协议均已实现；示例迁移延后
+状态：P0-P5 运行时、P6 序列化/capture/cache/baking/外部创作协议、独立 addon 包与维护示例迁移均已实现
 
 调研基线：2026-08-14
 
@@ -675,18 +675,19 @@ stateful；其余选择 CPU stateful。阈值必须通过 benchmark profile 决�
 
 ### 10.1 Shared renderer 所有权
 
-ParticleSystem 是可收集的 scene node，但不是 Mesh。shared renderer 增加 particle
-collection 和 renderer-local `ParticleRuntimeManager`：
+ParticleSystem 是可收集的 scene node，但不是 Mesh。它通过后端中立的 `RenderNodeExtension`
+参与 shared renderer；core 只提供通用 addon collection 与 GPU scene feature，不导入粒子类型：
 
 - Stage 每 application frame 只推进一次 system clock；
 - 每个 Renderer 为同一 public ParticleSystem identity 保存独立 compiled/resource state；
 - culling、layer mask、multi-camera 和 render order 在 shared frontend 处理；
-- default Forward 与 custom SRP 通过公共 particle feature/renderer-list extension 记录同一批 graph
+- default Forward 与 custom SRP 通过公共 addon feature/renderer-node extension 记录同一批 graph
   pass；
 - 后端只能翻译 RHI 资源与命令，不能拥有 module 或 emitter 语义。
 
 不能让 example 自己实现 `ForwardRenderPipelineFeature` 再称为产品 API。产品 particle
-feature 必须由 engine source 提供，并可被默认 Forward 与显式 pipeline factory 复用。
+feature 必须由 addon source 提供，并通过 core 的通用渲染节点 ABI 被默认 Forward 与显式 pipeline
+factory 复用。
 
 ### 10.2 Sprite renderer
 
@@ -769,7 +770,7 @@ time 跳帧。visibility、distance、instance budget 和 quality profile 的 re
 - P1：解析 plane/sphere/box collider，CPU/GPU 共享数学合同；
 - P2：GPU scene-depth collision，作为需要 sampled depth 的 WebGPU module；
 - P3：公开 `ParticleCollisionProvider`，允许物理插件提供批量 CPU query；
-- 不把 cannon-es 或任一第三方物理对象放入 core API。
+- 不把 Rapier 或任一第三方物理对象放入 core API；粒子碰撞与可选物理 addon 保持独立。
 
 ### 12.2 Event
 
@@ -990,7 +991,9 @@ metadata，也不支持任意可执行 graph。
 ## 16. 建议目录
 
 ```text
-src/particle/
+addon-particle/src/
+  index.ts
+  ParticleStagePlugin.ts
   ParticleAuthoring.ts
   ParticleAuthoringPreview.ts
   ParticleBaking.ts
@@ -1016,28 +1019,28 @@ src/particle/
     ParticleStatelessCompiler.ts
     ParticleStatelessRuntime.ts
 
-src/render/particle/
-  ParticleRuntimeManager.ts
-  ParticleRenderFeature.ts
-  ParticleResourceCache.ts
-  ParticlePipelineCache.ts
-  ParticleGPUPlan.ts
-  ParticleGPURecovery.ts
-  ParticleDiagnostics.ts
-  passes/
-  shader/
+src/render/pipeline/
+  RenderNodeExtension.ts
+  AddonGPUSceneFeature.ts
 
-src/shader/particle/
-  portable sprite raster GLSL/chunks
+addon-particle/src/gpu/
+  ParticleGPUPlan.ts
+  ParticleGPURuntime.ts
+  ParticleGPUTransaction.ts
+  ParticleGPUAdvancedPlan.ts
+  ParticleGPUEventPlan.ts
+
+addon-particle/src/internal/
+  portableCoordinates.ts
 
 test/spec/particle/
 test/ui/particle-*.spec.ts
 benchmarks/particles/
-examples/particles_*.ts
+examples/particle_*.ts
 ```
 
 如果实现中发现公共模块与 renderer 内部强耦合，应优先调整边界，而不是把 backend 或 graph
-handle 泄漏到 `src/particle/`。
+handle 泄漏到 `addon-particle/src/`。
 
 ## 17. 验证矩阵
 

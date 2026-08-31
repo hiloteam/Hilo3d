@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
-import ParticleCurve from '../../../src/particle/ParticleCurve';
-import ParticleGradient from '../../../src/particle/ParticleGradient';
-import { ParticleParameter, ParticleParameterSet } from '../../../src/particle/ParticleParameter';
-import ParticleSystem from '../../../src/particle/ParticleSystem';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
-import { compileParticleSystemDefinition } from '../../../src/particle/ParticleCompiler';
+import ParticleCurve from '../../../addon-particle/src/ParticleCurve';
+import ParticleGradient from '../../../addon-particle/src/ParticleGradient';
+import {
+    ParticleParameter,
+    ParticleParameterSet
+} from '../../../addon-particle/src/ParticleParameter';
+import ParticleSystem from '../../../addon-particle/src/ParticleSystem';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
+import { compileParticleSystemDefinition } from '../../../addon-particle/src/ParticleCompiler';
 import Texture from '../../../src/texture/Texture';
 
 function definition(): ParticleSystemDefinition {

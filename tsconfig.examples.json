@@ -5,8 +5,19 @@
     "composite": true,
     "noEmit": true,
     "tsBuildInfoFile": "./.cache/tsconfig.examples.tsbuildinfo",
-    "types": ["vite/client", "webxr"]
+    "types": ["vite/client", "webxr"],
+    "paths": {
+      "@hilo3d/addon-particle": ["./addon-particle/src/index.ts"],
+      "@hilo3d/addon-physics": ["./addon-physics/src/index.ts"],
+      "@hilo3d/addon-physics/rapier2d": ["./addon-physics/src/rapier2d.ts"],
+      "@hilo3d/addon-physics/rapier3d": ["./addon-physics/src/rapier3d.ts"],
+      "hilo3d": ["./src/Hilo3d.ts"]
+    }
   },
   "include": ["examples/**/*.ts"],
-  "references": [{ "path": "./tsconfig.lib.json" }]
+  "references": [
+    { "path": "./tsconfig.lib.json" },
+    { "path": "./addon-particle/tsconfig.json" },
+    { "path": "./addon-physics/tsconfig.json" }
+  ]
 }

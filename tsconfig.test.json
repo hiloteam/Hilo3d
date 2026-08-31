@@ -5,7 +5,11 @@
     "composite": true,
     "noEmit": true,
     "tsBuildInfoFile": "./.cache/tsconfig.test.tsbuildinfo",
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@hilo3d/addon-particle": ["./addon-particle/src/index.ts"],
+      "hilo3d": ["./src/Hilo3d.ts"]
+    }
   },
   "include": [
     "benchmarks/**/*.ts",
@@ -17,5 +21,9 @@
     "scripts/performance/**/*.ts"
   ],
   "exclude": ["test/types/**"],
-  "references": [{ "path": "./tsconfig.lib.json" }]
+  "references": [
+    { "path": "./tsconfig.lib.json" },
+    { "path": "./addon-particle/tsconfig.json" },
+    { "path": "./addon-physics/tsconfig.json" }
+  ]
 }

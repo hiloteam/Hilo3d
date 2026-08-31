@@ -8,8 +8,6 @@ import {
     Mesh,
     MorphGeometry,
     Node,
-    ParticleSystem,
-    ParticleSystemDefinition,
     PBRMaterial,
     PerspectiveCamera,
     PointLight,
@@ -19,6 +17,7 @@ import {
     SpotLight,
     Vector3
 } from '../../../src/Hilo3d';
+import { ParticleSystem, ParticleSystemDefinition } from '@hilo3d/addon-particle';
 import {
     registerRendererDiagnostics,
     unregisterRendererDiagnostics

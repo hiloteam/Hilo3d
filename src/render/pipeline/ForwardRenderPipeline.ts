@@ -45,10 +45,7 @@ import type {
 } from './ScriptableRenderGraph';
 import { depthClearValue } from '../renderer/DepthConvention';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
-import {
-    particleGPUForwardFeature,
-    particleGPUOpaqueForwardFeature
-} from '../../particle/gpu/ParticleGPUForwardFeature';
+import { addonGPUOpaqueSceneFeature, addonGPUSceneFeature } from './AddonGPUSceneFeature';
 
 /** Stable stages at which a forward feature may synchronously record graph work. */
 export type ForwardRenderInjectionPoint =
@@ -1551,8 +1548,8 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
 
     constructor(options: ForwardRenderPipelineFactoryOptions = {}) {
         const features = [
-            particleGPUOpaqueForwardFeature,
-            particleGPUForwardFeature,
+            addonGPUOpaqueSceneFeature,
+            addonGPUSceneFeature,
             ...(options.features ?? [])
         ].map(snapshotFeature);
         const names = new Set<string>();

@@ -19,7 +19,9 @@ committed.
 | [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers           |
 | [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks                        |
-| [Particle system](./PARTICLE_SYSTEM.md)                                         | Implemented P0-P5 runtime and complete P6 JSON/graph authoring, diagnostics/preview, deterministic checkpoints and baking contracts |
+| [Physics architecture](./PHYSICS_ARCHITECTURE.md)                               | Optional plugin ABI, backend-neutral 2D/3D ownership, fixed-step simulation, Rapier adapters, synchronization, and lifecycle        |
+| [Physics implementation plan](./PHYSICS_IMPLEMENTATION_PLAN.md)                 | Delivered physics slices, packaging and Cannon migration, advanced queries/character motion, acceptance and remaining release gates |
+| [Particle system](./PARTICLE_SYSTEM.md)                                         | Optional addon package, Stage lifecycle plugin, P0-P5 runtime, P6 authoring, deterministic checkpoints and baking contracts         |
 | [Particle system implementation plan](./PARTICLE_SYSTEM_IMPLEMENTATION_PLAN.md) | Unity 6.5/UE 5.8.1 feature analysis and a phased portable CPU, WebGPU stateful, and stateless particle architecture                 |
 | [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)      | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence              |
 | [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)       | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration                     |
@@ -34,11 +36,12 @@ When documents disagree, use this order:
 2. `RENDERING_ARCHITECTURE.md` for the production rendering path.
 3. `MATERIAL_SYSTEM_MODERNIZATION.md` for current material ownership, semantic-pass, variant,
    texture-slot and GPU-data contracts plus the remaining long-term roadmap.
-4. `ENGINEERING_MODERNIZATION.md` for the maintained engineering baseline.
-5. `COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md` for the implemented compute/storage and GPU-driven
+4. `PHYSICS_ARCHITECTURE.md` for the optional Stage plugin and portable physics contracts.
+5. `ENGINEERING_MODERNIZATION.md` for the maintained engineering baseline.
+6. `COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md` for the implemented compute/storage and GPU-driven
    rendering contract, first-release boundaries, acceptance fixtures, and validation record.
-6. `RHI_REFACTOR_PLAN.md` for design intent and acceptance criteria not superseded above.
-7. `SCRIPTABLE_RENDER_PIPELINE_PLAN.md` for the implemented SRP design rationale, rollout record,
+7. `RHI_REFACTOR_PLAN.md` for design intent and acceptance criteria not superseded above.
+8. `SCRIPTABLE_RENDER_PIPELINE_PLAN.md` for the implemented SRP design rationale, rollout record,
    acceptance checklist, and the integration points now used by compute/storage.
 
 Update the relevant document whenever a change alters an architectural invariant, public workflow,

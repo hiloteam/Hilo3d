@@ -14,6 +14,7 @@ matter, inspect `node_modules/hilo3d/dist/Hilo3d.d.ts`.
 - [Lights](#lights)
 - [Textures and loaders](#textures-and-loaders)
 - [2D](#2d)
+- [Optional addons](#optional-addons)
 - [Math](#math)
 - [Renderer-level features](#renderer-level-features)
 
@@ -287,13 +288,21 @@ The result exposes `node`, `scene`, `meshes`, `cameras`, `lights`, `textures`, `
 Core 2D types are `Camera2D`, `Sprite`, `SpriteFrame`, `SpriteMaterial`, and `Text2D`. See
 [2D games](2d-games.md) for complete patterns.
 
-## Particles
+## Optional addons
 
-Create immutable particle assets with `ParticleSystemDefinition.create(...)`, then attach a
-`ParticleSystem` to the ordinary scene. The same definition can select portable CPU, stateful
-WebGPU, or stateless reconstruction according to its `execution` contract and modules. See
-[Particle effects](particle-effects.md) for a minimal runtime pattern and the fail-closed backend
-rules.
+The `hilo3d` root does not export physics or authored-particle implementations. Add them only when
+the game needs them:
+
+- `@hilo3d/addon-particle` provides immutable definitions, CPU/WebGPU runtimes, authoring helpers,
+  and `createParticleStagePlugin()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
+  [Particle effects](particle-effects.md).
+- `@hilo3d/addon-physics` provides backend-neutral 2D/3D contracts. Import
+  `@hilo3d/addon-physics/rapier2d` or `/rapier3d` to select one dimension without loading the other.
+  See [3D games](3d-games.md).
+
+Both addons integrate through `StageParameters.plugins`. Retrieve their typed service through
+`stage.pluginHost`, and let `stage.destroy()` tear plugin runtimes down before the renderer. A game
+that uses neither addon should list and import neither package.
 
 ## Math
 

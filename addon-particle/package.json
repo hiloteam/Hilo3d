@@ -1,0 +1,32 @@
+{
+  "name": "@hilo3d/addon-particle",
+  "version": "0.1.0",
+  "description": "Optional production CPU and WebGPU particle systems for Hilo3D.",
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rimraf dist .cache"
+  },
+  "peerDependencies": {
+    "hilo3d": ">=2.0.0-alpha.4 <3"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "license": "MIT"
+}

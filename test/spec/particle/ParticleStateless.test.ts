@@ -1,13 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Node from '../../../src/core/Node';
-import { ParticleBudgetManager } from '../../../src/particle/ParticleBudget';
-import { compileParticleSystemDefinition } from '../../../src/particle/ParticleCompiler';
-import ParticleSystem from '../../../src/particle/ParticleSystem';
-import ParticleSystemDefinition from '../../../src/particle/ParticleSystemDefinition';
-import { ParticleSystemPool } from '../../../src/particle/ParticleSystemPool';
-import { ParticleStatelessRuntime } from '../../../src/particle/stateless/ParticleStatelessRuntime';
-import { compileParticleStatelessGPUPlan } from '../../../src/particle/stateless/ParticleStatelessGPUPlan';
+import { ParticleBudgetManager } from '../../../addon-particle/src/ParticleBudget';
+import { compileParticleSystemDefinition } from '../../../addon-particle/src/ParticleCompiler';
+import ParticleSystem from '../../../addon-particle/src/ParticleSystem';
+import ParticleSystemDefinition from '../../../addon-particle/src/ParticleSystemDefinition';
+import { ParticleSystemPool } from '../../../addon-particle/src/ParticleSystemPool';
+import { ParticleStatelessRuntime } from '../../../addon-particle/src/stateless/ParticleStatelessRuntime';
+import { compileParticleStatelessGPUPlan } from '../../../addon-particle/src/stateless/ParticleStatelessGPUPlan';
 import Renderer from '../../../src/render/Renderer';
 import { WgslComputeShaderCompiler } from '../../../src/render/shader/WgslComputeCompiler';
 
