@@ -40,6 +40,23 @@
 
 ### Changes
 
+- Replace the unenrolled Linux-only RHI performance-rig contract with an auditable Apple M3 Max
+  macOS/Metal profile. Require AC power, High Power Mode, a warning-free thermal state, exact
+  Node/Playwright/Chromium identity, physical Metal, GPU timers, precise memory, and allocation
+  profiling before collection or immutable baseline freezing. Size the release benchmark for a small
+  engine with three rounds, 500 timing/GPU frames, bounded one-frame allocation profiles, and a
+  single-draw absolute-allocation sentinel while retaining stress allocation data diagnostically.
+  Add per-phase progress and abortable browser/heap-profiler waits so a lost response fails
+  explicitly instead of hanging a formal run. Keep the large-instancing workload's 640,000-byte
+  dynamic budget scoped to instance transforms instead of incorrectly requiring the dynamic-texture
+  fixture, and distinguish a persistent shadow caster from steady shadow redraws after the atlas
+  cache is warm. Keep the sole churn shadow caster identity stable while cycling all ordinary mesh
+  slots, and explicitly budget the two shadow-view redraws caused by scene-child churn. Give the
+  depthless MRT/MSAA source workload the same explicit no-depth-write state as its fullscreen
+  continuation passes. Count first-complex-frame dynamic shadow invalidation and its final
+  linear-to-sRGB surface transfer in the declared steady draw budget. Keep targeted churn smoke
+  bounded to one complete ordinary-mesh replacement cycle unless its 10,000-frame tail is explicitly
+  requested; formal enrolled-rig capture still completes the full workload.
 - Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
   asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
   teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded

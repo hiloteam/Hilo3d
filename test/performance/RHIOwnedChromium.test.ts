@@ -222,6 +222,26 @@ describe('RHI owned Chromium raw CDP transport', () => {
         );
     });
 
+    it('abandons a pending profiler response when the local phase timeout aborts its session', async () => {
+        const harness = createHarness();
+        const session = await attachSession(harness, 'target-1', 'session-1');
+        await startMarkedSampling(harness, session, 'session-1');
+
+        const stopping = session.send('HeapProfiler.stopSampling');
+        const stopCommand = await harness.nextCommand();
+        session.abort(new Error('allocation phase timeout'));
+        await expect(stopping).rejects.toThrow(/allocation phase timeout/u);
+
+        harness.respond(stopCommand);
+        await expect(session.send('HeapProfiler.enable')).rejects.toThrow(
+            /allocation phase timeout/u
+        );
+        const browserPending = harness.pipe.send('Browser.getVersion');
+        const browserCommand = await harness.nextCommand();
+        harness.respond(browserCommand, { product: 'Chromium' });
+        await expect(browserPending).resolves.toEqual({ product: 'Chromium' });
+    });
+
     it('does not poison the browser pipe when a normal detach event precedes its response', async () => {
         const harness = createHarness();
         const session = await attachSession(harness, 'target-1', 'session-1');

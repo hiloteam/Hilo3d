@@ -107,7 +107,10 @@ async function main(): Promise<void> {
             const capture = await collectRHIProductionCapture({
                 preflight,
                 commitSha,
-                sessions
+                sessions,
+                progress: message => {
+                    process.stderr.write(`[${new Date().toISOString()}] ${message}\n`);
+                }
             });
             if ((await auditedRHIBenchmarkCommit(repositoryRoot)) !== commitSha) {
                 throw new Error('RHI benchmark source commit changed during capture');

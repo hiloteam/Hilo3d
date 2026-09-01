@@ -1,3 +1,5 @@
+import type { RHIBenchmarkScenarioId } from '../../../benchmarks/rhi/result-schema';
+
 function nonNegativeSafeInteger(value: number, label: string): void {
     if (!Number.isSafeInteger(value) || value < 0) {
         throw new RangeError(`${label} must be a non-negative safe integer`);
@@ -35,6 +37,24 @@ export function benchmarkMaterialIndex(
 export function benchmarkMeshCastsShadow(meshSlot: number, shadowsEnabled: boolean): boolean {
     nonNegativeSafeInteger(meshSlot, 'Benchmark mesh slot');
     return shadowsEnabled && meshSlot === 0;
+}
+
+/** Static scenes cache shadows; dynamic geometry and child churn invalidate their shadow views. */
+export function benchmarkSteadyShadowDrawCount(
+    scenarioId: RHIBenchmarkScenarioId,
+    shadowsEnabled: boolean
+): number {
+    if (!shadowsEnabled) return 0;
+    if (scenarioId === 'first-complex-frame') return 1;
+    return scenarioId === 'scene-churn-10000-frame' ? 2 : 0;
+}
+
+/** Keep the sole shadow caster stable while cycling every ordinary churn mesh. */
+export function benchmarkChurnMeshSlot(frameIndex: number, meshCount: number): number {
+    nonNegativeSafeInteger(frameIndex, 'frameIndex');
+    nonNegativeSafeInteger(meshCount, 'meshCount');
+    if (meshCount < 2) throw new RangeError('meshCount must include a caster and a churn mesh');
+    return 1 + (frameIndex % (meshCount - 1));
 }
 
 /**

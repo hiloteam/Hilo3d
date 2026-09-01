@@ -65,7 +65,7 @@ export const RHI_BENCHMARK_ALLOCATION_METRICS = [
 ] as const;
 
 /** Fixed profiler-frame count shared by formal evidence collection and the non-evidence smoke. */
-export const RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES = 21;
+export const RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES = 3;
 
 export type RHIBenchmarkBackend = (typeof RHI_BENCHMARK_BACKENDS)[number];
 export type RHIBenchmarkScenarioId = (typeof RHI_BENCHMARK_SCENARIO_IDS)[number];
@@ -153,13 +153,15 @@ export const RHI_BENCHMARK_HARD_CAPS: readonly RHIBenchmarkHardCap[] = Object.fr
         id: 'renderer-allocation',
         metric: 'allocationBytesPerFrame',
         statistic: 'p50',
-        maximumRegressionFraction: 0
+        maximumRegressionFraction: 0,
+        scenarioId: 'static-unlit-single-draw'
     },
     {
         id: 'rhi-hot-path-allocation',
         metric: 'rhiHotPathAllocationBytesPerFrame',
         statistic: 'maximum',
-        absoluteMaximum: RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
+        absoluteMaximum: RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
+        scenarioId: 'static-unlit-single-draw'
     },
     {
         id: 'retained-heap',

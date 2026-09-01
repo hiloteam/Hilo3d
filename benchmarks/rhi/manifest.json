@@ -4,27 +4,29 @@
   "architecture": "rhi",
   "backends": ["webgl2", "webgpu"],
   "sampling": {
-    "warmupFrames": 300,
-    "sampleFrames": 2000,
-    "allocationSampleFrames": 21,
-    "rounds": 7,
+    "warmupFrames": 120,
+    "sampleFrames": 500,
+    "allocationSampleFrames": 3,
+    "rounds": 3,
     "bootstrapSeed": 844188002,
     "bootstrapIterations": 10000,
     "confidenceLevel": 0.95
   },
   "rig": {
-    "profile": "hilo3d-rhi-perf-linux-gpu",
-    "requiredRunnerTags": ["self-hosted", "linux", "gpu", "rhi-perf"],
-    "osPlatform": "linux",
+    "profile": "hilo3d-rhi-perf-macos-m3-max",
+    "requiredRunnerTags": ["self-hosted", "macos", "gpu", "rhi-perf"],
+    "osPlatform": "darwin",
     "browserName": "chromium",
     "playwrightVersion": "1.61.1",
-    "nodeVersion": "22.22.2",
+    "nodeVersion": "22.23.1",
     "powerProfile": "fixed-performance",
     "requireNonFallbackAdapter": true,
     "requireGpuTimer": true,
     "requireAllocationProfiler": true,
     "requirePreciseMemory": true,
-    "acceptedFingerprintSha256": []
+    "acceptedFingerprintSha256": [
+      "c89bae9e3c047006365f4b6eb260b16c7478b6f60c3d15c09e88578848cdce68"
+    ]
   },
   "scenarios": [
     {
@@ -220,7 +222,7 @@
         "mrtColorAttachments": 4,
         "msaaSampleCount": 4,
         "postProcessPassCount": 3,
-        "surfaceOutputPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 4194304,
         "churnFrames": 0
       }

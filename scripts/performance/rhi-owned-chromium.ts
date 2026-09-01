@@ -533,6 +533,10 @@ export class RHIDebuggingPipe {
         }
     }
 
+    abortSession(sessionId: string, detail: string): void {
+        this.failSession(sessionId, detail);
+    }
+
     send(method: string, parameters?: object, options: PipeCommandOptions = {}): Promise<unknown> {
         if (this.#poison) return Promise.reject(this.#poison);
         if (this.#closed || !this.#writePipe.writable) {
@@ -677,6 +681,12 @@ export class RHIOwnedHeapProfilerSession {
         }
         return this.#pipe.send(method, parameters, { sessionId: this.#sessionId });
     }) as CDPSession['send'];
+
+    abort(reason: Error): void {
+        if (this.#closed) return;
+        this.#samplingMode = null;
+        this.#pipe.abortSession(this.#sessionId, reason.message);
+    }
 
     async close(): Promise<void> {
         if (this.#closed) return;

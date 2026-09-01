@@ -9,6 +9,11 @@ import type { RenderTarget, RenderTargetParameters } from '../../../src/render/R
 import type Texture from '../../../src/texture/Texture';
 
 export const MRT_MSAA_POSTPROCESS_EFFECT_PASS_COUNT = 3;
+export const MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE = Object.freeze({
+    depthTest: false,
+    depthWrite: false,
+    cullMode: 'none' as const
+});
 
 export const MRT_MSAA_POSTPROCESS_VERTEX_SOURCE = `#version 300 es
     in vec3 a_position;
@@ -128,7 +133,7 @@ function createMRTMSAAPostProcessPass(
     }
     const material = new ShaderMaterial({
         sourceRevision: `rhi-benchmark-mrt-post-process-${String(index)}`,
-        state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+        state: MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
         attributes: { a_position: 'POSITION' },
         uniforms: isMRTCombine
             ? {
