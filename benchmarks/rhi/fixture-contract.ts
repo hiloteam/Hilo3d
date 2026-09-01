@@ -5,7 +5,7 @@ import type {
     RHIBenchmarkScenarioId
 } from './result-schema';
 
-export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 13 as const;
+export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 14 as const;
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL =
     'chromium-cdp-single-frame-sampling-heap-profiler-sync-render-v12' as const;
 /** The fixed settling probe now ends immediately before measured samples; no duplicate discard. */
@@ -38,6 +38,14 @@ export function rhiBenchmarkAllocationProfilerWarmupFrames(drawCount: number): n
         throw new RangeError('RHI allocation profiler warm-up draw count must be positive');
     }
     return RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES;
+}
+
+/** Distinguish texture/geometry upload scenarios from the instancing transform-upload budget. */
+export function rhiBenchmarkUsesDynamicTextures(
+    scenarioId: RHIBenchmarkScenarioId,
+    dynamicUploadBytesPerFrame: number
+): boolean {
+    return dynamicUploadBytesPerFrame > 0 && scenarioId !== 'large-instancing';
 }
 
 export const RHI_BENCHMARK_TIMING_METRICS = [

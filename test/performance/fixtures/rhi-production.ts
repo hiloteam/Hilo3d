@@ -2,6 +2,7 @@ import manifestValue from '../../../benchmarks/rhi/manifest.json';
 import {
     RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
     RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION,
+    rhiBenchmarkUsesDynamicTextures,
     type RHIBenchmarkDiagnosticSample,
     type RHIBenchmarkFixtureFrameSample,
     type RHIBenchmarkFixtureMetadata,
@@ -669,16 +670,19 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
 
     private buildScene(): void {
         const quality = this.#scenario.quality;
+        const usesDynamicTextures = rhiBenchmarkUsesDynamicTextures(
+            this.#scenario.id,
+            quality.dynamicUploadBytesPerFrame
+        );
         const shadowDraws = quality.shadowMapSize > 0 ? 1 : 0;
         const isPbr =
             this.#scenario.id === 'pbr-lights-shadows' ||
             this.#scenario.id === 'first-complex-frame';
-        const textureSize =
-            quality.dynamicUploadBytesPerFrame > 0
-                ? Math.sqrt(quality.dynamicUploadBytesPerFrame / 4)
-                : 2;
+        const textureSize = usesDynamicTextures
+            ? Math.sqrt(quality.dynamicUploadBytesPerFrame / 4)
+            : 2;
         for (let index = 0; index < quality.textureCount; index += 1) {
-            if (quality.dynamicUploadBytesPerFrame > 0 && index === 0) {
+            if (usesDynamicTextures && index === 0) {
                 if (!Number.isInteger(textureSize)) {
                     fixtureFailure('dynamic upload byte count must describe one square RGBA image');
                 }
@@ -690,7 +694,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 this.#textures.push(dynamic);
                 this.#dynamicTexture = dynamic;
                 this.#dynamicPixels = pixels;
-            } else if (quality.dynamicUploadBytesPerFrame > 0 && index === 1) {
+            } else if (usesDynamicTextures && index === 1) {
                 const external = dynamicExternalTexture(index + 1);
                 this.#textures.push(external.texture);
                 this.#dynamicExternalContext = external.context;
@@ -700,7 +704,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             }
         }
         if (
-            quality.dynamicUploadBytesPerFrame > 0 &&
+            usesDynamicTextures &&
             (this.#dynamicTexture === null || this.#dynamicExternalContext === null)
         ) {
             fixtureFailure('dynamic upload scenario requires typed-array and external textures');
@@ -736,7 +740,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 this.#scenario.id === 'mrt-msaa-postprocess'
                     ? fullscreenGeometry()
                     : benchmarkBoxGeometry();
-            if (quality.dynamicUploadBytesPerFrame > 0 && geometry.vertices) {
+            if (usesDynamicTextures && geometry.vertices) {
                 geometry.isStatic = false;
                 this.#dynamicGeometry = geometry.vertices;
                 this.#dynamicGeometryBaseValue = geometry.vertices.data[0] ?? 0;

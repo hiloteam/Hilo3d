@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { rhiBenchmarkAllocationProfilerWarmupFrames } from '../../benchmarks/rhi/fixture-contract';
+import {
+    rhiBenchmarkAllocationProfilerWarmupFrames,
+    rhiBenchmarkUsesDynamicTextures
+} from '../../benchmarks/rhi/fixture-contract';
 import PerspectiveCamera from '../../src/camera/PerspectiveCamera';
 import Node from '../../src/core/Node';
 import type Shader from '../../src/shader/Shader';
@@ -425,6 +428,11 @@ describe('RHI production fixture smoke contract', () => {
         expect(rhiBenchmarkAllocationProfilerWarmupFrames(10_000)).toBe(32);
         expect(rhiBenchmarkAllocationProfilerWarmupFrames(79)).toBe(32);
         expect(() => rhiBenchmarkAllocationProfilerWarmupFrames(0)).toThrow(/positive/u);
+        expect(rhiBenchmarkUsesDynamicTextures('large-instancing', 640_000)).toBe(false);
+        expect(rhiBenchmarkUsesDynamicTextures('dynamic-geometry-texture-upload', 4_194_304)).toBe(
+            true
+        );
+        expect(rhiBenchmarkUsesDynamicTextures('static-unlit-single-draw', 0)).toBe(false);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_RENDER_FRAMES).toBe(1);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS).toBe(32);
         expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(1);

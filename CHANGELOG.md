@@ -47,7 +47,9 @@
   engine with three rounds, 500 timing/GPU frames, bounded one-frame allocation profiles, and a
   single-draw absolute-allocation sentinel while retaining stress allocation data diagnostically.
   Add per-phase progress and abortable browser/heap-profiler waits so a lost response fails
-  explicitly instead of hanging a formal run.
+  explicitly instead of hanging a formal run. Keep the large-instancing workload's 640,000-byte
+  dynamic budget scoped to instance transforms instead of incorrectly requiring the dynamic-texture
+  fixture.
 - Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
   asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
   teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded
