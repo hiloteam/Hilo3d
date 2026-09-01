@@ -427,6 +427,51 @@ async function collectPublicContractViolations(): Promise<string[]> {
     return matches;
 }
 
+async function collectDocumentationWorkflowViolations(): Promise<string[]> {
+    const [documentationWorkflow, ciWorkflow, packageSource] = await Promise.all([
+        readFile(resolve(projectRoot, '.github/workflows/docs.yml'), 'utf8'),
+        readFile(resolve(projectRoot, '.github/workflows/npm_test.yml'), 'utf8'),
+        readFile(resolve(projectRoot, 'package.json'), 'utf8')
+    ]);
+    const packageValue = JSON.parse(packageSource) as {
+        readonly scripts?: Readonly<Record<string, unknown>>;
+    };
+    const siteBuild = packageValue.scripts?.['site:build'];
+    const lint = packageValue.scripts?.['lint'];
+    const siteBuildCommands =
+        typeof siteBuild === 'string' ? siteBuild.split('&&').map(command => command.trim()) : [];
+    const lintCommands =
+        typeof lint === 'string' ? lint.split('&&').map(command => command.trim()) : [];
+    const matches: string[] = [];
+
+    if (!siteBuildCommands.includes('npm run api:check')) {
+        matches.push(
+            'package.json (site:build must run the self-contained api:check prerequisite)'
+        );
+    }
+    if (!lintCommands.includes('npm run addon:build')) {
+        matches.push('package.json (lint must build addon declarations before typed linting)');
+    }
+    if (!documentationWorkflow.includes('run: npm run site:build')) {
+        matches.push('.github/workflows/docs.yml (Pages validation must run site:build)');
+    }
+    if (documentationWorkflow.includes('api:check:built')) {
+        matches.push(
+            '.github/workflows/docs.yml (Pages validation must not assume prebuilt addon declarations)'
+        );
+    }
+    if (!ciWorkflow.includes('run: npm run lint')) {
+        matches.push('.github/workflows/npm_test.yml (CI preflight must run self-contained lint)');
+    }
+    if (ciWorkflow.includes('run: npm run lint:built')) {
+        matches.push(
+            '.github/workflows/npm_test.yml (CI preflight must not lint before addon declarations exist)'
+        );
+    }
+
+    return matches;
+}
+
 async function existingLegacyPaths(): Promise<string[]> {
     return (
         await Promise.all(
@@ -457,12 +502,13 @@ const violations = [
         ...legacyArtifacts,
         ...(await existingLegacyPaths()),
         ...(await collectPackageContractViolations()),
-        ...(await collectPublicContractViolations())
+        ...(await collectPublicContractViolations()),
+        ...(await collectDocumentationWorkflowViolations())
     ])
 ].sort();
 
 if (violations.length > 0) {
     throw new Error(
-        `Remove legacy implementations, APIs, module formats, or configuration:\n${violations.map(path => `- ${path}`).join('\n')}`
+        `Repository modernity or workflow contract violations:\n${violations.map(path => `- ${path}`).join('\n')}`
     );
 }

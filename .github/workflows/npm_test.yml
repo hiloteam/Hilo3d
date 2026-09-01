@@ -46,11 +46,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Build declarations for static analysis
-        run: npm run build:types
-
       - name: Lint maintained TypeScript
-        run: npm run lint:built
+        run: npm run lint
 
       - name: Check TypeScript project references
         run: npm run typecheck:ci

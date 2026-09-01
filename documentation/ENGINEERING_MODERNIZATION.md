@@ -768,6 +768,13 @@ API Extractor 的 release-tag 提示按项目级固定政策关闭：Hilo3d
 2.x 的根 barrel 导出面全部视为 public，不设置 alpha/beta 分层。setter 文档提示也按固定政策关闭：访问器说明由 getter/TypeDoc 作为唯一正文来源。两项都不关闭 TypeScript 诊断、forgotten
 export、API 差异或 TypeDoc 验证，也不是待删除的迁移豁免。
 
+`npm run site:build`
+是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子 addon 和物理 addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这三个包时直接调用依赖预构建产物的 API 检查。
+
+typed lint 同样遵循干净 checkout 规则：工作流调用
+`npm run lint`，由该命令先构建核心和 addon 声明，再执行 ESLint；不得自行组合会遗漏 workspace 声明的
+`build:types` 和 `lint:built`。`check:modernity` 会强制检查这两项工作流契约。
+
 唯一的 `Renderer`、backend-neutral `RenderTarget`、`Stage<'webgpu'>`、异步
 `MeshPicker`、`ShadowCastingLightParameters`、`KTXTextureOptions`、资源诊断与压缩纹理 capability 从根 barrel 导出，因而同时进入
 `.d.ts`、TypeDoc 与 API report。Concrete backend driver、target、Naga translator、native
@@ -997,9 +1004,8 @@ heap-profiler session。脚本直接运行时默认按 WebGPU、WebGL
 smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 10,000 帧完成行为时才传
 `--full-churn`；正式登记采集始终完成全部 churn 帧。
 
-站点发布工作流同样从干净 checkout 执行 `npm ci`，只构建一次声明，再执行 `npm run api:check:built` 与
-`npm run site:build:built`
-后部署生成 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
+站点发布工作流同样从干净 checkout 执行 `npm ci`，再通过自包含的 `npm run site:build`
+完成核心与 addon 声明构建、API 检查和站点生成后部署 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
 
 ## 唯一验收入口
 
