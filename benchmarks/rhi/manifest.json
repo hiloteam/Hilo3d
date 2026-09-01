@@ -222,7 +222,7 @@
         "mrtColorAttachments": 4,
         "msaaSampleCount": 4,
         "postProcessPassCount": 3,
-        "surfaceOutputPassCount": 0,
+        "surfaceOutputPassCount": 1,
         "dynamicUploadBytesPerFrame": 4194304,
         "churnFrames": 0
       }

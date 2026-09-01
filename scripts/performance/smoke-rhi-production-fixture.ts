@@ -158,6 +158,8 @@ export interface RHIProductionFixtureSmokeOptions {
     readonly repositoryRoot: string;
     readonly scenarioIds?: readonly RHIBenchmarkScenarioId[];
     readonly backends?: readonly RHIBenchmarkBackend[];
+    /** Complete long churn rounds instead of stopping after the representative smoke frame. */
+    readonly fullChurn?: boolean;
     /** NON-EVIDENCE diagnostic selector; only the current RHI architecture is supported. */
     readonly architectures?: readonly RendererArchitecture[];
     readonly launchBrowser?: () => Promise<Browser>;
@@ -245,7 +247,8 @@ async function observeFixture(
     scenario: RHIBenchmarkScenarioManifest,
     backend: RHIBenchmarkBackend,
     architecture: RendererArchitecture,
-    ownedBrowser: RHIOwnedChromium | null
+    ownedBrowser: RHIOwnedChromium | null,
+    fullChurn: boolean
 ): Promise<SmokeObservation> {
     const context: BrowserContext = await browser.newContext({
         viewport: { width: scenario.quality.width, height: scenario.quality.height },
@@ -339,19 +342,21 @@ async function observeFixture(
             rendererBytes: allocationSummary.rendererMedianBytes,
             rhiHotPathBytes: allocationSummary.rhiHotPathMaximumBytes
         });
-        const result = await page.evaluate(async () => {
+        const result = await page.evaluate(async completeLongRound => {
             const fixture = window.__HILO3D_RHI_BENCHMARK__;
             if (!fixture) throw new Error('production fixture API is missing');
             const samples = await fixture.sampleTimingFrames(1);
             const sample = samples[0];
             if (!sample) throw new Error('fixture smoke frame is missing');
-            await fixture.completeRound();
+            if (completeLongRound || fixture.metadata.quality.churnFrames === 0) {
+                await fixture.completeRound();
+            }
             return {
                 metadata: fixture.metadata,
                 actualDrawCount: sample.diagnostics.actualDrawCount,
                 pixelHashSha256: await fixture.capturePixelHash()
             };
-        });
+        }, fullChurn);
         if (result.metadata.scenarioId !== scenario.id || result.metadata.backend !== backend) {
             smokeFailure(`${scenario.id}/${backend}/${architecture} metadata identity differs`);
         }
@@ -452,7 +457,8 @@ export async function runRHIProductionFixtureSmoke(
                         scenario,
                         backend,
                         architectures[0],
-                        browserSession.ownedBrowser
+                        browserSession.ownedBrowser,
+                        options.fullChurn ?? false
                     );
                 } finally {
                     await closeSmokeBrowser(browserSession);
@@ -499,6 +505,7 @@ export async function runRHIProductionFixtureSmoke(
 async function main(): Promise<void> {
     const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
     const allScenarios = process.argv.includes('--all');
+    const fullChurn = process.argv.includes('--full-churn');
     const requestedScenario = process.argv
         .find(argument => argument.startsWith('--scenario='))
         ?.slice('--scenario='.length);
@@ -540,6 +547,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${RHI_PRODUCTION_SMOKE_NON_EVIDENCE_NOTICE}\n`);
     await runRHIProductionFixtureSmoke({
         repositoryRoot,
+        fullChurn,
         ...(scenarioIds === undefined ? {} : { scenarioIds }),
         ...(requestedBackend === undefined
             ? {}

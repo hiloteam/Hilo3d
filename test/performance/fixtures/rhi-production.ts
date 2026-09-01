@@ -56,6 +56,7 @@ import Texture from '../../../src/texture/Texture';
 import { NEAREST } from '../../../src/constants/webgl';
 import {
     MRT_MSAA_POSTPROCESS_EFFECT_PASS_COUNT,
+    MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
     createMRTMSAAPostProcessWorkload,
     mrtMSAAPostProcessPrimaryDrawCount,
     mrtMSAAPostProcessSourceTargetParameters,
@@ -67,7 +68,8 @@ import {
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
-    benchmarkPrimaryDrawCount
+    benchmarkPrimaryDrawCount,
+    benchmarkSteadyShadowDrawCount
 } from './rhi-scene-workload';
 
 type AnyMethod = (this: unknown, ...args: unknown[]) => unknown;
@@ -463,7 +465,7 @@ function benchmarkBoxGeometry(): BoxGeometry {
 
 function mrtMaterial(): ShaderMaterial {
     return new ShaderMaterial({
-        state: { depthTest: false, cullMode: 'none' },
+        state: MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
         attributes: { a_position: 'POSITION' },
         vs: `#version 300 es
             in vec3 a_position;
@@ -674,7 +676,8 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             this.#scenario.id,
             quality.dynamicUploadBytesPerFrame
         );
-        const shadowDraws = quality.shadowMapSize > 0 ? 1 : 0;
+        const shadowsEnabled = quality.shadowMapSize > 0;
+        const steadyShadowDraws = benchmarkSteadyShadowDrawCount(this.#scenario.id, shadowsEnabled);
         const isPbr =
             this.#scenario.id === 'pbr-lights-shadows' ||
             this.#scenario.id === 'first-complex-frame';
@@ -719,7 +722,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 )
             );
         }
-        if (shadowDraws > 0 && this.#materials.length < 2) {
+        if (shadowsEnabled && this.#materials.length < 2) {
             fixtureFailure('a shadow benchmark requires a dedicated caster material');
         }
         addLights(this.#scene, quality);
@@ -734,7 +737,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                     : benchmarkPrimaryDrawCount(
                           quality.drawCount,
                           quality.postProcessPassCount + quality.surfaceOutputPassCount,
-                          shadowDraws
+                          steadyShadowDraws
                       );
             const geometry =
                 this.#scenario.id === 'mrt-msaa-postprocess'
@@ -752,13 +755,13 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             for (let index = 0; index < primaryDraws; index += 1) {
                 const material =
                     this.#materials[
-                        benchmarkMaterialIndex(index, this.#materials.length, shadowDraws > 0)
+                        benchmarkMaterialIndex(index, this.#materials.length, shadowsEnabled)
                     ];
                 if (!material) fixtureFailure('scenario material set is empty');
                 const mesh = new Mesh({
                     geometry,
                     material,
-                    castShadows: benchmarkMeshCastsShadow(index, shadowDraws > 0),
+                    castShadows: benchmarkMeshCastsShadow(index, shadowsEnabled),
                     frustumTest: false,
                     z: benchmarkMeshDepth(index, this.#scenario.id === 'scene-churn-10000-frame')
                 });

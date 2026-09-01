@@ -55,6 +55,9 @@ same rig profile.
 npm run test:rhi-benchmark-contract
 npm run test:rhi-benchmark-smoke
 
+# Optional: exercise the 10,000-frame churn tail in a targeted non-evidence smoke.
+npm run test:rhi-benchmark-smoke -- --scenario=scene-churn-10000-frame --full-churn
+
 # On the enrolled Mac, use the exact Node version from manifest.json and locate pinned Chromium.
 export HILO3D_RHI_BENCHMARK_POWER_PROFILE=fixed-performance
 export HILO3D_RHI_BENCHMARK_BROWSER_EXECUTABLE="$(node --input-type=module -e \
@@ -118,7 +121,10 @@ canonical filenames, and destination before making one atomic immutable write.
 current-RHI pages. It verifies that both backends initialize, render, expose diagnostics, produce a
 pixel hash, and keeps the default single-draw sentinel within the temporary RHI hot-path allocation
 budget. Explicit stress-scenario smoke runs report allocation samples diagnostically instead of
-applying that single-draw absolute cap. It does not create or verify a performance baseline.
+applying that single-draw absolute cap. It does not create or verify a performance baseline. The
+default targeted churn smoke stops after its representative measured frame; pass `--full-churn` only
+when the 10,000-frame completion behavior itself changed. Formal enrolled-rig collection always
+completes the full churn workload.
 
 Only an enrolled-rig capture that passes preflight and is frozen by `benchmark:rhi:freeze` is
 baseline evidence. Cross-commit comparison/gating should consume two verified schema-v4 snapshots.

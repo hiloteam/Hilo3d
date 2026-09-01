@@ -35,6 +35,7 @@ import {
 import {
     MRT_MSAA_POSTPROCESS_COMBINE_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_EFFECT_PASS_COUNT,
+    MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
     MRT_MSAA_POSTPROCESS_FINAL_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_SWIZZLE_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_VERTEX_SOURCE,
@@ -49,7 +50,8 @@ import {
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
-    benchmarkPrimaryDrawCount
+    benchmarkPrimaryDrawCount,
+    benchmarkSteadyShadowDrawCount
 } from './fixtures/rhi-scene-workload';
 
 class FakeRenderTarget implements RenderTarget {
@@ -144,6 +146,11 @@ describe('RHI production MRT/MSAA post-process workload', () => {
                 { format: 'rgba8unorm' },
                 { format: 'rgba8unorm' }
             ]
+        });
+        expect(MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE).toEqual({
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
         });
         const descriptors: RenderTargetParameters[] = [];
         const factory = {
@@ -308,11 +315,16 @@ describe('RHI production MRT/MSAA post-process workload', () => {
 
 describe('RHI production shadow draw contract', () => {
     it.each([
-        { id: 'pbr-lights-shadows', total: 512, postProcess: 0, variants: 8 },
-        { id: 'first-complex-frame', total: 512, postProcess: 3, variants: 64 },
-        { id: 'scene-churn-10000-frame', total: 256, postProcess: 0, variants: 16 }
-    ])('keeps exactly one caster while using every material variant in $id', scenario => {
-        const primary = benchmarkPrimaryDrawCount(scenario.total, scenario.postProcess, 1);
+        { id: 'pbr-lights-shadows', total: 513, fixedPasses: 1, variants: 8 },
+        { id: 'first-complex-frame', total: 512, fixedPasses: 4, variants: 64 },
+        { id: 'scene-churn-10000-frame', total: 257, fixedPasses: 1, variants: 16 }
+    ] as const)('keeps exactly one caster while using every material variant in $id', scenario => {
+        const steadyShadowDraws = benchmarkSteadyShadowDrawCount(scenario.id, true);
+        const primary = benchmarkPrimaryDrawCount(
+            scenario.total,
+            scenario.fixedPasses,
+            steadyShadowDraws
+        );
         const materialIndices = Array.from({ length: primary }, (_, drawIndex) =>
             benchmarkMaterialIndex(drawIndex, scenario.variants, true)
         );
@@ -324,7 +336,7 @@ describe('RHI production shadow draw contract', () => {
         expect(materialIndices.slice(1)).not.toContain(0);
         expect(new Set(materialIndices).size).toBe(scenario.variants);
         expect(casterCount).toBe(1);
-        expect(primary + casterCount + scenario.postProcess).toBe(scenario.total);
+        expect(primary + steadyShadowDraws + scenario.fixedPasses).toBe(scenario.total);
     });
 
     it('keeps the sole scene-churn caster in stable slot zero across replacements', () => {
@@ -480,6 +492,8 @@ describe('RHI production fixture smoke contract', () => {
         );
         expect(source).toContain('browser: await chromium.launch({');
         expect(source).toContain("adapterPolicy: 'swiftshader'");
+        expect(source).toContain("process.argv.includes('--full-churn')");
+        expect(source).toContain('completeLongRound || fixture.metadata.quality.churnFrames === 0');
         const fixtureSource = await readFile(
             resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
             'utf8'

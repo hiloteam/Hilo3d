@@ -1,3 +1,5 @@
+import type { RHIBenchmarkScenarioId } from '../../../benchmarks/rhi/result-schema';
+
 function nonNegativeSafeInteger(value: number, label: string): void {
     if (!Number.isSafeInteger(value) || value < 0) {
         throw new RangeError(`${label} must be a non-negative safe integer`);
@@ -35,6 +37,14 @@ export function benchmarkMaterialIndex(
 export function benchmarkMeshCastsShadow(meshSlot: number, shadowsEnabled: boolean): boolean {
     nonNegativeSafeInteger(meshSlot, 'Benchmark mesh slot');
     return shadowsEnabled && meshSlot === 0;
+}
+
+/** Static shadows cache after warm-up; only the dynamic-geometry fixture invalidates its caster. */
+export function benchmarkSteadyShadowDrawCount(
+    scenarioId: RHIBenchmarkScenarioId,
+    shadowsEnabled: boolean
+): number {
+    return shadowsEnabled && scenarioId === 'first-complex-frame' ? 1 : 0;
 }
 
 /**
