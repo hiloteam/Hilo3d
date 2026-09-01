@@ -12,6 +12,30 @@ const NO_ENTITY_INDEX = -1;
 const MIN_DENSE_CAPACITY = 16;
 const MATRIX_ELEMENT_COUNT = 16;
 
+function quaternionLength(x: number, y: number, z: number, w: number): number {
+    let scale = Math.abs(x);
+    const absoluteY = Math.abs(y);
+    const absoluteZ = Math.abs(z);
+    const absoluteW = Math.abs(w);
+    if (absoluteY > scale) scale = absoluteY;
+    if (absoluteZ > scale) scale = absoluteZ;
+    if (absoluteW > scale) scale = absoluteW;
+    if (scale === 0) return 0;
+    const normalizedX = x / scale;
+    const normalizedY = y / scale;
+    const normalizedZ = z / scale;
+    const normalizedW = w / scale;
+    return (
+        scale *
+        Math.sqrt(
+            normalizedX * normalizedX +
+                normalizedY * normalizedY +
+                normalizedZ * normalizedZ +
+                normalizedW * normalizedW
+        )
+    );
+}
+
 /** Three finite scalar values used by transform component input. */
 export type TransformVector3 = readonly [number, number, number];
 
@@ -381,7 +405,7 @@ export class TransformStore implements ComponentStore<LocalTransformValue> {
         const y = component(value.rotation, 1, 0);
         const z = component(value.rotation, 2, 0);
         const w = component(value.rotation, 3, 1);
-        if (Math.hypot(x, y, z, w) === 0) {
+        if (quaternionLength(x, y, z, w) === 0) {
             throw new RangeError('Transform rotation quaternion cannot be zero.');
         }
         component(value.scale, 0, 1);
@@ -760,7 +784,7 @@ export class TransformStore implements ComponentStore<LocalTransformValue> {
         const y = requireFinite(yValue, 'Transform rotation y');
         const z = requireFinite(zValue, 'Transform rotation z');
         const w = requireFinite(wValue, 'Transform rotation w');
-        const length = Math.hypot(x, y, z, w);
+        const length = quaternionLength(x, y, z, w);
         if (length === 0) throw new RangeError('Transform rotation quaternion cannot be zero.');
         const offset = denseIndex * 4;
         this.rotationData[offset] = x / length;
@@ -1409,7 +1433,8 @@ export class InterpolatedTransformStore implements ComponentStore<InterpolatedTr
 
     /** Sample all active histories into LocalTransform in one allocation-free dense pass. */
     apply(transforms: TransformStore, alphaValue: number): void {
-        const alpha = Math.max(0, Math.min(1, requireFinite(alphaValue, 'Interpolation alpha')));
+        const finiteAlpha = requireFinite(alphaValue, 'Interpolation alpha');
+        const alpha = finiteAlpha < 0 ? 0 : finiteAlpha > 1 ? 1 : finiteAlpha;
         for (let denseIndex = 0; denseIndex < this.entryCount; denseIndex++) {
             const entityIndex = this.denseEntities[denseIndex] ?? 0;
             if (!transforms.has(entityIndex)) continue;
@@ -1498,7 +1523,7 @@ export class InterpolatedTransformStore implements ComponentStore<InterpolatedTr
         const y = requireFinite(yValue, 'Interpolated rotation y');
         const z = requireFinite(zValue, 'Interpolated rotation z');
         const w = requireFinite(wValue, 'Interpolated rotation w');
-        const length = Math.hypot(x, y, z, w);
+        const length = quaternionLength(x, y, z, w);
         if (length === 0) throw new RangeError('Interpolated rotation cannot be zero.');
         this.poses[offset] = x / length;
         this.poses[offset + 1] = y / length;
@@ -1511,7 +1536,7 @@ export class InterpolatedTransformStore implements ComponentStore<InterpolatedTr
         const y = requireFinite(value[1], 'Interpolated rotation y');
         const z = requireFinite(value[2], 'Interpolated rotation z');
         const w = requireFinite(value[3], 'Interpolated rotation w');
-        if (Math.hypot(x, y, z, w) === 0) {
+        if (quaternionLength(x, y, z, w) === 0) {
             throw new RangeError('Interpolated rotation cannot be zero.');
         }
     }

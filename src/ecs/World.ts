@@ -33,6 +33,8 @@ export interface WorldParameters {
     readonly fixedDeltaMilliseconds?: number;
     readonly maxSubSteps?: number;
     readonly maxDeltaMilliseconds?: number;
+    /** Collect per-phase wall-clock diagnostics. Disabled by default to keep update allocation-free. */
+    readonly measurePhaseDurations?: boolean;
     readonly systems?: readonly WorldSystem[];
 }
 
@@ -83,6 +85,8 @@ export default class World {
     readonly fixedDeltaMilliseconds: number;
     readonly maxSubSteps: number;
     readonly maxDeltaMilliseconds: number;
+    /** Whether this World samples wall-clock time around every System phase. */
+    readonly measurePhaseDurations: boolean;
     private readonly entities: EntityAllocator;
     private readonly registrations = new Map<ComponentType<unknown>, ComponentRegistration>();
     private readonly registrationsById: ComponentRegistration[] = [];
@@ -114,6 +118,7 @@ export default class World {
             parameters.maxDeltaMilliseconds ?? DEFAULT_MAX_DELTA_MILLISECONDS,
             'maxDeltaMilliseconds'
         );
+        this.measurePhaseDurations = parameters.measurePhaseDurations ?? false;
         this.entities = new EntityAllocator(parameters.initialCapacity ?? DEFAULT_INITIAL_CAPACITY);
         this.systems = new WorldSystemRegistry(this, this.commands);
     }
@@ -328,7 +333,8 @@ export default class World {
             deltaTimeMilliseconds,
             'deltaTimeMilliseconds'
         );
-        const delta = Math.min(requestedDelta, this.maxDeltaMilliseconds);
+        const delta =
+            requestedDelta < this.maxDeltaMilliseconds ? requestedDelta : this.maxDeltaMilliseconds;
         this.totalDroppedTimeMilliseconds += requestedDelta - delta;
         this.updating = true;
         this.phaseDurations.fill(0);
@@ -425,7 +431,7 @@ export default class World {
         return this.systems.getOptional(resource);
     }
 
-    /** Return a stable diagnostics snapshot. */
+    /** Return a stable diagnostics snapshot. Phase durations are zero unless explicitly enabled. */
     getDiagnostics(): WorldDiagnostics {
         return {
             entityCount: this.entities.size,
@@ -562,6 +568,10 @@ export default class World {
         fixedStepIndex: number,
         interpolationAlpha: number
     ): void {
+        if (!this.measurePhaseDurations) {
+            this.systems.runPhase(phase, deltaTimeMilliseconds, fixedStepIndex, interpolationAlpha);
+            return;
+        }
         const start = performance.now();
         this.systems.runPhase(phase, deltaTimeMilliseconds, fixedStepIndex, interpolationAlpha);
         const index = WORLD_SYSTEM_PHASES.indexOf(phase);

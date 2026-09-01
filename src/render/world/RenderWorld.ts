@@ -19,6 +19,22 @@ const MIN_RENDER_CAPACITY = 16;
 const MATRIX_ELEMENT_COUNT = 16;
 const BOUNDS_ELEMENT_COUNT = 4;
 
+function vectorLength3(x: number, y: number, z: number): number {
+    let scale = Math.abs(x);
+    const absoluteY = Math.abs(y);
+    const absoluteZ = Math.abs(z);
+    if (absoluteY > scale) scale = absoluteY;
+    if (absoluteZ > scale) scale = absoluteZ;
+    if (scale === 0) return 0;
+    const normalizedX = x / scale;
+    const normalizedY = y / scale;
+    const normalizedZ = z / scale;
+    return (
+        scale *
+        Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY + normalizedZ * normalizedZ)
+    );
+}
+
 /** Per-extraction work counters used by performance gates and diagnostics. */
 export interface RenderWorldDiagnostics {
     readonly renderObjectCount: number;
@@ -584,22 +600,25 @@ export class RenderWorld {
             (values[matrixOffset + 6] ?? 0) * y +
             (values[matrixOffset + 10] ?? 0) * z +
             (values[matrixOffset + 14] ?? 0);
-        const scaleX = Math.hypot(
+        const scaleX = vectorLength3(
             values[matrixOffset] ?? 0,
             values[matrixOffset + 1] ?? 0,
             values[matrixOffset + 2] ?? 0
         );
-        const scaleY = Math.hypot(
+        const scaleY = vectorLength3(
             values[matrixOffset + 4] ?? 0,
             values[matrixOffset + 5] ?? 0,
             values[matrixOffset + 6] ?? 0
         );
-        const scaleZ = Math.hypot(
+        const scaleZ = vectorLength3(
             values[matrixOffset + 8] ?? 0,
             values[matrixOffset + 9] ?? 0,
             values[matrixOffset + 10] ?? 0
         );
-        const radius = local.radius * Math.max(scaleX, scaleY, scaleZ);
+        let maximumScale = scaleX;
+        if (scaleY > maximumScale) maximumScale = scaleY;
+        if (scaleZ > maximumScale) maximumScale = scaleZ;
+        const radius = local.radius * maximumScale;
         this.worldBounds[boundsOffset] = centerX;
         this.worldBounds[boundsOffset + 1] = centerY;
         this.worldBounds[boundsOffset + 2] = centerZ;

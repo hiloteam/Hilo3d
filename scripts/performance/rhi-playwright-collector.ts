@@ -307,14 +307,34 @@ function classifyRHIAllocationProfileInternal(
     const root = profileNode(record(profile['profile'], 'sampling profile')['head']);
     let rendererBytes = 0;
     let rhiHotPathBytes = 0;
-    const visit = (
-        node: CDPSamplingHeapProfileNode,
-        synchronousFrameStack: boolean,
-        rendererStack: boolean,
-        rhiStack: boolean,
-        lifecycleStack: boolean,
-        diagnosticPath: string
-    ): void => {
+    const pending: {
+        readonly node: CDPSamplingHeapProfileNode;
+        readonly synchronousFrameStack: boolean;
+        readonly rendererStack: boolean;
+        readonly rhiStack: boolean;
+        readonly lifecycleStack: boolean;
+        readonly diagnosticPath: string;
+    }[] = [
+        {
+            node: root,
+            synchronousFrameStack: false,
+            rendererStack: false,
+            rhiStack: false,
+            lifecycleStack: false,
+            diagnosticPath: ''
+        }
+    ];
+    while (pending.length > 0) {
+        const current = pending.pop();
+        if (!current) playwrightFailure('sampling profile traversal stack is empty');
+        const {
+            node,
+            synchronousFrameStack,
+            rendererStack,
+            rhiStack,
+            lifecycleStack,
+            diagnosticPath
+        } = current;
         const frame = callFrame(node.callFrame);
         const url = typeof frame.url === 'string' ? frame.url : '';
         const functionName = simpleFunctionName(frame.functionName);
@@ -370,22 +390,21 @@ function classifyRHIAllocationProfileInternal(
                 );
             }
         }
-        if (node.children === undefined) return;
+        if (node.children === undefined) continue;
         if (!Array.isArray(node.children)) {
             playwrightFailure('sampling profile node.children must be an array');
         }
-        for (const child of node.children) {
-            visit(
-                profileNode(child),
-                nextSynchronousFrameStack,
-                nextRendererStack,
-                nextRhiStack,
-                nextLifecycleStack,
-                nextDiagnosticPath
-            );
+        for (let index = node.children.length - 1; index >= 0; index -= 1) {
+            pending.push({
+                node: profileNode(node.children[index]),
+                synchronousFrameStack: nextSynchronousFrameStack,
+                rendererStack: nextRendererStack,
+                rhiStack: nextRhiStack,
+                lifecycleStack: nextLifecycleStack,
+                diagnosticPath: nextDiagnosticPath
+            });
         }
-    };
-    visit(root, false, false, false, false, '');
+    }
     return { rendererBytes, rhiHotPathBytes };
 }
 

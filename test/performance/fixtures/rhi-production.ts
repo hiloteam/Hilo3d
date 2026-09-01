@@ -625,7 +625,9 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
         this.#diagnostics = diagnostics;
         this.#probe = probe;
         this.#nativeWebGL = nativeWebGL;
-        const entityCapacity = scenario.quality.drawCount + scenario.quality.lightCount;
+        const entityCapacity =
+            Math.max(scenario.quality.drawCount, scenario.quality.instanceCount) +
+            scenario.quality.lightCount;
         this.#scene = new RenderWorld(entityCapacity, entityCapacity);
         this.#transforms = new TransformStore(entityCapacity, entityCapacity);
         this.#camera = new PerspectiveCamera({

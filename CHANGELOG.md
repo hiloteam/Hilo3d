@@ -48,6 +48,16 @@
 
 ### Changes
 
+- Add a registered three-round cross-commit ECS migration gate for 100,000 static and 10,000 dynamic
+  renderables. The gate requires at least 25% lower p95 scene update, Transform, and render
+  extraction time, exact dirty-row counts, and zero allocation inside the Transform/extraction hot
+  boundaries. Make World phase wall-clock sampling opt-in so diagnostics do not tax the default
+  update path, and replace variadic magnitude calculations that allocated per dirty transform.
+- Traverse Chromium heap-allocation profiles iteratively and reject cross-round pixel drift as soon
+  as it appears, so enrolled-rig captures cannot lose the full matrix to a late profiler or
+  verification failure.
+- Size the production RHI benchmark ECS stores by logical instance entities rather than submitted
+  draw calls, preventing large instancing captures from exhausting transform capacity.
 - Make `site:build` own the complete public API declaration/check prerequisite for the core and both
   addon packages. The Pages and CI preflight workflows now invoke self-contained `site:build` and
   `lint` commands, while the Node-side repository preflight prevents clean-checkout jobs from

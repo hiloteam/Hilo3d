@@ -250,4 +250,31 @@ describe('ECS World System scheduler', () => {
         });
         world.destroy();
     });
+
+    it('keeps phase timing opt-in so the default update path avoids clock sampling', async () => {
+        const now = vi.spyOn(performance, 'now');
+        const defaultWorld = await World.create({
+            systems: [system('test/default-timing', 'update', () => undefined)]
+        });
+        defaultWorld.update(1);
+        expect(now).not.toHaveBeenCalled();
+        expect(
+            Object.values(defaultWorld.getDiagnostics().phaseDurationsMilliseconds).every(
+                duration => duration === 0
+            )
+        ).toBe(true);
+        defaultWorld.destroy();
+
+        let clock = 0;
+        now.mockImplementation(() => clock++);
+        const measuredWorld = await World.create({
+            measurePhaseDurations: true,
+            systems: [system('test/measured-timing', 'update', () => undefined)]
+        });
+        measuredWorld.update(1);
+        expect(now).toHaveBeenCalled();
+        expect(measuredWorld.getDiagnostics().phaseDurationsMilliseconds.update).toBeGreaterThan(0);
+        measuredWorld.destroy();
+        now.mockRestore();
+    });
 });

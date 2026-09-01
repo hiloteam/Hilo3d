@@ -508,6 +508,9 @@ describe('RHI production fixture smoke contract', () => {
         expect(fixtureSource).toContain("{ requiredFeatures: ['timestamp-query'] as const }");
         expect(fixtureSource).toContain("'disabled-non-evidence'");
         expect(fixtureSource).toContain('new TransformStore(entityCapacity, entityCapacity)');
+        expect(fixtureSource).toContain(
+            'Math.max(scenario.quality.drawCount, scenario.quality.instanceCount)'
+        );
         expect(packageSource).toContain(
             '"test:rhi-benchmark-smoke": "jiti scripts/performance/smoke-rhi-production-fixture.ts"'
         );

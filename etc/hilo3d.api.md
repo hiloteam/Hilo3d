@@ -191,7 +191,7 @@ export class AutoExposure implements ForwardRenderPipelineFeature {
     readonly requirements: Readonly<{
         sampledSceneColor: true;
         sampledDepth: false;
-        requiredCapabilities: readonly ("compute-pass" | "storage-buffer" | "storage-texture")[];
+        requiredCapabilities: readonly ("storage-buffer" | "storage-texture" | "compute-pass")[];
         requiredTextureFormats: readonly (Readonly<{
             format: "rgba16float";
             use: "filterable-sampled";
@@ -10515,6 +10515,7 @@ export class World {
     readonly maxDeltaMilliseconds: number;
     // (undocumented)
     readonly maxSubSteps: number;
+    readonly measurePhaseDurations: boolean;
     query(...all: readonly ComponentType<unknown>[]): CachedQuery;
     // (undocumented)
     query(description: QueryDescription): CachedQuery;
@@ -10587,6 +10588,7 @@ export interface WorldParameters {
     readonly maxDeltaMilliseconds?: number;
     // (undocumented)
     readonly maxSubSteps?: number;
+    readonly measurePhaseDurations?: boolean;
     // (undocumented)
     readonly systems?: readonly WorldSystem[];
 }

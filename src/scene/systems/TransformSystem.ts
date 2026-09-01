@@ -39,7 +39,9 @@ export function createTransformSystem(): WorldSystem {
                 execute(execution): void {
                     transforms.flushDetachedHierarchy(hierarchy);
                     hierarchy.applyChanges(execution.world, transforms);
-                    interpolated.apply(transforms, execution.interpolationAlpha);
+                    if (interpolated.length > 0) {
+                        interpolated.apply(transforms, execution.interpolationAlpha);
+                    }
                     transforms.updateWorldMatrices();
                 }
             };

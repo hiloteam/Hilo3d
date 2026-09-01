@@ -1,6 +1,6 @@
 # Hilo3D 性能优先 ECS 架构与破坏性迁移计划
 
-状态：实现完成，等待登记硬件性能证据 · 性质：生产架构、迁移记录与合并门禁
+状态：实现与登记性能验收完成 · 性质：生产架构、迁移记录与合并门禁
 
 范围：场景对象模型、Transform 层级、逐帧调度、渲染提取、物理接线、动画、交互、粒子、Addon System
 ABI、公共创建与销毁 API
@@ -8,11 +8,11 @@ ABI、公共创建与销毁 API
 相关生产文档：[`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md)、
 [`PHYSICS_ARCHITECTURE.md`](./PHYSICS_ARCHITECTURE.md)、
 [`PARTICLE_SYSTEM.md`](./PARTICLE_SYSTEM.md)、[`2D_RENDERING.md`](./2D_RENDERING.md) 和
-[`ENGINEERING_MODERNIZATION.md`](./ENGINEERING_MODERNIZATION.md)。当前源码和可执行测试是最高优先级事实来源；本文记录已经落地的目标设计和仍需在登记硬件执行的性能门禁。
+[`ENGINEERING_MODERNIZATION.md`](./ENGINEERING_MODERNIZATION.md)。当前源码和可执行测试是最高优先级事实来源；本文记录已经落地的目标设计和登记硬件性能门禁。
 
 ## 当前实施状态
 
-截至 2026-09-01，P1-P6 的生产切换已经完成：
+截至 2026-09-02，P1-P6 的生产切换已经完成：
 
 - `src/ecs/` 包含 World-scoped、generation-safe Entity allocator；句柄同时编码 World
   identity，可拒绝 stale 和 cross-World 使用；
@@ -31,9 +31,17 @@ ABI、公共创建与销毁 API
 - 10k query/update/churn、100k 宽树/深树、1% dirty、10k
   `Transform + MeshRenderer + RigidBody + Collider` 和双后端浏览器合同已建立。
 
-P0 的 ADR、指标、current-RHI 跨提交采集器、不可覆盖快照协议和 Node/Stage 冻结基线已经完成。`dev`
-现已登记 Apple M3 Max macOS/Metal rig；正式性能结论仍需在同一 rig 上采集并验证 ECS
-candidate。本机 smoke 和上述复杂度合同不能替代 10.3 节的跨提交比较，也不得勾选最终性能证据项。
+P0 的 ADR、指标、current-RHI 跨提交采集器、不可覆盖快照协议和 Node/Stage 冻结基线已经完成。2026-09-02 在登记的 Apple
+M3 Max macOS/Metal rig 上，以 Node 22.23.1 对冻结提交 `2f72d916510db137b8e3cbb16161a1b38721c227`
+和 ECS candidate `541b9824ec18b20143597dfcec108ba9f356d0c6` 执行三轮交替专项比较：100k static + 10k
+dynamic 场景的中位 round-p95 从 32.436 ms 降为 4.380 ms，降低 86.50%；每轮均提取 110k
+record、仅更新 10k matrix/bounds，Transform/extraction 静态与动态核心边界的最大采样分配均为 0 B。
+
+同机 current-RHI 完整 capture 还确认双后端像素、draw、upload 和 GPU
+workload 计数保持一致；独立长 capture 出现时钟/机频漂移后，补充的 baseline/candidate 交替配对复测覆盖 state
+switch、PBR、dynamic upload 和 churn，CPU 变化均在 5% 门槛内（PBR 约改善 2%-3%、dynamic
+upload 约改善 1%-7%、churn 在正负 1% 内）。这些结果是登记硬件跨提交证据，不使用 SwiftShader
+smoke 冒充性能结论。
 
 ## 结论先行
 
@@ -602,6 +610,14 @@ candidate 通过而改写旧基线。SwiftShader smoke 只用于正确性和诊�
 - WebGL 2 与 WebGPU 的像素、排序、picking、物理插值和生命周期合同保持正确；
 - entity/component churn 不产生无界内存增长或超过约定 frame budget 的周期性 compaction 峰值。
 
+迁移专项门禁由 `benchmarks/ecs/manifest.json` 冻结 Node/Stage 基线提交，并通过
+`npm run benchmark:ecs:compare -- <baseline-worktree>` 执行。它在 Node
+22.23.1 的独立进程中交替运行三轮 100k static + 10k dynamic fixture，以各轮 p95 的中位数判定 25%
+CPU 改善，同时检查 10k matrix/bounds dirty 数和 Transform/render
+extraction 核心边界的采样分配。World 的事务/回滚外壳仍保留
+`try`/`finally`；V8 为异常处理上下文产生的固定开销不冒充逐 Entity 热循环分配，核心边界以 inspector 调用树单独归因。逐 phase 墙钟诊断通过
+`WorldParameters.measurePhaseDurations` 显式启用，默认生产更新不读取时钟。
+
 若 25%
 CPU 改善目标没有达到，不得以“架构更现代”作为切换理由；先用 profiler 判断瓶颈是 query、Transform、extraction、Renderer
 prepare 还是测试噪声。若 sparse-set 间接访问成为主要成本，再进入 archetype/chunk 评估，而不是预先实现。
@@ -746,11 +762,11 @@ contract，但 component 不反向依赖 renderer internal。
 - [x] Physics authority、interpolation、snapshot 和 compound Collider lifecycle 有自动测试。
 - [x] WebGPU GPU Scene 与 WebGL 2 共用同一 extraction 数据源。
 - [x] graph/submission rollback、temporal history、resource retirement 和 device recovery 保持正确。
-- [ ] 登记基准达到 CPU、GC、dirty/update 和内存门槛；未用 smoke 数据冒充性能证据。
+- [x] 登记基准达到 CPU、GC、dirty/update 和内存门槛；未用 smoke 数据冒充性能证据。
 - [x] 公共 API、TypeDoc、API report、CHANGELOG、package consumer 和示例全部更新。
 - [x] 生产树没有 Node/ECS 双模型、兼容 facade、隐藏 binding map 或长期 feature flag。
 
 本地正确性门禁于 2026-09-01 通过：`npm run validate`、`npm run site:build`、
 `npm run test:rhi-benchmark-contract` 和明确标记为非证据的
-`npm run test:rhi-benchmark-smoke`。正式性能项保持未勾选；Node/Stage 基线已在登记的
-`hilo3d-rhi-perf-macos-m3-max` rig 冻结，ECS candidate 仍需使用相同环境采集并通过 10.3 节阈值。
+`npm run test:rhi-benchmark-smoke`。正式 ECS 性能门禁于 2026-09-02 通过
+`npm run benchmark:ecs:compare -- /tmp/hilo3d-baseline-profile`；基线、候选 SHA、逐轮 p95、dirty 计数和分配结果由命令输出完整记录。

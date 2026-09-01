@@ -36,7 +36,8 @@ updated API reports. Architectural changes also update the corresponding hand-wr
 - `addon-physics/`, `addon-particle/`: optional World Systems and resources.
 - `examples/`: maintained ECS examples.
 - `test/spec/`, `test/ui/`: unit, browser, renderer, RHI, and parity contracts.
-- `benchmarks/rhi/`, `test/performance/`, `scripts/performance/`: immutable benchmark protocol.
+- `benchmarks/rhi/`, `benchmarks/ecs/`, `test/performance/`, `scripts/performance/`: immutable
+  rendering and ECS migration benchmark protocols.
 - `documentation/`: reviewed source documentation.
 
 Generated `docs/`, `dist*/`, `coverage/`, `site/`, reports, and test results are never hand-edited
@@ -87,6 +88,13 @@ The formal RHI profile is the audited Apple M3 Max macOS/Metal rig declared in
 Mode, warning-free thermals, the exact Node/Playwright/Chromium identity, a physical Metal adapter,
 GPU timers, precise memory, and allocation profiling. Formal capture runs three isolated rounds with
 120 warm-up and 500 sampled frames per scenario; development smoke remains non-evidence.
+
+The destructive ECS switch additionally uses `npm run benchmark:ecs:compare -- <baseline-worktree>`
+against the frozen Node/Stage source commit. It alternates fresh processes for three 100k-static +
+10k-dynamic rounds, requires at least 25% lower median round-p95, verifies dirty transform/bounds
+counts, and rejects allocations attributed inside Transform propagation or render extraction.
+Per-phase wall-clock diagnostics are opt-in through `WorldParameters.measurePhaseDurations`; the
+default System path does not call the clock.
 
 ## Git and release hygiene
 

@@ -59,6 +59,7 @@
     "benchmark:rhi:verify": "jiti scripts/performance/verify-rhi-baseline.ts",
     "benchmark:rhi:freeze": "jiti scripts/performance/freeze-rhi-baseline.ts",
     "benchmark:rhi:report": "jiti scripts/performance/render-rhi-benchmark-report.ts",
+    "benchmark:ecs:compare": "jiti scripts/performance/compare-ecs-migration.ts",
     "test:render:architecture": "vitest run test/spec/renderer/Renderer.test.ts test/spec/renderer/RenderPerformanceArchitecture.test.ts test/spec/rhi/RHIArchitecture.test.ts test/spec/rhi/portable/RHIArchitecture.test.ts test/spec/rhi/portable/WebGL2Backend.test.ts test/spec/rhi/portable/WebGPUBackend.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

@@ -8,6 +8,30 @@ import { getTransformStore, LocalTransform } from '../components/Transform';
 import { Animator, AnimatorStore, MorphPose, type AnimationChannel } from '../components/Animation';
 import { ChangedComponentStore } from '../components/Rendering';
 
+function quaternionLength(x: number, y: number, z: number, w: number): number {
+    let scale = Math.abs(x);
+    const absoluteY = Math.abs(y);
+    const absoluteZ = Math.abs(z);
+    const absoluteW = Math.abs(w);
+    if (absoluteY > scale) scale = absoluteY;
+    if (absoluteZ > scale) scale = absoluteZ;
+    if (absoluteW > scale) scale = absoluteW;
+    if (scale === 0) return 0;
+    const normalizedX = x / scale;
+    const normalizedY = y / scale;
+    const normalizedZ = z / scale;
+    const normalizedW = w / scale;
+    return (
+        scale *
+        Math.sqrt(
+            normalizedX * normalizedX +
+                normalizedY * normalizedY +
+                normalizedZ * normalizedZ +
+                normalizedW * normalizedW
+        )
+    );
+}
+
 function requireChangedStore<T>(store: ComponentStore<T>, name: string): ChangedComponentStore<T> {
     if (!isChangedStore(store)) {
         throw new TypeError(`${name} requires a change-tracked component store.`);
@@ -72,7 +96,12 @@ function sample(channel: AnimationChannel, time: number, output: Float32Array): 
         }
     }
     if (channel.property === 'rotation' && channel.width === 4) {
-        const length = Math.hypot(output[0] ?? 0, output[1] ?? 0, output[2] ?? 0, output[3] ?? 1);
+        const length = quaternionLength(
+            output[0] ?? 0,
+            output[1] ?? 0,
+            output[2] ?? 0,
+            output[3] ?? 1
+        );
         if (length > Number.EPSILON) {
             for (let index = 0; index < 4; index++) output[index] = (output[index] ?? 0) / length;
         }
