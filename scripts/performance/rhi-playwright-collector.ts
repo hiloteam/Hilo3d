@@ -112,9 +112,33 @@ const RHI_LIFECYCLE_METHODS = new Set([
     'end',
     'abort'
 ]);
+const RHI_HEAP_PROFILER_STOP_TIMEOUT_MS = 10 * 60_000;
 
 function playwrightFailure(message: string): never {
     throw new Error(`RHI Playwright collector failed: ${message}`);
+}
+
+async function stopRHIHeapProfilerSampling(
+    cdp: Pick<CDPSession, 'send'>,
+    phase: string
+): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            cdp.send('HeapProfiler.stopSampling'),
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(() => {
+                    reject(
+                        new Error(
+                            `RHI Playwright collector timed out during ${phase} after ${String(RHI_HEAP_PROFILER_STOP_TIMEOUT_MS)} ms`
+                        )
+                    );
+                }, RHI_HEAP_PROFILER_STOP_TIMEOUT_MS);
+            })
+        ]);
+    } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+    }
 }
 
 function record(value: unknown, context: string): Record<string, unknown> {
@@ -666,7 +690,7 @@ async function warmRHIAllocationProfiler(
     } finally {
         if (samplingStarted) {
             progress?.('stage-a:stop-sampling');
-            await cdp.send('HeapProfiler.stopSampling');
+            await stopRHIHeapProfilerSampling(cdp, 'allocation profiler stage-a stopSampling');
             progress?.('stage-a:complete');
         }
     }
@@ -838,7 +862,7 @@ export async function profileRHISynchronousAllocationFrames(
             try {
                 if (samplingStarted) {
                     progress?.(`${phasePrefix}:stop-sampling`);
-                    profile = await cdp.send('HeapProfiler.stopSampling');
+                    profile = await stopRHIHeapProfilerSampling(cdp, `${phasePrefix} stopSampling`);
                     progress?.(`${phasePrefix}:profile-compacted`);
                 }
             } finally {
@@ -933,7 +957,8 @@ class PlaywrightCollectorSession implements RHIProductionCollectorSession {
     }
 
     async sampleAllocationFrames(
-        frameCount: number
+        frameCount: number,
+        progress?: (phase: string) => void
     ): Promise<readonly RHIBenchmarkAllocationSample[]> {
         assertRHIProductionAllocationSampleFrames(frameCount);
         let phaseStarted = false;
@@ -953,7 +978,9 @@ class PlaywrightCollectorSession implements RHIProductionCollectorSession {
             const profileWindow = await profileRHISynchronousAllocationFrames(
                 this.page,
                 this.allocationCdp,
-                RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES + frameCount
+                RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES + frameCount,
+                false,
+                progress
             );
             return profileWindow.frames
                 .slice(RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES)

@@ -80,6 +80,12 @@ npm run benchmark:rhi:freeze -- \
   reports/rhi/current.raw.json.gz
 ```
 
+The full command is intentionally an overnight-grade evidence run, not the inner development loop.
+It prints scenario/backend/round phase progress to stderr, caps every browser phase, and fails a
+stalled heap-profiler response instead of waiting indefinitely. During an optimization, use the
+production smoke plus the affected focused tests while iterating; run the complete enrolled-rig
+capture only when establishing or replacing immutable cross-commit evidence.
+
 The immutable baseline directory is:
 
 ```text

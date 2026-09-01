@@ -23,6 +23,7 @@ import type { RHIPhase0PreflightResult } from '../../scripts/performance/rhi-pha
 import {
     assembleRHIArchitectureMetrics,
     collectRHIProductionCapture,
+    withRHIProductionCollectorPhaseTimeout,
     type RHIBenchmarkAllocationSample,
     type RHIProductionCollectorSession,
     type RHIProductionCollectorSessionFactory,
@@ -1489,6 +1490,7 @@ describe('RHI production collector', () => {
             scenarios: [scenario]
         } as unknown as RHIBenchmarkManifest;
         const factory = new FakeFactory(manifest);
+        const progress: string[] = [];
         const preflight: RHIPhase0PreflightResult = {
             manifest,
             environment: environment(manifest),
@@ -1503,6 +1505,7 @@ describe('RHI production collector', () => {
             commitSha: 'a'.repeat(40),
             capturedAt: '2026-07-15T00:00:00.000Z',
             sessions: factory,
+            progress: message => progress.push(message),
             verify: (_manifest, value) => value
         });
         expect(raw.cases).toHaveLength(1);
@@ -1517,5 +1520,23 @@ describe('RHI production collector', () => {
         expect(firstMetrics?.rhiHotPathAllocationBytesPerFrame).toHaveLength(21);
         expect(factory.sessions.every(session => session.closed)).toBe(true);
         expect(factory.closed).toBe(true);
+        expect(progress).toContain(`${scenario.id}/webgl2/round-1/rhi timing:start`);
+        expect(progress.some(message => message.includes('allocation:complete elapsedMs='))).toBe(
+            true
+        );
+        expect(progress.at(-1)).toMatch(/^collector close:complete elapsedMs=/u);
+    });
+
+    it('bounds collector phases and clears successful phase timers', async () => {
+        await expect(
+            withRHIProductionCollectorPhaseTimeout(Promise.resolve('done'), 'timing', 100)
+        ).resolves.toBe('done');
+        await expect(
+            withRHIProductionCollectorPhaseTimeout(
+                new Promise<never>(() => undefined),
+                'scenario/webgpu/round-1/rhi timing',
+                5
+            )
+        ).rejects.toThrow(/timed out during scenario\/webgpu\/round-1\/rhi timing after 5 ms/u);
     });
 });

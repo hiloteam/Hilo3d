@@ -24,6 +24,12 @@ import { canonicalRHIJson, manifestSha256 } from './verify-rhi-baseline';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/u;
+const RHI_PRODUCTION_OPEN_TIMEOUT_MS = 10 * 60_000;
+const RHI_PRODUCTION_FRAME_PHASE_TIMEOUT_MS = 2 * 60 * 60_000;
+const RHI_PRODUCTION_FINISH_TIMEOUT_MS = 15 * 60_000;
+const RHI_PRODUCTION_CLOSE_TIMEOUT_MS = 10 * 60_000;
+
+export type RHIProductionCaptureProgress = (message: string) => void;
 
 export interface RHIBenchmarkAllocationSample {
     readonly rendererBytes: number;
@@ -35,7 +41,10 @@ export interface RHIProductionCollectorSession {
     warmup(frameCount: number): Promise<void>;
     sampleTimingFrames(frameCount: number): Promise<readonly RHIBenchmarkFixtureFrameSample[]>;
     sampleGpuFrames(frameCount: number): Promise<readonly number[]>;
-    sampleAllocationFrames(frameCount: number): Promise<readonly RHIBenchmarkAllocationSample[]>;
+    sampleAllocationFrames(
+        frameCount: number,
+        progress?: (phase: string) => void
+    ): Promise<readonly RHIBenchmarkAllocationSample[]>;
     finishRound(): Promise<RHIBenchmarkFixtureRoundResult>;
     close(): Promise<void>;
 }
@@ -58,6 +67,7 @@ export interface RHIProductionCaptureOptions {
     readonly commitSha: string;
     readonly capturedAt?: string;
     readonly sessions: RHIProductionCollectorSessionFactory;
+    readonly progress?: RHIProductionCaptureProgress;
     /** Test seam only. Production callers always use the complete raw-capture verifier. */
     readonly verify?: (
         manifest: RHIBenchmarkManifest,
@@ -67,6 +77,57 @@ export interface RHIProductionCaptureOptions {
 
 function collectionFailure(message: string): never {
     throw new Error(`RHI production benchmark collection failed: ${message}`);
+}
+
+/** Reject a collector phase instead of allowing a lost browser/CDP response to hang forever. */
+export async function withRHIProductionCollectorPhaseTimeout<T>(
+    operation: Promise<T>,
+    phase: string,
+    timeoutMs: number
+): Promise<T> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+        throw new RangeError('RHI production collector timeout must be a positive safe integer');
+    }
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            operation,
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(() => {
+                    reject(
+                        new Error(
+                            `RHI production benchmark collection timed out during ${phase} after ${String(timeoutMs)} ms`
+                        )
+                    );
+                }, timeoutMs);
+            })
+        ]);
+    } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+    }
+}
+
+async function collectStage<T>(
+    label: string,
+    phase: string,
+    timeoutMs: number,
+    progress: RHIProductionCaptureProgress,
+    operation: () => Promise<T>
+): Promise<T> {
+    const startedAt = Date.now();
+    progress(`${label} ${phase}:start`);
+    try {
+        const result = await withRHIProductionCollectorPhaseTimeout(
+            operation(),
+            `${label} ${phase}`,
+            timeoutMs
+        );
+        progress(`${label} ${phase}:complete elapsedMs=${String(Date.now() - startedAt)}`);
+        return result;
+    } catch (error) {
+        progress(`${label} ${phase}:failed elapsedMs=${String(Date.now() - startedAt)}`);
+        throw error;
+    }
 }
 
 function finiteNonNegative(value: unknown, context: string): number {
@@ -294,20 +355,55 @@ async function collectArchitecture(
     manifest: RHIBenchmarkManifest,
     sessions: RHIProductionCollectorSessionFactory,
     request: RHIProductionCollectorSessionRequest,
-    isolationIds: Set<string>
+    isolationIds: Set<string>,
+    progress: RHIProductionCaptureProgress
 ): Promise<RHIBenchmarkRawArchitectureResult> {
-    const session = await sessions.open(request);
+    const label = `${request.scenario.id}/${request.backend}/round-${String(request.round)}/${request.architecture}`;
+    const session = await collectStage(
+        label,
+        'open',
+        RHI_PRODUCTION_OPEN_TIMEOUT_MS,
+        progress,
+        () => sessions.open(request)
+    );
     try {
         assertMetadata(session.metadata, request, isolationIds);
-        await session.warmup(manifest.sampling.warmupFrames);
+        await collectStage(label, 'warmup', RHI_PRODUCTION_FRAME_PHASE_TIMEOUT_MS, progress, () =>
+            session.warmup(manifest.sampling.warmupFrames)
+        );
         // Profilers run in separate passes so GPU queries and heap sampling cannot perturb the
         // wall-clock timing distribution they are meant to accompany.
-        const timingFrames = await session.sampleTimingFrames(manifest.sampling.sampleFrames);
-        const gpuSamples = await session.sampleGpuFrames(manifest.sampling.sampleFrames);
-        const allocationSamples = await session.sampleAllocationFrames(
-            manifest.sampling.allocationSampleFrames
+        const timingFrames = await collectStage(
+            label,
+            'timing',
+            RHI_PRODUCTION_FRAME_PHASE_TIMEOUT_MS,
+            progress,
+            () => session.sampleTimingFrames(manifest.sampling.sampleFrames)
         );
-        const round = await session.finishRound();
+        const gpuSamples = await collectStage(
+            label,
+            'gpu',
+            RHI_PRODUCTION_FRAME_PHASE_TIMEOUT_MS,
+            progress,
+            () => session.sampleGpuFrames(manifest.sampling.sampleFrames)
+        );
+        const allocationSamples = await collectStage(
+            label,
+            'allocation',
+            RHI_PRODUCTION_FRAME_PHASE_TIMEOUT_MS,
+            progress,
+            () =>
+                session.sampleAllocationFrames(manifest.sampling.allocationSampleFrames, phase => {
+                    progress(`${label} allocation:${phase}`);
+                })
+        );
+        const round = await collectStage(
+            label,
+            'finish',
+            RHI_PRODUCTION_FINISH_TIMEOUT_MS,
+            progress,
+            () => session.finishRound()
+        );
         return {
             observedDrawCount: request.scenario.quality.drawCount,
             pixelHashSha256: round.pixelHashSha256,
@@ -319,11 +415,13 @@ async function collectArchitecture(
                 manifest.sampling.sampleFrames,
                 manifest.sampling.allocationSampleFrames,
                 request.scenario.quality.drawCount,
-                `${request.scenario.id}/${request.backend}/round-${String(request.round)}/${request.architecture}`
+                label
             )
         };
     } finally {
-        await session.close();
+        await collectStage(label, 'close', RHI_PRODUCTION_CLOSE_TIMEOUT_MS, progress, () =>
+            session.close()
+        );
     }
 }
 
@@ -339,6 +437,7 @@ export async function collectRHIProductionCapture(
     const manifest = options.preflight.manifest;
     const isolationIds = new Set<string>();
     const cases: RHIBenchmarkRawCaptureResult['cases'][number][] = [];
+    const progress = options.progress ?? (() => undefined);
     try {
         for (const scenario of manifest.scenarios) {
             for (const backend of manifest.backends) {
@@ -353,7 +452,8 @@ export async function collectRHIProductionCapture(
                                 manifest,
                                 options.sessions,
                                 { scenario, backend, architecture, round, orderPosition: 0 },
-                                isolationIds
+                                isolationIds,
+                                progress
                             )
                         };
                     rounds.push({ round, order, results });
@@ -362,7 +462,9 @@ export async function collectRHIProductionCapture(
             }
         }
     } finally {
-        await options.sessions.close();
+        await collectStage('collector', 'close', RHI_PRODUCTION_CLOSE_TIMEOUT_MS, progress, () =>
+            options.sessions.close()
+        );
     }
     const raw: RHIBenchmarkRawCaptureResult = {
         schemaVersion: 4,

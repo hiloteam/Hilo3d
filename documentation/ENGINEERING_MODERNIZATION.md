@@ -984,7 +984,9 @@ profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独�
 fixture 会在首帧前丢失 fallback device，因此 WebGPU 仍由独立 `test:rhi` native
 lane、本地完整 UI/视觉矩阵和已登记 M3 Max macOS/Metal physical-GPU
 benchmark 覆盖。正式采集固定 Node、Playwright/Chromium 二进制、系统/Metal 指纹，并在每次审计、采集与冻结前要求接入交流电、High
-Power Mode 和无热/性能告警。脚本直接运行时默认按 WebGPU、WebGL
+Power
+Mode 和无热/性能告警。全量正式采集属于隔夜级证据流程，不作为优化开发的逐次内循环；开发中使用 production
+smoke 与受影响的定向测试，只有建立或替换跨提交不可变证据时才执行全量矩阵。正式采集输出 scenario/backend/round 阶段进度，为每个浏览器阶段设置失败关闭超时，并对无响应的 heap-profiler 停止请求单独限时。脚本直接运行时默认按 WebGPU、WebGL
 2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
 `timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
 `--all` 入口。
