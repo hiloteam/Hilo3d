@@ -449,10 +449,16 @@ async function collectDocumentationWorkflowViolations(): Promise<string[]> {
     };
     const siteBuild = packageValue.scripts?.['site:build'];
     const lint = packageValue.scripts?.['lint'];
+    const apiUpdate = packageValue.scripts?.['api:update'];
+    const apiCheck = packageValue.scripts?.['api:check'];
     const siteBuildCommands =
         typeof siteBuild === 'string' ? siteBuild.split('&&').map(command => command.trim()) : [];
     const lintCommands =
         typeof lint === 'string' ? lint.split('&&').map(command => command.trim()) : [];
+    const apiUpdateCommands =
+        typeof apiUpdate === 'string' ? apiUpdate.split('&&').map(command => command.trim()) : [];
+    const apiCheckCommands =
+        typeof apiCheck === 'string' ? apiCheck.split('&&').map(command => command.trim()) : [];
     const matches: string[] = [];
 
     if (!siteBuildCommands.includes('npm run api:check')) {
@@ -462,6 +468,12 @@ async function collectDocumentationWorkflowViolations(): Promise<string[]> {
     }
     if (!lintCommands.includes('npm run addon:build')) {
         matches.push('package.json (lint must build addon declarations before typed linting)');
+    }
+    if (!apiUpdateCommands.includes('npm run clean:api')) {
+        matches.push('package.json (api:update must discard stale declaration output)');
+    }
+    if (!apiCheckCommands.includes('npm run clean:api')) {
+        matches.push('package.json (api:check must discard stale declaration output)');
     }
     if (!documentationWorkflow.includes('run: npm run site:build')) {
         matches.push('.github/workflows/docs.yml (Pages validation must run site:build)');
@@ -477,6 +489,11 @@ async function collectDocumentationWorkflowViolations(): Promise<string[]> {
     if (ciWorkflow.includes('run: npm run lint:built')) {
         matches.push(
             '.github/workflows/npm_test.yml (CI preflight must not lint before addon declarations exist)'
+        );
+    }
+    if (!ciWorkflow.includes("HILO3D_COVERAGE_SHARD: 'true'")) {
+        matches.push(
+            '.github/workflows/npm_test.yml (coverage shards must defer global thresholds to the merged report)'
         );
     }
 

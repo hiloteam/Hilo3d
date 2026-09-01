@@ -61,7 +61,10 @@
 - Make `site:build` own the complete public API declaration/check prerequisite for the core and both
   addon packages. The Pages and CI preflight workflows now invoke self-contained `site:build` and
   `lint` commands, while the Node-side repository preflight prevents clean-checkout jobs from
-  calling built-only commands without addon declarations.
+  calling built-only commands without addon declarations. Public API update/check commands now
+  discard stale core/addon declaration output before extraction, matching clean-checkout CI.
+- Defer global coverage thresholds from individual CI shards to the merged coverage report, so each
+  half-suite can upload evidence without being incorrectly judged against whole-suite percentages.
 - Replace the unenrolled Linux-only RHI performance-rig contract with an auditable Apple M3 Max
   macOS/Metal profile. Require AC power, High Power Mode, a warning-free thermal state, exact
   Node/Playwright/Chromium identity, physical Metal, GPU timers, precise memory, and allocation

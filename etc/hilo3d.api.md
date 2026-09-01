@@ -191,7 +191,7 @@ export class AutoExposure implements ForwardRenderPipelineFeature {
     readonly requirements: Readonly<{
         sampledSceneColor: true;
         sampledDepth: false;
-        requiredCapabilities: readonly ("storage-buffer" | "storage-texture" | "compute-pass")[];
+        requiredCapabilities: readonly ("compute-pass" | "storage-buffer" | "storage-texture")[];
         requiredTextureFormats: readonly (Readonly<{
             format: "rgba16float";
             use: "filterable-sampled";

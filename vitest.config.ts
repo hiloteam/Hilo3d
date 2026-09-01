@@ -4,6 +4,7 @@ import { createViteConfig } from './vite.config';
 
 const coverageRun = process.argv.includes('--coverage');
 const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
+const coverageShardRun = process.env['HILO3D_COVERAGE_SHARD'] === 'true';
 
 export default mergeConfig(
     createViteConfig(),
@@ -42,12 +43,16 @@ export default mergeConfig(
                 reportsDirectory: 'coverage',
                 reporter: ['text', 'json-summary', 'html'],
                 reportOnFailure: true,
-                thresholds: {
-                    branches: 40,
-                    functions: 58,
-                    lines: 62,
-                    statements: 60
-                }
+                ...(coverageShardRun
+                    ? {}
+                    : {
+                          thresholds: {
+                              branches: 40,
+                              functions: 58,
+                              lines: 62,
+                              statements: 60
+                          }
+                      })
             },
             browser: {
                 enabled: true,

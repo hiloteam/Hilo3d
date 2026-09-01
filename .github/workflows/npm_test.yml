@@ -93,6 +93,7 @@ jobs:
           --outputFile.blob=reports/vitest/report-${{ matrix.shard }}.json
         env:
           CI: 'true'
+          HILO3D_COVERAGE_SHARD: 'true'
 
       - name: Upload coverage shard
         if: ${{ !cancelled() }}

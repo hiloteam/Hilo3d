@@ -64,10 +64,17 @@ npm run test:package
 gate. Physical native-GPU tests and registered benchmark collection remain separate so software
 adapters cannot be presented as performance evidence.
 
+CI coverage shards upload blob reports without applying whole-suite thresholds independently. The
+merged coverage-report job is the only sharded lane that enforces global coverage percentages; a
+single shard is expected to cover only its half of the test matrix.
+
 `npm run site:build` is the single local and CI entry for API documentation deployment. It builds
 and checks declarations for the core, particle addon, and physics addon before generating TypeDoc,
 examples, and the linked site; workflows must not call the prebuilt API check without first
-producing all three packages.
+producing all three packages. The public `api:update` and `api:check` entries first remove cached
+core/addon declarations so incremental TypeScript output cannot make an API report pass locally and
+then fail from a clean checkout; `api:*:built` remains reserved for workflows that already ran a
+clean full build.
 
 Typed linting follows the same clean-checkout rule: workflows invoke `npm run lint`, which builds
 core and addon declarations before ESLint, rather than assembling `build:types` and `lint:built`
