@@ -215,7 +215,7 @@ describe('RHI benchmark baseline contract', () => {
             'rhi-perf'
         ]);
         expect(manifest.rig.acceptedFingerprintSha256).toEqual([
-            '6bfa8f5bf40566a46cf3f766daf587fbf1da6a4cbe7ae234bfac67ee1d797fd3'
+            'aa4984f770c4e8a3ce4a22ffe65ad529308d5e5461ec8dae7aaf339b4c96d84d'
         ]);
         expect(manifest.scenarios.every(scenario => scenario.quality.devicePixelRatio === 1)).toBe(
             true

@@ -141,7 +141,7 @@ describe('RHI Phase 0 mutation preflight', () => {
     it('ships one explicitly enrolled macOS rig and the real production fixture', async () => {
         const manifest = parseRHIBenchmarkManifest(repositoryManifestValue);
         expect(manifest.rig.acceptedFingerprintSha256).toEqual([
-            '6bfa8f5bf40566a46cf3f766daf587fbf1da6a4cbe7ae234bfac67ee1d797fd3'
+            'aa4984f770c4e8a3ce4a22ffe65ad529308d5e5461ec8dae7aaf339b4c96d84d'
         ]);
         expect(await doesNotExist(resolve(repositoryRoot, RHI_PRODUCTION_FIXTURE_PATH))).toBe(
             false
@@ -341,11 +341,15 @@ describe('RHI Phase 0 mutation preflight', () => {
     });
 
     it('ships the independent production fixture and installed browser adapter', async () => {
-        const [html, fixture, collector] = await Promise.all([
+        const [html, fixture, collector, audit] = await Promise.all([
             readFile(resolve(repositoryRoot, RHI_PRODUCTION_FIXTURE_PATH), 'utf8'),
             readFile(resolve(repositoryRoot, RHI_PRODUCTION_FIXTURE_MODULE_PATH), 'utf8'),
             readFile(
                 resolve(repositoryRoot, 'scripts/performance/collect-rhi-benchmark.ts'),
+                'utf8'
+            ),
+            readFile(
+                resolve(repositoryRoot, 'scripts/performance/audit-rhi-benchmark-environment.ts'),
                 'utf8'
             )
         ]);
@@ -358,6 +362,8 @@ describe('RHI Phase 0 mutation preflight', () => {
         expect(fixture).not.toContain('scripts/performance/verify-rhi-baseline');
         expect(collector).toContain('collectRHIProductionCapture');
         expect(collector).not.toContain('collector adapter is not installed');
+        expect(audit).toContain('launchRHIOwnedChromium');
+        expect(audit).not.toContain('chromium.launch');
 
         const manifest = parseRHIBenchmarkManifest(repositoryManifestValue);
         expect(manifest.scenarios).toHaveLength(10);

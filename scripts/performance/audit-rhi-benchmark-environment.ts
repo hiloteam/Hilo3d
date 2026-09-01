@@ -3,9 +3,9 @@ import { cpus, release } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
 import type { RHIBenchmarkEnvironment } from '../../benchmarks/rhi/result-schema';
 import { detectedRHIBrowserGpuIdentity } from './rhi-playwright-collector';
+import { launchRHIOwnedChromium } from './rhi-owned-chromium';
 import {
     parseRHIBenchmarkManifest,
     rhiBenchmarkEnvironmentFingerprint,
@@ -73,11 +73,11 @@ async function main(): Promise<void> {
     const address = originServer.address();
     if (!address || typeof address === 'string') auditFailure('audit origin is unavailable');
     try {
-        const browser = await chromium.launch({
+        const ownedBrowser = await launchRHIOwnedChromium({
             executablePath: resolve(browserExecutablePath),
-            headless: true,
             args: [...rhiPhysicalGpuBrowserArguments(process.platform)]
         });
+        const browser = ownedBrowser.browser;
         try {
             const browserCdp = await browser.newBrowserCDPSession();
             const gpu = detectedRHIBrowserGpuIdentity(await browserCdp.send('SystemInfo.getInfo'));
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
             };
             process.stdout.write(`${JSON.stringify(environment, null, 2)}\n`);
         } finally {
-            await browser.close();
+            await ownedBrowser.close();
         }
     } finally {
         await new Promise<void>((resolvePromise, reject) => {
