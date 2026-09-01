@@ -122,9 +122,9 @@ current-RHI pages. It verifies that both backends initialize, render, expose dia
 pixel hash, and keeps the default single-draw sentinel within the temporary RHI hot-path allocation
 budget. Explicit stress-scenario smoke runs report allocation samples diagnostically instead of
 applying that single-draw absolute cap. It does not create or verify a performance baseline. The
-default targeted churn smoke stops after its representative measured frame; pass `--full-churn` only
-when the 10,000-frame completion behavior itself changed. Formal enrolled-rig collection always
-completes the full churn workload.
+default targeted churn smoke stops after one complete ordinary-mesh replacement cycle; pass
+`--full-churn` only when the 10,000-frame completion behavior itself changed. Formal enrolled-rig
+collection always completes the full churn workload.
 
 Only an enrolled-rig capture that passes preflight and is frozen by `benchmark:rhi:freeze` is
 baseline evidence. Cross-commit comparison/gating should consume two verified schema-v4 snapshots.

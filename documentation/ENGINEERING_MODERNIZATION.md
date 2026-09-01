@@ -993,7 +993,8 @@ metadata 的波动误判为引擎回归。正式采集输出 scenario/backend/ro
 heap-profiler session。脚本直接运行时默认按 WebGPU、WebGL
 2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
 `timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
-`--all` 入口。定向 churn smoke 默认在代表性实测帧后结束，只有验证 10,000 帧完成行为时才传
+`--all` 入口。定向 churn
+smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 10,000 帧完成行为时才传
 `--full-churn`；正式登记采集始终完成全部 churn 帧。
 
 站点发布工作流同样从干净 checkout 执行 `npm ci`，只构建一次声明，再执行 `npm run api:check:built` 与

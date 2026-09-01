@@ -39,12 +39,22 @@ export function benchmarkMeshCastsShadow(meshSlot: number, shadowsEnabled: boole
     return shadowsEnabled && meshSlot === 0;
 }
 
-/** Static shadows cache after warm-up; only the dynamic-geometry fixture invalidates its caster. */
+/** Static scenes cache shadows; dynamic geometry and child churn invalidate their shadow views. */
 export function benchmarkSteadyShadowDrawCount(
     scenarioId: RHIBenchmarkScenarioId,
     shadowsEnabled: boolean
 ): number {
-    return shadowsEnabled && scenarioId === 'first-complex-frame' ? 1 : 0;
+    if (!shadowsEnabled) return 0;
+    if (scenarioId === 'first-complex-frame') return 1;
+    return scenarioId === 'scene-churn-10000-frame' ? 2 : 0;
+}
+
+/** Keep the sole shadow caster stable while cycling every ordinary churn mesh. */
+export function benchmarkChurnMeshSlot(frameIndex: number, meshCount: number): number {
+    nonNegativeSafeInteger(frameIndex, 'frameIndex');
+    nonNegativeSafeInteger(meshCount, 'meshCount');
+    if (meshCount < 2) throw new RangeError('meshCount must include a caster and a churn mesh');
+    return 1 + (frameIndex % (meshCount - 1));
 }
 
 /**

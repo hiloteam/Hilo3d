@@ -5,7 +5,7 @@ import type {
     RHIBenchmarkScenarioId
 } from './result-schema';
 
-export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 17 as const;
+export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 18 as const;
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL =
     'chromium-cdp-single-frame-sampling-heap-profiler-sync-render-v12' as const;
 /** The fixed settling probe now ends immediately before measured samples; no duplicate discard. */

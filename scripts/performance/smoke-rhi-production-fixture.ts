@@ -70,6 +70,8 @@ const SWIFTSHADER_BROWSER_ARGUMENTS = Object.freeze([
 ] as const);
 
 export const RHI_PRODUCTION_SMOKE_WARMUP_FRAMES = 30;
+/** One complete ordinary-mesh cycle catches periodic churn draw-contract violations. */
+export const RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES = 256;
 export const RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES =
     RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES;
 export const RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES =
@@ -342,30 +344,39 @@ async function observeFixture(
             rendererBytes: allocationSummary.rendererMedianBytes,
             rhiHotPathBytes: allocationSummary.rhiHotPathMaximumBytes
         });
-        const result = await page.evaluate(async completeLongRound => {
-            const fixture = window.__HILO3D_RHI_BENCHMARK__;
-            if (!fixture) throw new Error('production fixture API is missing');
-            const samples = await fixture.sampleTimingFrames(1);
-            const sample = samples[0];
-            if (!sample) throw new Error('fixture smoke frame is missing');
-            if (completeLongRound || fixture.metadata.quality.churnFrames === 0) {
-                await fixture.completeRound();
-            }
-            return {
-                metadata: fixture.metadata,
-                actualDrawCount: sample.diagnostics.actualDrawCount,
-                pixelHashSha256: await fixture.capturePixelHash()
-            };
-        }, fullChurn);
+        const timingFrameCount =
+            scenario.quality.churnFrames > 0 ? RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES : 1;
+        const result = await page.evaluate(
+            async ({ completeLongRound, frameCount }) => {
+                const fixture = window.__HILO3D_RHI_BENCHMARK__;
+                if (!fixture) throw new Error('production fixture API is missing');
+                const samples = await fixture.sampleTimingFrames(frameCount);
+                if (samples.length !== frameCount) {
+                    throw new Error('fixture smoke timing frame matrix is incomplete');
+                }
+                if (completeLongRound || fixture.metadata.quality.churnFrames === 0) {
+                    await fixture.completeRound();
+                }
+                return {
+                    metadata: fixture.metadata,
+                    actualDrawCounts: samples.map(sample => sample.diagnostics.actualDrawCount),
+                    pixelHashSha256: await fixture.capturePixelHash()
+                };
+            },
+            { completeLongRound: fullChurn, frameCount: timingFrameCount }
+        );
         if (result.metadata.scenarioId !== scenario.id || result.metadata.backend !== backend) {
             smokeFailure(`${scenario.id}/${backend}/${architecture} metadata identity differs`);
         }
         if (canonicalRHIJson(result.metadata.quality) !== canonicalRHIJson(scenario.quality)) {
             smokeFailure(`${scenario.id}/${backend}/${architecture} quality differs from manifest`);
         }
-        if (result.actualDrawCount !== scenario.quality.drawCount) {
+        const mismatchedDrawIndex = result.actualDrawCounts.findIndex(
+            drawCount => drawCount !== scenario.quality.drawCount
+        );
+        if (mismatchedDrawIndex >= 0) {
             smokeFailure(
-                `${scenario.id}/${backend}/${architecture} observed ${String(result.actualDrawCount)} draws; expected ${String(scenario.quality.drawCount)}`
+                `${scenario.id}/${backend}/${architecture} frame ${String(mismatchedDrawIndex)} observed ${String(result.actualDrawCounts[mismatchedDrawIndex])} draws; expected ${String(scenario.quality.drawCount)}`
             );
         }
         if (!/^[a-f0-9]{64}$/u.test(result.pixelHashSha256)) {
@@ -373,7 +384,7 @@ async function observeFixture(
         }
         return {
             architecture,
-            actualDrawCount: result.actualDrawCount,
+            actualDrawCount: scenario.quality.drawCount,
             pixelHashSha256: result.pixelHashSha256,
             allocation,
             allocationSamples: Object.freeze(

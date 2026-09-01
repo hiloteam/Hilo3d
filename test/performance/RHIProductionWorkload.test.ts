@@ -19,6 +19,7 @@ import { ShaderArtifactCompiler } from '../../src/render/renderer/ShaderArtifact
 import { prepareGLSLForNaga } from '../../src/render/shader/GlslToWgsl';
 import {
     RHI_PRODUCTION_SMOKE_BACKENDS,
+    RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES,
     RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES,
@@ -46,6 +47,7 @@ import {
 } from './fixtures/rhi-postprocess-workload';
 import {
     RHI_PRODUCTION_MAX_IN_FLIGHT_FRAMES,
+    benchmarkChurnMeshSlot,
     benchmarkInFlightBatchIsFull,
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
@@ -340,20 +342,22 @@ describe('RHI production shadow draw contract', () => {
     });
 
     it('keeps the sole scene-churn caster in stable slot zero across replacements', () => {
-        const casterSlots = Array.from({ length: 255 }, (_, slot) =>
+        const casterSlots = Array.from({ length: 256 }, (_, slot) =>
             benchmarkMeshCastsShadow(slot, true)
         );
         expect(casterSlots.filter(Boolean)).toHaveLength(1);
 
         for (let frame = 0; frame < 510; frame += 1) {
-            const slot = frame % casterSlots.length;
+            const slot = benchmarkChurnMeshSlot(frame, casterSlots.length);
+            expect(slot).toBeGreaterThan(0);
             casterSlots[slot] = benchmarkMeshCastsShadow(slot, true);
             expect(casterSlots.filter(Boolean)).toHaveLength(1);
         }
+        expect(() => benchmarkChurnMeshSlot(0, 1)).toThrow(/caster and a churn mesh/u);
     });
 
     it('gives each churn slot a stable depth so render-list sorting cannot change the pixels', () => {
-        const initialDepths = Array.from({ length: 255 }, (_, slot) =>
+        const initialDepths = Array.from({ length: 256 }, (_, slot) =>
             benchmarkMeshDepth(slot, true)
         );
         expect(initialDepths[0]).toBe(0);
@@ -361,7 +365,7 @@ describe('RHI production shadow draw contract', () => {
         expect(new Set(initialDepths)).toHaveLength(initialDepths.length);
 
         for (let frame = 0; frame < 510; frame += 1) {
-            const slot = frame % initialDepths.length;
+            const slot = benchmarkChurnMeshSlot(frame, initialDepths.length);
             expect(benchmarkMeshDepth(slot, true)).toBe(initialDepths[slot]);
         }
         expect(benchmarkMeshDepth(254, false)).toBe(0);
@@ -431,6 +435,7 @@ describe('RHI production in-flight frame contract', () => {
 describe('RHI production fixture smoke contract', () => {
     it('uses fixed profiler warm-up and maximum/median allocation aggregation', () => {
         expect(RHI_PRODUCTION_SMOKE_WARMUP_FRAMES).toBe(30);
+        expect(RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES).toBe(256);
         expect(RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES).toBe(0);
         expect(RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES).toBe(30);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES).toBe(32);
@@ -494,6 +499,7 @@ describe('RHI production fixture smoke contract', () => {
         expect(source).toContain("adapterPolicy: 'swiftshader'");
         expect(source).toContain("process.argv.includes('--full-churn')");
         expect(source).toContain('completeLongRound || fixture.metadata.quality.churnFrames === 0');
+        expect(source).toContain('RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES');
         const fixtureSource = await readFile(
             resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
             'utf8'

@@ -65,6 +65,7 @@ import {
 } from './rhi-postprocess-workload';
 import {
     benchmarkInFlightBatchIsFull,
+    benchmarkChurnMeshSlot,
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
@@ -862,7 +863,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             dynamicGeometry.setSubData(0, this.#dynamicGeometryUpdate);
         }
         if (this.#scenario.id === 'scene-churn-10000-frame') {
-            const slot = this.#frameIndex % this.#meshes.length;
+            const slot = benchmarkChurnMeshSlot(this.#frameIndex, this.#meshes.length);
             const previous = this.#meshes[slot];
             if (!previous) fixtureFailure('scene churn mesh slot is missing');
             previous.destroy(this.#renderer as never);
