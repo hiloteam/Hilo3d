@@ -28,7 +28,7 @@ import { deriveRHIBenchmarkBootstrapSeed } from './rhi-benchmark-statistics';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/u;
-const REQUIRED_RUNNER_TAGS = ['self-hosted', 'linux', 'gpu', 'rhi-perf'] as const;
+const REQUIRED_RUNNER_TAGS = ['self-hosted', 'macos', 'gpu', 'rhi-perf'] as const;
 const QUALITY_KEYS = [
     'width',
     'height',
@@ -267,7 +267,7 @@ function parseRig(value: unknown): RHIBenchmarkRigManifest {
         ),
         acceptedFingerprintSha256
     };
-    if (parsed.osPlatform !== 'linux') failure('manifest.rig.osPlatform must remain linux');
+    if (parsed.osPlatform !== 'darwin') failure('manifest.rig.osPlatform must remain darwin');
     if (parsed.browserName !== 'chromium') {
         failure('manifest.rig.browserName must remain chromium');
     }

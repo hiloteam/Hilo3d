@@ -12,7 +12,9 @@ import {
     RHI_PRODUCTION_FIXTURE_MARKER,
     RHI_PRODUCTION_FIXTURE_MODULE_PATH,
     RHI_PRODUCTION_FIXTURE_PATH,
-    assertRHIPhase0Preflight
+    assertRHIMacOSFixedPowerState,
+    assertRHIPhase0Preflight,
+    rhiPhysicalGpuBrowserArguments
 } from '../../scripts/performance/rhi-phase0-preflight';
 import {
     parseRHIBenchmarkManifest,
@@ -28,8 +30,8 @@ const BROWSER_BYTES = new TextEncoder().encode('audited chromium binary fixture'
 const BROWSER_SHA256 = sha256(BROWSER_BYTES);
 
 const detectedTestRuntime = {
-    detectedNodeVersion: '22.22.2',
-    detectedOsRelease: '6.8.0-audited',
+    detectedNodeVersion: '22.23.1',
+    detectedOsRelease: '25.2.0-audited',
     detectedCpuModel: 'Audited CPU',
     detectedPowerProfile: 'fixed-performance',
     detectedPlaywrightVersion: '1.61.1'
@@ -51,7 +53,7 @@ function environment(manifest: RHIBenchmarkManifest): RHIBenchmarkEnvironment {
         rigProfile: manifest.rig.profile,
         runnerTags: manifest.rig.requiredRunnerTags,
         fingerprintSha256: '',
-        osPlatform: 'linux',
+        osPlatform: 'darwin',
         osRelease: detectedTestRuntime.detectedOsRelease,
         cpuModel: 'Audited CPU',
         gpuFingerprint: 'Audited GPU',
@@ -95,9 +97,52 @@ describe('RHI Phase 0 mutation preflight', () => {
         await Promise.all(temporaryRoots.splice(0).map(root => rm(root, { recursive: true })));
     });
 
-    it('keeps the repository unenrolled while shipping a real production fixture', async () => {
+    it('requires AC, macOS High Power Mode, and a warning-free thermal state', () => {
+        const fixedState = {
+            powerSource: "Now drawing from 'AC Power'",
+            customSettings: 'Battery Power:\n powermode 0\nAC Power:\n powermode 2\n',
+            thermalState:
+                'No thermal warning level has been recorded\nNo performance warning level has been recorded\n'
+        };
+        expect(() => {
+            assertRHIMacOSFixedPowerState(fixedState);
+        }).not.toThrow();
+        expect(() => {
+            assertRHIMacOSFixedPowerState({
+                ...fixedState,
+                powerSource: "Now drawing from 'Battery Power'"
+            });
+        }).toThrow(/connected to AC power/u);
+        expect(() => {
+            assertRHIMacOSFixedPowerState({
+                ...fixedState,
+                customSettings: 'AC Power:\n powermode 0\n'
+            });
+        }).toThrow(/High Power Mode/u);
+        expect(() => {
+            assertRHIMacOSFixedPowerState({
+                ...fixedState,
+                thermalState: 'CPU_Scheduler_Limit = 80\n'
+            });
+        }).toThrow(/thermal or performance warning/u);
+    });
+
+    it('pins native Metal and rejects a non-macOS physical browser profile', () => {
+        expect(rhiPhysicalGpuBrowserArguments('darwin')).toEqual(
+            expect.arrayContaining([
+                '--disable-software-rasterizer',
+                '--ignore-gpu-blocklist',
+                '--use-angle=metal'
+            ])
+        );
+        expect(() => rhiPhysicalGpuBrowserArguments('linux')).toThrow(/requires macOS/u);
+    });
+
+    it('ships one explicitly enrolled macOS rig and the real production fixture', async () => {
         const manifest = parseRHIBenchmarkManifest(repositoryManifestValue);
-        expect(manifest.rig.acceptedFingerprintSha256).toEqual([]);
+        expect(manifest.rig.acceptedFingerprintSha256).toEqual([
+            '6bfa8f5bf40566a46cf3f766daf587fbf1da6a4cbe7ae234bfac67ee1d797fd3'
+        ]);
         expect(await doesNotExist(resolve(repositoryRoot, RHI_PRODUCTION_FIXTURE_PATH))).toBe(
             false
         );
@@ -109,10 +154,10 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime
             })
-        ).rejects.toThrow(/no enrolled physical-rig fingerprint/u);
+        ).rejects.toThrow(/fingerprint is not enrolled/u);
     });
 
     it('hard-fails without the production fixture before collector output or baseline writes', async () => {
@@ -127,7 +172,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime,
                 outputPath: resolve(baselinePath, 'forbidden.raw.json.gz'),
                 collect: () => {
@@ -143,7 +188,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime,
                 outputPath,
                 collect: () => {
@@ -160,7 +205,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime,
                 summaryValue: {},
                 rawBytes: new Uint8Array(),
@@ -170,7 +215,7 @@ describe('RHI Phase 0 mutation preflight', () => {
         expect(await doesNotExist(baselinePath)).toBe(true);
     });
 
-    it('hard-fails on a non-Linux runner or missing Chromium executable fingerprint', async () => {
+    it('hard-fails on a non-macOS runner or missing Chromium executable fingerprint', async () => {
         const root = await temporaryRoot();
         const manifest = enrolledManifest();
 
@@ -179,18 +224,18 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'darwin'
+                platform: 'linux'
             })
-        ).rejects.toThrow(/dedicated Linux performance rig/u);
+        ).rejects.toThrow(/dedicated macOS performance rig/u);
 
         await expect(
             assertRHIPhase0Preflight({
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime,
-                detectedOsRelease: '6.8.0-changed'
+                detectedOsRelease: '25.2.0-changed'
             })
         ).rejects.toThrow(/OS\/kernel release differs/u);
 
@@ -199,7 +244,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 ...detectedTestRuntime,
                 detectedPowerProfile: 'balanced'
             })
@@ -214,7 +259,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: missingChromeFingerprint,
-                platform: 'linux'
+                platform: 'darwin'
             })
         ).rejects.toThrow(/browserExecutableSha256/u);
 
@@ -227,7 +272,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: changedChromeBinary,
-                platform: 'linux'
+                platform: 'darwin'
             })
         ).rejects.toThrow(/fingerprint does not match/u);
     });
@@ -249,7 +294,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 browserExecutablePath: browserPath,
                 ...detectedTestRuntime
             })
@@ -263,7 +308,7 @@ describe('RHI Phase 0 mutation preflight', () => {
             repositoryRoot: root,
             manifestValue: manifest,
             environmentValue: environment(manifest),
-            platform: 'linux',
+            platform: 'darwin',
             browserExecutablePath: browserPath,
             ...detectedTestRuntime
         });
@@ -276,7 +321,7 @@ describe('RHI Phase 0 mutation preflight', () => {
             repositoryRoot: root,
             manifestValue: manifest,
             environmentValue: environment(manifest),
-            platform: 'linux',
+            platform: 'darwin',
             browserExecutablePath: browserPath,
             ...detectedTestRuntime
         });
@@ -288,7 +333,7 @@ describe('RHI Phase 0 mutation preflight', () => {
                 repositoryRoot: root,
                 manifestValue: manifest,
                 environmentValue: environment(manifest),
-                platform: 'linux',
+                platform: 'darwin',
                 browserExecutablePath: browserPath,
                 ...detectedTestRuntime
             })

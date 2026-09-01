@@ -12,11 +12,12 @@ single architecture across both supported backends.
 
 ## Baseline policy
 
-The current implementation is the baseline. A capture is tied to a full Git commit, the production
-fixture checksum, an audited physical-rig fingerprint, Chromium, Node.js, Playwright, GPU/driver,
-and fixed sampling parameters. Future implementations should be compared with an immutable snapshot
-from an earlier commit; they must not restore a second renderer implementation merely to perform
-same-commit A/B testing.
+The current implementation is the baseline. The enrolled rig is the dedicated Apple M3 Max MacBook
+Pro described by the `hilo3d-rhi-perf-macos-m3-max` profile. A capture is tied to a full Git commit,
+the production fixture checksum, an audited physical-rig fingerprint, Chromium, Node.js, Playwright,
+macOS/Metal GPU identity, and fixed sampling parameters. Future implementations should be compared
+with an immutable snapshot from an earlier commit; they must not restore a second renderer
+implementation merely to perform same-commit A/B testing.
 
 The suite covers ten fixed scenarios, WebGL2 and WebGPU, seven isolated rounds, 2,000 timing/GPU
 samples per round, and 21 allocation profiles. Every backend/round opens a fresh page, renderer,
@@ -25,8 +26,27 @@ counts must remain stable across rounds. `quality.surfaceOutputPassCount` explic
 the final linear-to-sRGB surface transfer, so primary scene draw counts are not inflated to absorb
 fixed output work.
 
-An empty `acceptedFingerprintSha256` list is intentionally fail-closed. Audit and explicitly enroll
-the physical rig before collecting evidence; do not weaken the manifest to make a workstation pass.
+`acceptedFingerprintSha256` is fail-closed: it may contain only fingerprints produced by the audit
+on the reviewed M3 Max rig. An OS, Chromium binary, browser version, Metal driver, Node version, or
+hardware identity change produces a different fingerprint and requires a fresh review rather than
+silently extending the existing baseline.
+
+## Enrolled macOS rig
+
+Evidence collection requires all of the following:
+
+- macOS on the enrolled Apple M3 Max machine, connected to AC power;
+- **High Power** selected for “On power adapter” in System Settings → Battery;
+- no thermal or performance warning reported by `pmset -g therm` since boot;
+- exact Node.js and Playwright versions from `manifest.json`;
+- the Playwright-managed Chromium executable whose SHA-256 is part of the enrolled fingerprint;
+- native Metal through ANGLE, a non-fallback adapter, both backend GPU timers, precise memory, and
+  the Chromium allocation profiler.
+
+The audit and every mutating pipeline stage recheck the live power state. Keep the lid open, avoid
+external-display changes and background workloads, and let the machine return to a stable
+temperature before a capture. macOS results are comparable only with verified snapshots from this
+same rig profile.
 
 ## Commands
 
@@ -35,8 +55,16 @@ the physical rig before collecting evidence; do not weaken the manifest to make 
 npm run test:rhi-benchmark-contract
 npm run test:rhi-benchmark-smoke
 
-# On the enrolled physical rig, audit then collect a temporary current-RHI capture.
-npm run benchmark:rhi:audit-environment
+# On the enrolled Mac, use the exact Node version from manifest.json and locate pinned Chromium.
+export HILO3D_RHI_BENCHMARK_POWER_PROFILE=fixed-performance
+export HILO3D_RHI_BENCHMARK_BROWSER_EXECUTABLE="$(node --input-type=module -e \
+  'import { chromium } from "playwright"; console.log(chromium.executablePath())')"
+mkdir -p reports/rhi
+node_modules/.bin/jiti scripts/performance/audit-rhi-benchmark-environment.ts \
+  > reports/rhi/macos-m3-max.environment.json
+export HILO3D_RHI_BENCHMARK_ENVIRONMENT="$PWD/reports/rhi/macos-m3-max.environment.json"
+
+# Preflight, then collect a temporary current-RHI capture from a clean committed worktree.
 npm run benchmark:rhi:preflight
 npm run benchmark:rhi:collect -- reports/rhi/current.raw.json.gz
 

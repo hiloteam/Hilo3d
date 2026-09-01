@@ -18,7 +18,10 @@ import {
     RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment
 } from '../../benchmarks/rhi/result-schema';
-import type { RHIPhase0PreflightResult } from './rhi-phase0-preflight';
+import {
+    rhiPhysicalGpuBrowserArguments,
+    type RHIPhase0PreflightResult
+} from './rhi-phase0-preflight';
 import type {
     RHIBenchmarkAllocationSample,
     RHIProductionCollectorSession,
@@ -1035,13 +1038,7 @@ export class PlaywrightCollectorSessionFactory implements RHIProductionCollector
         this.#origin = origin.replace(/\/$/u, '');
         this.#ownedBrowser = await launchRHIOwnedChromium({
             executablePath: this.#preflight.browserExecutablePath,
-            args: [
-                '--enable-precise-memory-info',
-                '--disable-background-timer-throttling',
-                '--disable-renderer-backgrounding',
-                '--disable-features=CalculateNativeWinOcclusion',
-                '--enable-unsafe-webgpu'
-            ]
+            args: [...rhiPhysicalGpuBrowserArguments(this.#preflight.environment.osPlatform)]
         });
         this.#browser = this.#ownedBrowser.browser;
         const browserCdp = await this.#browser.newBrowserCDPSession();

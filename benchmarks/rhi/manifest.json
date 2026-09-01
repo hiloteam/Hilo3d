@@ -13,18 +13,20 @@
     "confidenceLevel": 0.95
   },
   "rig": {
-    "profile": "hilo3d-rhi-perf-linux-gpu",
-    "requiredRunnerTags": ["self-hosted", "linux", "gpu", "rhi-perf"],
-    "osPlatform": "linux",
+    "profile": "hilo3d-rhi-perf-macos-m3-max",
+    "requiredRunnerTags": ["self-hosted", "macos", "gpu", "rhi-perf"],
+    "osPlatform": "darwin",
     "browserName": "chromium",
     "playwrightVersion": "1.61.1",
-    "nodeVersion": "22.22.2",
+    "nodeVersion": "22.23.1",
     "powerProfile": "fixed-performance",
     "requireNonFallbackAdapter": true,
     "requireGpuTimer": true,
     "requireAllocationProfiler": true,
     "requirePreciseMemory": true,
-    "acceptedFingerprintSha256": []
+    "acceptedFingerprintSha256": [
+      "6bfa8f5bf40566a46cf3f766daf587fbf1da6a4cbe7ae234bfac67ee1d797fd3"
+    ]
   },
   "scenarios": [
     {

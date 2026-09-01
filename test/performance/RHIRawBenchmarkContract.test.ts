@@ -36,7 +36,7 @@ function environment(manifest: RHIBenchmarkManifest): RHIBenchmarkEnvironment {
         runnerTags: manifest.rig.requiredRunnerTags,
         fingerprintSha256: '',
         osPlatform: manifest.rig.osPlatform,
-        osRelease: '6.8.0-raw-contract',
+        osRelease: '25.2.0-raw-contract',
         cpuModel: 'Raw contract CPU',
         gpuFingerprint: 'Raw contract GPU',
         gpuDriver: 'contract-driver',

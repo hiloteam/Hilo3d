@@ -43,7 +43,7 @@ function benchmarkEnvironment(manifest: RHIBenchmarkManifest): RHIBenchmarkEnvir
         runnerTags: manifest.rig.requiredRunnerTags,
         fingerprintSha256: '',
         osPlatform: manifest.rig.osPlatform,
-        osRelease: '6.8.0-contract',
+        osRelease: '25.2.0-contract',
         cpuModel: 'Fixed benchmark CPU',
         gpuFingerprint: 'Fixed benchmark GPU',
         gpuDriver: '1.2.3',
@@ -210,11 +210,13 @@ describe('RHI benchmark baseline contract', () => {
         expect(manifest.sampling.bootstrapSeed).toBeGreaterThan(0);
         expect(manifest.rig.requiredRunnerTags).toEqual([
             'self-hosted',
-            'linux',
+            'macos',
             'gpu',
             'rhi-perf'
         ]);
-        expect(manifest.rig.acceptedFingerprintSha256).toEqual([]);
+        expect(manifest.rig.acceptedFingerprintSha256).toEqual([
+            '6bfa8f5bf40566a46cf3f766daf587fbf1da6a4cbe7ae234bfac67ee1d797fd3'
+        ]);
         expect(manifest.scenarios.every(scenario => scenario.quality.devicePixelRatio === 1)).toBe(
             true
         );
@@ -263,8 +265,12 @@ describe('RHI benchmark baseline contract', () => {
 
     it('rejects an unenrolled or mismatched physical rig fingerprint', () => {
         const repositoryManifest = parseRHIBenchmarkManifest(repositoryManifestValue);
+        const unenrolledManifest = {
+            ...repositoryManifest,
+            rig: { ...repositoryManifest.rig, acceptedFingerprintSha256: [] }
+        };
         expect(() =>
-            verifyRHIBaseline(repositoryManifest, validBaseline(repositoryManifest), RAW_BYTES)
+            verifyRHIBaseline(unenrolledManifest, validBaseline(unenrolledManifest), RAW_BYTES)
         ).toThrow(/no enrolled physical-rig fingerprint/u);
 
         const manifest = enrolledManifest();

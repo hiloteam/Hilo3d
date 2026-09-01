@@ -982,8 +982,9 @@ Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocat
 profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独立 workflow 仅在 benchmark/performance 路径变化、每日定时或手动触发时运行 WebGL
 2 production smoke。GitHub hosted Linux 的 SwiftShader WebGPU production
 fixture 会在首帧前丢失 fallback device，因此 WebGPU 仍由独立 `test:rhi` native
-lane、本地完整 UI/视觉矩阵和 enrolled physical-GPU
-benchmark 覆盖。脚本直接运行时默认按 WebGPU、WebGL
+lane、本地完整 UI/视觉矩阵和已登记 M3 Max macOS/Metal physical-GPU
+benchmark 覆盖。正式采集固定 Node、Playwright/Chromium 二进制、系统/Metal 指纹，并在每次审计、采集与冻结前要求接入交流电、High
+Power Mode 和无热/性能告警。脚本直接运行时默认按 WebGPU、WebGL
 2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
 `timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
 `--all` 入口。

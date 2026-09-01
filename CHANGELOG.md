@@ -40,6 +40,10 @@
 
 ### Changes
 
+- Replace the unenrolled Linux-only RHI performance-rig contract with an auditable Apple M3 Max
+  macOS/Metal profile. Require AC power, High Power Mode, a warning-free thermal state, exact
+  Node/Playwright/Chromium identity, physical Metal, GPU timers, precise memory, and allocation
+  profiling before collection or immutable baseline freezing.
 - Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
   asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
   teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded
