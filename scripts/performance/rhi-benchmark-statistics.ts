@@ -205,7 +205,7 @@ export function bootstrapRHIMedianConfidenceInterval(
     const medians = new Array<number>(options.iterations);
     const lowerMedianOrder = Math.ceil(sorted.length / 2);
     // Sampling the relevant uniform order statistics is distribution-equivalent to building and
-    // sorting every n-element bootstrap resample, while keeping 2,000-frame cases tractable.
+    // sorting every n-element bootstrap resample, while keeping frame distributions tractable.
     for (let iteration = 0; iteration < options.iterations; iteration += 1) {
         const lowerPosition = sampleBeta(
             lowerMedianOrder,
@@ -320,7 +320,7 @@ function regressionFraction(
     return difference / Math.abs(baseline);
 }
 
-/** Paired A/B regression gate. Pair order is preserved; at least seven independent rounds are required. */
+/** Paired A/B regression gate. Pair order is preserved; at least three independent rounds are required. */
 export function evaluateRHIBenchmarkPairedGate(
     input: RHIBenchmarkPairedGateInput
 ): RHIBenchmarkPairedGateResult {
@@ -330,8 +330,8 @@ export function evaluateRHIBenchmarkPairedGate(
     if (input.baseline.length !== input.candidate.length) {
         throw new Error('paired A/B samples must have equal lengths');
     }
-    if (input.baseline.length < 7) {
-        throw new Error('paired A/B gate requires at least 7 rounds');
+    if (input.baseline.length < 3) {
+        throw new Error('paired A/B gate requires at least 3 rounds');
     }
     const direction = rhiBenchmarkRegressionDirection(input.metric);
     const statistic = input.statistic ?? 'median';

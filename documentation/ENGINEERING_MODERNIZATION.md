@@ -982,11 +982,20 @@ Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocat
 profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独立 workflow 仅在 benchmark/performance 路径变化、每日定时或手动触发时运行 WebGL
 2 production smoke。GitHub hosted Linux 的 SwiftShader WebGPU production
 fixture 会在首帧前丢失 fallback device，因此 WebGPU 仍由独立 `test:rhi` native
-lane、本地完整 UI/视觉矩阵和 enrolled physical-GPU
-benchmark 覆盖。脚本直接运行时默认按 WebGPU、WebGL
+lane、本地完整 UI/视觉矩阵和已登记 M3 Max macOS/Metal physical-GPU
+benchmark 覆盖。正式采集固定 Node、Playwright/Chromium 二进制、系统/Metal 指纹，并在每次审计、采集与冻结前要求接入交流电、High
+Power
+Mode 和无热/性能告警。面向小型引擎的全量正式采集固定为 3 轮、每轮 120 帧预热和 500 帧 CPU/GPU 采样，不作为优化开发的逐次内循环；开发中使用 production
+smoke 与受影响的定向测试，只有建立或替换跨提交不可变证据时才执行全量矩阵。分配证据保留逐字节采样，但在固定 profiler 预热与丢弃的稳定探针后让每个真实帧使用独立 CDP
+profile，避免高 draw 场景产生无界响应。绝对分配门禁只由单 draw 哨兵承担；压力场景仍记录分配数据供跨提交分析，不把 V8
+sampler tier
+metadata 的波动误判为引擎回归。正式采集输出 scenario/backend/round 阶段进度，为每个浏览器阶段设置失败关闭超时，并在无响应时中止 owned
+heap-profiler session。脚本直接运行时默认按 WebGPU、WebGL
 2 顺序为每个 scenario/backend 启动独立 Chromium，且非证据 SwiftShader 用例不申请正式 rig 才需要的 WebGPU
 `timestamp-query`。smoke 始终标记为 non-evidence，不替代物理 GPU 多场景冻结基线；需要扩展诊断时显式使用
-`--all` 入口。
+`--all` 入口。定向 churn
+smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 10,000 帧完成行为时才传
+`--full-churn`；正式登记采集始终完成全部 churn 帧。
 
 站点发布工作流同样从干净 checkout 执行 `npm ci`，只构建一次声明，再执行 `npm run api:check:built` 与
 `npm run site:build:built`

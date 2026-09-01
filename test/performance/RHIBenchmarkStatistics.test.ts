@@ -141,15 +141,15 @@ describe('RHI benchmark deterministic statistics', () => {
         expect(draws.passed).toBe(false);
     });
 
-    it('requires seven paired rounds and scopes hard-cap applicability', () => {
+    it('requires three paired rounds and scopes hard-cap applicability', () => {
         expect(() =>
             evaluateRHIBenchmarkPairedGate({
                 metric: 'gpuFrameMs',
-                baseline: [1, 1, 1, 1, 1, 1],
-                candidate: [1, 1, 1, 1, 1, 1],
+                baseline: [1, 1],
+                candidate: [1, 1],
                 ...BOOTSTRAP
             })
-        ).toThrow(/at least 7 rounds/u);
+        ).toThrow(/at least 3 rounds/u);
 
         const webglCap = RHI_BENCHMARK_HARD_CAPS.find(cap => cap.id === 'webgl2-10000-draw-cpu');
         if (!webglCap) throw new Error('missing WebGL hard-cap fixture');
@@ -159,5 +159,16 @@ describe('RHI benchmark deterministic statistics', () => {
         expect(rhiBenchmarkHardCapApplies(webglCap, 'shared-pipeline-10000-draw', 'webgpu')).toBe(
             false
         );
+
+        for (const allocationCapId of ['renderer-allocation', 'rhi-hot-path-allocation']) {
+            const allocationCap = RHI_BENCHMARK_HARD_CAPS.find(cap => cap.id === allocationCapId);
+            if (!allocationCap) throw new Error(`missing ${allocationCapId} hard-cap fixture`);
+            expect(
+                rhiBenchmarkHardCapApplies(allocationCap, 'static-unlit-single-draw', 'webgpu')
+            ).toBe(true);
+            expect(
+                rhiBenchmarkHardCapApplies(allocationCap, 'shared-pipeline-10000-draw', 'webgpu')
+            ).toBe(false);
+        }
     });
 });

@@ -1,10 +1,11 @@
+import { createServer } from 'node:http';
 import { cpus, release } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
 import type { RHIBenchmarkEnvironment } from '../../benchmarks/rhi/result-schema';
 import { detectedRHIBrowserGpuIdentity } from './rhi-playwright-collector';
+import { launchRHIOwnedChromium } from './rhi-owned-chromium';
 import {
     parseRHIBenchmarkManifest,
     rhiBenchmarkEnvironmentFingerprint,
@@ -12,7 +13,8 @@ import {
 } from './verify-rhi-baseline';
 import {
     RHI_PHASE0_BROWSER_EXECUTABLE_VARIABLE,
-    detectRHIFixedPowerProfile
+    detectRHIFixedPowerProfile,
+    rhiPhysicalGpuBrowserArguments
 } from './rhi-phase0-preflight';
 
 function auditFailure(message: string): never {
@@ -34,8 +36,8 @@ async function installedPlaywrightVersion(repositoryRoot: string): Promise<strin
 }
 
 async function main(): Promise<void> {
-    if (process.platform !== 'linux') {
-        auditFailure('environment candidates may only be generated on the dedicated Linux rig');
+    if (process.platform !== 'darwin') {
+        auditFailure('environment candidates may only be generated on the dedicated macOS rig');
     }
     try {
         await detectRHIFixedPowerProfile();
@@ -60,91 +62,111 @@ async function main(): Promise<void> {
         auditFailure(`${RHI_PHASE0_BROWSER_EXECUTABLE_VARIABLE} must name Chromium`);
     }
     const browserExecutableSha256 = sha256(await readFile(resolve(browserExecutablePath)));
-    const browser = await chromium.launch({
-        executablePath: resolve(browserExecutablePath),
-        headless: true,
-        args: ['--enable-precise-memory-info', '--enable-unsafe-webgpu']
+    const originServer = createServer((_request, response) => {
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.end('<!doctype html><title>Hilo3D RHI environment audit</title>');
     });
+    await new Promise<void>((resolvePromise, reject) => {
+        originServer.once('error', reject);
+        originServer.listen(0, '127.0.0.1', resolvePromise);
+    });
+    const address = originServer.address();
+    if (!address || typeof address === 'string') auditFailure('audit origin is unavailable');
     try {
-        const browserCdp = await browser.newBrowserCDPSession();
-        const gpu = detectedRHIBrowserGpuIdentity(await browserCdp.send('SystemInfo.getInfo'));
-        if (gpu.fallback) auditFailure('Chromium selected a software/fallback GPU adapter');
-        const page = await browser.newPage();
-        const capabilities = await page.evaluate(async () => {
-            const canvas = document.createElement('canvas');
-            const gl = canvas.getContext('webgl2');
-            const webGLTimer =
-                gl !== null && gl.getExtension('EXT_disjoint_timer_query_webgl2') !== null;
-            const adapter = await navigator.gpu.requestAdapter({
-                powerPreference: 'high-performance',
-                forceFallbackAdapter: false
-            });
-            const webGPUTimer = adapter?.features.has('timestamp-query') === true;
-            if (adapter && webGPUTimer) {
-                const device = await adapter.requestDevice({
-                    requiredFeatures: ['timestamp-query']
-                });
-                device.destroy();
-            }
-            const memory = (
-                performance as Performance & {
-                    readonly memory?: unknown;
-                }
-            ).memory;
-            const preciseMemory =
-                typeof memory === 'object' &&
-                memory !== null &&
-                typeof (memory as Record<string, unknown>)['usedJSHeapSize'] === 'number';
-            return { gpuTimer: webGLTimer && webGPUTimer, preciseMemory };
+        const ownedBrowser = await launchRHIOwnedChromium({
+            executablePath: resolve(browserExecutablePath),
+            args: [...rhiPhysicalGpuBrowserArguments(process.platform)]
         });
-        const pageCdp = await page.context().newCDPSession(page);
-        let allocationProfiler = false;
-        await pageCdp.send('HeapProfiler.enable');
+        const browser = ownedBrowser.browser;
         try {
-            await pageCdp.send('HeapProfiler.startSampling', {
-                samplingInterval: 1,
-                includeObjectsCollectedByMajorGC: true,
-                includeObjectsCollectedByMinorGC: true
+            const browserCdp = await browser.newBrowserCDPSession();
+            const gpu = detectedRHIBrowserGpuIdentity(await browserCdp.send('SystemInfo.getInfo'));
+            if (gpu.fallback) auditFailure('Chromium selected a software/fallback GPU adapter');
+            const page = await browser.newPage();
+            await page.goto(`http://127.0.0.1:${String(address.port)}`);
+            const capabilities = await page.evaluate(async () => {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl2');
+                const webGLTimer =
+                    gl !== null && gl.getExtension('EXT_disjoint_timer_query_webgl2') !== null;
+                const adapter = await navigator.gpu.requestAdapter({
+                    powerPreference: 'high-performance',
+                    forceFallbackAdapter: false
+                });
+                const webGPUTimer = adapter?.features.has('timestamp-query') === true;
+                if (adapter && webGPUTimer) {
+                    const device = await adapter.requestDevice({
+                        requiredFeatures: ['timestamp-query']
+                    });
+                    device.destroy();
+                }
+                const memory = (
+                    performance as Performance & {
+                        readonly memory?: unknown;
+                    }
+                ).memory;
+                const preciseMemory =
+                    typeof memory === 'object' &&
+                    memory !== null &&
+                    typeof (memory as Record<string, unknown>)['usedJSHeapSize'] === 'number';
+                return { gpuTimer: webGLTimer && webGPUTimer, preciseMemory };
             });
-            await page.evaluate(() => Array.from({ length: 128 }, (_, index) => ({ index })));
-            const result = await pageCdp.send('HeapProfiler.stopSampling');
-            const profile: unknown = (result as { readonly profile?: unknown }).profile;
-            allocationProfiler = typeof profile === 'object' && profile !== null;
+            const pageCdp = await page.context().newCDPSession(page);
+            let allocationProfiler = false;
+            await pageCdp.send('HeapProfiler.enable');
+            try {
+                await pageCdp.send('HeapProfiler.startSampling', {
+                    samplingInterval: 1,
+                    includeObjectsCollectedByMajorGC: true,
+                    includeObjectsCollectedByMinorGC: true
+                });
+                await page.evaluate(() => Array.from({ length: 128 }, (_, index) => ({ index })));
+                const result = await pageCdp.send('HeapProfiler.stopSampling');
+                const profile: unknown = (result as { readonly profile?: unknown }).profile;
+                allocationProfiler = typeof profile === 'object' && profile !== null;
+            } finally {
+                await pageCdp.send('HeapProfiler.disable');
+            }
+            if (!capabilities.gpuTimer) auditFailure('both backend GPU timers are required');
+            if (!capabilities.preciseMemory) auditFailure('Chromium precise memory is required');
+            if (!allocationProfiler) auditFailure('Chromium allocation profiler is required');
+            const cpuModel = cpus()[0]?.model.trim();
+            if (!cpuModel) auditFailure('CPU model is unavailable');
+            const identity: RHIBenchmarkEnvironment = {
+                rigProfile: manifest.rig.profile,
+                runnerTags: manifest.rig.requiredRunnerTags,
+                fingerprintSha256: '',
+                osPlatform: process.platform,
+                osRelease: release(),
+                cpuModel,
+                gpuFingerprint: gpu.fingerprint,
+                gpuDriver: gpu.driver,
+                browserName: manifest.rig.browserName,
+                browserVersion: browser.version(),
+                browserExecutableSha256,
+                playwrightVersion,
+                nodeVersion: process.versions.node,
+                powerProfile: manifest.rig.powerProfile,
+                fallbackAdapter: gpu.fallback,
+                gpuTimerAvailable: capabilities.gpuTimer,
+                allocationProfilerAvailable: allocationProfiler,
+                preciseMemoryAvailable: capabilities.preciseMemory
+            };
+            const environment = {
+                ...identity,
+                fingerprintSha256: rhiBenchmarkEnvironmentFingerprint(identity)
+            };
+            process.stdout.write(`${JSON.stringify(environment, null, 2)}\n`);
         } finally {
-            await pageCdp.send('HeapProfiler.disable');
+            await ownedBrowser.close();
         }
-        if (!capabilities.gpuTimer) auditFailure('both backend GPU timers are required');
-        if (!capabilities.preciseMemory) auditFailure('Chromium precise memory is required');
-        if (!allocationProfiler) auditFailure('Chromium allocation profiler is required');
-        const cpuModel = cpus()[0]?.model.trim();
-        if (!cpuModel) auditFailure('CPU model is unavailable');
-        const identity: RHIBenchmarkEnvironment = {
-            rigProfile: manifest.rig.profile,
-            runnerTags: manifest.rig.requiredRunnerTags,
-            fingerprintSha256: '',
-            osPlatform: process.platform,
-            osRelease: release(),
-            cpuModel,
-            gpuFingerprint: gpu.fingerprint,
-            gpuDriver: gpu.driver,
-            browserName: manifest.rig.browserName,
-            browserVersion: browser.version(),
-            browserExecutableSha256,
-            playwrightVersion,
-            nodeVersion: process.versions.node,
-            powerProfile: manifest.rig.powerProfile,
-            fallbackAdapter: gpu.fallback,
-            gpuTimerAvailable: capabilities.gpuTimer,
-            allocationProfilerAvailable: allocationProfiler,
-            preciseMemoryAvailable: capabilities.preciseMemory
-        };
-        const environment = {
-            ...identity,
-            fingerprintSha256: rhiBenchmarkEnvironmentFingerprint(identity)
-        };
-        process.stdout.write(`${JSON.stringify(environment, null, 2)}\n`);
     } finally {
-        await browser.close();
+        await new Promise<void>((resolvePromise, reject) => {
+            originServer.close(error => {
+                if (error) reject(error);
+                else resolvePromise();
+            });
+        });
     }
 }
 

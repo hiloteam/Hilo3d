@@ -2,6 +2,7 @@ import manifestValue from '../../../benchmarks/rhi/manifest.json';
 import {
     RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL,
     RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION,
+    rhiBenchmarkUsesDynamicTextures,
     type RHIBenchmarkDiagnosticSample,
     type RHIBenchmarkFixtureFrameSample,
     type RHIBenchmarkFixtureMetadata,
@@ -55,6 +56,7 @@ import Texture from '../../../src/texture/Texture';
 import { NEAREST } from '../../../src/constants/webgl';
 import {
     MRT_MSAA_POSTPROCESS_EFFECT_PASS_COUNT,
+    MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
     createMRTMSAAPostProcessWorkload,
     mrtMSAAPostProcessPrimaryDrawCount,
     mrtMSAAPostProcessSourceTargetParameters,
@@ -63,10 +65,12 @@ import {
 } from './rhi-postprocess-workload';
 import {
     benchmarkInFlightBatchIsFull,
+    benchmarkChurnMeshSlot,
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
-    benchmarkPrimaryDrawCount
+    benchmarkPrimaryDrawCount,
+    benchmarkSteadyShadowDrawCount
 } from './rhi-scene-workload';
 
 type AnyMethod = (this: unknown, ...args: unknown[]) => unknown;
@@ -462,7 +466,7 @@ function benchmarkBoxGeometry(): BoxGeometry {
 
 function mrtMaterial(): ShaderMaterial {
     return new ShaderMaterial({
-        state: { depthTest: false, cullMode: 'none' },
+        state: MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
         attributes: { a_position: 'POSITION' },
         vs: `#version 300 es
             in vec3 a_position;
@@ -669,16 +673,20 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
 
     private buildScene(): void {
         const quality = this.#scenario.quality;
-        const shadowDraws = quality.shadowMapSize > 0 ? 1 : 0;
+        const usesDynamicTextures = rhiBenchmarkUsesDynamicTextures(
+            this.#scenario.id,
+            quality.dynamicUploadBytesPerFrame
+        );
+        const shadowsEnabled = quality.shadowMapSize > 0;
+        const steadyShadowDraws = benchmarkSteadyShadowDrawCount(this.#scenario.id, shadowsEnabled);
         const isPbr =
             this.#scenario.id === 'pbr-lights-shadows' ||
             this.#scenario.id === 'first-complex-frame';
-        const textureSize =
-            quality.dynamicUploadBytesPerFrame > 0
-                ? Math.sqrt(quality.dynamicUploadBytesPerFrame / 4)
-                : 2;
+        const textureSize = usesDynamicTextures
+            ? Math.sqrt(quality.dynamicUploadBytesPerFrame / 4)
+            : 2;
         for (let index = 0; index < quality.textureCount; index += 1) {
-            if (quality.dynamicUploadBytesPerFrame > 0 && index === 0) {
+            if (usesDynamicTextures && index === 0) {
                 if (!Number.isInteger(textureSize)) {
                     fixtureFailure('dynamic upload byte count must describe one square RGBA image');
                 }
@@ -690,7 +698,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 this.#textures.push(dynamic);
                 this.#dynamicTexture = dynamic;
                 this.#dynamicPixels = pixels;
-            } else if (quality.dynamicUploadBytesPerFrame > 0 && index === 1) {
+            } else if (usesDynamicTextures && index === 1) {
                 const external = dynamicExternalTexture(index + 1);
                 this.#textures.push(external.texture);
                 this.#dynamicExternalContext = external.context;
@@ -700,7 +708,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             }
         }
         if (
-            quality.dynamicUploadBytesPerFrame > 0 &&
+            usesDynamicTextures &&
             (this.#dynamicTexture === null || this.#dynamicExternalContext === null)
         ) {
             fixtureFailure('dynamic upload scenario requires typed-array and external textures');
@@ -715,7 +723,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                 )
             );
         }
-        if (shadowDraws > 0 && this.#materials.length < 2) {
+        if (shadowsEnabled && this.#materials.length < 2) {
             fixtureFailure('a shadow benchmark requires a dedicated caster material');
         }
         addLights(this.#scene, quality);
@@ -730,13 +738,13 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
                     : benchmarkPrimaryDrawCount(
                           quality.drawCount,
                           quality.postProcessPassCount + quality.surfaceOutputPassCount,
-                          shadowDraws
+                          steadyShadowDraws
                       );
             const geometry =
                 this.#scenario.id === 'mrt-msaa-postprocess'
                     ? fullscreenGeometry()
                     : benchmarkBoxGeometry();
-            if (quality.dynamicUploadBytesPerFrame > 0 && geometry.vertices) {
+            if (usesDynamicTextures && geometry.vertices) {
                 geometry.isStatic = false;
                 this.#dynamicGeometry = geometry.vertices;
                 this.#dynamicGeometryBaseValue = geometry.vertices.data[0] ?? 0;
@@ -748,13 +756,13 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             for (let index = 0; index < primaryDraws; index += 1) {
                 const material =
                     this.#materials[
-                        benchmarkMaterialIndex(index, this.#materials.length, shadowDraws > 0)
+                        benchmarkMaterialIndex(index, this.#materials.length, shadowsEnabled)
                     ];
                 if (!material) fixtureFailure('scenario material set is empty');
                 const mesh = new Mesh({
                     geometry,
                     material,
-                    castShadows: benchmarkMeshCastsShadow(index, shadowDraws > 0),
+                    castShadows: benchmarkMeshCastsShadow(index, shadowsEnabled),
                     frustumTest: false,
                     z: benchmarkMeshDepth(index, this.#scenario.id === 'scene-churn-10000-frame')
                 });
@@ -855,7 +863,7 @@ class BrowserBenchmarkFixture implements RHIBenchmarkProductionFixture {
             dynamicGeometry.setSubData(0, this.#dynamicGeometryUpdate);
         }
         if (this.#scenario.id === 'scene-churn-10000-frame') {
-            const slot = this.#frameIndex % this.#meshes.length;
+            const slot = benchmarkChurnMeshSlot(this.#frameIndex, this.#meshes.length);
             const previous = this.#meshes[slot];
             if (!previous) fixtureFailure('scene churn mesh slot is missing');
             previous.destroy(this.#renderer as never);

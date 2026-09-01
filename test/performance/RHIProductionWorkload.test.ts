@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { rhiBenchmarkAllocationProfilerWarmupFrames } from '../../benchmarks/rhi/fixture-contract';
+import {
+    rhiBenchmarkAllocationProfilerWarmupFrames,
+    rhiBenchmarkUsesDynamicTextures
+} from '../../benchmarks/rhi/fixture-contract';
 import PerspectiveCamera from '../../src/camera/PerspectiveCamera';
 import Node from '../../src/core/Node';
 import type Shader from '../../src/shader/Shader';
@@ -16,6 +19,7 @@ import { ShaderArtifactCompiler } from '../../src/render/renderer/ShaderArtifact
 import { prepareGLSLForNaga } from '../../src/render/shader/GlslToWgsl';
 import {
     RHI_PRODUCTION_SMOKE_BACKENDS,
+    RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES,
     RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES,
     RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES,
@@ -23,7 +27,6 @@ import {
     RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES,
     RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES,
     RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES,
-    RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS,
     RHI_PRODUCTION_SMOKE_PROFILER_RESTART_RENDER_FRAMES,
     RHI_PRODUCTION_SMOKE_SCENARIOS,
@@ -33,6 +36,7 @@ import {
 import {
     MRT_MSAA_POSTPROCESS_COMBINE_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_EFFECT_PASS_COUNT,
+    MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE,
     MRT_MSAA_POSTPROCESS_FINAL_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_SWIZZLE_FRAGMENT_SOURCE,
     MRT_MSAA_POSTPROCESS_VERTEX_SOURCE,
@@ -43,11 +47,13 @@ import {
 } from './fixtures/rhi-postprocess-workload';
 import {
     RHI_PRODUCTION_MAX_IN_FLIGHT_FRAMES,
+    benchmarkChurnMeshSlot,
     benchmarkInFlightBatchIsFull,
     benchmarkMaterialIndex,
     benchmarkMeshCastsShadow,
     benchmarkMeshDepth,
-    benchmarkPrimaryDrawCount
+    benchmarkPrimaryDrawCount,
+    benchmarkSteadyShadowDrawCount
 } from './fixtures/rhi-scene-workload';
 
 class FakeRenderTarget implements RenderTarget {
@@ -142,6 +148,11 @@ describe('RHI production MRT/MSAA post-process workload', () => {
                 { format: 'rgba8unorm' },
                 { format: 'rgba8unorm' }
             ]
+        });
+        expect(MRT_MSAA_POSTPROCESS_FULLSCREEN_STATE).toEqual({
+            depthTest: false,
+            depthWrite: false,
+            cullMode: 'none'
         });
         const descriptors: RenderTargetParameters[] = [];
         const factory = {
@@ -306,11 +317,16 @@ describe('RHI production MRT/MSAA post-process workload', () => {
 
 describe('RHI production shadow draw contract', () => {
     it.each([
-        { id: 'pbr-lights-shadows', total: 512, postProcess: 0, variants: 8 },
-        { id: 'first-complex-frame', total: 512, postProcess: 3, variants: 64 },
-        { id: 'scene-churn-10000-frame', total: 256, postProcess: 0, variants: 16 }
-    ])('keeps exactly one caster while using every material variant in $id', scenario => {
-        const primary = benchmarkPrimaryDrawCount(scenario.total, scenario.postProcess, 1);
+        { id: 'pbr-lights-shadows', total: 513, fixedPasses: 1, variants: 8 },
+        { id: 'first-complex-frame', total: 512, fixedPasses: 4, variants: 64 },
+        { id: 'scene-churn-10000-frame', total: 257, fixedPasses: 1, variants: 16 }
+    ] as const)('keeps exactly one caster while using every material variant in $id', scenario => {
+        const steadyShadowDraws = benchmarkSteadyShadowDrawCount(scenario.id, true);
+        const primary = benchmarkPrimaryDrawCount(
+            scenario.total,
+            scenario.fixedPasses,
+            steadyShadowDraws
+        );
         const materialIndices = Array.from({ length: primary }, (_, drawIndex) =>
             benchmarkMaterialIndex(drawIndex, scenario.variants, true)
         );
@@ -322,24 +338,26 @@ describe('RHI production shadow draw contract', () => {
         expect(materialIndices.slice(1)).not.toContain(0);
         expect(new Set(materialIndices).size).toBe(scenario.variants);
         expect(casterCount).toBe(1);
-        expect(primary + casterCount + scenario.postProcess).toBe(scenario.total);
+        expect(primary + steadyShadowDraws + scenario.fixedPasses).toBe(scenario.total);
     });
 
     it('keeps the sole scene-churn caster in stable slot zero across replacements', () => {
-        const casterSlots = Array.from({ length: 255 }, (_, slot) =>
+        const casterSlots = Array.from({ length: 256 }, (_, slot) =>
             benchmarkMeshCastsShadow(slot, true)
         );
         expect(casterSlots.filter(Boolean)).toHaveLength(1);
 
         for (let frame = 0; frame < 510; frame += 1) {
-            const slot = frame % casterSlots.length;
+            const slot = benchmarkChurnMeshSlot(frame, casterSlots.length);
+            expect(slot).toBeGreaterThan(0);
             casterSlots[slot] = benchmarkMeshCastsShadow(slot, true);
             expect(casterSlots.filter(Boolean)).toHaveLength(1);
         }
+        expect(() => benchmarkChurnMeshSlot(0, 1)).toThrow(/caster and a churn mesh/u);
     });
 
     it('gives each churn slot a stable depth so render-list sorting cannot change the pixels', () => {
-        const initialDepths = Array.from({ length: 255 }, (_, slot) =>
+        const initialDepths = Array.from({ length: 256 }, (_, slot) =>
             benchmarkMeshDepth(slot, true)
         );
         expect(initialDepths[0]).toBe(0);
@@ -347,7 +365,7 @@ describe('RHI production shadow draw contract', () => {
         expect(new Set(initialDepths)).toHaveLength(initialDepths.length);
 
         for (let frame = 0; frame < 510; frame += 1) {
-            const slot = frame % initialDepths.length;
+            const slot = benchmarkChurnMeshSlot(frame, initialDepths.length);
             expect(benchmarkMeshDepth(slot, true)).toBe(initialDepths[slot]);
         }
         expect(benchmarkMeshDepth(254, false)).toBe(0);
@@ -417,22 +435,27 @@ describe('RHI production in-flight frame contract', () => {
 describe('RHI production fixture smoke contract', () => {
     it('uses fixed profiler warm-up and maximum/median allocation aggregation', () => {
         expect(RHI_PRODUCTION_SMOKE_WARMUP_FRAMES).toBe(30);
+        expect(RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES).toBe(256);
         expect(RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES).toBe(0);
         expect(RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES).toBe(30);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(512)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(256)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(1_000)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(10_000)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(79)).toBe(288);
+        expect(RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(512)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(256)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(1_000)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(10_000)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(79)).toBe(32);
         expect(() => rhiBenchmarkAllocationProfilerWarmupFrames(0)).toThrow(/positive/u);
+        expect(rhiBenchmarkUsesDynamicTextures('large-instancing', 640_000)).toBe(false);
+        expect(rhiBenchmarkUsesDynamicTextures('dynamic-geometry-texture-upload', 4_194_304)).toBe(
+            true
+        );
+        expect(rhiBenchmarkUsesDynamicTextures('static-unlit-single-draw', 0)).toBe(false);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_RENDER_FRAMES).toBe(1);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS).toBe(32);
-        expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(7);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES).toBe(5);
+        expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(1);
         expect(RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES).toBe(16 * 1024);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(21);
-        expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(21);
+        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(7);
+        expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(3);
         expect(RHI_PRODUCTION_SMOKE_SCENARIOS).toEqual(['static-unlit-single-draw']);
         expect(RHI_PRODUCTION_SMOKE_BACKENDS).toEqual(['webgpu', 'webgl2']);
         expect(
@@ -474,6 +497,9 @@ describe('RHI production fixture smoke contract', () => {
         );
         expect(source).toContain('browser: await chromium.launch({');
         expect(source).toContain("adapterPolicy: 'swiftshader'");
+        expect(source).toContain("process.argv.includes('--full-churn')");
+        expect(source).toContain('completeLongRound || fixture.metadata.quality.churnFrames === 0');
+        expect(source).toContain('RHI_PRODUCTION_SMOKE_CHURN_CONTRACT_FRAMES');
         const fixtureSource = await readFile(
             resolve(repositoryRoot, 'test/performance/fixtures/rhi-production.ts'),
             'utf8'

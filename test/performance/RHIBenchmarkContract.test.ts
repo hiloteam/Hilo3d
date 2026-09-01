@@ -43,7 +43,7 @@ function benchmarkEnvironment(manifest: RHIBenchmarkManifest): RHIBenchmarkEnvir
         runnerTags: manifest.rig.requiredRunnerTags,
         fingerprintSha256: '',
         osPlatform: manifest.rig.osPlatform,
-        osRelease: '6.8.0-contract',
+        osRelease: '25.2.0-contract',
         cpuModel: 'Fixed benchmark CPU',
         gpuFingerprint: 'Fixed benchmark GPU',
         gpuDriver: '1.2.3',
@@ -200,21 +200,23 @@ describe('RHI benchmark baseline contract', () => {
         expect(RHI_BENCHMARK_METRICS).toHaveLength(27);
         expect(manifest.backends).toEqual(['webgl2', 'webgpu']);
         expect(manifest.sampling).toMatchObject({
-            warmupFrames: 300,
-            sampleFrames: 2000,
+            warmupFrames: 120,
+            sampleFrames: 500,
             allocationSampleFrames: RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
-            rounds: 7,
+            rounds: 3,
             bootstrapIterations: 10_000,
             confidenceLevel: 0.95
         });
         expect(manifest.sampling.bootstrapSeed).toBeGreaterThan(0);
         expect(manifest.rig.requiredRunnerTags).toEqual([
             'self-hosted',
-            'linux',
+            'macos',
             'gpu',
             'rhi-perf'
         ]);
-        expect(manifest.rig.acceptedFingerprintSha256).toEqual([]);
+        expect(manifest.rig.acceptedFingerprintSha256).toEqual([
+            'c89bae9e3c047006365f4b6eb260b16c7478b6f60c3d15c09e88578848cdce68'
+        ]);
         expect(manifest.scenarios.every(scenario => scenario.quality.devicePixelRatio === 1)).toBe(
             true
         );
@@ -243,15 +245,15 @@ describe('RHI benchmark baseline contract', () => {
         expect(() => parseRHIBenchmarkManifest(missingBackend)).toThrow(/exactly webgl2, webgpu/u);
 
         const weakenedSampling = mutableRecord(structuredClone(repositoryManifestValue));
-        mutableRecord(weakenedSampling['sampling'])['rounds'] = 6;
+        mutableRecord(weakenedSampling['sampling'])['rounds'] = 2;
         expect(() => parseRHIBenchmarkManifest(weakenedSampling)).toThrow(
-            /rounds must remain frozen at 7/u
+            /rounds must remain frozen at 3/u
         );
 
         const weakenedAllocationSampling = mutableRecord(structuredClone(repositoryManifestValue));
-        mutableRecord(weakenedAllocationSampling['sampling'])['allocationSampleFrames'] = 20;
+        mutableRecord(weakenedAllocationSampling['sampling'])['allocationSampleFrames'] = 2;
         expect(() => parseRHIBenchmarkManifest(weakenedAllocationSampling)).toThrow(
-            /allocationSampleFrames must remain frozen at 21/u
+            /allocationSampleFrames must remain frozen at 3/u
         );
 
         const weakenedRig = mutableRecord(structuredClone(repositoryManifestValue));
@@ -263,8 +265,12 @@ describe('RHI benchmark baseline contract', () => {
 
     it('rejects an unenrolled or mismatched physical rig fingerprint', () => {
         const repositoryManifest = parseRHIBenchmarkManifest(repositoryManifestValue);
+        const unenrolledManifest = {
+            ...repositoryManifest,
+            rig: { ...repositoryManifest.rig, acceptedFingerprintSha256: [] }
+        };
         expect(() =>
-            verifyRHIBaseline(repositoryManifest, validBaseline(repositoryManifest), RAW_BYTES)
+            verifyRHIBaseline(unenrolledManifest, validBaseline(unenrolledManifest), RAW_BYTES)
         ).toThrow(/no enrolled physical-rig fingerprint/u);
 
         const manifest = enrolledManifest();
@@ -293,11 +299,11 @@ describe('RHI benchmark baseline contract', () => {
         const missingRound = clonedBaseline(manifest);
         mutableArray(firstCase(missingRound)['rounds']).pop();
         expect(() => verifyRHIBaseline(manifest, missingRound, RAW_BYTES)).toThrow(
-            /exactly 7 rounds/u
+            /exactly 3 rounds/u
         );
 
         const wrongSamples = clonedBaseline(manifest);
-        firstRound(wrongSamples)['sampleCount'] = 1999;
+        firstRound(wrongSamples)['sampleCount'] = 499;
         expect(() => verifyRHIBaseline(manifest, wrongSamples, RAW_BYTES)).toThrow(
             /sampleCount differs/u
         );
@@ -308,7 +314,7 @@ describe('RHI benchmark baseline contract', () => {
         );
         allocationDistribution['sampleCount'] = manifest.sampling.sampleFrames;
         expect(() => verifyRHIBaseline(manifest, wrongAllocationSamples, RAW_BYTES)).toThrow(
-            /allocationBytesPerFrame must summarize exactly 21 samples/u
+            /allocationBytesPerFrame must summarize exactly 3 samples/u
         );
 
         const wrongOrder = clonedBaseline(manifest);

@@ -1,6 +1,6 @@
+import { execFile } from 'node:child_process';
 import { cpus, release } from 'node:os';
-import type { Dirent } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
@@ -50,42 +50,75 @@ function phase0Failure(message: string): never {
     throw new Error(`RHI Phase 0 preflight failed: ${message}`);
 }
 
-/** Recheck the live Linux power policy immediately before every capture/freeze mutation. */
+export interface RHIMacOSPowerState {
+    readonly powerSource: string;
+    readonly customSettings: string;
+    readonly thermalState: string;
+}
+
+/** Validate the macOS state that makes laptop captures comparable across commits. */
+export function assertRHIMacOSFixedPowerState(state: RHIMacOSPowerState): void {
+    if (!state.powerSource.includes("Now drawing from 'AC Power'")) {
+        throw new Error('the macOS performance rig must be connected to AC power');
+    }
+    const acSettings = /(?:^|\n)AC Power:\s*\n([\s\S]*)$/u.exec(state.customSettings)?.[1];
+    if (!acSettings || !/(?:^|\n)\s*powermode\s+2(?:\s|$)/u.test(acSettings)) {
+        throw new Error('macOS High Power Mode must be enabled for AC power');
+    }
+    if (
+        !state.thermalState.includes('No thermal warning level has been recorded') ||
+        !state.thermalState.includes('No performance warning level has been recorded')
+    ) {
+        throw new Error('macOS reports a thermal or performance warning since boot');
+    }
+}
+
+function runPowerAuditCommand(arguments_: readonly string[]): Promise<string> {
+    return new Promise((resolvePromise, reject) => {
+        execFile('pmset', arguments_, { encoding: 'utf8' }, (error, stdout) => {
+            if (error) {
+                reject(new Error(`pmset ${arguments_.join(' ')} failed`, { cause: error }));
+                return;
+            }
+            resolvePromise(stdout);
+        });
+    });
+}
+
+/** Recheck live macOS power and thermal policy before every capture/freeze mutation. */
 export async function detectRHIFixedPowerProfile(): Promise<string> {
-    let entries: Dirent[];
-    try {
-        entries = await readdir('/sys/devices/system/cpu', { withFileTypes: true });
-    } catch (error) {
-        throw new Error(
-            `cannot inspect Linux CPU governors: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error }
-        );
+    if (process.platform !== 'darwin') {
+        throw new Error('the enrolled performance rig requires macOS');
     }
-    const governors: string[] = [];
-    for (const entry of entries) {
-        if (!entry.isDirectory() || !/^cpu\d+$/u.test(entry.name)) continue;
-        try {
-            governors.push(
-                (
-                    await readFile(
-                        `/sys/devices/system/cpu/${entry.name}/cpufreq/scaling_governor`,
-                        'utf8'
-                    )
-                ).trim()
-            );
-        } catch {
-            // Offline cores and kernels without cpufreq are not evidence of a fixed profile.
-        }
-    }
-    if (governors.length === 0 || governors.some(governor => governor !== 'performance')) {
-        throw new Error('every observable CPU core must use the performance governor');
-    }
+    const [powerSource, customSettings, thermalState] = await Promise.all([
+        runPowerAuditCommand(['-g', 'ps']),
+        runPowerAuditCommand(['-g', 'custom']),
+        runPowerAuditCommand(['-g', 'therm'])
+    ]);
+    assertRHIMacOSFixedPowerState({ powerSource, customSettings, thermalState });
     if (process.env[RHI_PHASE0_POWER_PROFILE_VARIABLE] !== 'fixed-performance') {
         throw new Error(
             `${RHI_PHASE0_POWER_PROFILE_VARIABLE}=fixed-performance is required after GPU/power-policy audit`
         );
     }
     return 'fixed-performance';
+}
+
+/** Browser flags shared by physical-rig audit and evidence collection. */
+export function rhiPhysicalGpuBrowserArguments(platform: string): readonly string[] {
+    if (platform !== 'darwin') {
+        throw new Error('the enrolled physical GPU browser profile requires macOS');
+    }
+    return Object.freeze([
+        '--enable-precise-memory-info',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-features=CalculateNativeWinOcclusion',
+        '--disable-software-rasterizer',
+        '--enable-unsafe-webgpu',
+        '--ignore-gpu-blocklist',
+        '--use-angle=metal'
+    ]);
 }
 
 function pathStaysInside(root: string, path: string): boolean {
@@ -121,7 +154,7 @@ async function readInstalledPlaywrightVersion(repositoryRoot: string): Promise<s
 }
 
 /**
- * Gate every capture/freezing mutation behind an enrolled physical Linux rig, exact Chromium
+ * Gate every capture/freezing mutation behind the enrolled physical macOS rig, exact Chromium
  * executable fingerprint, and the production RHI fixture. This function performs no writes.
  */
 export async function assertRHIPhase0Preflight(
@@ -130,8 +163,8 @@ export async function assertRHIPhase0Preflight(
     const manifest = parseRHIBenchmarkManifest(options.manifestValue);
     const environment = parseRHIBenchmarkEnvironment(options.environmentValue);
     const platform = options.platform ?? process.platform;
-    if (platform !== 'linux' || platform !== manifest.rig.osPlatform) {
-        phase0Failure('capture requires the dedicated Linux performance rig');
+    if (platform !== 'darwin' || platform !== manifest.rig.osPlatform) {
+        phase0Failure('capture requires the dedicated macOS performance rig');
     }
     verifyRHIBenchmarkEnvironment(manifest.rig, environment);
     const detectedNodeVersion = options.detectedNodeVersion ?? process.versions.node;

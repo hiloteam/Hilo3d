@@ -1,4 +1,5 @@
 .cache
+benchmarks/rhi/baselines
 coverage
 dist
 dist-examples

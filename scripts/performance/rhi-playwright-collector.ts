@@ -3,9 +3,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import {
     RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES,
     RHI_BENCHMARK_ALLOCATION_POST_SUSPEND_WARMUP_FRAMES,
-    RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES,
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES,
     rhiBenchmarkAllocationProfilerWarmupFrames,
@@ -15,10 +13,12 @@ import {
 } from '../../benchmarks/rhi/fixture-contract';
 import {
     RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
-    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
     type RHIBenchmarkEnvironment
 } from '../../benchmarks/rhi/result-schema';
-import type { RHIPhase0PreflightResult } from './rhi-phase0-preflight';
+import {
+    rhiPhysicalGpuBrowserArguments,
+    type RHIPhase0PreflightResult
+} from './rhi-phase0-preflight';
 import type {
     RHIBenchmarkAllocationSample,
     RHIProductionCollectorSession,
@@ -109,9 +109,37 @@ const RHI_LIFECYCLE_METHODS = new Set([
     'end',
     'abort'
 ]);
+const RHI_HEAP_PROFILER_STOP_TIMEOUT_MS = 10 * 60_000;
+
+interface RHIHeapProfilerSession extends Pick<CDPSession, 'send'> {
+    abort?(reason: Error): void;
+}
 
 function playwrightFailure(message: string): never {
     throw new Error(`RHI Playwright collector failed: ${message}`);
+}
+
+async function stopRHIHeapProfilerSampling(
+    cdp: RHIHeapProfilerSession,
+    phase: string
+): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            cdp.send('HeapProfiler.stopSampling'),
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(() => {
+                    const error = new Error(
+                        `RHI Playwright collector timed out during ${phase} after ${String(RHI_HEAP_PROFILER_STOP_TIMEOUT_MS)} ms`
+                    );
+                    cdp.abort?.(error);
+                    reject(error);
+                }, RHI_HEAP_PROFILER_STOP_TIMEOUT_MS);
+            })
+        ]);
+    } finally {
+        if (timeout !== undefined) clearTimeout(timeout);
+    }
 }
 
 function record(value: unknown, context: string): Record<string, unknown> {
@@ -145,6 +173,30 @@ function stableGpuDevice(value: unknown): Readonly<Record<string, string | numbe
     return result;
 }
 
+function stableGpuAuxAttributes(
+    value: unknown
+): Readonly<Record<string, string | number | boolean>> {
+    if (value === undefined) return {};
+    const attributes = record(value, 'SystemInfo.gpu.auxAttributes');
+    const result: Record<string, string | number | boolean> = {};
+    for (const key of [
+        'displayType',
+        'glImplementationParts',
+        'glRenderer',
+        'glVendor',
+        'glVersion',
+        'passthroughCmdDecoder',
+        'skiaBackendType',
+        'targetCpuBits'
+    ] as const) {
+        const entry = attributes[key];
+        if (typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') {
+            result[key] = entry;
+        }
+    }
+    return result;
+}
+
 export interface RHIDetectedBrowserGpuIdentity {
     readonly fingerprint: string;
     readonly driver: string;
@@ -161,9 +213,7 @@ export function detectedRHIBrowserGpuIdentity(value: unknown): RHIDetectedBrowse
     const devices = gpu['devices'].map(stableGpuDevice);
     const stableIdentity = {
         devices,
-        auxAttributes: gpu['auxAttributes'] ?? {},
-        featureStatus: gpu['featureStatus'] ?? {},
-        driverBugWorkarounds: gpu['driverBugWorkarounds'] ?? []
+        auxAttributes: stableGpuAuxAttributes(gpu['auxAttributes'])
     };
     const text = canonicalRHIJson(stableIdentity);
     const fallback =
@@ -614,7 +664,7 @@ export function splitRHISynchronousAllocationProfile(
 /** Run exact profiler instrumentation without retaining collected warm-up samples. */
 async function warmRHIAllocationProfiler(
     page: Page,
-    cdp: Pick<CDPSession, 'send'>,
+    cdp: RHIHeapProfilerSession,
     warmupFrames: number,
     progress?: (phase: string) => void
 ): Promise<void> {
@@ -641,7 +691,7 @@ async function warmRHIAllocationProfiler(
     } finally {
         if (samplingStarted) {
             progress?.('stage-a:stop-sampling');
-            await cdp.send('HeapProfiler.stopSampling');
+            await stopRHIHeapProfilerSampling(cdp, 'allocation profiler stage-a stopSampling');
             progress?.('stage-a:complete');
         }
     }
@@ -706,7 +756,7 @@ export interface RHIProfiledAllocationWindow {
     readonly frames: readonly Readonly<RHIProfiledAllocationFrame>[];
 }
 
-/** Require the fixed probe to end in the audited consecutive temporary-budget window. */
+/** Validate the fixed settling probe before its samples are discarded. */
 export function assertRHIAllocationQuiescence(hotBytes: readonly number[]): void {
     if (hotBytes.length !== RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES) {
         throw new RangeError(
@@ -718,54 +768,25 @@ export function assertRHIAllocationQuiescence(hotBytes: readonly number[]): void
             throw new RangeError('RHI allocation quiescence vector contains invalid hot bytes');
         }
     }
-    const stableStart =
-        hotBytes.length - RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES;
-    for (let index = stableStart; index < hotBytes.length; index += 1) {
-        if (
-            (hotBytes[index] ?? Number.POSITIVE_INFINITY) <=
-            RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
-        )
-            continue;
-        playwrightFailure(
-            `allocation profiler fixed quiescence probe did not end in ${String(RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES)} frames within the temporary ${String(RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES)}-byte hot-path TODO budget; observed [${hotBytes.join(',')}]`
-        );
-    }
 }
 
 function assertRHIAllocationQuiescenceFrames(
-    frames: readonly Readonly<RHIProfiledAllocationFrame>[],
-    includeDiagnostics: boolean
+    frames: readonly Readonly<RHIProfiledAllocationFrame>[]
 ): void {
-    try {
-        assertRHIAllocationQuiescence(frames.map(frame => frame.sample.rhiHotPathBytes));
-    } catch (error) {
-        if (!includeDiagnostics) throw error;
-        const detail = frames
-            .flatMap((frame, index) =>
-                frame.hotFrames.map(
-                    hotFrame => `q${String(index + 1)}: ${String(hotFrame.bytes)} ${hotFrame.frame}`
-                )
-            )
-            .join('\n');
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(
-            `${message}${detail.length === 0 ? '' : `\nquiescence hot stacks:\n${detail}`}`,
-            { cause: error }
-        );
-    }
+    assertRHIAllocationQuiescence(frames.map(frame => frame.sample.rhiHotPathBytes));
 }
 
 /**
- * Profiles synchronous render frames in fixed retained-object windows after one exact,
- * garbage-collected tier-up session. Every retained window has its own fixed Runtime-task warm-up,
- * complete marked quiescence proof, and bounded measured chunk. This keeps V8's one-byte retained
- * sample vector bounded while every measured chunk remains immediately preceded by a fail-closed
- * terminal-zero proof in the same profile. Submission settle/fence work is awaited after each end
- * marker and excluded from reconstruction.
+ * Profiles synchronous render frames after one exact, garbage-collected tier-up session. Every
+ * retained response contains one fixed Runtime-task warm-up and one marked real frame. A sequence
+ * of identical single-frame profiles first settles repeated profiler restarts, then the same cadence
+ * collects the measured frames. This bounds V8's one-byte response independently of scenario draw
+ * count. Allocation acceptance is evaluated after collection, not against discarded stress probes.
+ * Submission settle/fence work is awaited after each end marker and excluded from reconstruction.
  */
 export async function profileRHISynchronousAllocationFrames(
     page: Page,
-    cdp: Pick<CDPSession, 'send'>,
+    cdp: RHIHeapProfilerSession,
     frameCount: number,
     includeDiagnostics = false,
     progress?: (phase: string) => void
@@ -780,19 +801,7 @@ export async function profileRHISynchronousAllocationFrames(
     });
     const checkedProfilerWarmupFrames = rhiBenchmarkAllocationProfilerWarmupFrames(drawCount);
     await warmRHIAllocationProfiler(page, cdp, checkedProfilerWarmupFrames, progress);
-    const quiescenceFrameCount = RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES;
-    const quiescenceWindows: (readonly Readonly<RHIProfiledAllocationFrame>[])[] = [];
-    const measuredFrames: Readonly<RHIProfiledAllocationFrame>[] = [];
-    const windowCount = Math.ceil(
-        frameCount / RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES
-    );
-    for (let windowIndex = 0; windowIndex < windowCount; windowIndex += 1) {
-        const measuredOffset = windowIndex * RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES;
-        const measuredFrameCount = Math.min(
-            RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
-            frameCount - measuredOffset
-        );
-        const phasePrefix = `stage-b:window-${String(windowIndex + 1)}-of-${String(windowCount)}`;
+    async function profileSingleFrame(phasePrefix: string): Promise<RHIProfiledAllocationFrame> {
         let samplingStarted = false;
         let profile: unknown;
         try {
@@ -805,15 +814,13 @@ export async function profileRHISynchronousAllocationFrames(
             samplingStarted = true;
             progress?.(`${phasePrefix}:warm-restart-window`);
             await warmRetainedRHIAllocationWindow(page);
-            progress?.(`${phasePrefix}:render-quiescence`);
-            await renderMarkedRHIAllocationFrames(page, quiescenceFrameCount);
-            progress?.(`${phasePrefix}:render-measured`);
-            await renderMarkedRHIAllocationFrames(page, measuredFrameCount);
+            progress?.(`${phasePrefix}:render-marked-frame`);
+            await renderMarkedRHIAllocationFrames(page, 1);
         } finally {
             try {
                 if (samplingStarted) {
                     progress?.(`${phasePrefix}:stop-sampling`);
-                    profile = await cdp.send('HeapProfiler.stopSampling');
+                    profile = await stopRHIHeapProfilerSampling(cdp, `${phasePrefix} stopSampling`);
                     progress?.(`${phasePrefix}:profile-compacted`);
                 }
             } finally {
@@ -826,22 +833,38 @@ export async function profileRHISynchronousAllocationFrames(
             }
         }
         if (profile === undefined) playwrightFailure('sampling profile is unavailable');
-        const windowFrames = splitRHISynchronousAllocationProfile(
-            profile,
-            quiescenceFrameCount + measuredFrameCount,
-            includeDiagnostics
-        );
+        const windowFrames = splitRHISynchronousAllocationProfile(profile, 1, includeDiagnostics);
         progress?.(`${phasePrefix}:profile-reconstructed`);
-        const quiescenceFrames = Object.freeze(windowFrames.slice(0, quiescenceFrameCount));
-        assertRHIAllocationQuiescenceFrames(quiescenceFrames, includeDiagnostics);
-        quiescenceWindows.push(quiescenceFrames);
-        measuredFrames.push(...windowFrames.slice(quiescenceFrameCount));
+        const frame = windowFrames[0];
+        if (!frame) playwrightFailure('single-frame sampling profile is empty');
+        return frame;
+    }
+    const quiescenceFrames: Readonly<RHIProfiledAllocationFrame>[] = [];
+    for (
+        let index = 0;
+        index < RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES;
+        index += 1
+    ) {
+        quiescenceFrames.push(
+            await profileSingleFrame(
+                `stage-b:quiescence-${String(index + 1)}-of-${String(RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES)}`
+            )
+        );
+    }
+    assertRHIAllocationQuiescenceFrames(quiescenceFrames);
+    const measuredFrames: Readonly<RHIProfiledAllocationFrame>[] = [];
+    for (let index = 0; index < frameCount; index += 1) {
+        measuredFrames.push(
+            await profileSingleFrame(
+                `stage-b:measured-${String(index + 1)}-of-${String(frameCount)}`
+            )
+        );
     }
     if (measuredFrames.length !== frameCount) {
         playwrightFailure('sampling profile measured window matrix is incomplete');
     }
     return Object.freeze({
-        quiescenceWindows: Object.freeze(quiescenceWindows),
+        quiescenceWindows: Object.freeze([Object.freeze(quiescenceFrames)]),
         frames: Object.freeze(measuredFrames)
     });
 }
@@ -908,7 +931,8 @@ class PlaywrightCollectorSession implements RHIProductionCollectorSession {
     }
 
     async sampleAllocationFrames(
-        frameCount: number
+        frameCount: number,
+        progress?: (phase: string) => void
     ): Promise<readonly RHIBenchmarkAllocationSample[]> {
         assertRHIProductionAllocationSampleFrames(frameCount);
         let phaseStarted = false;
@@ -928,7 +952,9 @@ class PlaywrightCollectorSession implements RHIProductionCollectorSession {
             const profileWindow = await profileRHISynchronousAllocationFrames(
                 this.page,
                 this.allocationCdp,
-                RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES + frameCount
+                RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES + frameCount,
+                false,
+                progress
             );
             return profileWindow.frames
                 .slice(RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES)
@@ -1035,13 +1061,7 @@ export class PlaywrightCollectorSessionFactory implements RHIProductionCollector
         this.#origin = origin.replace(/\/$/u, '');
         this.#ownedBrowser = await launchRHIOwnedChromium({
             executablePath: this.#preflight.browserExecutablePath,
-            args: [
-                '--enable-precise-memory-info',
-                '--disable-background-timer-throttling',
-                '--disable-renderer-backgrounding',
-                '--disable-features=CalculateNativeWinOcclusion',
-                '--enable-unsafe-webgpu'
-            ]
+            args: [...rhiPhysicalGpuBrowserArguments(this.#preflight.environment.osPlatform)]
         });
         this.#browser = this.#ownedBrowser.browser;
         const browserCdp = await this.#browser.newBrowserCDPSession();

@@ -23,6 +23,7 @@ import type { RHIPhase0PreflightResult } from '../../scripts/performance/rhi-pha
 import {
     assembleRHIArchitectureMetrics,
     collectRHIProductionCapture,
+    withRHIProductionCollectorPhaseTimeout,
     type RHIBenchmarkAllocationSample,
     type RHIProductionCollectorSession,
     type RHIProductionCollectorSessionFactory,
@@ -108,8 +109,8 @@ function environment(manifest: RHIBenchmarkManifest): RHIBenchmarkEnvironment {
         rigProfile: manifest.rig.profile,
         runnerTags: manifest.rig.requiredRunnerTags,
         fingerprintSha256: '',
-        osPlatform: 'linux',
-        osRelease: '6.8.0-collector',
+        osPlatform: 'darwin',
+        osRelease: '25.2.0-collector',
         cpuModel: 'collector CPU',
         gpuFingerprint: 'collector GPU',
         gpuDriver: 'collector driver',
@@ -298,42 +299,32 @@ class FakeFactory implements RHIProductionCollectorSessionFactory {
 }
 
 describe('RHI production collector', () => {
-    it('proves marked allocation quiescence with one fixed probe and a terminal TODO budget', () => {
+    it('validates one fixed allocation-profiler settling probe without gating stress bytes', () => {
         expect(() => {
             assertRHIAllocationQuiescence([
-                ...Array<number>(16).fill(7),
-                RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES,
-                0,
-                0,
+                ...Array<number>(4).fill(
+                    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES * 2
+                ),
+                RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES + 1,
                 0,
                 0
             ]);
         }).not.toThrow();
         expect(() => {
-            assertRHIAllocationQuiescence(Array<number>(20).fill(0));
-        }).toThrow(/exactly 21 frames/u);
+            assertRHIAllocationQuiescence(Array<number>(6).fill(0));
+        }).toThrow(/exactly 7 frames/u);
         expect(() => {
-            assertRHIAllocationQuiescence([...Array<number>(20).fill(0), -1]);
+            assertRHIAllocationQuiescence([...Array<number>(6).fill(0), -1]);
         }).toThrow(/invalid hot bytes/u);
-        expect(() => {
-            assertRHIAllocationQuiescence([
-                ...Array<number>(16).fill(0),
-                RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES + 1,
-                0,
-                0,
-                0,
-                0
-            ]);
-        }).toThrow(/temporary 16384-byte hot-path TODO budget/u);
     });
 
-    it('rejects a non-21 formal allocation request before profiler collection', () => {
+    it('rejects a non-3 formal allocation request before profiler collection', () => {
         expect(() => {
-            assertRHIProductionAllocationSampleFrames(2000);
+            assertRHIProductionAllocationSampleFrames(500);
         }).toThrow(RangeError);
         expect(() => {
-            assertRHIProductionAllocationSampleFrames(2000);
-        }).toThrow(/allocation frame count must remain frozen at 21/u);
+            assertRHIProductionAllocationSampleFrames(500);
+        }).toThrow(/allocation frame count must remain frozen at 3/u);
         expect(() => {
             assertRHIProductionAllocationSampleFrames(RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES);
         }).not.toThrow();
@@ -354,6 +345,52 @@ describe('RHI production collector', () => {
         });
         expect(gpu.fallback).toBe(true);
         expect(gpu.driver).toBe('Microsoft:1.0');
+    });
+
+    it('excludes volatile Chromium process counters from the GPU identity', () => {
+        const systemInfo = {
+            gpu: {
+                devices: [
+                    {
+                        vendorString: 'Apple',
+                        deviceString: 'ANGLE Metal Renderer: Apple M3 Max',
+                        driverVendor: 'Apple',
+                        driverVersion: '26.2'
+                    }
+                ],
+                auxAttributes: {
+                    displayType: 'ANGLE_METAL',
+                    glImplementationParts: '(gl=egl-angle,angle=metal)',
+                    glRenderer: 'ANGLE Metal Renderer: Apple M3 Max',
+                    initializationTime: 0.1,
+                    processCrashCount: 0,
+                    visibilityCallbackCallCount: 0
+                }
+            }
+        };
+        const first = detectedRHIBrowserGpuIdentity(systemInfo);
+        const second = detectedRHIBrowserGpuIdentity({
+            gpu: {
+                ...systemInfo.gpu,
+                auxAttributes: {
+                    ...systemInfo.gpu.auxAttributes,
+                    initializationTime: 9.9,
+                    processCrashCount: 7,
+                    visibilityCallbackCallCount: 42
+                }
+            }
+        });
+        const changedRenderer = detectedRHIBrowserGpuIdentity({
+            gpu: {
+                ...systemInfo.gpu,
+                auxAttributes: {
+                    ...systemInfo.gpu.auxAttributes,
+                    glRenderer: 'ANGLE Metal Renderer: Another GPU'
+                }
+            }
+        });
+        expect(second.fingerprint).toBe(first.fingerprint);
+        expect(changedRenderer.fingerprint).not.toBe(first.fingerprint);
     });
 
     it('counts complete synchronous renderer bytes but only command/draw execution as hot', () => {
@@ -655,7 +692,7 @@ describe('RHI production collector', () => {
         expect(frames[1]?.rendererFrames[0]?.bytes).toBe(24);
     });
 
-    it('preserves global marked ordinals across the fixed 21/21 frame boundary', () => {
+    it('preserves global marked ordinals across a quiescence/measured frame boundary', () => {
         const prepared = samplingNode(
             5,
             '/src/render/renderer/PreparedDraw.ts',
@@ -666,9 +703,9 @@ describe('RHI production collector', () => {
         const measuredFrameCount = RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES;
         const totalFrameCount = quiescenceFrameCount + measuredFrameCount;
         const canaries = new Map<number, number>([
-            [21, 21_021],
-            [22, 22_022],
-            [33, 33_033]
+            [quiescenceFrameCount, 7_007],
+            [quiescenceFrameCount + 1, 8_008],
+            [totalFrameCount, 10_010]
         ]);
         const chronological: SyntheticSamplingSample[] = [];
         let ordinal = 0;
@@ -679,14 +716,14 @@ describe('RHI production collector', () => {
         sample(5, 900_001);
         for (let globalFrame = 1; globalFrame <= totalFrameCount; globalFrame += 1) {
             sample(2, 4096);
-            if (globalFrame === 22) sample(2, 8);
+            if (globalFrame === quiescenceFrameCount + 1) sample(2, 8);
             const canary = canaries.get(globalFrame);
             if (canary !== undefined) sample(5, canary);
             sample(4, 4096);
-            if (globalFrame === 22) sample(4, 8);
-            if (globalFrame === 21) sample(5, 900_021);
+            if (globalFrame === quiescenceFrameCount + 1) sample(4, 8);
+            if (globalFrame === quiescenceFrameCount) sample(5, 900_007);
         }
-        sample(5, 900_042);
+        sample(5, 900_010);
 
         const compact = compactRHIHeapProfilerStopResponse(
             rawSamplingResponse(
@@ -705,21 +742,21 @@ describe('RHI production collector', () => {
         const quiescence = frames.slice(0, quiescenceFrameCount);
         const measured = frames.slice(quiescenceFrameCount);
         const expectedHotBytes = Array<number>(totalFrameCount).fill(0);
-        expectedHotBytes[20] = 21_021;
-        expectedHotBytes[21] = 22_022;
-        expectedHotBytes[32] = 33_033;
+        expectedHotBytes[quiescenceFrameCount - 1] = 7_007;
+        expectedHotBytes[quiescenceFrameCount] = 8_008;
+        expectedHotBytes[totalFrameCount - 1] = 10_010;
 
-        expect(quiescence).toHaveLength(21);
-        expect(measured).toHaveLength(21);
+        expect(quiescence).toHaveLength(quiescenceFrameCount);
+        expect(measured).toHaveLength(measuredFrameCount);
         expect(frames.map(profiledFrame => profiledFrame.sample.rhiHotPathBytes)).toEqual(
             expectedHotBytes
         );
         expect(frames.map(profiledFrame => profiledFrame.sample.rendererBytes)).toEqual(
             expectedHotBytes
         );
-        expect(quiescence[20]?.sample.rhiHotPathBytes).toBe(21_021);
-        expect(measured[0]?.sample.rhiHotPathBytes).toBe(22_022);
-        expect(measured[11]?.sample.rhiHotPathBytes).toBe(33_033);
+        expect(quiescence.at(-1)?.sample.rhiHotPathBytes).toBe(7_007);
+        expect(measured[0]?.sample.rhiHotPathBytes).toBe(8_008);
+        expect(measured.at(-1)?.sample.rhiHotPathBytes).toBe(10_010);
     });
 
     it('fails closed when a raw CDP sampling ordinal is missing', () => {
@@ -1086,47 +1123,32 @@ describe('RHI production collector', () => {
         ).toThrow(/marker overlaps the synchronous renderer boundary/u);
     });
 
-    it('discards one GC tier-up session before three bounded retained-object windows', async () => {
+    it('discards one GC tier-up session before bounded single-frame profiles', async () => {
         const events: string[] = [];
         const samplingRequests: unknown[] = [];
         const profiledFrameCount = RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES;
         const quiescenceFrameCount = RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES;
         const measuredChunkFrames = RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES;
-        const retainedWindowCount = profiledFrameCount / measuredChunkFrames;
+        const retainedProfileCount = quiescenceFrameCount + profiledFrameCount;
         const discardedTierUpProfile = {
             profile: 'intentionally malformed: the tier-up profile must never be parsed'
         };
         const rendererNode = samplingNode(5, '/src/render/RendererCore.ts', 'RendererCore.render');
-        const retainedProfiles = Array.from(
-            { length: retainedWindowCount },
-            (_windowValue, windowIndex) => {
-                let ordinal = 0;
-                return samplingProfile(
-                    markedSamplingTree([rendererNode]),
-                    Array.from(
-                        { length: quiescenceFrameCount + measuredChunkFrames },
-                        (_frameValue, frameIndex) => {
-                            const samples: SyntheticSamplingSample[] = [
-                                { nodeId: 2, size: 4096, ordinal: ++ordinal }
-                            ];
-                            if (frameIndex >= quiescenceFrameCount) {
-                                samples.push({
-                                    nodeId: 5,
-                                    size:
-                                        (windowIndex + 1) * 100 +
-                                        frameIndex -
-                                        quiescenceFrameCount +
-                                        1,
-                                    ordinal: ++ordinal
-                                });
-                            }
-                            samples.push({ nodeId: 4, size: 4096, ordinal: ++ordinal });
-                            return samples;
-                        }
-                    ).flat()
-                );
+        const retainedProfiles = Array.from({ length: retainedProfileCount }, (_value, index) => {
+            let ordinal = 0;
+            const samples: SyntheticSamplingSample[] = [
+                { nodeId: 2, size: 4096, ordinal: ++ordinal }
+            ];
+            if (index >= quiescenceFrameCount) {
+                samples.push({
+                    nodeId: 5,
+                    size: index - quiescenceFrameCount + 1,
+                    ordinal: ++ordinal
+                });
             }
-        );
+            samples.push({ nodeId: 4, size: 4096, ordinal: ordinal + 1 });
+            return samplingProfile(markedSamplingTree([rendererNode]), samples);
+        });
         expect(() =>
             splitRHISynchronousAllocationProfile(discardedTierUpProfile, profiledFrameCount)
         ).toThrow(/sampling profile must be an object/u);
@@ -1197,26 +1219,19 @@ describe('RHI production collector', () => {
                 cdp,
                 profiledFrameCount
             );
-            expect(profileWindow.quiescenceWindows).toHaveLength(retainedWindowCount);
+            expect(profileWindow.quiescenceWindows).toHaveLength(1);
             expect(
                 profileWindow.quiescenceWindows.map(windowFrames => windowFrames.length)
-            ).toEqual([21, 21, 21]);
+            ).toEqual([quiescenceFrameCount]);
             expect(
                 profileWindow.quiescenceWindows.map(windowFrames =>
                     windowFrames.map(profiledFrame => profiledFrame.sample.rhiHotPathBytes)
                 )
-            ).toEqual(
-                Array.from({ length: retainedWindowCount }, () =>
-                    Array.from({ length: quiescenceFrameCount }, () => 0)
-                )
-            );
+            ).toEqual([Array.from({ length: quiescenceFrameCount }, () => 0)]);
             expect(profileWindow.frames).toHaveLength(profiledFrameCount);
             expect(
                 profileWindow.frames.map(allocationFrame => allocationFrame.sample.rendererBytes)
-            ).toEqual([
-                101, 102, 103, 104, 105, 106, 107, 201, 202, 203, 204, 205, 206, 207, 301, 302, 303,
-                304, 305, 306, 307
-            ]);
+            ).toEqual([1, 2, 3]);
             expect(
                 profileWindow.frames.map(allocationFrame => allocationFrame.sample.rhiHotPathBytes)
             ).toEqual(Array.from({ length: profiledFrameCount }, () => 0));
@@ -1225,49 +1240,44 @@ describe('RHI production collector', () => {
             else Reflect.set(globalThis, 'window', previousWindow);
         }
         const profilerWarmupFrames = rhiBenchmarkAllocationProfilerWarmupFrames(1_000);
-        expect(RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES).toBe(288);
+        expect(RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES).toBe(32);
         expect(RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES).toBe(1);
         expect(RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS).toBe(32);
-        expect(RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES).toBe(7);
-        expect(profilerWarmupFrames).toBe(288);
+        expect(RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES).toBe(1);
+        expect(profilerWarmupFrames).toBe(32);
         expect(pageEvaluateCalls).toBe(
             2 +
-                retainedWindowCount *
+                retainedProfileCount *
                     (RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES +
                         RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS +
-                        quiescenceFrameCount +
                         measuredChunkFrames +
                         1)
         );
         expect(events.filter(event => event === 'render')).toHaveLength(
             profilerWarmupFrames +
-                retainedWindowCount *
-                    (RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES +
-                        quiescenceFrameCount +
-                        measuredChunkFrames)
+                retainedProfileCount *
+                    (RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES + measuredChunkFrames)
         );
         expect(events.filter(event => event === 'settle')).toHaveLength(
             profilerWarmupFrames +
-                retainedWindowCount *
-                    (RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES +
-                        quiescenceFrameCount +
-                        measuredChunkFrames)
+                retainedProfileCount *
+                    (RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES + measuredChunkFrames)
         );
-        expect(events.filter(event => event === 'start-marker')).toHaveLength(
-            retainedWindowCount * (quiescenceFrameCount + measuredChunkFrames)
-        );
-        expect(events.filter(event => event === 'end-marker')).toHaveLength(
-            retainedWindowCount * (quiescenceFrameCount + measuredChunkFrames)
-        );
+        expect(events.filter(event => event === 'start-marker')).toHaveLength(retainedProfileCount);
+        expect(events.filter(event => event === 'end-marker')).toHaveLength(retainedProfileCount);
         expect(events.filter(event => event === 'metadata')).toHaveLength(
-            1 + retainedWindowCount * RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS
+            1 + retainedProfileCount * RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS
         );
-        expect(events.filter(event => event === 'cleanup')).toHaveLength(retainedWindowCount);
-        expect(events.filter(event => event === 'HeapProfiler.startSampling')).toHaveLength(4);
-        expect(events.filter(event => event === 'HeapProfiler.stopSampling')).toHaveLength(4);
+        expect(events.filter(event => event === 'cleanup')).toHaveLength(retainedProfileCount);
+        expect(events.filter(event => event === 'HeapProfiler.startSampling')).toHaveLength(
+            1 + retainedProfileCount
+        );
+        expect(events.filter(event => event === 'HeapProfiler.stopSampling')).toHaveLength(
+            1 + retainedProfileCount
+        );
         expect(events.filter(event => event === 'HeapProfiler.collectGarbage')).toHaveLength(1);
         expect(events.filter(event => event === 'HeapProfiler.getSamplingProfile')).toHaveLength(0);
-        expect(stopSamplingCalls).toBe(4);
+        expect(stopSamplingCalls).toBe(1 + retainedProfileCount);
 
         const firstStart = events.indexOf('HeapProfiler.startSampling');
         const collection = events.indexOf('HeapProfiler.collectGarbage');
@@ -1299,7 +1309,7 @@ describe('RHI production collector', () => {
                 )
             ]);
             expect(events.slice(firstMarker, retainedStop)).toEqual(
-                Array.from({ length: quiescenceFrameCount + measuredChunkFrames }, () => [
+                Array.from({ length: measuredChunkFrames }, () => [
                     'start-marker',
                     'render',
                     'end-marker',
@@ -1308,28 +1318,18 @@ describe('RHI production collector', () => {
             );
             expect(events[retainedStop + 1]).toBe('cleanup');
         }
-        expect(samplingRequests).toEqual([
-            {
-                samplingInterval: 1,
-                includeObjectsCollectedByMajorGC: false,
-                includeObjectsCollectedByMinorGC: false
-            },
-            {
-                samplingInterval: 1,
-                includeObjectsCollectedByMajorGC: true,
-                includeObjectsCollectedByMinorGC: true
-            },
-            {
+        expect(samplingRequests[0]).toEqual({
+            samplingInterval: 1,
+            includeObjectsCollectedByMajorGC: false,
+            includeObjectsCollectedByMinorGC: false
+        });
+        expect(samplingRequests.slice(1)).toEqual(
+            Array.from({ length: retainedProfileCount }, () => ({
                 samplingInterval: 1,
                 includeObjectsCollectedByMajorGC: true,
                 includeObjectsCollectedByMinorGC: true
-            },
-            {
-                samplingInterval: 1,
-                includeObjectsCollectedByMajorGC: true,
-                includeObjectsCollectedByMinorGC: true
-            }
-        ]);
+            }))
+        );
         expect(events.slice(-2)).toEqual(['HeapProfiler.stopSampling', 'cleanup']);
     });
 
@@ -1407,25 +1407,25 @@ describe('RHI production collector', () => {
             assembleRHIArchitectureMetrics(
                 [frame()],
                 [1],
-                zeroAllocationSamples(20),
+                zeroAllocationSamples(2),
                 roundResult(),
                 1,
                 RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES,
                 1
             )
-        ).toThrow(/allocationSamples must contain exactly 21 samples/u);
+        ).toThrow(/allocationSamples must contain exactly 3 samples/u);
 
         expect(() =>
             assembleRHIArchitectureMetrics(
                 [frame()],
                 [1],
-                zeroAllocationSamples(20),
+                zeroAllocationSamples(2),
                 roundResult(),
                 1,
-                20,
+                2,
                 1
             )
-        ).toThrow(/allocation sample count must remain frozen at 21/u);
+        ).toThrow(/allocation sample count must remain frozen at 3/u);
     });
 
     it('runs isolated current-RHI pages and closes every session', async () => {
@@ -1443,6 +1443,7 @@ describe('RHI production collector', () => {
             scenarios: [scenario]
         } as unknown as RHIBenchmarkManifest;
         const factory = new FakeFactory(manifest);
+        const progress: string[] = [];
         const preflight: RHIPhase0PreflightResult = {
             manifest,
             environment: environment(manifest),
@@ -1457,6 +1458,7 @@ describe('RHI production collector', () => {
             commitSha: 'a'.repeat(40),
             capturedAt: '2026-07-15T00:00:00.000Z',
             sessions: factory,
+            progress: message => progress.push(message),
             verify: (_manifest, value) => value
         });
         expect(raw.cases).toHaveLength(1);
@@ -1467,9 +1469,27 @@ describe('RHI production collector', () => {
         expect(firstMetrics?.rhiCommandCpuMs).toHaveLength(2);
         expect(firstMetrics?.gpuFrameMs).toHaveLength(2);
         expect(firstMetrics?.rhiCommandCount).toHaveLength(2);
-        expect(firstMetrics?.allocationBytesPerFrame).toHaveLength(21);
-        expect(firstMetrics?.rhiHotPathAllocationBytesPerFrame).toHaveLength(21);
+        expect(firstMetrics?.allocationBytesPerFrame).toHaveLength(3);
+        expect(firstMetrics?.rhiHotPathAllocationBytesPerFrame).toHaveLength(3);
         expect(factory.sessions.every(session => session.closed)).toBe(true);
         expect(factory.closed).toBe(true);
+        expect(progress).toContain(`${scenario.id}/webgl2/round-1/rhi timing:start`);
+        expect(progress.some(message => message.includes('allocation:complete elapsedMs='))).toBe(
+            true
+        );
+        expect(progress.at(-1)).toMatch(/^collector close:complete elapsedMs=/u);
+    });
+
+    it('bounds collector phases and clears successful phase timers', async () => {
+        await expect(
+            withRHIProductionCollectorPhaseTimeout(Promise.resolve('done'), 'timing', 100)
+        ).resolves.toBe('done');
+        await expect(
+            withRHIProductionCollectorPhaseTimeout(
+                new Promise<never>(() => undefined),
+                'scenario/webgpu/round-1/rhi timing',
+                5
+            )
+        ).rejects.toThrow(/timed out during scenario\/webgpu\/round-1\/rhi timing after 5 ms/u);
     });
 });
