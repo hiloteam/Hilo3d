@@ -356,6 +356,52 @@ describe('RHI production collector', () => {
         expect(gpu.driver).toBe('Microsoft:1.0');
     });
 
+    it('excludes volatile Chromium process counters from the GPU identity', () => {
+        const systemInfo = {
+            gpu: {
+                devices: [
+                    {
+                        vendorString: 'Apple',
+                        deviceString: 'ANGLE Metal Renderer: Apple M3 Max',
+                        driverVendor: 'Apple',
+                        driverVersion: '26.2'
+                    }
+                ],
+                auxAttributes: {
+                    displayType: 'ANGLE_METAL',
+                    glImplementationParts: '(gl=egl-angle,angle=metal)',
+                    glRenderer: 'ANGLE Metal Renderer: Apple M3 Max',
+                    initializationTime: 0.1,
+                    processCrashCount: 0,
+                    visibilityCallbackCallCount: 0
+                }
+            }
+        };
+        const first = detectedRHIBrowserGpuIdentity(systemInfo);
+        const second = detectedRHIBrowserGpuIdentity({
+            gpu: {
+                ...systemInfo.gpu,
+                auxAttributes: {
+                    ...systemInfo.gpu.auxAttributes,
+                    initializationTime: 9.9,
+                    processCrashCount: 7,
+                    visibilityCallbackCallCount: 42
+                }
+            }
+        });
+        const changedRenderer = detectedRHIBrowserGpuIdentity({
+            gpu: {
+                ...systemInfo.gpu,
+                auxAttributes: {
+                    ...systemInfo.gpu.auxAttributes,
+                    glRenderer: 'ANGLE Metal Renderer: Another GPU'
+                }
+            }
+        });
+        expect(second.fingerprint).toBe(first.fingerprint);
+        expect(changedRenderer.fingerprint).not.toBe(first.fingerprint);
+    });
+
     it('counts complete synchronous renderer bytes but only command/draw execution as hot', () => {
         const backend = '/src/render/rhi/backends/webgpu/WebGPUCommands.ts';
         const pass = '/src/render/rhi/backends/webgpu/WebGPURenderPass.ts';

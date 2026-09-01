@@ -148,6 +148,30 @@ function stableGpuDevice(value: unknown): Readonly<Record<string, string | numbe
     return result;
 }
 
+function stableGpuAuxAttributes(
+    value: unknown
+): Readonly<Record<string, string | number | boolean>> {
+    if (value === undefined) return {};
+    const attributes = record(value, 'SystemInfo.gpu.auxAttributes');
+    const result: Record<string, string | number | boolean> = {};
+    for (const key of [
+        'displayType',
+        'glImplementationParts',
+        'glRenderer',
+        'glVendor',
+        'glVersion',
+        'passthroughCmdDecoder',
+        'skiaBackendType',
+        'targetCpuBits'
+    ] as const) {
+        const entry = attributes[key];
+        if (typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') {
+            result[key] = entry;
+        }
+    }
+    return result;
+}
+
 export interface RHIDetectedBrowserGpuIdentity {
     readonly fingerprint: string;
     readonly driver: string;
@@ -164,9 +188,7 @@ export function detectedRHIBrowserGpuIdentity(value: unknown): RHIDetectedBrowse
     const devices = gpu['devices'].map(stableGpuDevice);
     const stableIdentity = {
         devices,
-        auxAttributes: gpu['auxAttributes'] ?? {},
-        featureStatus: gpu['featureStatus'] ?? {},
-        driverBugWorkarounds: gpu['driverBugWorkarounds'] ?? []
+        auxAttributes: stableGpuAuxAttributes(gpu['auxAttributes'])
     };
     const text = canonicalRHIJson(stableIdentity);
     const fallback =
