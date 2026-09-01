@@ -31,9 +31,9 @@ ABI、公共创建与销毁 API
 - 10k query/update/churn、100k 宽树/深树、1% dirty、10k
   `Transform + MeshRenderer + RigidBody + Collider` 和双后端浏览器合同已建立。
 
-P0 的 ADR、指标、current-RHI 跨提交采集器和不可覆盖快照协议已经完成。正式性能结论仍是外部门禁：`benchmarks/rhi/manifest.json`
-当前未登记物理 Linux GPU
-rig，因而本机 smoke 和上述复杂度合同不能替代 10.3 节的冻结基线比较，也不得勾选最终性能证据项。
+P0 的 ADR、指标、current-RHI 跨提交采集器、不可覆盖快照协议和 Node/Stage 冻结基线已经完成。`dev`
+现已登记 Apple M3 Max macOS/Metal rig；正式性能结论仍需在同一 rig 上采集并验证 ECS
+candidate。本机 smoke 和上述复杂度合同不能替代 10.3 节的跨提交比较，也不得勾选最终性能证据项。
 
 ## 结论先行
 
@@ -752,5 +752,5 @@ contract，但 component 不反向依赖 renderer internal。
 
 本地正确性门禁于 2026-09-01 通过：`npm run validate`、`npm run site:build`、
 `npm run test:rhi-benchmark-contract` 和明确标记为非证据的
-`npm run test:rhi-benchmark-smoke`。正式性能项保持未勾选；当前工作站不是 `hilo3d-rhi-perf-linux-gpu`
-登记 rig，且 manifest 的 `acceptedFingerprintSha256` 仍为空。
+`npm run test:rhi-benchmark-smoke`。正式性能项保持未勾选；Node/Stage 基线已在登记的
+`hilo3d-rhi-perf-macos-m3-max` rig 冻结，ECS candidate 仍需使用相同环境采集并通过 10.3 节阈值。

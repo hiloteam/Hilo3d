@@ -87,7 +87,7 @@
     "docs:build:built": "typedoc",
     "docs:check": "npm run build:types && npm run docs:check:built",
     "docs:check:built": "typedoc --emit none",
-    "site:build": "npm run build:types && npm run site:build:built",
+    "site:build": "npm run api:check && npm run site:build:built",
     "site:build:built": "npm run docs:build:built && npm run examples:build && jiti scripts/build-site.ts && npm run site:check:links",
     "site:check:links": "jiti scripts/check-site-links.ts",
     "pack:check": "npm pack --dry-run --ignore-scripts",

@@ -63,6 +63,15 @@ npm run test:package
 gate. Physical native-GPU tests and registered benchmark collection remain separate so software
 adapters cannot be presented as performance evidence.
 
+`npm run site:build` is the single local and CI entry for API documentation deployment. It builds
+and checks declarations for the core, particle addon, and physics addon before generating TypeDoc,
+examples, and the linked site; workflows must not call the prebuilt API check without first
+producing all three packages.
+
+Typed linting follows the same clean-checkout rule: workflows invoke `npm run lint`, which builds
+core and addon declarations before ESLint, rather than assembling `build:types` and `lint:built`
+steps that omit workspace declarations. `check:modernity` enforces both workflow contracts.
+
 ## Performance discipline
 
 Hot ECS and renderer loops use indexed arrays or TypedArrays, cached queries, and reusable
