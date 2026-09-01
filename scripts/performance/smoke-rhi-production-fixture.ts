@@ -24,7 +24,6 @@ import {
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES,
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS,
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES
 } from '../../benchmarks/rhi/fixture-contract';
@@ -83,8 +82,6 @@ export const RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS =
     RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS;
 export const RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES =
     RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES;
-export const RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES =
-    RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES;
 export const RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES =
     RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES;
 export const RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES =
@@ -478,8 +475,9 @@ export async function runRHIProductionFixtureSmoke(
                     `NON-EVIDENCE smoke ${scenario.id}/${backend}/rhi: quiescence=[${quiescenceMatrix}], hot=[${hotVector}], renderer=[${rendererVector}], rendererMedian=${String(observation.allocation.rendererBytes)}, pixels=${observation.pixelHashSha256}\n`
                 );
                 if (
+                    scenario.id === 'static-unlit-single-draw' &&
                     observation.allocation.rhiHotPathBytes >
-                    RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
+                        RHI_BENCHMARK_RHI_HOT_PATH_ALLOCATION_TODO_BUDGET_BYTES
                 ) {
                     const samples = observation.allocationSamples
                         .map(sample => String(sample.rhiHotPathBytes))

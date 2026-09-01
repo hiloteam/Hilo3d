@@ -367,7 +367,7 @@ describe('RHI Phase 0 mutation preflight', () => {
 
         const manifest = parseRHIBenchmarkManifest(repositoryManifestValue);
         expect(manifest.scenarios).toHaveLength(10);
-        expect(manifest.sampling.rounds).toBe(7);
+        expect(manifest.sampling.rounds).toBe(3);
         expect(
             manifest.scenarios.find(value => value.id === 'large-instancing')?.quality
         ).toMatchObject({

@@ -25,8 +25,8 @@ import {
 const repositoryManifestValue = JSON.parse(
     readFileSync(new URL('../../benchmarks/rhi/manifest.json', import.meta.url), 'utf8')
 ) as unknown;
-const FRAME_SAMPLES = Array<number>(2000).fill(1);
-const CACHE_SAMPLES = Array<number>(2000).fill(0.9);
+const FRAME_SAMPLES = Array<number>(500).fill(1);
+const CACHE_SAMPLES = Array<number>(500).fill(0.9);
 const ALLOCATION_SAMPLES = Array<number>(RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES).fill(1);
 const ROUND_SAMPLE = [1] as const;
 
@@ -69,7 +69,7 @@ function enrolledManifest(): RHIBenchmarkManifest {
 }
 
 function rawMetrics(drawCount: number): RHIBenchmarkRawMetricSamples {
-    const drawSamples = Array<number>(2000).fill(drawCount);
+    const drawSamples = Array<number>(500).fill(drawCount);
     const metrics: Partial<Record<RHIBenchmarkMetric, readonly number[]>> = {};
     for (const metric of RHI_BENCHMARK_METRICS) {
         metrics[metric] =
@@ -141,7 +141,7 @@ function firstRawRound(raw: RHIBenchmarkRawCaptureResult): Record<string, unknow
 }
 
 describe('RHI raw current-architecture capture contract', () => {
-    it('accepts every metric for the current RHI in all 20 cases and 7 rounds', () => {
+    it('accepts every metric for the current RHI in all 20 cases and 3 rounds', () => {
         const manifest = enrolledManifest();
         const raw = rawCapture(manifest);
         expect(verifyRHIRawBenchmarkCapture(manifest, raw)).toBe(raw);
@@ -157,10 +157,10 @@ describe('RHI raw current-architecture capture contract', () => {
             }
         });
         const metrics = summary.cases[0]?.rounds[0]?.metrics;
-        expect(metrics?.gpuFrameMs.sampleCount).toBe(2000);
-        expect(metrics?.rhiCommandCount.sampleCount).toBe(2000);
-        expect(metrics?.allocationBytesPerFrame.sampleCount).toBe(21);
-        expect(metrics?.rhiHotPathAllocationBytesPerFrame.sampleCount).toBe(21);
+        expect(metrics?.gpuFrameMs.sampleCount).toBe(500);
+        expect(metrics?.rhiCommandCount.sampleCount).toBe(500);
+        expect(metrics?.allocationBytesPerFrame.sampleCount).toBe(3);
+        expect(metrics?.rhiHotPathAllocationBytesPerFrame.sampleCount).toBe(3);
     });
 
     it('rejects any architecture order other than the current RHI', () => {
@@ -184,25 +184,25 @@ describe('RHI raw current-architecture capture contract', () => {
         );
     });
 
-    it('requires 21 allocation samples while retaining 2000 timing, GPU, and diagnostic samples', () => {
+    it('requires 3 allocation samples while retaining 500 timing, GPU, and diagnostic samples', () => {
         const manifest = enrolledManifest();
 
         const wrongAllocation = rawCapture(manifest);
         const allocationResults = mutableRecord(firstRawRound(wrongAllocation)['results']);
         const allocationRhi = mutableRecord(allocationResults['rhi']);
         mutableRecord(allocationRhi['metrics'])['allocationBytesPerFrame'] =
-            Array<number>(20).fill(1);
+            Array<number>(2).fill(1);
         expect(() => verifyRHIRawBenchmarkCapture(manifest, wrongAllocation)).toThrow(
-            /allocationBytesPerFrame must contain exactly 21 samples/u
+            /allocationBytesPerFrame must contain exactly 3 samples/u
         );
 
         for (const metric of ['gpuFrameMs', 'rhiCommandCount'] as const) {
             const wrongMainSampling = rawCapture(manifest);
             const results = mutableRecord(firstRawRound(wrongMainSampling)['results']);
             const rhi = mutableRecord(results['rhi']);
-            mutableRecord(rhi['metrics'])[metric] = Array<number>(21).fill(1);
+            mutableRecord(rhi['metrics'])[metric] = Array<number>(3).fill(1);
             expect(() => verifyRHIRawBenchmarkCapture(manifest, wrongMainSampling), metric).toThrow(
-                new RegExp(`${metric} must contain exactly 2000 samples`, 'u')
+                new RegExp(`${metric} must contain exactly 500 samples`, 'u')
             );
         }
     });
@@ -217,7 +217,7 @@ describe('RHI raw current-architecture capture contract', () => {
         candidate['pixelHashSha256'] = 'f'.repeat(64);
         candidate['metrics'] = {
             ...mutableRecord(candidate['metrics']),
-            actualDrawCount: Array<number>(2000).fill(changedDrawCount)
+            actualDrawCount: Array<number>(500).fill(changedDrawCount)
         };
 
         expect(() => verifyRHIRawBenchmarkCapture(manifest, raw)).toThrow(

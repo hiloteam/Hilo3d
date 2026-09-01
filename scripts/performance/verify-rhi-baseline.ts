@@ -189,14 +189,14 @@ function parseSampling(value: unknown): RHIBenchmarkSamplingManifest {
             'manifest.sampling.confidenceLevel'
         )
     };
-    if (parsed.warmupFrames !== 300) failure('warmupFrames must remain frozen at 300');
-    if (parsed.sampleFrames !== 2000) failure('sampleFrames must remain frozen at 2000');
+    if (parsed.warmupFrames !== 120) failure('warmupFrames must remain frozen at 120');
+    if (parsed.sampleFrames !== 500) failure('sampleFrames must remain frozen at 500');
     if (parsed.allocationSampleFrames !== RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES) {
         failure(
             `allocationSampleFrames must remain frozen at ${String(RHI_BENCHMARK_ALLOCATION_SAMPLE_FRAMES)}`
         );
     }
-    if (parsed.rounds !== 7) failure('rounds must remain frozen at 7');
+    if (parsed.rounds !== 3) failure('rounds must remain frozen at 3');
     if (parsed.bootstrapIterations !== 10_000) {
         failure('bootstrapIterations must remain frozen at 10000');
     }

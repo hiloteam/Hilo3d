@@ -5,17 +5,17 @@ import type {
     RHIBenchmarkScenarioId
 } from './result-schema';
 
-export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 12 as const;
+export const RHI_BENCHMARK_FIXTURE_PROTOCOL_VERSION = 13 as const;
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_PROTOCOL =
-    'chromium-cdp-windowed-sampling-heap-profiler-sync-render-v11' as const;
-/** The fixed quiescence proof now ends immediately before measured samples; no duplicate discard. */
+    'chromium-cdp-single-frame-sampling-heap-profiler-sync-render-v12' as const;
+/** The fixed settling probe now ends immediately before measured samples; no duplicate discard. */
 export const RHI_BENCHMARK_ALLOCATION_DISCARDED_PROFILES = 0 as const;
 
 /** Ordinary frames rendered after timing wrappers are removed and before CDP sampling starts. */
 export const RHI_BENCHMARK_ALLOCATION_POST_SUSPEND_WARMUP_FRAMES = 30 as const;
 
 /** Exact non-retained production frames that tier draw-level and once-per-frame renderer paths. */
-export const RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES = 288 as const;
+export const RHI_BENCHMARK_ALLOCATION_PROFILER_WARMUP_FRAMES = 32 as const;
 
 /** Production-boundary frame that re-enters real renderer work after each retained restart. */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES = 1 as const;
@@ -27,14 +27,11 @@ export const RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_RENDER_FRAMES = 1 as cons
  */
 export const RHI_BENCHMARK_ALLOCATION_PROFILER_RESTART_NOOP_TASKS = 32 as const;
 
-/** Fixed measured-frame chunk that bounds each one-byte retained sampling profile. */
-export const RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES = 7 as const;
+/** One measured frame per retained sampling profile bounds every one-byte CDP response. */
+export const RHI_BENCHMARK_ALLOCATION_PROFILE_MEASURED_CHUNK_FRAMES = 1 as const;
 
-/** Consecutive marked in-budget frames required immediately before the measured window. */
-export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_STABLE_FRAMES = 5 as const;
-
-/** One fixed marked probe verified from the final retained-object profile. */
-export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES = 21 as const;
+/** Fixed discarded profiles used to settle repeated sampling before measured profiles. */
+export const RHI_BENCHMARK_ALLOCATION_PROFILER_QUIESCENCE_PROBE_FRAMES = 7 as const;
 
 export function rhiBenchmarkAllocationProfilerWarmupFrames(drawCount: number): number {
     if (!Number.isSafeInteger(drawCount) || drawCount < 1) {

@@ -23,7 +23,6 @@ import {
     RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES,
     RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES,
     RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES,
-    RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES,
     RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS,
     RHI_PRODUCTION_SMOKE_PROFILER_RESTART_RENDER_FRAMES,
     RHI_PRODUCTION_SMOKE_SCENARIOS,
@@ -419,20 +418,19 @@ describe('RHI production fixture smoke contract', () => {
         expect(RHI_PRODUCTION_SMOKE_WARMUP_FRAMES).toBe(30);
         expect(RHI_PRODUCTION_SMOKE_DISCARDED_ALLOCATION_PROFILES).toBe(0);
         expect(RHI_PRODUCTION_SMOKE_POST_SUSPEND_WARMUP_FRAMES).toBe(30);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(512)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(256)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(1_000)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(10_000)).toBe(288);
-        expect(rhiBenchmarkAllocationProfilerWarmupFrames(79)).toBe(288);
+        expect(RHI_PRODUCTION_SMOKE_PROFILER_WARMUP_FRAMES).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(512)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(256)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(1_000)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(10_000)).toBe(32);
+        expect(rhiBenchmarkAllocationProfilerWarmupFrames(79)).toBe(32);
         expect(() => rhiBenchmarkAllocationProfilerWarmupFrames(0)).toThrow(/positive/u);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_RENDER_FRAMES).toBe(1);
         expect(RHI_PRODUCTION_SMOKE_PROFILER_RESTART_NOOP_TASKS).toBe(32);
-        expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(7);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_STABLE_FRAMES).toBe(5);
+        expect(RHI_PRODUCTION_SMOKE_PROFILE_MEASURED_CHUNK_FRAMES).toBe(1);
         expect(RHI_PRODUCTION_SMOKE_HOT_PATH_TODO_BUDGET_BYTES).toBe(16 * 1024);
-        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(21);
-        expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(21);
+        expect(RHI_PRODUCTION_SMOKE_PROFILER_QUIESCENCE_PROBE_FRAMES).toBe(7);
+        expect(RHI_PRODUCTION_SMOKE_MEASURED_ALLOCATION_PROFILES).toBe(3);
         expect(RHI_PRODUCTION_SMOKE_SCENARIOS).toEqual(['static-unlit-single-draw']);
         expect(RHI_PRODUCTION_SMOKE_BACKENDS).toEqual(['webgpu', 'webgl2']);
         expect(

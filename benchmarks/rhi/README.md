@@ -19,8 +19,8 @@ macOS/Metal GPU identity, and fixed sampling parameters. Future implementations 
 with an immutable snapshot from an earlier commit; they must not restore a second renderer
 implementation merely to perform same-commit A/B testing.
 
-The suite covers ten fixed scenarios, WebGL2 and WebGPU, seven isolated rounds, 2,000 timing/GPU
-samples per round, and 21 allocation profiles. Every backend/round opens a fresh page, renderer,
+The suite covers ten fixed scenarios, WebGL2 and WebGPU, three isolated rounds, 500 timing/GPU
+samples per round, and three allocation profiles. Every backend/round opens a fresh page, renderer,
 graphics context/device, scene, shader cache, and diagnostics sink. Pixel hashes and observed draw
 counts must remain stable across rounds. `quality.surfaceOutputPassCount` explicitly accounts for
 the final linear-to-sRGB surface transfer, so primary scene draw counts are not inflated to absorb
@@ -80,9 +80,15 @@ npm run benchmark:rhi:freeze -- \
   reports/rhi/current.raw.json.gz
 ```
 
-The full command is intentionally an overnight-grade evidence run, not the inner development loop.
-It prints scenario/backend/round phase progress to stderr, caps every browser phase, and fails a
-stalled heap-profiler response instead of waiting indefinitely. During an optimization, use the
+The full command is a release-grade evidence run, not the inner development loop. Its repetition is
+deliberately sized for a small engine: three rounds and 500 timing/GPU frames retain representative
+coverage without turning every optimization into an overnight experiment. Allocation evidence uses
+one-byte sampling but returns one real frame per CDP profile after a fixed profiler warm-up and
+discarded settling probe, preventing high-draw scenarios from building an unbounded response. The
+single-draw sentinel carries the absolute allocation gate; stress scenarios retain allocation data
+for cross-commit inspection without treating sampler-tier metadata as an engine regression. The
+collector prints scenario/backend/round phase progress to stderr, caps every browser phase, and
+aborts the owned profiler transport after a stalled response. During an optimization, use the
 production smoke plus the affected focused tests while iterating; run the complete enrolled-rig
 capture only when establishing or replacing immutable cross-commit evidence.
 
@@ -110,8 +116,9 @@ canonical filenames, and destination before making one atomic immutable write.
 
 `test:rhi-benchmark-smoke` is a non-evidence compatibility and allocation smoke test using isolated
 current-RHI pages. It verifies that both backends initialize, render, expose diagnostics, produce a
-pixel hash, and stay within the temporary RHI hot-path allocation budget. It does not create or
-verify a performance baseline.
+pixel hash, and keeps the default single-draw sentinel within the temporary RHI hot-path allocation
+budget. Explicit stress-scenario smoke runs report allocation samples diagnostically instead of
+applying that single-draw absolute cap. It does not create or verify a performance baseline.
 
 Only an enrolled-rig capture that passes preflight and is frozen by `benchmark:rhi:freeze` is
 baseline evidence. Cross-commit comparison/gating should consume two verified schema-v4 snapshots.

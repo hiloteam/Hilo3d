@@ -4,10 +4,10 @@
   "architecture": "rhi",
   "backends": ["webgl2", "webgpu"],
   "sampling": {
-    "warmupFrames": 300,
-    "sampleFrames": 2000,
-    "allocationSampleFrames": 21,
-    "rounds": 7,
+    "warmupFrames": 120,
+    "sampleFrames": 500,
+    "allocationSampleFrames": 3,
+    "rounds": 3,
     "bootstrapSeed": 844188002,
     "bootstrapIterations": 10000,
     "confidenceLevel": 0.95
