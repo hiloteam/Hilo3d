@@ -1,4 +1,6 @@
-import Node, { type NodeParameters } from '../core/Node';
+import RenderTransformView, {
+    type RenderTransformViewParameters
+} from '../render/world/RenderTransformView';
 import Matrix4 from '../math/Matrix4';
 import Frustum from '../math/Frustum';
 import Sphere from '../math/Sphere';
@@ -17,15 +19,15 @@ function assertCameraDepthMode(value: unknown): asserts value is CameraDepthMode
     }
 }
 
-export interface CameraParameters extends NodeParameters {
+export interface CameraParameters extends RenderTransformViewParameters {
     /**
      * Depth convention. `reversed` maps the near plane to 1 and far/infinity to 0, improving
      * floating-point depth precision. Defaults to `standard` for compatibility.
      */
     depthMode?: CameraDepthMode;
     /**
-     * Camera visibility bit mask. A renderable node is collected when
-     * `(camera.visibility & node.layer) !== 0`.
+     * Camera visibility bit mask. A render record is collected when
+     * `(camera.visibility & record.layer) !== 0`.
      */
     visibility?: number;
     /**
@@ -43,8 +45,8 @@ export interface CameraParameters extends NodeParameters {
 /**
  * 摄像机
  */
-class Camera extends Node {
-    static override readonly typeName: string = 'Camera';
+class Camera extends RenderTransformView {
+    static readonly typeName: string = 'RenderCamera';
     readonly viewMatrix = new Matrix4();
     /** Stable non-jittered projection used by CPU culling, picking, and project/unproject. */
     readonly projectionMatrix = new Matrix4();
@@ -56,12 +58,12 @@ class Camera extends Node {
     readonly jitteredViewProjectionMatrix = new Matrix4();
     protected readonly _frustum = new Frustum();
     protected _geometry: Geometry | null = null;
-    override isCamera = true;
+    readonly isCamera = true;
     isPerspectiveCamera = false;
     isOrthographicCamera = false;
-    override className = 'Camera';
+    className = 'RenderCamera';
     /**
-     * Visibility mask used by shared scene collection and Stage pointer picking.
+     * Visibility mask used by shared scene collection and ECS pointer picking.
      *
      * The default exposes every 32-bit layer. Use `0` to disable scene collection for a camera.
      */
@@ -106,18 +108,19 @@ class Camera extends Node {
     protected _isGeometryDirty = false;
     private projectionJitterXValue = 0;
     private projectionJitterYValue = 0;
+    private extractedWorldMatrix = false;
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params: CameraParameters = {}) {
-        super();
+        super('RenderCamera');
         Object.assign(this, params);
     }
     /**
-     * Return whether this camera can see a node's layer mask.
-     * @param node - Scene node to test.
+     * Return whether this camera can see a render record's layer mask.
+     * @param node - Renderer-local record to test.
      */
-    isLayerVisible(node: Pick<Node, 'layer'>): boolean {
+    isLayerVisible(node: { readonly layer: number }): boolean {
         return ((this.visibility >>> 0) & (node.layer >>> 0)) !== 0;
     }
     /**
@@ -125,9 +128,19 @@ class Camera extends Node {
      * @returns this
      */
     updateViewMatrix(): this {
-        this.updateMatrixWorld(true);
+        if (!this.extractedWorldMatrix) this.updateMatrixWorld(true);
         this.viewMatrix.invert(this.worldMatrix);
         return this;
+    }
+
+    /** Synchronize this renderer-local view from ECS WorldTransform storage. @internal */
+    override setExtractedWorldMatrix(
+        source: ArrayLike<number>,
+        offset: number,
+        revision: number
+    ): void {
+        super.setExtractedWorldMatrix(source, offset, revision);
+        this.extractedWorldMatrix = true;
     }
     /**
      * 更新投影矩阵，子类必须重载这个方法
@@ -214,7 +227,7 @@ class Camera extends Node {
      * @param out - 传递将在这个矩阵上做计算，不传将创建一个新的 Matrix4
      * @returns 返回获取的矩阵
      */
-    getModelViewMatrix(node: Node, out?: Matrix4): Matrix4 {
+    getModelViewMatrix(node: { readonly worldMatrix: Matrix4 }, out?: Matrix4): Matrix4 {
         out ??= new Matrix4();
         out.multiply(this.viewMatrix, node.worldMatrix);
         return out;
@@ -225,7 +238,7 @@ class Camera extends Node {
      * @param out - 传递将在这个矩阵上做计算，不传将创建一个新的 Matrix4
      * @returns 返回获取的矩阵
      */
-    getModelProjectionMatrix(node: Node, out?: Matrix4): Matrix4 {
+    getModelProjectionMatrix(node: { readonly worldMatrix: Matrix4 }, out?: Matrix4): Matrix4 {
         out ??= new Matrix4();
         out.multiply(this.viewProjectionMatrix, node.worldMatrix);
         return out;
@@ -281,14 +294,7 @@ class Camera extends Node {
      * @param mesh -
      */
     isMeshVisible(mesh: Mesh): boolean {
-        const geometry = mesh.geometry;
-        if (geometry) {
-            const sphere = geometry.getSphereBounds(mesh.worldMatrix);
-            if (this._frustum.intersectsSphere(sphere)) {
-                return true;
-            }
-        }
-        return false;
+        return mesh.geometry !== null && this._frustum.intersectsSphere(mesh.worldBounds);
     }
     /**
      * 更新 frustum

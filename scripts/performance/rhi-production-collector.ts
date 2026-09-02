@@ -443,18 +443,26 @@ export async function collectRHIProductionCapture(
             for (const backend of manifest.backends) {
                 const rounds: RHIBenchmarkRawCaptureResult['cases'][number]['rounds'][number][] =
                     [];
+                let expectedPixelHash: string | undefined;
                 for (let round = 1; round <= manifest.sampling.rounds; round += 1) {
                     const architecture: RendererArchitecture = 'rhi';
                     const order = [architecture] as const;
+                    const result = await collectArchitecture(
+                        manifest,
+                        options.sessions,
+                        { scenario, backend, architecture, round, orderPosition: 0 },
+                        isolationIds,
+                        progress
+                    );
+                    expectedPixelHash ??= result.pixelHashSha256;
+                    if (result.pixelHashSha256 !== expectedPixelHash) {
+                        collectionFailure(
+                            `${scenario.id}/${backend} pixel hashes differ at round ${String(round)}`
+                        );
+                    }
                     const results: Record<RendererArchitecture, RHIBenchmarkRawArchitectureResult> =
                         {
-                            rhi: await collectArchitecture(
-                                manifest,
-                                options.sessions,
-                                { scenario, backend, architecture, round, orderPosition: 0 },
-                                isolationIds,
-                                progress
-                            )
+                            rhi: result
                         };
                     rounds.push({ round, order, results });
                 }

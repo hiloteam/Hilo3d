@@ -2,7 +2,7 @@ import type { Renderer } from 'hilo3d';
 import ParticleSystem, { type ParticleSystemParameters } from './ParticleSystem.js';
 import type ParticleSystemDefinition from './ParticleSystemDefinition.js';
 
-/** Reuses stopped ParticleSystem nodes for large numbers of short-lived effects. */
+/** Reuses stopped ParticleSystem resources for large numbers of short-lived effects. */
 export class ParticleSystemPool {
     readonly #available = new Map<ParticleSystemDefinition, ParticlePoolEntry[]>();
     readonly #active = new Map<ParticleSystem, Readonly<ParticleSystemParameters>>();
@@ -26,11 +26,6 @@ export class ParticleSystemPool {
     }
 
     acquire(parameters: Readonly<ParticleSystemParameters>): ParticleSystem {
-        if (parameters.parent !== undefined && parameters.parent !== null) {
-            throw new TypeError(
-                'ParticleSystemPool acquire does not accept parent; attach the leased system explicitly'
-            );
-        }
         const entries = this.#available.get(parameters.definition);
         const entryIndex = entries?.findIndex(entry =>
             parametersMatch(entry.parameters, parameters)
@@ -62,12 +57,12 @@ export class ParticleSystemPool {
                 );
             }
             this.#active.delete(system);
-            system.stop().removeFromParent();
+            system.stop();
             system.destroy(renderer);
             return;
         }
         this.#active.delete(system);
-        system.stop().removeFromParent();
+        system.stop();
         const entries = this.#available.get(system.definition) ?? [];
         entries.push({ system, parameters });
         this.#available.set(system.definition, entries);

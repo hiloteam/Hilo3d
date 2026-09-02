@@ -389,7 +389,6 @@ function cameraFar(camera: Camera): number {
 }
 
 function resetCameraTransform(camera: Camera): void {
-    camera.removeFromParent();
     camera.setPosition(0, 0, 0);
     camera.setScale(1, 1, 1);
     camera.setPivot(0, 0, 0);
@@ -1635,10 +1634,6 @@ export class ShadowAtlasSceneAdapter {
         record.directionalStateValid = false;
         record.activeSliceCount = 0;
         record.epoch = 0;
-        for (const camera of record.cameras) {
-            camera.removeFromParent();
-            camera.off();
-        }
         if (pool) this.#recordPools[record.kind].push(record);
     }
 

@@ -1,7 +1,7 @@
 import {
     Geometry,
     GeometryData,
-    Mesh,
+    RenderMesh,
     ShaderMaterial,
     Sphere,
     TRIANGLES,
@@ -261,7 +261,7 @@ function compareParticle(
 
 /** Internal CPU-SoA to one-instanced-draw renderer bridge. */
 export class ParticleCPUInstanceWriter {
-    readonly mesh: Mesh;
+    readonly mesh: RenderMesh;
     readonly #state: ParticleCPUState;
     readonly #renderer: ParticleSpriteRendererDefinition;
     readonly #instanceData: Float32Array;
@@ -351,18 +351,16 @@ export class ParticleCPUInstanceWriter {
                       }
                   })
         });
-        this.mesh = new Mesh({
+        this.mesh = new RenderMesh({
             name: `${plan.definition.name}:sprite:${String(rendererIndex)}`,
             geometry,
             material,
             frustumTest: true,
-            pointerEnabled: false,
             castShadows: false,
             receiveShadows: false,
             renderOrder: renderer.renderOrder ?? 0,
             instanceCount: 1,
-            visible: false,
-            autoUpdateWorldMatrix: plan.definition.simulationSpace === 'local'
+            visible: false
         });
     }
 
@@ -414,7 +412,7 @@ export class ParticleCPUInstanceWriter {
     }
 
     destroy(renderer: Renderer): void {
-        this.mesh.destroy(renderer);
+        renderer.resourceManager.destroyMesh(this.mesh);
     }
 
     private sort(count: number, mode: ParticleSortMode, cameraPosition: ParticleVector3): void {

@@ -17,36 +17,18 @@ export {
     type ListenerMap
 } from './core/EventDispatcher';
 export { default as Fog, type FogMode, type FogParameters } from './core/Fog';
-export { default as Mesh, type MeshParameters } from './core/Mesh';
 export {
-    default as Node,
-    type NodeGetChildByCallback,
-    type NodeParameters,
-    type NodePointerEvent,
-    type NodeRaycastInfo,
-    type NodeTraverseCallback,
-    type NodeTraverseResult
-} from './core/Node';
-export { default as Skeleton, type SkeletonParameters } from './core/Skeleton';
-export {
-    createStageSystemService,
-    STAGE_SYSTEM_API_VERSION,
-    type StageSystem,
-    type StageSystemDescriptor,
-    StageSystemRegistry,
-    type StageSystemRuntime,
-    StageSystemService,
-    type StageSystemSetupContext
-} from './core/StageSystem';
-export { default as SkinnedMesh, type SkinnedMeshParameters } from './core/SkinnedMesh';
-export {
-    default as Stage,
-    type StageBackend,
-    type StageBackendParameters,
-    type StageCommonParameters,
-    type StageParameters,
-    type StagePointerEvent
-} from './core/Stage';
+    default as Engine,
+    type EngineAutoParameters,
+    type EngineFrameResult,
+    type EngineOwnedRendererFields,
+    type EngineOwnershipOptions,
+    type EngineParameters,
+    type EngineWebGL2Parameters,
+    type EngineWebGPUParameters
+} from './core/Engine';
+export { default as RenderMesh, type MeshParameters as RenderMeshParameters } from './core/Mesh';
+export { default as RendererSkeleton, type SkeletonParameters } from './core/Skeleton';
 export {
     type BackEaseObject,
     type ElasticEaseObject,
@@ -63,16 +45,172 @@ export {
 } from './core/Tween';
 export { default as version } from './core/version';
 
-export { default as Camera, type CameraDepthMode, type CameraParameters } from './camera/Camera';
-export { default as Camera2D, type Camera2DParameters, DEFAULT_2D_LAYER } from './camera/Camera2D';
 export {
-    default as OrthographicCamera,
-    type OrthographicCameraParameters
-} from './camera/OrthographicCamera';
+    ComponentType,
+    SparseSetComponentStore,
+    defineComponent,
+    defineDerivedComponent,
+    type ComponentStore,
+    type ComponentStoreFactory
+} from './ecs/Component';
+export { WorldCommandBuffer, type CommandEntity, type PendingEntity } from './ecs/CommandBuffer';
+export type { Entity } from './ecs/Entity';
+export { CachedQuery, type QueryDescription } from './ecs/Query';
+export { WorldResource, defineWorldResource } from './ecs/Resource';
 export {
-    default as PerspectiveCamera,
-    type PerspectiveCameraParameters
-} from './camera/PerspectiveCamera';
+    WORLD_SYSTEM_API_VERSION,
+    WORLD_SYSTEM_PHASES,
+    WorldSystemRegistry,
+    type WorldSystem,
+    type WorldSystemAccess,
+    type WorldSystemDescriptor,
+    type WorldSystemExecutionContext,
+    type WorldSystemPhase,
+    type WorldSystemRuntime,
+    type WorldSystemSetupContext
+} from './ecs/System';
+export {
+    default as World,
+    type WorldDiagnostics,
+    type WorldParameters,
+    type WorldStructureListener
+} from './ecs/World';
+export {
+    ScenePrefab,
+    ScenePrefabRecord,
+    type SceneInstance,
+    type ScenePrefabAnimation,
+    type ScenePrefabAnimationChannel,
+    type ScenePrefabAttachment,
+    type ScenePrefabSkin
+} from './scene/ScenePrefab';
+export { Name, type NameValue } from './scene/components/Identity';
+
+export {
+    Hierarchy,
+    HierarchyStore,
+    InterpolatedTransform,
+    InterpolatedTransformStore,
+    LocalTransform,
+    TransformStore,
+    WorldTransform,
+    getHierarchyStore,
+    getInterpolatedTransformStore,
+    getTransformStore,
+    type HierarchyValue,
+    type HierarchyDiagnostics,
+    type InterpolatedTransformValue,
+    type LocalTransformValue,
+    type TransformDiagnostics,
+    type TransformQuaternion,
+    type TransformVector3,
+    type WorldTransformValue
+} from './scene/components/Transform';
+export {
+    CameraOutput,
+    MeshRenderer,
+    OrthographicCamera,
+    PerspectiveCamera,
+    RenderExtensionComponent,
+    RenderOrder,
+    RenderVisibility,
+    ChangedComponentStore,
+    type CameraComponentValue,
+    type CameraOutputValue,
+    type MeshRendererValue,
+    type OrthographicCameraValue,
+    type PerspectiveCameraValue,
+    type RenderExtensionValue,
+    type RenderOrderValue,
+    type RenderVisibilityValue
+} from './scene/components/Rendering';
+export {
+    AmbientLight,
+    AreaLight,
+    DirectionalLight,
+    PointLight,
+    SpotLight,
+    type AmbientLightValue,
+    type AreaLightValue,
+    type DirectionalLightValue,
+    type LightColor,
+    type LightComponentValue,
+    type PointLightValue,
+    type SpotLightValue
+} from './scene/components/Lighting';
+export {
+    AnimationClip,
+    Animator,
+    AnimatorStore,
+    MorphPose,
+    SkeletonPose,
+    Skin,
+    type AnimationChannel,
+    type AnimationInterpolation,
+    type AnimationTargetProperty,
+    type AnimatorValue,
+    type MorphPoseValue,
+    type SkeletonPoseValue,
+    type SkinValue
+} from './scene/components/Animation';
+export {
+    PointerCapture,
+    PointerTarget,
+    type PointerCaptureValue,
+    type PointerPropagation,
+    type PointerTargetValue
+} from './scene/components/Interaction';
+export {
+    CanvasText,
+    SpriteAnimation,
+    SpriteRenderer,
+    createSpriteRenderer,
+    type CanvasTextValue,
+    type NormalizedSpriteRendererValue,
+    type SpriteAnimationValue,
+    type SpriteRendererValue
+} from './scene/components/TwoD';
+export { createTransformSystem, TRANSFORM_SYSTEM_ID } from './scene/systems/TransformSystem';
+export {
+    createRenderExtractionSystem,
+    RENDER_EXTRACTION_SYSTEM_ID,
+    RENDER_WORLD
+} from './scene/systems/RenderExtractionSystem';
+export { createAnimationSystem } from './scene/systems/AnimationSystem';
+export {
+    createInteractionSystem,
+    INTERACTION_RUNTIME,
+    InteractionRuntime,
+    type PointerEventDelivery,
+    type PointerEventType,
+    type PointerInput
+} from './scene/systems/InteractionSystem';
+export { createCanvasTextSystem, createSpriteAnimationSystem } from './scene/systems/TwoDSystems';
+export { RenderWorld, type RenderWorldDiagnostics } from './render/world/RenderWorld';
+export { RenderCameraStore } from './render/world/RenderCameraStore';
+export { RenderLightStore } from './render/world/RenderLightStore';
+
+export type { CameraDepthMode, default as RenderCamera } from './camera/Camera';
+export type { default as RenderAmbientLight } from './light/AmbientLight';
+export type { default as RenderAreaLight } from './light/AreaLight';
+export type {
+    default as RenderLight,
+    LightShadowOptions,
+    PointLightShadowOptions,
+    PointShadowCameraParameters,
+    ShadowCameraParameters,
+    ShadowCastingLightParameters
+} from './light/Light';
+export type {
+    default as RenderDirectionalLight,
+    DirectionalLightShadowOptions
+} from './light/DirectionalLight';
+export type { default as RenderPointLight } from './light/PointLight';
+export type {
+    default as RenderSpotLight,
+    SpotLightCookie,
+    SpotLightIESProfile
+} from './light/SpotLight';
 export { default as OrbitControls, type OrbitControlsOptions } from './controls/OrbitControls';
 
 export {
@@ -107,26 +245,8 @@ export {
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';
 
-export {
-    default as Sprite,
-    type SpriteFrameUpdateOptions,
-    type SpriteFramesUpdateOptions,
-    type SpriteParameters
-} from './2d/Sprite';
 export { default as SpriteFrame, type SpriteFrameParameters } from './2d/SpriteFrame';
 export { default as SpriteMaterial, type SpriteMaterialParameters } from './2d/SpriteMaterial';
-export {
-    default as SlicedSprite,
-    type SlicedSpriteInsets,
-    type SlicedSpriteParameters
-} from './2d/SlicedSprite';
-export { default as Text2D, type Text2DParameters, type Text2DStyle } from './2d/Text2D';
-export {
-    default as UiButton,
-    type UiButtonFrames,
-    type UiButtonParameters,
-    type UiButtonState
-} from './2d/UiButton';
 
 export { default as RenderInfo } from './render/RenderInfo';
 export type { RenderColorEncoding } from './render/RenderColorEncoding';
@@ -246,7 +366,6 @@ export {
     type RendererRenderingProfile,
     type RendererResourceDiagnostics,
     type RendererResourceManager,
-    type RendererScene,
     type RendererSupportOptions,
     type RendererViewport,
     type RendererWebGL2Options,
@@ -448,22 +567,6 @@ export {
     type ShaderMaterialTextureSlot
 } from './material/ShaderMaterial';
 
-export { default as AmbientLight, type AmbientLightParameters } from './light/AmbientLight';
-export { default as AreaLight, type AreaLightParameters } from './light/AreaLight';
-export {
-    default as DirectionalLight,
-    type DirectionalLightParameters,
-    type DirectionalLightShadowOptions
-} from './light/DirectionalLight';
-export {
-    default as Light,
-    type LightParameters,
-    type LightShadowOptions,
-    type PointLightShadowOptions,
-    type PointShadowCameraParameters,
-    type ShadowCameraParameters,
-    type ShadowCastingLightParameters
-} from './light/Light';
 export {
     type AreaLightInfo,
     type DirectionalLightInfo,
@@ -474,36 +577,6 @@ export {
     type PointLightInfo,
     type SpotLightInfo
 } from './light/LightManager';
-export { default as PointLight, type PointLightParameters } from './light/PointLight';
-export {
-    default as SpotLight,
-    type SpotLightCookie,
-    type SpotLightIESProfile,
-    type SpotLightParameters
-} from './light/SpotLight';
-
-export { default as AxisHelper, type AxisHelperParameters } from './helper/AxisHelper';
-export { default as AxisNetHelper, type AxisNetHelperParameters } from './helper/AxisNetHelper';
-export { default as CameraHelper, type CameraHelperParameters } from './helper/CameraHelper';
-
-export {
-    default as Animation,
-    type AnimationClip,
-    type AnimationParameters,
-    type AnimationTimeRange
-} from './animation/Animation';
-export {
-    type AnimationInterpolationType,
-    type InterpolatedValue,
-    type InterpolationFunction,
-    type AnimationStateHandler,
-    type AnimationStateType,
-    default as AnimationStates,
-    type AnimationStatesParameters,
-    type BuiltInAnimationStateType,
-    STATE_TYPES
-} from './animation/AnimationStates';
-
 export { default as Cache } from './utils/Cache';
 export { type BrowserFeatures, default as browser, detectBrowserFeatures } from './utils/browser';
 export { LogLevel, type LogLevelValue, Logger, default as log } from './utils/log';

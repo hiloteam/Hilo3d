@@ -2,7 +2,6 @@ import type Camera from '../../camera/Camera';
 import PerspectiveCamera from '../../camera/PerspectiveCamera';
 import type Fog from '../../core/Fog';
 import Mesh from '../../core/Mesh';
-import Node from '../../core/Node';
 import { getTransformHistoryRevision } from '../../core/TransformHistory';
 import Geometry from '../../geometry/Geometry';
 import type GeometryData from '../../geometry/GeometryData';
@@ -129,7 +128,7 @@ import type {
     ScriptableRenderPassBuilder,
     ScriptableRenderPassContext
 } from './ScriptableRenderGraph';
-import { getRenderNodeExtension, type RenderNodeGPUExtension } from './RenderNodeExtension';
+import type { RenderGPUExtension } from './RenderExtension';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import {
@@ -4920,7 +4919,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #materialAttributeExcludedMeshes: Mesh[] = [];
     readonly #fallbackTemporalParticipation = new WeakMap<Mesh, number>();
     readonly #pendingFallbackTemporalMeshes = new Set<Mesh>();
-    readonly #recordedGPUSceneParticipants = new Set<RenderNodeGPUExtension>();
+    readonly #recordedGPUSceneParticipants = new Set<RenderGPUExtension>();
     readonly #objectByMesh = new Map<Mesh, GPUSceneObjectRecord>();
     readonly #freeObjectSlots: number[] = [];
     readonly #objectData: ArrayBuffer;
@@ -6871,152 +6870,156 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#hasVirtualIncompatibleShadowCaster = false;
         const temporalEnabled = this.#temporal !== null;
 
-        context.scene.traverse(node => {
-            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
-            if (node instanceof Mesh && !node.isDestroyed) {
-                const logicalIndex = this.findLogicalBucket(node);
-                const gpuManaged =
-                    logicalIndex !== null &&
-                    this.#logicalGPUCompatible[logicalIndex] === 1 &&
-                    !node.isSkinnedMesh &&
-                    node.geometry?.isMorphGeometry !== true;
-                if (gpuManaged) {
-                    let record = this.#objectByMesh.get(node);
-                    if (record === undefined) {
-                        const slot = this.#freeObjectSlots.pop();
-                        if (slot !== undefined) {
-                            const initial = new Float32Array(16);
-                            matrixElements(node.worldMatrix, initial, 0);
-                            record = {
-                                mesh: node,
-                                slot,
-                                logicalBucket: logicalIndex,
-                                seenFrame: this.#frameSerial,
-                                pendingWorldVersion: -1,
-                                committedWorldVersion: -1,
-                                pendingFrustumTest: node.frustumTest,
-                                committedFrustumTest: node.frustumTest,
-                                pendingReceiveShadows: node.receiveShadows,
-                                committedReceiveShadows: node.receiveShadows,
-                                pendingCastShadows: node.castShadows,
-                                committedCastShadows: node.castShadows,
-                                pendingBoundsRevision: -1,
-                                committedBoundsRevision: -1,
-                                pendingOcclusionStable: false,
-                                committedOcclusionStable: false,
-                                pendingMotionChanged: false,
-                                committedMotionChanged: false,
-                                pendingShadowChanged: false,
-                                committedShadowChanged: false,
-                                pendingMaterialRevision: -1,
-                                committedMaterialRevision: -1,
-                                pendingMotionHistoryValid: false,
-                                committedMotionHistoryValid: false,
-                                pendingHistoryRevision: temporalEnabled
-                                    ? getTransformHistoryRevision(node)
-                                    : -1,
-                                committedHistoryRevision: -1,
-                                committedSubmission: -1,
-                                committedMatrix: initial.slice(),
-                                pendingMatrix: initial
-                            };
-                            this.#objectByMesh.set(node, record);
-                        }
+        const sceneMeshes = context.scene.meshes;
+        for (let sceneIndex = 0; sceneIndex < context.scene.length; sceneIndex++) {
+            const node = sceneMeshes[sceneIndex];
+            if (!node?.visible) continue;
+            const logicalIndex = this.findLogicalBucket(node);
+            const gpuManaged =
+                logicalIndex !== null &&
+                this.#logicalGPUCompatible[logicalIndex] === 1 &&
+                !node.isSkinnedMesh &&
+                node.geometry?.isMorphGeometry !== true;
+            if (gpuManaged) {
+                let record = this.#objectByMesh.get(node);
+                if (record === undefined) {
+                    const slot = this.#freeObjectSlots.pop();
+                    if (slot !== undefined) {
+                        const initial = new Float32Array(16);
+                        matrixElements(node.worldMatrix, initial, 0);
+                        record = {
+                            mesh: node,
+                            slot,
+                            logicalBucket: logicalIndex,
+                            seenFrame: this.#frameSerial,
+                            pendingWorldVersion: -1,
+                            committedWorldVersion: -1,
+                            pendingFrustumTest: node.frustumTest,
+                            committedFrustumTest: node.frustumTest,
+                            pendingReceiveShadows: node.receiveShadows,
+                            committedReceiveShadows: node.receiveShadows,
+                            pendingCastShadows: node.castShadows,
+                            committedCastShadows: node.castShadows,
+                            pendingBoundsRevision: -1,
+                            committedBoundsRevision: -1,
+                            pendingOcclusionStable: false,
+                            committedOcclusionStable: false,
+                            pendingMotionChanged: false,
+                            committedMotionChanged: false,
+                            pendingShadowChanged: false,
+                            committedShadowChanged: false,
+                            pendingMaterialRevision: -1,
+                            committedMaterialRevision: -1,
+                            pendingMotionHistoryValid: false,
+                            committedMotionHistoryValid: false,
+                            pendingHistoryRevision: temporalEnabled
+                                ? getTransformHistoryRevision(node)
+                                : -1,
+                            committedHistoryRevision: -1,
+                            committedSubmission: -1,
+                            committedMatrix: initial.slice(),
+                            pendingMatrix: initial
+                        };
+                        this.#objectByMesh.set(node, record);
                     }
-                    if (record === undefined) {
-                        if ((cameraVisibility & (node.layer >>> 0)) !== 0) {
-                            this.trackFallbackMesh(node);
-                        }
-                    } else {
-                        this.#gpuManagedMeshes.push(node);
-                        if (node.castShadows) this.#gpuShadowMeshes.push(node);
-                        record.seenFrame = this.#frameSerial;
-                        const bounds = this.#logicalBounds[logicalIndex];
-                        if (bounds === undefined) {
-                            throw new Error('GPU Scene logical bounds are unavailable');
-                        }
-                        const transformStable =
-                            record.committedWorldVersion === node.worldMatrixVersion &&
-                            !arraysDiffer(record.committedMatrix, node.worldMatrix.elements);
-                        const motionChanged = temporalEnabled && !transformStable;
-                        const historyRevision = temporalEnabled
-                            ? getTransformHistoryRevision(node)
-                            : record.committedHistoryRevision;
-                        const motionHistoryValid =
-                            temporalEnabled &&
-                            record.committedSubmission === this.#submissionIndex &&
-                            record.committedHistoryRevision === historyRevision;
-                        const boundsStable = record.committedBoundsRevision === bounds.revision;
-                        if (!boundsStable && record.committedBoundsRevision >= 0) {
-                            this.#virtualShadows?.invalidateAll();
-                        }
-                        const materialRevision =
-                            this.#options.buckets[logicalIndex]?.material.revision ?? -1;
-                        const shadowChanged =
-                            record.logicalBucket !== logicalIndex ||
-                            !transformStable ||
-                            !boundsStable ||
-                            record.committedCastShadows !== node.castShadows ||
-                            record.committedMaterialRevision !== materialRevision;
-                        const occlusionStable = transformStable && boundsStable;
-                        const dirty =
-                            record.logicalBucket !== logicalIndex ||
-                            record.committedWorldVersion !== node.worldMatrixVersion ||
-                            record.committedFrustumTest !== node.frustumTest ||
-                            record.committedReceiveShadows !== node.receiveShadows ||
-                            record.committedCastShadows !== node.castShadows ||
-                            !boundsStable ||
-                            record.committedOcclusionStable !== occlusionStable ||
-                            record.committedMotionChanged !== motionChanged ||
-                            record.committedMotionHistoryValid !== motionHistoryValid ||
-                            record.committedShadowChanged !== shadowChanged ||
-                            record.committedMaterialRevision !== materialRevision;
-                        record.logicalBucket = logicalIndex;
-                        record.pendingHistoryRevision = historyRevision;
-                        if (dirty) {
-                            this.packObject(
-                                record,
-                                node,
-                                logicalIndex,
-                                occlusionStable,
-                                motionHistoryValid,
-                                motionChanged,
-                                shadowChanged,
-                                materialRevision
-                            );
-                            dirtyStart = Math.min(dirtyStart, record.slot);
-                            dirtyEnd = Math.max(dirtyEnd, record.slot + 1);
-                        }
-                        activeCount++;
-                        highWater = Math.max(highWater, record.slot + 1);
-                    }
-                } else if (
-                    node.geometry !== null &&
-                    node.material !== null &&
-                    (cameraVisibility & (node.layer >>> 0)) !== 0
-                ) {
-                    this.trackFallbackMesh(node);
                 }
-            } else if ((cameraVisibility & (node.layer >>> 0)) !== 0) {
-                if (node instanceof AmbientLight && node.enabled) {
-                    const color = node.getRealColor();
-                    ambient[124] = (ambient[124] ?? 0) + color.r;
-                    ambient[125] = (ambient[125] ?? 0) + color.g;
-                    ambient[126] = (ambient[126] ?? 0) + color.b;
+                if (record === undefined) {
+                    if ((cameraVisibility & (node.layer >>> 0)) !== 0) {
+                        this.trackFallbackMesh(node);
+                    }
+                } else {
+                    this.#gpuManagedMeshes.push(node);
+                    if (node.castShadows) this.#gpuShadowMeshes.push(node);
+                    record.seenFrame = this.#frameSerial;
+                    const bounds = this.#logicalBounds[logicalIndex];
+                    if (bounds === undefined) {
+                        throw new Error('GPU Scene logical bounds are unavailable');
+                    }
+                    const transformStable =
+                        record.committedWorldVersion === node.worldMatrixVersion &&
+                        !arraysDiffer(record.committedMatrix, node.worldMatrix.elements);
+                    const motionChanged = temporalEnabled && !transformStable;
+                    const historyRevision = temporalEnabled
+                        ? getTransformHistoryRevision(node)
+                        : record.committedHistoryRevision;
+                    const motionHistoryValid =
+                        temporalEnabled &&
+                        record.committedSubmission === this.#submissionIndex &&
+                        record.committedHistoryRevision === historyRevision;
+                    const boundsStable = record.committedBoundsRevision === bounds.revision;
+                    if (!boundsStable && record.committedBoundsRevision >= 0) {
+                        this.#virtualShadows?.invalidateAll();
+                    }
+                    const materialRevision =
+                        this.#options.buckets[logicalIndex]?.material.revision ?? -1;
+                    const shadowChanged =
+                        record.logicalBucket !== logicalIndex ||
+                        !transformStable ||
+                        !boundsStable ||
+                        record.committedCastShadows !== node.castShadows ||
+                        record.committedMaterialRevision !== materialRevision;
+                    const occlusionStable = transformStable && boundsStable;
+                    const dirty =
+                        record.logicalBucket !== logicalIndex ||
+                        record.committedWorldVersion !== node.worldMatrixVersion ||
+                        record.committedFrustumTest !== node.frustumTest ||
+                        record.committedReceiveShadows !== node.receiveShadows ||
+                        record.committedCastShadows !== node.castShadows ||
+                        !boundsStable ||
+                        record.committedOcclusionStable !== occlusionStable ||
+                        record.committedMotionChanged !== motionChanged ||
+                        record.committedMotionHistoryValid !== motionHistoryValid ||
+                        record.committedShadowChanged !== shadowChanged ||
+                        record.committedMaterialRevision !== materialRevision;
+                    record.logicalBucket = logicalIndex;
+                    record.pendingHistoryRevision = historyRevision;
+                    if (dirty) {
+                        this.packObject(
+                            record,
+                            node,
+                            logicalIndex,
+                            occlusionStable,
+                            motionHistoryValid,
+                            motionChanged,
+                            shadowChanged,
+                            materialRevision
+                        );
+                        dirtyStart = Math.min(dirtyStart, record.slot);
+                        dirtyEnd = Math.max(dirtyEnd, record.slot + 1);
+                    }
+                    activeCount++;
+                    highWater = Math.max(highWater, record.slot + 1);
+                }
+            } else if (
+                node.geometry !== null &&
+                node.material !== null &&
+                (cameraVisibility & (node.layer >>> 0)) !== 0
+            ) {
+                this.trackFallbackMesh(node);
+            }
+        }
+        const sceneLights = context.scene.lights.lights;
+        for (let lightIndex = 0; lightIndex < context.scene.lights.length; lightIndex++) {
+            const light = sceneLights[lightIndex];
+            if (light && (cameraVisibility & (light.layer >>> 0)) !== 0) {
+                if (light instanceof AmbientLight && light.enabled) {
+                    const color = light.getRealColor();
+                    ambient[124] += color.r;
+                    ambient[125] += color.g;
+                    ambient[126] += color.b;
                 } else if (
-                    node instanceof PointLight ||
-                    node instanceof SpotLight ||
-                    node instanceof DirectionalLight ||
-                    node instanceof AreaLight
+                    light instanceof PointLight ||
+                    light instanceof SpotLight ||
+                    light instanceof DirectionalLight ||
+                    light instanceof AreaLight
                 ) {
-                    if (node.enabled) {
-                        this.#collectedLights.push(node);
-                        this.#hasShadowLights ||= node.shadow !== null;
+                    if (light.enabled) {
+                        this.#collectedLights.push(light);
+                        this.#hasShadowLights ||= light.shadow !== null;
                     }
                 }
             }
-            return Node.TRAVERSE_STOP_NONE;
-        });
+        }
 
         for (const [mesh, record] of this.#objectByMesh) {
             if (record.seenFrame === this.#frameSerial) continue;
@@ -7177,23 +7180,20 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     }
 
     private hasGPUSceneParticipants(context: RenderPipelineContext): boolean {
-        let result = false;
-        context.scene.traverse(node => {
-            const participant = getRenderNodeExtension(node)?.gpu;
-            if (participant !== undefined && participant !== null) result = true;
-        });
-        return result;
+        for (const extension of context.scene.extensions) {
+            if (extension.gpu !== null) return true;
+        }
+        return false;
     }
 
     private hasVisibleGPUOpaqueParticles(context: RenderPipelineContext): boolean {
-        let result = false;
-        context.scene.traverse(node => {
-            const participant = getRenderNodeExtension(node)?.gpu;
+        for (const extension of context.scene.extensions) {
+            const participant = extension.gpu;
             if (participant?.hasOpaqueRenderers === true && participant.isVisible(context.camera)) {
-                result = true;
+                return true;
             }
-        });
-        return result;
+        }
+        return false;
     }
 
     private recordGPUSceneParticipants(
@@ -7202,15 +7202,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         depth: RenderGraphTextureHandle | null,
         phase: 'opaque' | 'transparent'
     ): void {
-        context.scene.traverse(node => {
-            const participant = getRenderNodeExtension(node)?.gpu;
-            if (participant === null || participant === undefined) return;
-            if (phase === 'opaque' && !participant.hasOpaqueRenderers) return;
+        for (const extension of context.scene.extensions) {
+            const participant = extension.gpu;
+            if (participant === null) continue;
+            if (phase === 'opaque' && !participant.hasOpaqueRenderers) continue;
             // Register before recording so a partial addon update is rolled back when recording
             // throws before the Render Graph can be submitted.
             this.#recordedGPUSceneParticipants.add(participant);
             participant.record(context, color, depth, participant.isVisible(context.camera), phase);
-        });
+        }
     }
 
     private admitMaterialVariant(shader: StorageGraphicsShader): boolean {

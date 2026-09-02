@@ -29,7 +29,7 @@ const presentFragmentSource = builtInShaderSource('present.frag');
 const portableCoordinateSource = builtInShaderSource('method/portableCoordinates.glsl');
 const mipmapVertexSource = builtInShaderSource('webgpu/mipmap.vert');
 const mipmapFragmentSource = builtInShaderSource('webgpu/mipmap.frag');
-const snowExampleModules = import.meta.glob<string>('../../../examples/snow.ts', {
+const modernShaderCorpusModules = import.meta.glob<string>('./fixtures/ModernShaderCorpus.ts', {
     eager: true,
     query: '?raw',
     import: 'default'
@@ -47,11 +47,6 @@ const colorUberSourceModules = import.meta.glob<string>(
         import: 'default'
     }
 );
-const shaderToyExampleModules = import.meta.glob<string>('../../../examples/shaderToy.ts', {
-    eager: true,
-    query: '?raw',
-    import: 'default'
-});
 
 let wgslValidationDevice: GPUDevice | null = null;
 
@@ -1273,11 +1268,11 @@ describe('built-in shader WebGPU corpus', () => {
     });
 });
 
-describe('modern example WebGPU shader corpus', () => {
+describe('modern portable WebGPU shader corpus', () => {
     it('translates and validates the ShaderToy fragment through Naga', async () => {
         registerUniformBlockBinding('ShaderToyBlock');
-        const source = Object.values(shaderToyExampleModules)[0];
-        if (!source) throw new Error('ShaderToy example source was not loaded');
+        const source = Object.values(modernShaderCorpusModules)[0];
+        if (!source) throw new Error('ShaderToy corpus source was not loaded');
         expect(source).not.toContain('col = pow( col, vec3(0.4545) )');
         const translator = new NagaShaderTranslator();
         await translator.initialize();
@@ -1295,8 +1290,8 @@ describe('modern example WebGPU shader corpus', () => {
     });
 
     it('translates the instanced snow billboard through Naga', async () => {
-        const snowSource = Object.values(snowExampleModules)[0];
-        if (!snowSource) throw new Error('Snow example source was not loaded');
+        const snowSource = Object.values(modernShaderCorpusModules)[0];
+        if (!snowSource) throw new Error('Billboard corpus source was not loaded');
         const translator = new NagaShaderTranslator();
         await translator.initialize();
         const translated = translator.translate(

@@ -1,7 +1,7 @@
 import {
     Geometry,
     GeometryData,
-    Mesh,
+    RenderMesh,
     ShaderMaterial,
     Sphere,
     TRIANGLES,
@@ -163,7 +163,7 @@ function compareTopology(left: number, right: number, state: ParticleCPUState): 
 
 /** Internal CPU ribbon/trail segment compactor and one-draw bridge. */
 export class ParticleCPURibbonWriter {
-    readonly mesh: Mesh;
+    readonly mesh: RenderMesh;
     readonly #state: ParticleCPUState;
     readonly #segmentData: Float32Array;
     readonly #segmentSources: readonly GeometryData[];
@@ -235,18 +235,16 @@ export class ParticleCPURibbonWriter {
                       }
                   })
         });
-        this.mesh = new Mesh({
+        this.mesh = new RenderMesh({
             name: `${plan.definition.name}:${renderer.type}:${String(rendererIndex)}`,
             geometry,
             material,
             frustumTest: true,
-            pointerEnabled: false,
             castShadows: false,
             receiveShadows: renderer.lighting === 'lambert',
             renderOrder: renderer.renderOrder ?? 0,
             instanceCount: 1,
-            visible: false,
-            autoUpdateWorldMatrix: plan.definition.simulationSpace === 'local'
+            visible: false
         });
     }
 
@@ -302,7 +300,7 @@ export class ParticleCPURibbonWriter {
     }
 
     destroy(renderer: Renderer): void {
-        this.mesh.destroy(renderer);
+        renderer.resourceManager.destroyMesh(this.mesh);
     }
 
     private siftDown(root: number, count: number): void {

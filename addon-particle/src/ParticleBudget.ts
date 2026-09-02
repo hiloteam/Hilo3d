@@ -1,4 +1,4 @@
-import type { Camera } from 'hilo3d';
+import type { RenderCamera } from 'hilo3d';
 import ParticleSystem from './ParticleSystem.js';
 
 /** Renderer-local particle quality and capacity budget. */
@@ -115,7 +115,7 @@ export class ParticleBudgetManager {
     /** Resolve and immediately apply one complete frame-wide budget to live systems. */
     apply(
         systems: readonly ParticleSystem[],
-        camera?: Camera
+        camera?: RenderCamera
     ): readonly Readonly<ParticleBudgetDecision>[] {
         const identifiers = new Set<string>();
         for (const system of systems) {

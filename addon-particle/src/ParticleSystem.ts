@@ -1,15 +1,14 @@
 import {
     Matrix4,
-    Node,
-    RENDER_NODE_EXTENSION,
+    EventDispatcher,
     Sphere,
     Vector3,
-    type Camera,
-    type NodeParameters,
+    type RenderCamera,
+    type RenderMesh,
     type Renderer,
     type RendererContract,
-    type RenderNodeExtension,
-    type RenderNodeGPUExtension,
+    type RenderExtension,
+    type RenderGPUExtension,
     type RenderGraphTextureHandle,
     type RenderPipelineContext,
     type RenderTargetColorAttachmentReadback
@@ -53,11 +52,6 @@ import { ParticleStatelessRuntime } from './stateless/ParticleStatelessRuntime.j
 import { particleStatelessGPUBlockingDiagnostics } from './stateless/ParticleStatelessGPUPlan.js';
 import { ParticleStatelessGPUEmitterRuntime } from './stateless/ParticleStatelessGPURuntime.js';
 
-interface ParticleStage extends Node {
-    readonly isStage: true;
-    readonly cameras: readonly Camera[];
-}
-
 interface ParticleEmitterRuntime {
     readonly plan: Readonly<ParticleCompiledEmitterPlan>;
     simulator: ParticleCPUSimulator | ParticleStatelessRuntime | null;
@@ -83,9 +77,14 @@ interface ParticleEmitterRuntime {
 
 let nextParticleBudgetSystemId = 1;
 
-/** Construction parameters for a runtime particle scene node. */
-export interface ParticleSystemParameters extends NodeParameters {
+/** Construction parameters for a reusable particle simulation/render resource. */
+export interface ParticleSystemParameters {
     readonly definition: ParticleSystemDefinition;
+    readonly name?: string;
+    readonly visible?: boolean;
+    readonly layer?: number;
+    readonly sortingLayer?: number;
+    readonly zIndex?: number;
     readonly seed?: number;
     readonly autoPlay?: boolean;
     readonly timeScale?: number;
@@ -122,10 +121,6 @@ function requireSeed(value: number | undefined): number {
     return seed >>> 0;
 }
 
-function isParticleStage(node: Node): node is ParticleStage {
-    return Reflect.get(node, 'isStage') === true && Array.isArray(Reflect.get(node, 'cameras'));
-}
-
 function maximumScalar(
     value: ParticleScalarSource | undefined,
     fallback: number,
@@ -134,22 +129,6 @@ function maximumScalar(
     if (value === undefined) return fallback;
     const source = resolveParticleParameter(value, parameters);
     return typeof source === 'number' ? source : source.max;
-}
-
-function particleNodeParameters(
-    parameters: Readonly<ParticleSystemParameters>
-): Readonly<NodeParameters> {
-    const nodeParameters = { ...parameters } as Record<string, unknown>;
-    delete nodeParameters['definition'];
-    delete nodeParameters['seed'];
-    delete nodeParameters['autoPlay'];
-    delete nodeParameters['timeScale'];
-    delete nodeParameters['parameters'];
-    delete nodeParameters['budgetId'];
-    delete nodeParameters['budgetPriority'];
-    delete nodeParameters['compilationEnvironment'];
-    delete nodeParameters['eventReadbackCapacity'];
-    return nodeParameters;
 }
 
 function snapshotParticleEvent(
@@ -164,10 +143,14 @@ function snapshotParticleEvent(
     });
 }
 
-/** Runtime scene node for immutable compiled particle-system definitions. */
-class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUExtension {
-    static override readonly typeName = 'ParticleSystem';
-    override className = 'ParticleSystem';
+/** Runtime resource for immutable compiled particle-system definitions. */
+class ParticleSystem extends EventDispatcher implements RenderExtension, RenderGPUExtension {
+    readonly worldMatrix = new Matrix4();
+    name = '';
+    visible = true;
+    layer = 1;
+    sortingLayer = 0;
+    zIndex = 0;
     readonly definition: ParticleSystemDefinition;
     readonly compiledPlan: Readonly<ParticleCompiledPlan>;
     /** Backend targeted by compilation, or undefined for a portable CPU-first plan. */
@@ -184,6 +167,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     readonly #inverseWorld = new Matrix4();
     readonly #cameraVector = new Vector3();
     readonly #eventQueue: Readonly<ParticleEventRecord>[] = [];
+    readonly #renderMeshes: RenderMesh[] = [];
     readonly #eventReadbackCapacity: number;
     #playing: boolean;
     #timeScale = 1;
@@ -192,15 +176,22 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     #gpuRenderer: RendererContract | null = null;
     #eventDroppedCount = 0;
     #baking = false;
-
-    /** Renderer extension consumed through Hilo3D's optional node protocol. @internal */
-    get [RENDER_NODE_EXTENSION](): RenderNodeExtension {
-        return this;
-    }
+    #viewCamera: RenderCamera | null = null;
 
     /** Active GPU graph contribution, or `null` for portable CPU-only systems. @internal */
-    get gpu(): RenderNodeGPUExtension | null {
+    get gpu(): RenderGPUExtension | null {
         return this.hasGPUEmitters ? this : null;
+    }
+
+    /** CPU renderer views contributed through explicit RenderWorld extraction. @internal */
+    get meshes(): readonly RenderMesh[] {
+        return this.#renderMeshes;
+    }
+
+    /** Synchronize the ECS WorldTransform without owning a second scene transform. @internal */
+    setWorldTransform(source: ArrayLike<number>, offset: number, _revision: number): void {
+        this.worldMatrix.fromArray(source, offset);
+        this.updateWorldContext();
     }
 
     constructor(parameters: Readonly<ParticleSystemParameters>) {
@@ -212,7 +203,12 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         ) {
             throw new TypeError('ParticleSystem requires an immutable definition');
         }
-        super(particleNodeParameters(parameters));
+        super();
+        this.name = parameters.name ?? '';
+        this.visible = parameters.visible ?? true;
+        this.layer = parameters.layer ?? 1;
+        this.sortingLayer = parameters.sortingLayer ?? 0;
+        this.zIndex = parameters.zIndex ?? 0;
         this.definition = parameters.definition;
         this.seed = requireSeed(parameters.seed);
         this.parameters = parameters.parameters ?? new ParticleParameterSet();
@@ -249,15 +245,14 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         const runtimes = this.compiledPlan.emitters.map(plan => this.createRuntime(plan));
         this.#runtimes = Object.freeze(runtimes);
         for (const runtime of runtimes) {
-            for (const writer of runtime.writers) this.addChild(writer.mesh);
+            for (const writer of runtime.writers) this.#renderMeshes.push(writer.mesh);
         }
         this.#playing = parameters.autoPlay ?? true;
-        this.enableUpdateHook();
         if (this.#playing) this.prewarmEmitters();
         this.syncWriters();
     }
 
-    /** Whether Stage updates currently advance this particle system. */
+    /** Whether its ECS particle System currently advances this resource. */
     get playing(): boolean {
         return this.#playing;
     }
@@ -321,9 +316,9 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         );
     }
 
-    /** Whether this node contributes a visible GPU draw for one camera. @internal */
-    isGPUVisible(camera: Camera): boolean {
-        if (!this.hierarchyVisible() || !camera.isLayerVisible(this)) return false;
+    /** Whether this resource contributes a visible GPU draw for one camera. @internal */
+    isGPUVisible(camera: RenderCamera): boolean {
+        if (!this.visible || !camera.isLayerVisible(this)) return false;
         camera.updateViewProjectionMatrix();
         return this.#runtimes.some(
             runtime =>
@@ -347,12 +342,9 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     }
 
     /** Build current per-emitter requests for a frame-wide budget allocation. @internal */
-    createBudgetRequests(camera?: Camera): readonly Readonly<ParticleBudgetRequest>[] {
+    createBudgetRequests(camera?: RenderCamera): readonly Readonly<ParticleBudgetRequest>[] {
         this.updateWorldContext();
         if (camera !== undefined) {
-            let cameraRoot: Node = camera;
-            while (cameraRoot.parent !== null) cameraRoot = cameraRoot.parent;
-            cameraRoot.updateMatrixWorld(true);
             camera.updateViewProjectionMatrix();
         }
         const world = this.worldMatrix.elements;
@@ -391,7 +383,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
                       );
                 const visible =
                     camera === undefined ||
-                    (this.hierarchyVisible() &&
+                    (this.visible &&
                         camera.isLayerVisible(this) &&
                         this.runtimeBoundsVisible(runtime, camera));
                 return Object.freeze({
@@ -499,32 +491,15 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         return this;
     }
 
-    /** Reset simulation and authored node state before a pool lease. @internal */
+    /** Reset simulation and authored component state before a pool lease. @internal */
     resetForPool(parameters: Readonly<ParticleSystemParameters>): this {
-        const template = new Node(particleNodeParameters(parameters));
         this.stop();
-        this.name = template.name;
-        this.anim = template.anim;
-        this.animationId = template.animationId;
-        this.jointName = template.jointName;
-        this.autoUpdateWorldMatrix = template.autoUpdateWorldMatrix;
-        this.autoUpdateChildWorldMatrix = template.autoUpdateChildWorldMatrix;
-        this.needCallChildUpdate = template.needCallChildUpdate;
-        this.visible = template.visible;
-        this.layer = template.layer;
-        this.sortingLayer = template.sortingLayer;
-        this.zIndex = template.zIndex;
-        this.pointerEnabled = template.pointerEnabled;
-        this.pointerChildren = template.pointerChildren;
-        this.useHandCursor = template.useHandCursor;
-        this.userData = template.userData;
-        this.onUpdate = template.onUpdate;
-        this.onlySyncQuaternion = template.onlySyncQuaternion;
-        this.up.copy(template.up);
-        this.setPosition(template.x, template.y, template.z);
-        this.setScale(template.scaleX, template.scaleY, template.scaleZ);
-        this.setPivot(template.pivotX, template.pivotY, template.pivotZ);
-        this.setRotation(template.rotationX, template.rotationY, template.rotationZ);
+        this.name = parameters.name ?? '';
+        this.visible = parameters.visible ?? true;
+        this.layer = parameters.layer ?? 1;
+        this.sortingLayer = parameters.sortingLayer ?? 0;
+        this.zIndex = parameters.zIndex ?? 0;
+        this.worldMatrix.identity();
         this.timeScale = parameters.timeScale ?? 1;
         this.applyBudgetDecisions(
             this.#runtimes.map(runtime => ({
@@ -978,7 +953,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         return this;
     }
 
-    override update(deltaTimeMilliseconds: number): void {
+    update(deltaTimeMilliseconds: number): void {
         if (this.#baking) {
             this.syncWriters();
             return;
@@ -989,16 +964,16 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         }
         const seconds = (deltaTimeMilliseconds * this.#timeScale) / 1000;
         if (!Number.isFinite(seconds) || seconds < 0) {
-            throw new RangeError('ParticleSystem Stage delta time must be finite and non-negative');
+            throw new RangeError('ParticleSystem frame delta time must be finite and non-negative');
         }
         this.updateWorldContext();
-        this.advanceWithCulling(seconds);
+        this.advanceWithCulling(seconds, this.#viewCamera);
         this.#elapsedSeconds = Math.fround(this.#elapsedSeconds + seconds);
         this.syncWriters();
         this.updateCompletion();
     }
 
-    override clone(isChild?: boolean): ParticleSystem {
+    clone(): ParticleSystem {
         const clone = new ParticleSystem({
             definition: this.definition,
             seed: this.seed,
@@ -1011,29 +986,27 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         });
         clone.name = this.name;
         clone.layer = this.layer;
-        clone.setPosition(this.x, this.y, this.z);
-        clone.setScale(this.scaleX, this.scaleY, this.scaleZ);
-        clone.setRotation(this.rotationX, this.rotationY, this.rotationZ);
-        if (isChild) {
-            for (const child of this.children) {
-                if (!child.isMesh) clone.addChild(child.clone(true));
-            }
-        }
+        clone.visible = this.visible;
+        clone.sortingLayer = this.sortingLayer;
+        clone.zIndex = this.zIndex;
+        clone.worldMatrix.copy(this.worldMatrix);
         return clone;
     }
 
-    override destroy(renderer?: Renderer, destroyTextures = false): this {
-        if (!renderer && this.#runtimes.some(runtime => runtime.writers.length > 0)) {
-            throw new Error('A renderer is required to destroy a ParticleSystem render bridge');
-        }
+    destroy(renderer?: Renderer): this {
         for (const runtime of this.#runtimes) {
             runtime.gpuRuntime?.destroy();
             runtime.gpuRuntime = null;
             runtime.statelessGPURuntime?.destroy();
             runtime.statelessGPURuntime = null;
         }
+        if (renderer) {
+            for (const mesh of this.#renderMeshes) renderer.resourceManager.destroyMesh(mesh);
+        }
+        if (renderer) this.#renderMeshes.length = 0;
         this.#gpuRenderer = null;
-        return super.destroy(renderer, destroyTextures);
+        this.off();
+        return this;
     }
 
     /** Allocate renderer-owned GPU state before the renderer enters its frame transaction. @internal */
@@ -1096,7 +1069,8 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     }
 
     /** Refresh per-camera CPU sort and topology streams before scene collection. @internal */
-    prepareView(camera: Camera): void {
+    prepareView(camera: RenderCamera): void {
+        this.#viewCamera = camera;
         this.syncWriters(camera);
     }
 
@@ -1211,7 +1185,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     }
 
     /** Generic addon camera-visibility query. @internal */
-    isVisible(camera: Camera): boolean {
+    isVisible(camera: RenderCamera): boolean {
         return this.isGPUVisible(camera);
     }
 
@@ -1290,13 +1264,6 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
     }
 
     private updateWorldContext(): void {
-        if (this.parent) {
-            let root = this.parent;
-            while (root.parent) root = root.parent;
-            root.updateMatrixWorld(true);
-        } else {
-            this.updateMatrixWorld(true);
-        }
         const elements = this.worldMatrix.elements;
         this.#contextPosition[0] = elements[12];
         this.#contextPosition[1] = elements[13];
@@ -1311,8 +1278,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         this.collectCPUEvents();
     }
 
-    private advanceWithCulling(seconds: number): void {
-        const stage = this.findStage();
+    private advanceWithCulling(seconds: number, camera: RenderCamera | null): void {
         for (const runtime of this.#runtimes) {
             if (
                 (!runtime.statelessGPUActive &&
@@ -1322,7 +1288,7 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
                 !runtime.budgetEnabled
             )
                 continue;
-            const visible = this.runtimeVisible(runtime, stage);
+            const visible = this.runtimeVisible(runtime, camera);
             switch (runtime.plan.definition.culling) {
                 case 'render-only':
                     this.advanceRuntime(runtime, seconds);
@@ -1358,51 +1324,35 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
         this.collectCPUEvents();
     }
 
-    private runtimeVisible(runtime: ParticleEmitterRuntime, stage: ParticleStage | null): boolean {
-        if (stage === null) return true;
-        if (!this.hierarchyVisible()) return false;
+    private runtimeVisible(runtime: ParticleEmitterRuntime, camera: RenderCamera | null): boolean {
+        if (camera === null) return true;
+        if (!this.visible || !camera.isLayerVisible(this)) return false;
         if (runtime.statelessGPUActive || runtime.writers.length === 0) {
-            return stage.cameras.some(camera => {
-                if (!camera.isLayerVisible(this)) return false;
-                camera.updateViewProjectionMatrix();
-                return this.runtimeBoundsVisible(runtime, camera);
-            });
+            camera.updateViewProjectionMatrix();
+            return this.runtimeBoundsVisible(runtime, camera);
         }
         if ((runtime.simulator?.state.aliveCount ?? 0) === 0) return true;
-        for (const camera of stage.cameras) {
-            camera.updateViewProjectionMatrix();
-            for (const writer of runtime.writers) {
-                writer.mesh.layer = this.layer;
-                if (camera.isLayerVisible(writer.mesh) && camera.isMeshVisible(writer.mesh))
-                    return true;
-            }
+        camera.updateViewProjectionMatrix();
+        for (const writer of runtime.writers) {
+            writer.mesh.layer = this.layer;
+            if (camera.isLayerVisible(writer.mesh) && camera.isMeshVisible(writer.mesh))
+                return true;
         }
         return false;
     }
 
-    private hierarchyVisible(): boolean {
-        if (!this.visible) return false;
-        let ancestor = this.parent;
-        while (ancestor !== null) {
-            if (!ancestor.visible) return false;
-            ancestor = ancestor.parent;
-        }
-        return true;
-    }
-
-    private runtimeBoundsVisible(runtime: ParticleEmitterRuntime, camera: Camera): boolean {
+    private runtimeBoundsVisible(runtime: ParticleEmitterRuntime, camera: RenderCamera): boolean {
         if (runtime.plan.definition.simulationSpace === 'world') return true;
         runtime.worldBounds.copy(runtime.localBounds).transformMat4(this.worldMatrix);
         return camera.isSphereVisible(runtime.worldBounds);
     }
 
-    private syncWriters(cameraOverride?: Camera): void {
-        const stage = this.findStage();
-        const camera = cameraOverride ?? stage?.cameras[0];
+    private syncWriters(cameraOverride?: RenderCamera): void {
+        const camera = cameraOverride ?? this.#viewCamera ?? undefined;
         const cameraElements = camera?.worldMatrix.elements;
-        const cameraX = cameraElements?.[12] ?? camera?.x ?? 0;
-        const cameraY = cameraElements?.[13] ?? camera?.y ?? 0;
-        const cameraZ = cameraElements?.[14] ?? camera?.z ?? 0;
+        const cameraX = cameraElements?.[12] ?? 0;
+        const cameraY = cameraElements?.[13] ?? 0;
+        const cameraZ = cameraElements?.[14] ?? 0;
         for (const runtime of this.#runtimes) {
             this.#cameraVector.set(cameraX, cameraY, cameraZ);
             if (runtime.plan.definition.simulationSpace === 'local') {
@@ -1416,6 +1366,8 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
                 writer.mesh.layer = this.layer;
                 if (runtime.plan.definition.simulationSpace === 'world') {
                     writer.mesh.worldMatrix.identity();
+                } else {
+                    writer.mesh.worldMatrix.copy(this.worldMatrix);
                 }
                 writer.sync(this.#cameraPosition, {
                     enabled: runtime.budgetEnabled && !runtime.statelessGPUActive,
@@ -1571,20 +1523,16 @@ class ParticleSystem extends Node implements RenderNodeExtension, RenderNodeGPUE
                     createParticleCPUWriters(runtime.plan, materialized.state, renderer, index)
                 )
             );
-            for (const writer of runtime.writers) this.addChild(writer.mesh);
+            for (const writer of runtime.writers) this.#renderMeshes.push(writer.mesh);
         }
         const remainingAge = Math.max(0, runtime.statelessAge - simulator.emitterAge);
         simulator.simulate(remainingAge, this.#context, runtime.plan.definition.fixedStep);
         this.syncWriters();
     }
 
-    private findStage(): ParticleStage | null {
-        let current: Node | null = this.parent;
-        while (current) {
-            if (isParticleStage(current)) return current;
-            current = current.parent;
-        }
-        return null;
+    /** Copy one ECS WorldTransform into this resource before simulation and extraction. */
+    setWorldMatrix(source: ArrayLike<number>, offset = 0): void {
+        this.worldMatrix.fromArray(source, offset);
     }
 }
 

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "suite": "ecs-migration",
+  "baselineCommit": "2f72d916510db137b8e3cbb16161a1b38721c227",
+  "nodeVersion": "22.23.1",
+  "staticEntityCount": 100000,
+  "dynamicEntityCount": 10000,
+  "warmupFrames": 20,
+  "sampleFrames": 100,
+  "rounds": 3,
+  "minimumP95ImprovementFraction": 0.25,
+  "maximumCoreAllocationBytesPerFrame": 0
+}

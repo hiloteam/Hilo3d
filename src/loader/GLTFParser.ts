@@ -1,7 +1,6 @@
-import Node from '../core/Node';
+import { ScenePrefab, ScenePrefabRecord, type ScenePrefabAnimation } from '../scene/ScenePrefab';
 import Skeleton from '../core/Skeleton';
 import Mesh from '../core/Mesh';
-import SkinnedMesh from '../core/SkinnedMesh';
 import BasicMaterial, {
     type BasicLightType,
     type BasicMaterialParameters
@@ -22,8 +21,7 @@ import math from '../math/math';
 import Matrix4 from '../math/Matrix4';
 import Matrix3 from '../math/Matrix3';
 import Color from '../math/Color';
-import AnimationStates, { type AnimationInterpolationType } from '../animation/AnimationStates';
-import Animation, { type AnimationClip } from '../animation/Animation';
+import type { AnimationInterpolation } from '../scene/components/Animation';
 import Camera from '../camera/Camera';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
 import OrthographicCamera from '../camera/OrthographicCamera';
@@ -288,9 +286,9 @@ function requireMaterial(value: unknown, context: string): Material {
     throw new TypeError(`${context} must produce a Material.`);
 }
 
-function requireNode(value: unknown, context: string): Node {
-    if (value instanceof Node) return value;
-    throw new TypeError(`${context} must produce a Node.`);
+function requirePrefabRecord(value: unknown, context: string): ScenePrefabRecord {
+    if (value instanceof ScenePrefabRecord) return value;
+    throw new TypeError(`${context} must produce a prefab record.`);
 }
 
 function optionalCamera(value: unknown, context: string): Camera | null {
@@ -313,8 +311,8 @@ function requireTexture(value: unknown, context: string): Texture {
 function isGLTFModel(value: unknown): value is GLTFModel {
     return (
         isRecord(value) &&
-        value['node'] instanceof Node &&
-        value['scene'] instanceof Node &&
+        value['prefab'] instanceof ScenePrefab &&
+        typeof value['instantiate'] === 'function' &&
         value['ready'] instanceof Promise
     );
 }
@@ -323,9 +321,10 @@ function readIndex(value: unknown): GLTFIndex | undefined {
     return typeof value === 'string' || typeof value === 'number' ? value : undefined;
 }
 
-function requireAnimationInterpolation(value: unknown): AnimationInterpolationType {
-    if (value === undefined || value === 'LINEAR') return 'LINEAR';
-    if (value === 'STEP' || value === 'CUBICSPLINE') return value;
+function requireAnimationInterpolation(value: unknown): AnimationInterpolation {
+    if (value === undefined || value === 'LINEAR') return 'linear';
+    if (value === 'STEP') return 'step';
+    if (value === 'CUBICSPLINE') return 'cubic-spline';
     throw new RangeError(`Unsupported animation interpolation value of type ${typeof value}.`);
 }
 
@@ -532,8 +531,8 @@ class GLTFParser {
     meshes: Mesh[] = [];
     lights: Light[] = [];
     skins: Record<string, Skeleton> = {};
-    node: Node = new Node();
-    jointMap: Record<string, Node> = {};
+    node: ScenePrefabRecord = new ScenePrefabRecord();
+    jointMap: Record<string, ScenePrefabRecord> = {};
     shaders: Record<string, string> = {};
     programs: Record<string, unknown> = {};
     techniques: Record<string, unknown> = {};
@@ -1492,12 +1491,6 @@ class GLTFParser {
         return geometry;
     }
 
-    handlerSkinnedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void {
-        if (!(mesh instanceof SkinnedMesh) || !skeleton) return;
-        mesh.skeleton = skeleton;
-        if (this.useInstanced) mesh.useInstanced = true;
-    }
-
     fixProgressiveGeometry(primitive: GLTFPrimitive, geometry: Geometry): void {
         const state = this.primitiveStates.get(primitive) ?? { meshes: [] };
         state.geometry = geometry;
@@ -1544,7 +1537,7 @@ class GLTFParser {
         }
     }
 
-    parseMesh(meshName: GLTFIndex, node: Node, nodeData: GLTFNode): void {
+    parseMesh(meshName: GLTFIndex, node: ScenePrefabRecord, nodeData: GLTFNode): void {
         const meshData = requireItem(this.json.meshes, meshName, 'glTF mesh');
         for (const primitive of meshData.primitives) {
             const skeleton =
@@ -1556,29 +1549,32 @@ class GLTFParser {
                         ? new BasicMaterial()
                         : (this.materials[String(primitive.material)] ?? new BasicMaterial());
                 const geometry = this.primitiveStates.get(primitive)?.geometry ?? null;
-                mesh = skeleton
-                    ? new SkinnedMesh({
-                          geometry,
-                          material,
-                          name: `mesh-${meshData.name ?? String(meshName)}`
-                      })
-                    : new Mesh({
-                          geometry,
-                          material,
-                          name: `mesh-${meshData.name ?? String(meshName)}`
-                      });
+                mesh = new Mesh({
+                    geometry,
+                    material,
+                    name: `mesh-${meshData.name ?? String(meshName)}`,
+                    useInstanced: this.useInstanced
+                });
                 this.primitiveTemplates.set(primitive, mesh);
             }
-            if (nodeData.weights) this.meshMorphWeights.set(mesh, nodeData.weights);
+            if (nodeData.weights) {
+                this.meshMorphWeights.set(mesh, nodeData.weights);
+                mesh.morphWeights = Float32Array.from(nodeData.weights);
+            }
             if (mesh.geometry) mesh.geometry = this.geometryForMesh(mesh.geometry, mesh);
-            this.handlerSkinnedMesh(mesh, skeleton);
+            if (skeleton) {
+                node.attachSkin(mesh, {
+                    jointIds: skeleton.jointNames,
+                    inverseBindMatrices: skeleton.inverseBindMatrices
+                });
+            }
             if (this.isProgressive && !mesh.geometry) {
                 mesh.visible = false;
                 const state = this.primitiveStates.get(primitive) ?? { meshes: [] };
                 state.meshes.push(mesh);
                 this.primitiveStates.set(primitive, state);
             }
-            node.addChild(mesh);
+            node.append(mesh);
             this.meshes.push(mesh);
         }
     }
@@ -1618,30 +1614,30 @@ class GLTFParser {
         }
     }
 
-    handlerNodeTransform(node: Node, data: GLTFNode): void {
+    handlerNodeTransform(node: ScenePrefabRecord, data: GLTFNode): void {
         if (data.matrix) {
             if (data.rotation || data.scale || data.translation) {
                 throw new TypeError('glTF nodes cannot define both matrix and TRS transforms.');
             }
-            node.matrix.fromArray(data.matrix);
+            node.setMatrix(data.matrix);
             return;
         }
         if (data.rotation) node.quaternion.fromArray(data.rotation);
         if (data.scale)
             node.setScale(
-                requiredNumber(data.scale, 0, 'Node scale'),
-                requiredNumber(data.scale, 1, 'Node scale'),
-                requiredNumber(data.scale, 2, 'Node scale')
+                requiredNumber(data.scale, 0, 'glTF node scale'),
+                requiredNumber(data.scale, 1, 'glTF node scale'),
+                requiredNumber(data.scale, 2, 'glTF node scale')
             );
         if (data.translation)
             node.setPosition(
-                requiredNumber(data.translation, 0, 'Node translation'),
-                requiredNumber(data.translation, 1, 'Node translation'),
-                requiredNumber(data.translation, 2, 'Node translation')
+                requiredNumber(data.translation, 0, 'glTF node translation'),
+                requiredNumber(data.translation, 1, 'glTF node translation'),
+                requiredNumber(data.translation, 2, 'glTF node translation')
             );
     }
 
-    parseNode(nodeName: GLTFIndex, parentNode: Node): Node {
+    parseNode(nodeName: GLTFIndex, parentNode: ScenePrefabRecord): ScenePrefabRecord {
         const key = String(nodeName);
         if (this.visitingNodes.has(key))
             throw new RangeError(`glTF node graph contains a cycle at ${key}.`);
@@ -1651,15 +1647,15 @@ class GLTFParser {
         this.visitingNodes.add(key);
         try {
             const data = requireItem(this.json.nodes, nodeName, 'glTF node');
-            let node = new Node({ name: data.name ?? '', animationId: key });
-            node = requireNode(
+            let node = new ScenePrefabRecord({ name: data.name ?? '', animationId: key });
+            node = requirePrefabRecord(
                 this.parseExtensions(data.extensions, node, { isNode: true }),
-                `Node ${key} extension`
+                `glTF node ${key} extension`
             );
             if (data.camera !== undefined) {
                 const camera = this.cameras[String(data.camera)];
-                if (!camera) throw new RangeError(`Node ${key} references missing camera.`);
-                node.addChild(camera);
+                if (!camera) throw new RangeError(`glTF node ${key} references missing camera.`);
+                node.append(camera);
             }
             this.handlerNodeTransform(node, data);
             node.jointName = data.jointName ?? key;
@@ -1667,7 +1663,7 @@ class GLTFParser {
             for (const meshName of data.meshes ?? []) this.parseMesh(meshName, node, data);
             if (data.mesh !== undefined) this.parseMesh(data.mesh, node, data);
             for (const childName of data.children ?? []) this.parseNode(childName, node);
-            parentNode.addChild(node);
+            parentNode.append(node);
             this.attachedNodes.add(key);
             return node;
         } finally {
@@ -1675,13 +1671,10 @@ class GLTFParser {
         }
     }
 
-    parseAnimations(): Animation | null {
-        if (!this.json.animations) return null;
-        const clips: Record<string, AnimationClip | null> = {};
-        let states: AnimationStates[] = [];
-        const validAnimationIds: Record<string, boolean> = {};
+    parseAnimations(): ScenePrefabAnimation[] {
+        const clips: ScenePrefabAnimation[] = [];
         for (const [animationName, animation] of collectionEntries(this.json.animations)) {
-            const animationStates: AnimationStates[] = [];
+            const channels: ScenePrefabAnimation['channels'][number][] = [];
             for (const channel of animation.channels) {
                 const sampler = requireItem(
                     animation.samplers,
@@ -1708,39 +1701,31 @@ class GLTFParser {
                     keyTime.length,
                     outputValues
                 );
-                const path = targetPath === 'rotation' ? 'quaternion' : targetPath;
-                const state = new AnimationStates({
-                    interpolationType: interpolation,
-                    nodeName: String(nodeId),
-                    keyTime,
-                    states: outputValues,
-                    type: AnimationStates.getType(path)
+                const frameMultiplier = interpolation === 'cubic-spline' ? 3 : 1;
+                const width =
+                    targetPath === 'weights'
+                        ? outputValues.length / (keyTime.length * frameMultiplier)
+                        : targetPath === 'rotation'
+                          ? 4
+                          : 3;
+                const values: number[] = [];
+                for (const outputValue of outputValues) {
+                    if (typeof outputValue === 'number') values.push(outputValue);
+                    else values.push(...outputValue);
+                }
+                channels.push({
+                    targetId: String(nodeId),
+                    property: targetPath,
+                    times: Float32Array.from(keyTime),
+                    values: Float32Array.from(values),
+                    width,
+                    interpolation
                 });
-                animationStates.push(state);
-                validAnimationIds[String(nodeId)] = true;
             }
-            if (this.isMultiAnim && animationStates.length > 0) {
-                const range = this.animationRange(animationStates);
-                clips[animation.name ?? animationName] = {
-                    start: range.start,
-                    end: range.end,
-                    animStatesList: animationStates
-                };
-            } else states.push(...animationStates);
+            if (channels.length > 0)
+                clips.push({ name: animation.name ?? animationName, channels });
         }
-        if (this.isMultiAnim) {
-            states =
-                Object.values(clips).find((clip): clip is AnimationClip => clip !== null)
-                    ?.animStatesList ?? [];
-        }
-        return states.length === 0
-            ? null
-            : new Animation({
-                  rootNode: this.node,
-                  animStatesList: states,
-                  validAnimationIds,
-                  clips
-              });
+        return clips;
     }
 
     private animationAccessor(animation: GLTFAnimation, reference: GLTFIndex): GLTFIndex {
@@ -1773,11 +1758,11 @@ class GLTFParser {
 
     private validateAnimationOutput(
         path: GLTFAnimationPath,
-        interpolation: AnimationInterpolationType,
+        interpolation: AnimationInterpolation,
         keyCount: number,
         output: AccessorArray
     ): void {
-        const frameCount = keyCount * (interpolation === 'CUBICSPLINE' ? 3 : 1);
+        const frameCount = keyCount * (interpolation === 'cubic-spline' ? 3 : 1);
         if (path === 'weights') {
             if (
                 output.length === 0 ||
@@ -1806,27 +1791,12 @@ class GLTFParser {
         }
     }
 
-    private animationRange(states: readonly AnimationStates[]): { start: number; end: number } {
-        let start = Infinity;
-        let end = -Infinity;
-        for (const state of states) {
-            const first = state.keyTime[0];
-            const last = state.keyTime[state.keyTime.length - 1];
-            if (first !== undefined) start = Math.min(start, first);
-            if (last !== undefined) end = Math.max(end, last);
-        }
-        return {
-            start: Number.isFinite(start) ? start : 0,
-            end: Number.isFinite(end) ? end : 0
-        };
-    }
-
     parseScene(): GLTFModel {
         this.parseMaterials();
         this.jointMap = {};
         this.meshes = [];
         this.lights = [];
-        this.node = new Node({ needCallChildUpdate: false });
+        this.node = new ScenePrefabRecord();
         this.visitingNodes.clear();
         this.attachedNodes.clear();
         this.parseCameras();
@@ -1834,26 +1804,20 @@ class GLTFParser {
         const scene = requireItem(this.json.scenes, sceneName, 'glTF scene');
         this.parseSkins();
         for (const nodeName of scene.nodes ?? []) this.parseNode(nodeName, this.node);
-        this.resetSkinInfo(this.node);
+        const prefab = new ScenePrefab(this.node.children, this.parseAnimations());
 
         const model: GLTFModel = {
-            node: this.node,
-            scene: this.node,
-            meshes: this.meshes,
+            prefab,
+            instantiate: world => prefab.instantiate(world),
+            meshCount: this.meshes.length,
+            cameraCount: Object.keys(this.cameras).length,
+            lightCount: this.lights.length,
             json: this.json,
-            cameras: Object.values(this.cameras),
-            lights: this.lights,
             textures: Object.values(this.textures),
             materials: Object.values(this.materials),
             ready: this.getProgressiveReady(),
             resourceErrors: this.resourceErrors
         };
-        const animation = this.parseAnimations();
-        if (animation) {
-            this.node.setAnim(animation);
-            animation.play();
-            model.anim = animation;
-        }
         this.parseExtensions(scene.extensions, null, { isScene: true });
         const extended = this.parseExtensions(this.json.extensions, model, {
             isGlobal: true,
@@ -1898,24 +1862,6 @@ class GLTFParser {
             skeleton.jointNames = joints.map(String);
             this.skins[name] = skeleton;
         }
-    }
-
-    resetSkinInfo(rootNode: Node): void {
-        const jointNameMap: Record<string, string> = {};
-        rootNode.traverse(node => {
-            const newJointName = `${node.id}_${node.name}`;
-            jointNameMap[node.jointName] = newJointName;
-            node.jointName = newJointName;
-            return Node.TRAVERSE_STOP_NONE;
-        });
-        for (const skin of Object.values(this.skins)) {
-            skin.jointNames = skin.jointNames.map(jointName => {
-                const mapped = jointNameMap[jointName];
-                if (!mapped) throw new RangeError(`Skin references missing joint ${jointName}.`);
-                return mapped;
-            });
-        }
-        rootNode.resetSkinnedMeshRootNode();
     }
 }
 

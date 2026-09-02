@@ -1,10 +1,11 @@
 import type PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import Mesh from '../../../src/core/Mesh';
-import Node from '../../../src/core/Node';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import ShaderMaterial from '../../../src/material/ShaderMaterial';
-import type { RendererFrame, RendererScene } from '../../../src/render/RendererCore';
+import type { RendererFrame } from '../../../src/render/RendererCore';
+import { RenderWorld } from '../../../src/render/world/RenderWorld';
+import { TransformStore } from '../../../src/scene/components/Transform';
 import type { RenderTarget, RenderTargetParameters } from '../../../src/render/RenderTarget';
 import type Texture from '../../../src/texture/Texture';
 
@@ -67,7 +68,7 @@ interface RenderTargetFactory {
 export interface MRTMSAAPostProcessPass {
     readonly inputTextures: readonly Texture<unknown>[];
     readonly output: RenderTarget | null;
-    readonly stage: RendererScene;
+    readonly stage: RenderWorld;
     readonly mesh: Mesh;
     readonly material: ShaderMaterial;
 }
@@ -146,13 +147,32 @@ function createMRTMSAAPostProcessPass(
         vs: MRT_MSAA_POSTPROCESS_VERTEX_SOURCE,
         fs: fragmentSource
     });
-    const mesh = new Mesh({
+    const sourceMesh = new Mesh({
         geometry: fullscreenGeometry(),
         material,
         frustumTest: false
     });
-    const stage = new Node() as RendererScene;
-    stage.addChild(mesh);
+    const transforms = new TransformStore(1, 1);
+    transforms.add(0, {});
+    transforms.updateWorldMatrices();
+    const stage = new RenderWorld(1, 1);
+    const geometry = sourceMesh.geometry;
+    if (!geometry) throw new Error('Post-process geometry is missing.');
+    stage.add(
+        0,
+        {
+            geometry,
+            material,
+            frustumTest: false,
+            castShadows: false,
+            receiveShadows: false
+        },
+        undefined,
+        undefined,
+        transforms
+    );
+    const mesh = stage.meshForEntity(0);
+    if (!mesh) throw new Error('Post-process RenderWorld mesh view is missing.');
     return Object.freeze({
         inputTextures,
         output,
@@ -235,7 +255,7 @@ export function createMRTMSAAPostProcessWorkload(
 export function recordMRTMSAAPostProcessWorkload(
     frame: Pick<RendererFrame, 'render' | 'renderToTarget'>,
     workload: Readonly<MRTMSAAPostProcessWorkload>,
-    sourceStage: RendererScene,
+    sourceStage: RenderWorld,
     camera: PerspectiveCamera
 ): void {
     frame.renderToTarget(workload.source, sourceStage, camera, false);

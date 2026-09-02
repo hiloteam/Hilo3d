@@ -133,7 +133,7 @@ function message(error: unknown): string {
 
 /**
  * Deterministic preview command adapter. The controller owns simulation time and never renders;
- * hosts render the current `system` through the ordinary Renderer/Stage contract.
+ * hosts render the current `system` through the ordinary Engine/RenderWorld contract.
  */
 export class ParticleAuthoringPreviewController {
     readonly #options: Readonly<ParticleAuthoringPreviewControllerOptions>;

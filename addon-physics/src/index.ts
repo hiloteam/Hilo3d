@@ -13,9 +13,6 @@ export {
     type PhysicsBackendWorld,
     type PhysicsBackendWorldOptions,
     type PhysicsJointMotorOptions,
-    type PhysicsTransformBindingOptions,
-    type PhysicsTransformSyncMode,
-    type PhysicsTransformTarget,
     type PhysicsWorldSnapshot
 } from './PhysicsBackend.js';
 export {
@@ -31,11 +28,24 @@ export {
     type PhysicsWorldEvent,
     type PhysicsWorldOptions
 } from './PhysicsWorld.js';
-export { HiloNodeTransform2D, HiloNodeTransform3D } from './HiloNodeTransform.js';
 export {
-    createPhysicsStageSystem,
-    PHYSICS_WORLD_2D_SERVICE,
-    PHYSICS_WORLD_3D_SERVICE,
-    type PhysicsStageSystemOptions
-} from './PhysicsStageSystem.js';
+    AttachedBody,
+    CharacterController,
+    Collider,
+    RigidBody,
+    type AttachedBodyValue,
+    type CharacterControllerValue,
+    type ColliderValue,
+    type RigidBodyValue
+} from './PhysicsComponents.js';
+export {
+    createPhysicsSystem,
+    PHYSICS_RUNTIME_2D,
+    PHYSICS_RUNTIME_3D,
+    PhysicsRuntime,
+    type PhysicsEcsSnapshot,
+    type PhysicsEntityEvent,
+    type PhysicsRuntimeDiagnostics,
+    type PhysicsSystemOptions
+} from './PhysicsSystem.js';
 export type * from './types.js';

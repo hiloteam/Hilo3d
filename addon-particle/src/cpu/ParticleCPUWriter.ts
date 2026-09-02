@@ -1,4 +1,4 @@
-import type { Mesh, Renderer } from 'hilo3d';
+import type { RenderMesh, Renderer } from 'hilo3d';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan.js';
 import type { ParticleRendererDefinition, ParticleVector3 } from '../ParticleTypes.js';
 import type { ParticleCPUState } from './ParticleCPUState.js';
@@ -14,7 +14,7 @@ export interface ParticleCPUWriterQuality {
 
 /** Renderer-neutral CPU particle output bridge used by the shared scene collector. @internal */
 export interface ParticleCPUWriter {
-    readonly mesh: Mesh;
+    readonly mesh: RenderMesh;
     sync(cameraPosition: ParticleVector3, quality: Readonly<ParticleCPUWriterQuality>): void;
     destroy(renderer: Renderer): void;
 }

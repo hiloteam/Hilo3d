@@ -88,6 +88,6 @@ export default defineConfig({
         command: 'npm run examples:serve',
         reuseExistingServer: !isContinuousIntegration,
         timeout: 120_000,
-        url: 'http://127.0.0.1:4173/examples/list.html'
+        url: 'http://127.0.0.1:4173/examples/index.html'
     }
 });

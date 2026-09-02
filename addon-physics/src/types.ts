@@ -479,7 +479,6 @@ export interface PhysicsWorldDiagnostics {
     readonly colliderCount: number;
     readonly jointCount: number;
     readonly characterControllerCount: number;
-    readonly bindingCount: number;
     readonly simulatedSteps: number;
     readonly droppedTimeSeconds: number;
     readonly accumulatorSeconds: number;

@@ -288,9 +288,8 @@ history 或可调 slope/toe/shoulder 的 filmic 曲线。相关增量与时域�
 完整 HDR 管线使用 `PostProcessRenderPipelineFactory`：
 
 ```ts
-const stage = await Hilo3d.Stage.create({
+const engine = await Hilo3d.Engine.create({
     backend: 'auto',
-    camera,
     container,
     renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
         groundTruthAmbientOcclusion: {
@@ -320,6 +319,8 @@ const stage = await Hilo3d.Stage.create({
         opaqueTexture: true
     })
 });
+
+// Add a camera Entity to the World, then submit through engine.frame(world, dt).
 ```
 
 该 factory 固定 attachment-zero scene color 为 `rgba16float`，默认启用 Bloom、Color Uber 和 opaque

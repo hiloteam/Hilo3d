@@ -1,15 +1,11 @@
 import { EventDispatcher, type DispatchEvent } from 'hilo3d';
-import {
-    clonePose,
-    type PhysicsBackend,
-    type PhysicsBackendExtension,
-    type PhysicsBackendEvent,
-    type PhysicsBackendWorld,
-    type PhysicsJointMotorOptions,
-    type PhysicsTransformBindingOptions,
-    type PhysicsTransformSyncMode,
-    type PhysicsTransformTarget,
-    type PhysicsWorldSnapshot
+import type {
+    PhysicsBackend,
+    PhysicsBackendExtension,
+    PhysicsBackendEvent,
+    PhysicsBackendWorld,
+    PhysicsJointMotorOptions,
+    PhysicsWorldSnapshot
 } from './PhysicsBackend.js';
 import type {
     PhysicsAngularVelocity,
@@ -22,10 +18,7 @@ import type {
     PhysicsOverlapShapeOptions,
     PhysicsPointProjection,
     PhysicsPose,
-    PhysicsPose2D,
-    PhysicsPose3D,
     PhysicsQueryFilter,
-    PhysicsQuaternion,
     PhysicsRaycastHit,
     PhysicsRigidBodyDescriptor,
     PhysicsRigidBodyType,
@@ -92,17 +85,6 @@ export type PhysicsColliderEvent<D extends PhysicsDimension> = PhysicsWorldEvent
     readonly other: PhysicsCollider<D>;
 };
 
-interface PhysicsTransformBinding<D extends PhysicsDimension> {
-    readonly body: PhysicsRigidBody<D>;
-    readonly target: PhysicsTransformTarget<D>;
-    readonly sync: PhysicsTransformSyncMode;
-    readonly interpolate: boolean;
-    previousPose: PhysicsPose<D>;
-    currentPose: PhysicsPose<D>;
-    inputStartPose: PhysicsPose<D> | null;
-    inputTargetPose: PhysicsPose<D> | null;
-}
-
 function requirePositiveFinite(value: number, name: string): number {
     if (!Number.isFinite(value) || value <= 0) {
         throw new RangeError(`${name} must be a positive finite number.`);
@@ -122,72 +104,6 @@ function requirePositiveInteger(value: number, name: string): number {
         throw new RangeError(`${name} must be a positive safe integer.`);
     }
     return value;
-}
-
-function lerp(left: number, right: number, alpha: number): number {
-    return left + (right - left) * alpha;
-}
-
-function interpolateQuaternion(
-    left: PhysicsQuaternion,
-    right: PhysicsQuaternion,
-    alpha: number
-): PhysicsQuaternion {
-    let rightX = right.x;
-    let rightY = right.y;
-    let rightZ = right.z;
-    let rightW = right.w;
-    const dot = left.x * rightX + left.y * rightY + left.z * rightZ + left.w * rightW;
-    if (dot < 0) {
-        rightX = -rightX;
-        rightY = -rightY;
-        rightZ = -rightZ;
-        rightW = -rightW;
-    }
-    const x = lerp(left.x, rightX, alpha);
-    const y = lerp(left.y, rightY, alpha);
-    const z = lerp(left.z, rightZ, alpha);
-    const w = lerp(left.w, rightW, alpha);
-    const length = Math.hypot(x, y, z, w);
-    if (length <= Number.EPSILON) return { x: 0, y: 0, z: 0, w: 1 };
-    return { x: x / length, y: y / length, z: z / length, w: w / length };
-}
-
-function interpolatePose<D extends PhysicsDimension>(
-    left: PhysicsPose<D>,
-    right: PhysicsPose<D>,
-    alpha: number
-): PhysicsPose<D> {
-    if (typeof left.rotation === 'number' && typeof right.rotation === 'number') {
-        let delta = right.rotation - left.rotation;
-        delta = ((delta + Math.PI) % (Math.PI * 2)) - Math.PI;
-        const leftPosition = left.position;
-        const rightPosition = right.position;
-        const pose: PhysicsPose2D = {
-            position: {
-                x: lerp(leftPosition.x, rightPosition.x, alpha),
-                y: lerp(leftPosition.y, rightPosition.y, alpha)
-            },
-            rotation: left.rotation + delta * alpha
-        };
-        return pose as PhysicsPose<D>;
-    }
-    const leftPose = left as PhysicsPose3D;
-    const rightPose = right as PhysicsPose3D;
-    const pose: PhysicsPose3D = {
-        position: {
-            x: lerp(leftPose.position.x, rightPose.position.x, alpha),
-            y: lerp(leftPose.position.y, rightPose.position.y, alpha),
-            z: lerp(leftPose.position.z, rightPose.position.z, alpha)
-        },
-        rotation: interpolateQuaternion(leftPose.rotation, rightPose.rotation, alpha)
-    };
-    return pose as PhysicsPose<D>;
-}
-
-function defaultSyncMode(type: PhysicsRigidBodyType): PhysicsTransformSyncMode {
-    if (type === 'fixed' || type === 'kinematic-position') return 'target-to-physics';
-    return 'physics-to-target';
 }
 
 abstract class PhysicsObject<D extends PhysicsDimension> extends EventDispatcher {
@@ -252,7 +168,6 @@ export class PhysicsRigidBody<D extends PhysicsDimension> extends PhysicsObject<
     setPose(pose: PhysicsPose<D>, wakeUp = true): this {
         this.requireValid('Rigid body');
         this.world.backendWorld.setBodyPose(this.handle, pose, wakeUp);
-        this.world.resetBindingPose(this.handle, pose, true);
         return this;
     }
 
@@ -424,7 +339,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
     private readonly colliders = new Map<number, PhysicsCollider<D>>();
     private readonly joints = new Map<number, PhysicsJoint<D>>();
     private readonly characterControllers = new Map<number, PhysicsCharacterController<D>>();
-    private readonly bindings = new Map<number, PhysicsTransformBinding<D>>();
 
     get generation(): number {
         return this.generationValue;
@@ -526,7 +440,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
                 this.colliders.delete(collider.handle);
             }
         }
-        this.bindings.delete(body.handle);
         this.bodies.delete(body.handle);
         body.off();
         for (const [handle, joint] of this.joints) {
@@ -648,32 +561,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
         );
     }
 
-    bindTransform(
-        body: PhysicsRigidBody<D>,
-        target: PhysicsTransformTarget<D>,
-        options: PhysicsTransformBindingOptions = {}
-    ): this {
-        this.requireOwned(body, 'Rigid body');
-        const pose = this.backendWorld.bodyPose(body.handle);
-        this.bindings.set(body.handle, {
-            body,
-            target,
-            sync: options.sync ?? 'auto',
-            interpolate: options.interpolate ?? true,
-            previousPose: clonePose(pose),
-            currentPose: clonePose(pose),
-            inputStartPose: null,
-            inputTargetPose: null
-        });
-        return this;
-    }
-
-    unbindTransform(body: PhysicsRigidBody<D>): this {
-        this.requireOwned(body, 'Rigid body');
-        this.bindings.delete(body.handle);
-        return this;
-    }
-
     /** Advance from a visual-frame duration expressed in milliseconds. */
     advance(deltaTimeMilliseconds: number): PhysicsAdvanceResult {
         this.requireAlive();
@@ -681,7 +568,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
             throw new RangeError('Physics frame delta must be a non-negative finite number.');
         }
         if (this.paused || this.timeScale === 0) {
-            this.syncOutputTransforms(this.interpolationAlpha);
             return { steps: 0, interpolationAlpha: this.interpolationAlpha, droppedTimeSeconds: 0 };
         }
         const scaledDelta = (deltaTimeMilliseconds / 1000) * this.timeScale;
@@ -698,19 +584,14 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
             this.accumulator -= overflowTime;
             droppedThisFrame += overflowTime;
         }
-        this.captureInputTargets();
         for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
-            this.capturePreviousPoses();
-            this.syncInputTransforms((stepIndex + 1) / stepCount);
             this.backendWorld.step(this.fixedTimeStep);
             this.drainBackendEvents();
-            this.captureCurrentPoses();
             this.accumulator -= this.fixedTimeStep;
             this.simulatedSteps += 1;
         }
         this.accumulator = Math.max(0, this.accumulator);
         this.interpolationAlpha = Math.min(1, Math.max(0, this.accumulator / this.fixedTimeStep));
-        this.syncOutputTransforms(this.interpolationAlpha);
         this.droppedTime += droppedThisFrame;
         return {
             steps: stepCount,
@@ -819,7 +700,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
         this.generationValue += 1;
         this.accumulator = 0;
         this.interpolationAlpha = 0;
-        this.bindings.clear();
         for (const object of [
             ...this.bodies.values(),
             ...this.colliders.values(),
@@ -866,7 +746,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
             colliderCount: this.colliders.size,
             jointCount: this.joints.size,
             characterControllerCount: this.characterControllers.size,
-            bindingCount: this.bindings.size,
             simulatedSteps: this.simulatedSteps,
             droppedTimeSeconds: this.droppedTime,
             accumulatorSeconds: this.accumulator,
@@ -877,7 +756,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
     destroy(): void {
         if (this.destroyed) return;
         this.destroyed = true;
-        this.bindings.clear();
         for (const object of [
             ...this.bodies.values(),
             ...this.colliders.values(),
@@ -892,73 +770,6 @@ export class PhysicsWorld<D extends PhysicsDimension> extends EventDispatcher {
         this.characterControllers.clear();
         this.off();
         this.backendWorld.destroy();
-    }
-
-    resetBindingPose(handle: number, pose: PhysicsPose<D>, invalidateHistory: boolean): void {
-        const binding = this.bindings.get(handle);
-        if (!binding) return;
-        binding.previousPose = clonePose(pose);
-        binding.currentPose = clonePose(pose);
-        binding.inputStartPose = null;
-        binding.inputTargetPose = null;
-        binding.target.writePose(pose);
-        if (invalidateHistory) binding.target.invalidateHistory?.();
-    }
-
-    private captureInputTargets(): void {
-        for (const binding of this.bindings.values()) {
-            const sync =
-                binding.sync === 'auto' ? defaultSyncMode(binding.body.type) : binding.sync;
-            if (sync !== 'target-to-physics') {
-                binding.inputStartPose = null;
-                binding.inputTargetPose = null;
-                continue;
-            }
-            binding.inputStartPose = this.backendWorld.bodyPose(binding.body.handle);
-            binding.inputTargetPose = binding.target.readPose();
-        }
-    }
-
-    private syncInputTransforms(progress: number): void {
-        for (const binding of this.bindings.values()) {
-            if (!binding.inputStartPose || !binding.inputTargetPose) continue;
-            const pose = interpolatePose(binding.inputStartPose, binding.inputTargetPose, progress);
-            if (binding.body.type === 'kinematic-position') {
-                this.backendWorld.setNextKinematicPose(binding.body.handle, pose);
-            } else {
-                this.backendWorld.setBodyPose(binding.body.handle, pose, false);
-            }
-        }
-    }
-
-    private capturePreviousPoses(): void {
-        for (const binding of this.bindings.values()) {
-            const sync =
-                binding.sync === 'auto' ? defaultSyncMode(binding.body.type) : binding.sync;
-            if (sync === 'physics-to-target') binding.previousPose = clonePose(binding.currentPose);
-        }
-    }
-
-    private captureCurrentPoses(): void {
-        for (const binding of this.bindings.values()) {
-            const sync =
-                binding.sync === 'auto' ? defaultSyncMode(binding.body.type) : binding.sync;
-            if (sync === 'physics-to-target') {
-                binding.currentPose = this.backendWorld.bodyPose(binding.body.handle);
-            }
-        }
-    }
-
-    private syncOutputTransforms(alpha: number): void {
-        for (const binding of this.bindings.values()) {
-            const sync =
-                binding.sync === 'auto' ? defaultSyncMode(binding.body.type) : binding.sync;
-            if (sync !== 'physics-to-target') continue;
-            const pose = binding.interpolate
-                ? interpolatePose(binding.previousPose, binding.currentPose, alpha)
-                : binding.currentPose;
-            binding.target.writePose(pose);
-        }
     }
 
     private drainBackendEvents(): void {

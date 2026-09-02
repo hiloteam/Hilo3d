@@ -16,6 +16,7 @@
     "vite.config.ts",
     "vite.examples.config.ts",
     "vitest.config.ts",
+    "vitest.physics.config.ts",
     "vitest.rhi.config.ts",
     "vitest.rhi-native.config.ts"
   ]

@@ -1,27 +1,74 @@
-import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { expect, test, type Page } from '@playwright/test';
+
+interface PageFailureMonitor {
+    readonly failures: string[];
+    readonly firstFailure: Promise<never>;
+}
+
+function monitorPageFailures(page: Page, failures: string[] = []): PageFailureMonitor {
+    let rejectFirstFailure: (error: Error) => void = () => undefined;
+    const firstFailure = new Promise<never>((_resolve, reject) => {
+        rejectFirstFailure = reject;
+    });
+    void firstFailure.catch(() => undefined);
+
+    const recordFailure = (message: string): void => {
+        failures.push(message);
+        rejectFirstFailure(new Error(message));
+    };
+    page.on('console', message => {
+        if (message.type() === 'error') recordFailure(message.text());
+    });
+    page.on('pageerror', error => {
+        recordFailure(error.message);
+    });
+    return { failures, firstFailure };
+}
+
+async function waitForVisualFirstFrame(page: Page, monitor: PageFailureMonitor): Promise<void> {
+    if (monitor.failures.length > 0) throw new Error(monitor.failures[0]);
+    await Promise.race([
+        page.waitForFunction(() => window.__HILO3D_VISUAL_FIRST_FRAME__ !== undefined),
+        monitor.firstFailure
+    ]);
+}
+
+test('@visual committed WebGPU and WebGL2 ECS baselines match exactly', async () => {
+    const [webgl2, webgpu] = await Promise.all([
+        readFile(
+            new URL(
+                './__screenshots__/visual.spec.ts/ecs-lit-pbr-scene-webgl2-chromium-linux.png',
+                import.meta.url
+            )
+        ),
+        readFile(
+            new URL(
+                './__screenshots__/visual.spec.ts/ecs-lit-pbr-scene-webgpu-chromium-linux.png',
+                import.meta.url
+            )
+        )
+    ]);
+    expect(webgpu.equals(webgl2), 'committed WebGPU pixels must match WebGL2').toBe(true);
+});
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
-    test(`@visual renders a deterministic lit PBR scene through ${backend}`, async ({ page }) => {
-        const consoleErrors: string[] = [];
-        const pageErrors: string[] = [];
-        page.on('console', message => {
-            if (message.type() === 'error') consoleErrors.push(message.text());
-        });
-        page.on('pageerror', error => pageErrors.push(error.message));
+    test(`@visual renders a deterministic ECS PBR scene through ${backend}`, async ({ page }) => {
+        const monitor = monitorPageFailures(page);
 
         await page.goto(`/test/ui/fixtures/visual.html?backend=${backend}`, {
             waitUntil: 'load'
         });
-        await page.waitForFunction(() => window.__HILO3D_VISUAL_FIRST_FRAME__ !== undefined);
+        await waitForVisualFirstFrame(page, monitor);
 
-        expect(pageErrors).toEqual([]);
-        expect(consoleErrors).toEqual([]);
+        expect(monitor.failures).toEqual([]);
         expect(await page.evaluate(() => window.__HILO3D_VISUAL_FIRST_FRAME__?.backend)).toBe(
             backend
         );
-        await expect(page.locator('canvas')).toHaveScreenshot(`lit-pbr-scene-${backend}.png`, {
+        await expect(page.locator('canvas')).toHaveScreenshot(`ecs-lit-pbr-scene-${backend}.png`, {
             animations: 'disabled',
-            maxDiffPixelRatio: 0.005
+            maxDiffPixels: 0,
+            threshold: 0
         });
 
         await page.evaluate(() => window.__HILO3D_VISUAL_CONTINUE__?.());
@@ -35,24 +82,3 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         expect(result?.readback.viewportBytes).toEqual([0, 0, 37, 23]);
     });
 }
-
-test('@visual WebGPU first-frame output matches WebGL2 exactly', async ({ page }) => {
-    const failures: string[] = [];
-    page.on('console', message => {
-        if (message.type() === 'error') failures.push(message.text());
-    });
-    page.on('pageerror', error => failures.push(error.message));
-
-    const capture = async (backend: 'webgl2' | 'webgpu'): Promise<Buffer> => {
-        await page.goto(`/test/ui/fixtures/visual.html?backend=${backend}`, {
-            waitUntil: 'load'
-        });
-        await page.waitForFunction(() => window.__HILO3D_VISUAL_FIRST_FRAME__ !== undefined);
-        return page.locator('canvas').screenshot({ animations: 'disabled' });
-    };
-
-    const webgl2 = await capture('webgl2');
-    const webgpu = await capture('webgpu');
-    expect(failures).toEqual([]);
-    expect(webgpu.equals(webgl2), 'WebGPU canvas pixels must match WebGL2').toBe(true);
-});

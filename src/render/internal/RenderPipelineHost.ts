@@ -8,7 +8,7 @@ import type {
 } from '../graph/RenderGraphTimeline';
 import type { RHICapabilities } from '../rhi/core';
 import type { RenderTarget } from '../RenderTarget';
-import type { RendererScene } from '../RendererCore';
+import type { RenderWorld } from '../world/RenderWorld';
 import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import {
@@ -39,7 +39,7 @@ export interface RenderPipelineHostLifecycle {
         batchSize?: number
     ): Promise<void>;
     createPipelineContext(
-        scene: RendererScene,
+        scene: RenderWorld,
         camera: Camera,
         target: RenderTarget | null,
         fireEvent: boolean,
@@ -238,7 +238,7 @@ export class RenderPipelineHost {
     }
 
     recordPipeline(
-        scene: RendererScene,
+        scene: RenderWorld,
         camera: Camera,
         target: RenderTarget | null,
         fireEvent: boolean

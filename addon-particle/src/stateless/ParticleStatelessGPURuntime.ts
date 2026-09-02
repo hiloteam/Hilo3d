@@ -6,13 +6,16 @@ import {
     RenderPassParameterPool,
     UniformBuffer,
     createStd140Layout,
-    type Camera,
-    type Node,
+    type RenderCamera,
     type RenderGraphTextureHandle,
     type RenderPipelineContext,
     type RendererContract,
     type StorageBuffer
 } from 'hilo3d';
+
+interface ParticleTransformView {
+    readonly worldMatrix: { readonly elements: ArrayLike<number> };
+}
 import type { ParticleBudgetDecision } from '../ParticleBudget.js';
 import type { ParticleCompiledEmitterPlan } from '../ParticleCompiledPlan.js';
 import {
@@ -45,7 +48,7 @@ interface StatelessRendererPasses {
     readonly parameters: RenderPassParameterPool<ParticleDrawParameters>;
 }
 
-function cameraPosition(camera: Camera, target: Float32Array): void {
+function cameraPosition(camera: RenderCamera, target: Float32Array): void {
     const elements = camera.worldMatrix.elements;
     target[0] = elements[12];
     target[1] = elements[13];
@@ -179,7 +182,7 @@ export class ParticleStatelessGPUEmitterRuntime {
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        system: Node,
+        system: ParticleTransformView,
         emitterAge: number,
         drawVisible: boolean,
         phase: 'opaque' | 'transparent'
@@ -204,7 +207,12 @@ export class ParticleStatelessGPUEmitterRuntime {
             ]);
             if (definition.simulationSpace === 'world') {
                 const world = system.worldMatrix.elements;
-                this.#parameterValues.emitterPosition.set([world[12], world[13], world[14], 1]);
+                this.#parameterValues.emitterPosition.set([
+                    world[12] ?? 0,
+                    world[13] ?? 0,
+                    world[14] ?? 0,
+                    1
+                ]);
             } else {
                 this.#parameterValues.emitterPosition.set([0, 0, 0, 1]);
             }
@@ -250,7 +258,7 @@ export class ParticleStatelessGPUEmitterRuntime {
     private writeViewUniform(
         uniform: UniformBuffer,
         context: RenderPipelineContext,
-        system: Node
+        system: ParticleTransformView
     ): void {
         uniform.set('u_viewMatrix', context.camera.viewMatrix.elements);
         uniform.set('u_projectionMatrix', context.camera.jitteredProjectionMatrix.elements);

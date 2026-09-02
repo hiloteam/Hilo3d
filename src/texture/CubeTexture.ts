@@ -7,38 +7,7 @@ export type CubeTextureImage = (TextureImageSource | null)[];
 export interface CubeTextureParameters extends Omit<TextureParameters<CubeTextureImage>, 'target'> {
     image?: CubeTextureImage | null;
 }
-/**
- * 立方体纹理
- * @example
- * ```ts
- * const loadQueue = new Hilo3d.LoadQueue([{
- *     src: './textures/cube/right.jpg'
- * }, {
- *     src: './textures/cube/left.jpg'
- * }, {
- *     src: './textures/cube/top.jpg'
- * }, {
- *     src: './textures/cube/bottom.jpg'
- * }, {
- *     src: './textures/cube/front.jpg'
- * }, {
- *     src: './textures/cube/back.jpg'
- * }]).on('complete', function () {
- *     const result = loadQueue.getAllContent();
- *     const skyboxMap = new Hilo3d.CubeTexture({
- *         image: result
- *     });
- *     const skybox = new Hilo3d.Mesh({
- *         geometry: new Hilo3d.BoxGeometry(),
- *         material: new Hilo3d.BasicMaterial({
- *             lightType: 'NONE',
- *             diffuse: skyboxMap
- *         })
- *     });
- *     stage.addChild(skybox);
- * });
- * ```
- */
+/** Six-face cube texture resource for environment and custom material sampling. */
 class CubeTexture extends Texture<CubeTextureImage> {
     isCubeTexture = true;
     override readonly className: string = 'CubeTexture';

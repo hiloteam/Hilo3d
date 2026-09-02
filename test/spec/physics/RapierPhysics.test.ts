@@ -130,7 +130,6 @@ describe('Rapier physics adapters', () => {
             const restored = world.getRigidBody(handle);
             expect(restored?.valid).toBe(true);
             expect(restored?.pose.position.y).toBeCloseTo(0.5, 3);
-            expect(world.getDiagnostics().bindingCount).toBe(0);
             expect(world.getDiagnostics().characterControllerCount).toBe(0);
         } finally {
             world.destroy();

@@ -6,10 +6,10 @@ import {
     rhiBenchmarkUsesDynamicTextures
 } from '../../benchmarks/rhi/fixture-contract';
 import PerspectiveCamera from '../../src/camera/PerspectiveCamera';
-import Node from '../../src/core/Node';
 import type Shader from '../../src/shader/Shader';
 import Texture from '../../src/texture/Texture';
-import type { RendererFrame, RendererScene } from '../../src/render/RendererCore';
+import type { RendererFrame } from '../../src/render/RendererCore';
+import { RenderWorld } from '../../src/render/world/RenderWorld';
 import type {
     RenderTarget,
     RenderTargetColorAttachmentReadback,
@@ -223,16 +223,16 @@ describe('RHI production MRT/MSAA post-process workload', () => {
         };
         const source = sourceTarget();
         const workload = createMRTMSAAPostProcessWorkload(factory, source, 1280, 720);
-        const sourceStage = new Node() as RendererScene;
+        const sourceStage = new RenderWorld();
         const camera = new PerspectiveCamera();
         const renderCalls: {
             readonly target: RenderTarget;
-            readonly stage: RendererScene;
+            readonly stage: RenderWorld;
             readonly camera: PerspectiveCamera;
             readonly fireEvent: boolean | undefined;
         }[] = [];
         const surfaceCalls: {
-            readonly stage: RendererScene;
+            readonly stage: RenderWorld;
             readonly camera: PerspectiveCamera;
             readonly fireEvent: boolean | undefined;
         }[] = [];
@@ -507,6 +507,10 @@ describe('RHI production fixture smoke contract', () => {
         expect(fixtureSource).toContain("adapterPolicy === 'physical'");
         expect(fixtureSource).toContain("{ requiredFeatures: ['timestamp-query'] as const }");
         expect(fixtureSource).toContain("'disabled-non-evidence'");
+        expect(fixtureSource).toContain('new TransformStore(entityCapacity, entityCapacity)');
+        expect(fixtureSource).toContain(
+            'Math.max(scenario.quality.drawCount, scenario.quality.instanceCount)'
+        );
         expect(packageSource).toContain(
             '"test:rhi-benchmark-smoke": "jiti scripts/performance/smoke-rhi-production-fixture.ts"'
         );

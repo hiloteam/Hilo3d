@@ -26,12 +26,7 @@ export {
 export type * from './RendererList';
 export type * from './RenderPipeline';
 export type * from './RenderPipelineTexture';
-export {
-    getRenderNodeExtension,
-    RENDER_NODE_EXTENSION,
-    type RenderNodeExtension,
-    type RenderNodeGPUExtension
-} from './RenderNodeExtension';
+export { type RenderExtension, type RenderGPUExtension } from './RenderExtension';
 export type * from './ScriptableRenderGraph';
 export * from './passes';
 export * from '../postprocessing';

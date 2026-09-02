@@ -5,7 +5,6 @@ import RendererCore, {
     type RendererFrameCallback,
     type RendererResourceDiagnostics,
     type RendererResourceManager,
-    type RendererScene,
     type RendererViewport,
     type TextureCompressionFormat
 } from './RendererCore';
@@ -132,7 +131,6 @@ export type {
     RendererFrameCallback,
     RendererResourceDiagnostics,
     RendererResourceManager,
-    RendererScene,
     RendererViewport,
     TextureCompressionFormat
 };

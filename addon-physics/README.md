@@ -1,43 +1,50 @@
 # @hilo3d/addon-physics
 
-Optional, backend-neutral 2D/3D physics for Hilo3D. The first adapters use Rapier; importing
-`hilo3d` alone never imports this package or a Rapier WASM module.
-
-## Rapier 3D
+Optional backend-neutral 2D/3D physics for Hilo3D's ECS runtime.
 
 ```ts
-import * as Hilo3d from 'hilo3d';
 import {
-    PHYSICS_WORLD_3D_SERVICE,
-    bindNode3D,
-    createRapier3DPhysicsSystem
-} from '@hilo3d/addon-physics/rapier3d';
+    CameraOutput,
+    Engine,
+    LocalTransform,
+    MeshRenderer,
+    PerspectiveCamera,
+    World,
+    createRenderExtractionSystem,
+    createTransformSystem
+} from 'hilo3d';
+import { Collider, RigidBody } from '@hilo3d/addon-physics';
+import { createRapier3DPhysicsSystem } from '@hilo3d/addon-physics/rapier3d';
 
-const physicsSystem = createRapier3DPhysicsSystem({
-    gravity: { x: 0, y: -9.81, z: 0 },
-    fixedTimeStep: 1 / 60,
-    maxSubSteps: 4
+const world = await World.create({
+    systems: [
+        createRapier3DPhysicsSystem({
+            gravity: { x: 0, y: -9.81, z: 0 },
+            fixedTimeStep: 1 / 60
+        }),
+        createTransformSystem(),
+        createRenderExtractionSystem()
+    ]
 });
 
-const stage = await Hilo3d.Stage.create({
-    camera,
-    systems: [physicsSystem]
-});
-const world = stage.systems.get(PHYSICS_WORLD_3D_SERVICE);
-
-const body = world.createRigidBody({
+const ball = world.createEntity();
+world.add(ball, LocalTransform, { position: [0, 4, 0] });
+world.add(ball, MeshRenderer, { geometry, material });
+world.add(ball, RigidBody, {
+    dimension: '3d',
     type: 'dynamic',
-    position: { x: 0, y: 4, z: 0 }
+    interpolate: true
 });
-world.createCollider({ shape: { type: 'ball', radius: 0.5 }, density: 1 }, body);
-bindNode3D(world, body, mesh);
+world.add(ball, Collider, {
+    dimension: '3d',
+    shape: { type: 'ball', radius: 0.5 }
+});
 ```
 
-Use `@hilo3d/addon-physics/rapier2d` for the independent 2D adapter. Import the package root when
-implementing a different `PhysicsBackend` without loading Rapier. The portable world also includes
-filtered ray/shape/overlap/point queries and kinematic character movement with slope, step, snap,
-grounded, and contact output.
+`RigidBody + Collider + MeshRenderer` share one Entity; no application binding is needed.
+`AttachedBody` creates compound colliders, and `CharacterController` references a collider Entity.
+The System owns fixed-step synchronization, interpolation, Entity-resolved events, snapshots, and
+native lifecycle.
 
-See the repository's [architecture](../documentation/PHYSICS_ARCHITECTURE.md) and
-[implementation plan](../documentation/PHYSICS_IMPLEMENTATION_PLAN.md) for contracts, lifecycle,
-supported features, and current release boundaries.
+Use the root entry for backend-neutral APIs. Import `@hilo3d/addon-physics/rapier2d` or
+`@hilo3d/addon-physics/rapier3d` explicitly to load one adapter.

@@ -86,8 +86,8 @@ describe('GLTFParser', () => {
 
         const model = await parser.parse(unusedLoader);
 
-        expect(model.scene).toBe(model.node);
-        expect(model.meshes).toEqual([]);
+        expect(model.prefab.roots).toEqual([]);
+        expect(model.meshCount).toBe(0);
         expect(model.resourceErrors).toEqual([]);
         await expect(model.ready).resolves.toBeUndefined();
     });

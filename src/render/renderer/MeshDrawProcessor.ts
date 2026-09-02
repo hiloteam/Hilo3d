@@ -1,7 +1,5 @@
 import type Mesh from '../../core/Mesh';
 import { LINES, LINE_STRIP, TRIANGLE_STRIP } from '../../constants/webgl';
-import Skeleton from '../../core/Skeleton';
-import SkinnedMesh from '../../core/SkinnedMesh';
 import type Geometry from '../../geometry/Geometry';
 import GeometryData from '../../geometry/GeometryData';
 import MorphGeometry from '../../geometry/MorphGeometry';
@@ -680,7 +678,6 @@ export class MeshDrawProcessor {
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
-        if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         const geometry = mesh.geometry;
         const material = materialOverride ?? context.renderer.forceMaterial ?? mesh.material;
         if (!geometry || !material) {
@@ -889,7 +886,6 @@ export class MeshDrawProcessor {
         if (this.registry.deviceCapabilities.limits.maxBindGroups <= SCENE_STORAGE_BIND_GROUP) {
             throw new RangeError('Scene storage shader variants require at least four bind groups');
         }
-        if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         if (mesh.useInstanced && !plannerInstancedFallback) {
             throw new TypeError(
                 'Instanced scene storage meshes require the renderer-list direct-draw fallback'
@@ -1027,7 +1023,6 @@ export class MeshDrawProcessor {
     prepareShadow(owner: object, mesh: Mesh, target: RHIMeshDrawTargetDescriptor): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
-        if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
         const geometry = mesh.geometry;
         const sourceMaterial = mesh.material;
         if (!geometry || !sourceMaterial) {
@@ -1232,7 +1227,6 @@ export class MeshDrawProcessor {
             if (mesh === undefined) {
                 throw new TypeError(`Instanced mesh draw entry ${String(index)} is missing`);
             }
-            if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
             if (!mesh.useInstanced) {
                 throw new TypeError(`Mesh ${mesh.id} has not opted into instancing`);
             }
@@ -1967,45 +1961,16 @@ export class MeshDrawProcessor {
     /** Validate deformation structure before shader/pipeline/resource preparation has side effects. */
     private validateDeformation(mesh: Mesh, geometry: Geometry): void {
         if (mesh.isSkinnedMesh) this.validateSkinning(mesh, geometry);
-        if (geometry.isMorphGeometry) this.validateMorphTargets(geometry);
+        if (geometry.isMorphGeometry) this.validateMorphTargets(mesh, geometry);
     }
 
     private validateSkinning(mesh: Mesh, geometry: Geometry): void {
-        if (!(mesh instanceof SkinnedMesh)) {
-            throw new TypeError('Skinning requires a real SkinnedMesh instance');
-        }
-        const skeleton = mesh.skeleton;
-        if (!(skeleton instanceof Skeleton)) {
-            throw new TypeError('SkinnedMesh requires a Skeleton before draw preparation');
-        }
-        const jointCount = skeleton.jointCount;
+        const jointCount = mesh.skinJointCount;
         if (!Number.isSafeInteger(jointCount) || jointCount < 1 || jointCount > 128) {
             throw new RangeError('SkinningBlock requires between 1 and 128 joints per mesh');
         }
-        if (skeleton.inverseBindMatrices.length < jointCount) {
-            throw new RangeError(
-                `SkinnedMesh has ${String(jointCount)} joints but only ${String(skeleton.inverseBindMatrices.length)} inverse bind matrices`
-            );
-        }
-        for (let index = 0; index < jointCount; index += 1) {
-            if (!Object.hasOwn(skeleton.jointNodeList, index)) {
-                throw new TypeError(`SkinnedMesh joint ${String(index)} is missing`);
-            }
-            if (!Object.hasOwn(skeleton.inverseBindMatrices, index)) {
-                throw new TypeError(`SkinnedMesh inverse bind matrix ${String(index)} is missing`);
-            }
-            const joint = skeleton.jointNodeList[index] as object;
-            const inverseBind = skeleton.inverseBindMatrices[index] as {
-                readonly isMatrix4: boolean;
-            };
-            if (Reflect.get(joint, 'worldMatrix') === undefined) {
-                throw new TypeError(`SkinnedMesh joint ${String(index)} is not a valid scene node`);
-            }
-            if (!inverseBind.isMatrix4) {
-                throw new TypeError(
-                    `SkinnedMesh inverse bind matrix ${String(index)} is not a Matrix4`
-                );
-            }
+        if (mesh.jointMatrices?.length !== jointCount * 16) {
+            throw new RangeError('Render skin palette length does not match its joint count');
         }
 
         const indices = geometry.skinIndices;
@@ -2040,7 +2005,7 @@ export class MeshDrawProcessor {
         }
     }
 
-    private validateMorphTargets(geometry: Geometry): void {
+    private validateMorphTargets(mesh: Mesh, geometry: Geometry): void {
         if (!(geometry instanceof MorphGeometry)) {
             throw new TypeError('Morph deformation requires a real MorphGeometry instance');
         }
@@ -2077,7 +2042,7 @@ export class MeshDrawProcessor {
             );
         }
 
-        const weights = geometry.weights;
+        const weights = mesh.morphWeights ?? geometry.weights;
         if (!Array.isArray(weights) && !(weights instanceof Float32Array)) {
             throw new TypeError('MorphGeometry weights must be a number[] or Float32Array');
         }

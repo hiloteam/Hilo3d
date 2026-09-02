@@ -1,4 +1,6 @@
-import Node, { type NodeParameters } from '../core/Node';
+import RenderTransformView, {
+    type RenderTransformViewParameters
+} from '../render/world/RenderTransformView';
 import Color from '../math/Color';
 
 const tempColor = new Color();
@@ -36,7 +38,7 @@ export interface PointLightShadowOptions extends Omit<LightShadowOptions, 'camer
     cameraInfo?: PointShadowCameraParameters;
 }
 
-export interface LightParameters extends NodeParameters {
+export interface LightParameters extends RenderTransformViewParameters {
     color?: Color;
     amount?: number;
     enabled?: boolean;
@@ -56,15 +58,15 @@ export interface ShadowCastingLightParameters extends LightParameters {
 /**
  * 灯光基础类
  */
-class Light extends Node {
-    static override readonly typeName: string = 'Light';
+class Light extends RenderTransformView {
+    static readonly typeName: string = 'RenderLight';
     isLight = true;
     isAmbientLight = false;
     isAreaLight = false;
     isDirectionalLight = false;
     isPointLight = false;
     isSpotLight = false;
-    override className = 'Light';
+    className = 'RenderLight';
     color: Color;
     /**
      * 光强度
@@ -150,16 +152,32 @@ class Light extends Node {
      * 是否光照信息变化
      */
     isDirty = false;
+    private extractedWorldMatrix = false;
     /**
      * @param params - 创建对象的属性参数。可包含此类的所有属性。
      */
     constructor(params: LightParameters = {}) {
-        super();
+        super('RenderLight');
         /**
          * 灯光颜色
          */
         this.color = new Color(1, 1, 1);
         Object.assign(this, params);
+    }
+
+    /** Synchronize this renderer-local view from ECS WorldTransform storage. @internal */
+    override setExtractedWorldMatrix(
+        source: ArrayLike<number>,
+        offset: number,
+        revision: number
+    ): void {
+        super.setExtractedWorldMatrix(source, offset, revision);
+        this.extractedWorldMatrix = true;
+        this.isDirty = true;
+    }
+
+    override updateMatrixWorld(force = false): this {
+        return this.extractedWorldMatrix ? this : super.updateMatrixWorld(force);
     }
     /**
      * 获取光范围信息, PointLight 和 SpotLight 时生效

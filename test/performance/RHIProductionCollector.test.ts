@@ -223,7 +223,8 @@ class FakeSession implements RHIProductionCollectorSession {
     constructor(
         readonly metadata: RHIBenchmarkFixtureMetadata,
         readonly sampleCount: number,
-        readonly drawCount: number
+        readonly drawCount: number,
+        readonly pixelHashSha256 = 'a'.repeat(64)
     ) {}
 
     warmup(): Promise<void> {
@@ -250,7 +251,7 @@ class FakeSession implements RHIProductionCollectorSession {
     }
 
     finishRound(): Promise<RHIBenchmarkFixtureRoundResult> {
-        return Promise.resolve(roundResult());
+        return Promise.resolve({ ...roundResult(), pixelHashSha256: this.pixelHashSha256 });
     }
 
     close(): Promise<void> {
@@ -264,7 +265,12 @@ class FakeFactory implements RHIProductionCollectorSessionFactory {
     readonly sessions: FakeSession[] = [];
     closed = false;
 
-    constructor(readonly manifest: RHIBenchmarkManifest) {}
+    constructor(
+        readonly manifest: RHIBenchmarkManifest,
+        readonly pixelHashForRequest: (
+            request: RHIProductionCollectorSessionRequest
+        ) => string = () => 'a'.repeat(64)
+    ) {}
 
     open(request: RHIProductionCollectorSessionRequest): Promise<RHIProductionCollectorSession> {
         this.requests.push(request);
@@ -286,7 +292,8 @@ class FakeFactory implements RHIProductionCollectorSessionFactory {
                 }
             },
             this.manifest.sampling.sampleFrames,
-            request.scenario.quality.drawCount
+            request.scenario.quality.drawCount,
+            this.pixelHashForRequest(request)
         );
         this.sessions.push(session);
         return Promise.resolve(session);
@@ -625,6 +632,26 @@ describe('RHI production collector', () => {
         expect(diagnostics[0]?.frame).toMatch(
             /renderAllocationRendererBoundary.*PreparedDraw\.ts.*:: execute.*<anonymous>.*:: set/u
         );
+    });
+
+    it('classifies deeply nested Chromium profiles without using the JavaScript call stack', () => {
+        let deepBranch = profileNode('', 'leaf', 0);
+        for (let depth = 0; depth < 20_000; depth += 1) {
+            deepBranch = profileNode('', `frame-${String(depth)}`, 0, [deepBranch]);
+        }
+        const profile = allocationProfile(
+            profileNode('', '(root)', 0, [
+                deepBranch,
+                synchronousAllocationFrame([
+                    profileNode('/src/render/renderer/PreparedDraw.ts', 'PreparedDraw.execute', 7)
+                ])
+            ])
+        );
+
+        expect(classifyRHIAllocationProfile(profile)).toEqual({
+            rendererBytes: 7,
+            rhiHotPathBytes: 7
+        });
     });
 
     it('keeps zero frames and attributes a canary allocation only to its marked frame', () => {
@@ -1478,6 +1505,47 @@ describe('RHI production collector', () => {
             true
         );
         expect(progress.at(-1)).toMatch(/^collector close:complete elapsedMs=/u);
+    });
+
+    it('rejects cross-round pixel drift as soon as the differing round finishes', async () => {
+        const scenario = repositoryManifest.scenarios[0];
+        if (!scenario) throw new Error('manifest has no scenarios');
+        const manifest = {
+            ...repositoryManifest,
+            backends: ['webgl2'],
+            sampling: {
+                ...repositoryManifest.sampling,
+                warmupFrames: 1,
+                sampleFrames: 1,
+                rounds: 3
+            },
+            scenarios: [scenario]
+        } as unknown as RHIBenchmarkManifest;
+        const factory = new FakeFactory(manifest, request =>
+            request.round === 2 ? 'b'.repeat(64) : 'a'.repeat(64)
+        );
+        const preflight: RHIPhase0PreflightResult = {
+            manifest,
+            environment: environment(manifest),
+            productionFixturePath: '/repo/test/performance/fixtures/rhi-production.html',
+            productionFixtureRelativePath: 'test/performance/fixtures/rhi-production.html',
+            productionFixtureModulePath: '/repo/test/performance/fixtures/rhi-production.ts',
+            productionFixtureSha256: '2'.repeat(64),
+            browserExecutablePath: '/audited/chromium'
+        };
+
+        await expect(
+            collectRHIProductionCapture({
+                preflight,
+                commitSha: 'a'.repeat(40),
+                capturedAt: '2026-07-15T00:00:00.000Z',
+                sessions: factory,
+                verify: (_manifest, value) => value
+            })
+        ).rejects.toThrow(/pixel hashes differ at round 2/u);
+        expect(factory.requests).toHaveLength(2);
+        expect(factory.sessions.every(session => session.closed)).toBe(true);
+        expect(factory.closed).toBe(true);
     });
 
     it('bounds collector phases and clears successful phase timers', async () => {

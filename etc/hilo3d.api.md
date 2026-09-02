@@ -15,213 +15,107 @@ import { vec4 } from 'gl-matrix';
 export type AccessorArray = (number | number[])[];
 
 // @public
-export class AmbientLight extends Light {
-    constructor(params?: AmbientLightParameters);
-    // (undocumented)
-    autoUpdateWorldMatrix: boolean;
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    isAmbientLight: boolean;
-    // (undocumented)
-    static readonly typeName = "AmbientLight";
-}
+export const AmbientLight: ComponentType<LightComponentValue>;
+
+// Warning: (ae-forgotten-export) The symbol "LightParameters" needs to be exported by the entry point Hilo3d.d.ts
+//
+// @public (undocumented)
+type AmbientLightParameters = LightParameters;
 
 // @public (undocumented)
-export type AmbientLightParameters = LightParameters;
+export type AmbientLightValue = LightComponentValue;
 
 // @public
-class Animation_2 extends EventDispatcher {
-    constructor(params?: AnimationParameters);
-    addClip(name: string, start: number, end: number, animStatesList: AnimationStates[]): void;
+export interface AnimationChannel {
     // (undocumented)
-    static readonly _anims: Animation_2[];
-    get animStatesList(): AnimationStates[];
-    set animStatesList(value: AnimationStates[]);
+    readonly interpolation?: AnimationInterpolation;
     // (undocumented)
-    className: string;
-    clipEndTime: number;
+    readonly property: AnimationTargetProperty;
     // (undocumented)
-    clips: Record<string, AnimationClip | null>;
-    clipStartTime: number;
-    clone(rootNode: Node_2): Animation_2;
-    currentLoopCount: number;
-    currentTime: number;
-    endTime: number;
-    getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): AnimationTimeRange;
+    readonly target: Entity;
     // (undocumented)
-    readonly id: string;
-    _initNodeNameMap(): void;
+    readonly times: Float32Array;
     // (undocumented)
-    isAnimation: boolean;
-    loop: number;
+    readonly values: Float32Array;
     // (undocumented)
-    nodeNameMap: Record<string, Node_2>;
-    pause(): void;
-    paused: boolean;
-    play(startOrClipName?: number | string, end?: number): void;
-    removeClip(name: string): void;
-    resume(): void;
-    get rootNode(): Node_2 | null;
-    set rootNode(value: Node_2 | null);
-    startTime: number;
-    stop(): void;
-    static tick(dt: number): void;
-    tick(dt: number): void;
-    timeScale: number;
-    updateAnimStates(): this;
-    validAnimationIds: Readonly<Record<string, boolean>> | null;
-}
-export { Animation_2 as Animation }
-
-// @public (undocumented)
-export interface AnimationClip {
-    // (undocumented)
-    animStatesList?: AnimationStates[];
-    // (undocumented)
-    end: number;
-    // (undocumented)
-    start: number;
-}
-
-// @public (undocumented)
-export type AnimationInterpolationType = 'LINEAR' | 'STEP' | 'CUBICSPLINE';
-
-// @public (undocumented)
-export interface AnimationParameters {
-    // (undocumented)
-    animStatesList?: AnimationStates[];
-    // (undocumented)
-    clips?: Record<string, AnimationClip | null>;
-    // (undocumented)
-    currentLoopCount?: number;
-    // (undocumented)
-    currentTime?: number;
-    // (undocumented)
-    endTime?: number;
-    // (undocumented)
-    loop?: number;
-    // (undocumented)
-    paused?: boolean;
-    // (undocumented)
-    rootNode?: Node_2 | null;
-    // (undocumented)
-    startTime?: number;
-    // (undocumented)
-    timeScale?: number;
-    // (undocumented)
-    validAnimationIds?: Readonly<Record<string, boolean>> | null;
-}
-
-// @public (undocumented)
-export type AnimationStateHandler = (node: Node_2, state: unknown) => void;
-
-// @public
-export class AnimationStates {
-    constructor(params?: AnimationStatesParameters);
-    // (undocumented)
-    readonly className = "AnimationStates";
-    // (undocumented)
-    clone(): AnimationStates;
-    // (undocumented)
-    findIndexByTime(time: number): [number, number];
-    // (undocumented)
-    getState(time: number): unknown;
-    // (undocumented)
-    getStateByIndex(index: number): unknown;
-    // (undocumented)
-    static getType(name: string): AnimationStateType;
-    // (undocumented)
-    readonly id: string;
-    // (undocumented)
-    static readonly interpolation: Record<AnimationInterpolationType, InterpolationFunction>;
-    // (undocumented)
-    interpolation(first: unknown, second?: unknown, ratio?: number, timeRange?: number): InterpolatedValue;
-    // (undocumented)
-    interpolationType: AnimationInterpolationType;
-    // (undocumented)
-    readonly isAnimationStates = true;
-    // (undocumented)
-    keyTime: number[];
-    // (undocumented)
-    nodeName: string;
-    // (undocumented)
-    static registerStateHandler(name: string, handler: AnimationStateHandler): void;
-    // (undocumented)
-    states: unknown[];
-    // (undocumented)
-    static readonly StateType: Readonly<{
-        TRANSLATE: "Translation";
-        POSITION: "Translation";
-        TRANSLATION: "Translation";
-        SCALE: "Scale";
-        ROTATE: "Rotation";
-        ROTATION: "Rotation";
-        QUATERNION: "Quaternion";
-        WEIGHTS: "Weights";
-    }>;
-    // (undocumented)
-    type: AnimationStateType;
-    // (undocumented)
-    updateNodeQuaternion(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeScale(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeState(time: number, node?: Node_2): void;
-    // (undocumented)
-    updateNodeTranslation(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeWeights(node: Node_2, value: unknown): void;
-}
-
-// @public (undocumented)
-export interface AnimationStatesParameters {
-    // (undocumented)
-    interpolationType?: AnimationInterpolationType;
-    // (undocumented)
-    keyTime?: number[];
-    // (undocumented)
-    nodeName?: string;
-    // (undocumented)
-    states?: unknown[];
-    // (undocumented)
-    type?: AnimationStateType;
-}
-
-// @public (undocumented)
-export type AnimationStateType = BuiltInAnimationStateType | (string & {});
-
-// @public (undocumented)
-export interface AnimationTimeRange {
-    // (undocumented)
-    endTime: number;
-    // (undocumented)
-    startTime: number;
+    readonly width: number;
 }
 
 // @public
-export class AreaLight extends Light {
-    constructor(params?: AreaLightParameters);
+export class AnimationClip {
+    constructor(name: string, channels: readonly AnimationChannel[]);
     // (undocumented)
-    className: string;
+    readonly channels: readonly AnimationChannel[];
     // (undocumented)
-    get enabled(): boolean;
-    set enabled(value: boolean);
-    height: number;
-    static initializeLtcTexture(): void;
+    readonly duration: number;
     // (undocumented)
-    isAreaLight: boolean;
-    static ltcTexture1: DataTexture | null;
-    get ltcTexture1(): DataTexture | null;
-    set ltcTexture1(texture: DataTexture | null);
-    static ltcTexture2: DataTexture | null;
-    get ltcTexture2(): DataTexture | null;
-    set ltcTexture2(texture: DataTexture | null);
-    static ltcTextureReady: boolean;
-    // (undocumented)
-    static readonly typeName = "AreaLight";
-    width: number;
+    readonly name: string;
 }
+
+// @public (undocumented)
+export type AnimationInterpolation = 'step' | 'linear' | 'cubic-spline';
+
+// @public (undocumented)
+export type AnimationTargetProperty = 'translation' | 'rotation' | 'scale' | 'weights';
+
+// @public
+export const Animator: ComponentType<AnimatorValue>;
+
+// @public
+export class AnimatorStore implements ComponentStore<AnimatorValue> {
+    constructor(initialCapacity: number);
+    // (undocumented)
+    add(entityIndex: number, value: AnimatorValue): void;
+    // (undocumented)
+    advanceAtDenseIndex(denseIndex: number, deltaSeconds: number): number;
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    clipAtDenseIndex(denseIndex: number): AnimationClip;
+    // (undocumented)
+    get dataRevision(): number;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    get entityCapacity(): number;
+    // (undocumented)
+    get entityIndices(): Uint32Array;
+    // (undocumented)
+    get(entityIndex: number): AnimatorValue;
+    // (undocumented)
+    getByDenseIndex(denseIndex: number): AnimatorValue;
+    // (undocumented)
+    getEntryRevision(entityIndex: number): number;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: AnimatorValue): void;
+    // (undocumented)
+    get structureRevision(): number;
+    // (undocumented)
+    validate(value: AnimatorValue): void;
+}
+
+// @public (undocumented)
+export interface AnimatorValue {
+    // (undocumented)
+    readonly clip: AnimationClip;
+    // (undocumented)
+    readonly loop?: boolean;
+    // (undocumented)
+    readonly playing?: boolean;
+    // (undocumented)
+    readonly speed?: number;
+    // (undocumented)
+    readonly time?: number;
+}
+
+// @public
+export const AreaLight: ComponentType<AreaLightValue>;
 
 // @public (undocumented)
 export interface AreaLightInfo {
@@ -240,11 +134,19 @@ export interface AreaLightInfo {
 }
 
 // @public (undocumented)
-export interface AreaLightParameters extends LightParameters {
+interface AreaLightParameters extends LightParameters {
     // (undocumented)
     height?: number;
     // (undocumented)
     width?: number;
+}
+
+// @public (undocumented)
+export interface AreaLightValue extends LightComponentValue {
+    // (undocumented)
+    readonly height?: number;
+    // (undocumented)
+    readonly width?: number;
 }
 
 // @public
@@ -339,46 +241,6 @@ export interface AutoExposureOptions {
 
 // @public (undocumented)
 export type AxisAlignedBox = readonly [ArrayLike<number>, ArrayLike<number>];
-
-// @public
-export class AxisHelper extends Node_2 {
-    constructor(params?: AxisHelperParameters);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    isAxisHelper: boolean;
-    size: number;
-    // (undocumented)
-    static readonly typeName: string;
-}
-
-// @public (undocumented)
-export interface AxisHelperParameters extends NodeParameters {
-    // (undocumented)
-    size?: number;
-}
-
-// @public
-export class AxisNetHelper extends Mesh {
-    constructor(params?: AxisNetHelperParameters);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    color: Color;
-    // (undocumented)
-    isAxisNetHelper: boolean;
-    size: number;
-    // (undocumented)
-    static readonly typeName: string;
-}
-
-// @public (undocumented)
-export interface AxisNetHelperParameters extends MeshParameters {
-    // (undocumented)
-    color?: Color;
-    // (undocumented)
-    size?: number;
-}
 
 // @public (undocumented)
 export interface BackEaseObject extends TweenEaseObject {
@@ -657,9 +519,6 @@ export interface BrowserFeatures {
 export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 10;
 
 // @public (undocumented)
-export type BuiltInAnimationStateType = (typeof STATE_TYPES)[keyof typeof STATE_TYPES];
-
-// @public (undocumented)
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
 
 // @public
@@ -684,116 +543,100 @@ class Cache_2<Value = unknown> {
 export { Cache_2 as Cache }
 
 // @public
-export class Camera extends Node_2 {
-    constructor(params?: CameraParameters);
-    // (undocumented)
-    className: string;
-    clearColor: boolean;
-    clearDepth: boolean;
-    clearProjectionJitter(): this;
-    clearStencil: boolean;
-    get depthMode(): CameraDepthMode;
-    set depthMode(value: CameraDepthMode);
-    // (undocumented)
-    protected readonly _frustum: Frustum;
-    // (undocumented)
-    protected _geometry: Geometry | null;
-    getGeometry(forceUpdate?: boolean): Geometry;
-    getModelProjectionMatrix(node: Node_2, out?: Matrix4): Matrix4;
-    getModelViewMatrix(node: Node_2, out?: Matrix4): Matrix4;
-    // (undocumented)
-    isCamera: boolean;
-    // (undocumented)
-    protected _isGeometryDirty: boolean;
-    isLayerVisible(node: Pick<Node_2, 'layer'>): boolean;
-    isMeshVisible(mesh: Mesh): boolean;
-    // (undocumented)
-    isOrthographicCamera: boolean;
-    // (undocumented)
-    isPerspectiveCamera: boolean;
-    isPointVisible(point: Vector3): boolean;
-    isSphereVisible(sphere: Sphere): boolean;
-    readonly jitteredProjectionMatrix: Matrix4;
-    readonly jitteredViewProjectionMatrix: Matrix4;
-    protected _needUpdateProjectionMatrix: boolean;
-    get priority(): number;
-    set priority(value: number);
-    get projectionJitterX(): number;
-    get projectionJitterY(): number;
-    readonly projectionMatrix: Matrix4;
-    projectVector(vector: Vector3, width?: number, height?: number): Vector3;
-    setProjectionJitter(x: number, y: number): this;
-    // (undocumented)
-    static readonly typeName: string;
-    unprojectVector(vector: Vector3, width?: number, height?: number): Vector3;
-    updateFrustum(matrix: Matrix4): this;
-    protected updateJitteredProjectionMatrix(): void;
-    updateProjectionMatrix(): void;
-    updateViewMatrix(): this;
-    updateViewProjectionMatrix(): this;
-    // (undocumented)
-    readonly viewMatrix: Matrix4;
-    readonly viewProjectionMatrix: Matrix4;
-    visibility: number;
+export class CachedQuery {
+    constructor(all: readonly ComponentType<unknown>[], none: readonly ComponentType<unknown>[], allStores: readonly ComponentStore<unknown>[], noneStores: readonly ComponentStore<unknown>[], entityCapacity: number, initialDenseCapacity: number);
+    readonly all: readonly ComponentType<unknown>[];
+    clear(): void;
+    ensureEntityCapacity(capacity: number): void;
+    get entityIndices(): Uint32Array;
+    has(entityIndex: number): boolean;
+    get length(): number;
+    readonly none: readonly ComponentType<unknown>[];
+    refresh(entityIndex: number): void;
+    remove(entityIndex: number): void;
+    get revision(): number;
 }
 
 // @public
-export class Camera2D extends OrthographicCamera {
-    constructor(params?: Camera2DParameters);
+export interface CameraComponentValue {
     // (undocumented)
-    className: string;
-    get height(): number;
+    readonly clearColor?: boolean;
     // (undocumented)
-    readonly isCamera2D = true;
-    resize(width: number, height: number): this;
+    readonly clearDepth?: boolean;
     // (undocumented)
-    static readonly typeName: string;
-    get width(): number;
-}
-
-// @public (undocumented)
-export interface Camera2DParameters extends Omit<OrthographicCameraParameters, 'left' | 'right' | 'top' | 'bottom' | 'near' | 'far'> {
-    far?: number;
-    height?: number;
-    near?: number;
-    width?: number;
+    readonly clearStencil?: boolean;
+    // (undocumented)
+    readonly depthMode?: CameraDepthMode;
+    // (undocumented)
+    readonly priority?: number;
+    // (undocumented)
+    readonly visibility?: number;
 }
 
 // @public
 export type CameraDepthMode = 'standard' | 'reversed';
 
 // @public
-export class CameraHelper extends Mesh {
-    constructor(params?: CameraHelperParameters);
+export const CameraOutput: ComponentType<CameraOutputValue>;
+
+// @public
+export interface CameraOutputValue {
     // (undocumented)
-    camera: Camera | null;
-    // (undocumented)
-    className: string;
-    color: Color;
-    // (undocumented)
-    isCameraHelper: boolean;
-    // (undocumented)
-    onUpdate: ((deltaTime: number) => void) | null;
-    // (undocumented)
-    static readonly typeName: string;
+    readonly enabled?: boolean;
 }
 
+// Warning: (ae-forgotten-export) The symbol "RenderTransformViewParameters" needs to be exported by the entry point Hilo3d.d.ts
+//
 // @public (undocumented)
-export interface CameraHelperParameters extends MeshParameters {
-    // (undocumented)
-    camera?: Camera | null;
-    // (undocumented)
-    color?: Color;
-}
-
-// @public (undocumented)
-export interface CameraParameters extends NodeParameters {
+interface CameraParameters extends RenderTransformViewParameters {
     clearColor?: boolean;
     clearDepth?: boolean;
     clearStencil?: boolean;
     depthMode?: CameraDepthMode;
     priority?: number;
     visibility?: number;
+}
+
+// @public (undocumented)
+const CanvasText_2: ComponentType<CanvasTextValue>;
+export { CanvasText_2 as CanvasText }
+
+// @public
+export interface CanvasTextValue {
+    // (undocumented)
+    readonly fillStyle?: string;
+    // (undocumented)
+    readonly font?: string;
+    // (undocumented)
+    readonly padding?: number;
+    // (undocumented)
+    readonly resolution?: number;
+    // (undocumented)
+    readonly text: string;
+}
+
+// @public
+export class ChangedComponentStore<T> extends SparseSetComponentStore<T> {
+    constructor(initialCapacity: number, normalize: (value: T) => T);
+    // (undocumented)
+    add(entityIndex: number, value: T): void;
+    // (undocumented)
+    get changedEntityCount(): number;
+    // (undocumented)
+    get changedEntityIndices(): Uint32Array;
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    clearChangedEntities(): void;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    markChangedEntity(entityIndex: number): void;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: T): void;
+    // (undocumented)
+    validate(value: T): void;
 }
 
 // @public
@@ -876,7 +719,7 @@ export interface ClusteredMaterialVariantManifest {
 
 // @public
 export interface ClusteredMaterialVariantManifestEntry {
-    readonly mesh: Mesh;
+    readonly mesh: RenderMesh;
     readonly shadowed?: boolean;
 }
 
@@ -967,6 +810,53 @@ export interface ColorUberOptions {
     readonly vignetteIntensity?: number;
     // (undocumented)
     readonly vignetteSmoothness?: number;
+}
+
+// @public
+export type CommandEntity = Entity | PendingEntity;
+
+// @public
+export interface ComponentStore<T> {
+    // (undocumented)
+    add(entityIndex: number, value: T): void;
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    readonly dataRevision: number;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    readonly entityCapacity: number;
+    // (undocumented)
+    readonly entityIndices: Uint32Array;
+    // (undocumented)
+    get(entityIndex: number): T;
+    // (undocumented)
+    getByDenseIndex(denseIndex: number): T;
+    // (undocumented)
+    getEntryRevision(entityIndex: number): number;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    readonly length: number;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: T): void;
+    // (undocumented)
+    readonly structureRevision: number;
+    validate(value: T): void;
+}
+
+// @public
+export type ComponentStoreFactory<T> = (initialEntityCapacity: number) => ComponentStore<T>;
+
+// @public
+export class ComponentType<T> {
+    constructor(name: string, storeFactory?: ComponentStoreFactory<T>, writable?: boolean);
+    createStore(initialEntityCapacity: number): ComponentStore<unknown>;
+    readonly name: string;
+    readonly writable: boolean;
 }
 
 // @public
@@ -1753,11 +1643,26 @@ export const constants: {
     readonly ZERO: 0;
 };
 
+// @public
+export function createAnimationSystem(): WorldSystem;
+
+// @public
+export function createCanvasTextSystem(): WorldSystem;
+
 // @public (undocumented)
 export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public
-export function createStageSystemService<T>(name: string): StageSystemService<T>;
+export function createInteractionSystem(): WorldSystem;
+
+// @public
+export function createRenderExtractionSystem(): WorldSystem;
+
+// @public
+export function createSpriteAnimationSystem(): WorldSystem;
+
+// @public
+export function createSpriteRenderer(value: SpriteRendererValue): NormalizedSpriteRendererValue;
 
 // @public (undocumented)
 export function createStd140Layout<const Schema extends Std140Schema>(schema: Schema): Std140Layout<Schema>;
@@ -1770,6 +1675,9 @@ export function createStorageGraphicsShaderFromPortable(descriptor: Readonly<Por
 
 // @public
 export function createStorageLayout<const Schema extends StorageSchema>(schema: Schema): StorageLayout<Schema>;
+
+// @public
+export function createTransformSystem(): WorldSystem;
 
 // @public
 export class CubeTexture extends Texture<CubeTextureImage> {
@@ -1824,7 +1732,7 @@ export interface CubeTextureParameters extends Omit<TextureParameters<CubeTextur
 
 // @public
 export interface CullingOptions {
-    readonly camera?: Camera;
+    readonly camera?: RenderCamera;
     readonly frustumCulling?: boolean;
 }
 
@@ -1857,14 +1765,20 @@ export interface DataTextureParameters extends Omit<TextureParameters<TypedArray
     image?: TypedArray | null;
 }
 
-// @public
-export const DEFAULT_2D_LAYER: number;
-
 // @public (undocumented)
 export const DEFAULT_MATERIAL_PIPELINE_STATE: Readonly<MaterialPipelineState>;
 
 // @public (undocumented)
 export const DEFAULT_MATERIAL_TEXTURE_CHANNELS: readonly ["r", "g", "b", "a"];
+
+// @public
+export function defineComponent<T>(name: string, storeFactory?: ComponentStoreFactory<T>): ComponentType<T>;
+
+// @public
+export function defineDerivedComponent<T>(name: string): ComponentType<T>;
+
+// @public
+export function defineWorldResource<T>(name: string): WorldResource<T>;
 
 // @public (undocumented)
 const DEPTH$1 = "DEPTH";
@@ -1876,21 +1790,7 @@ export function detectBrowserFeatures(): BrowserFeatures;
 export function detectWebGLSupport(): boolean;
 
 // @public
-export class DirectionalLight extends Light {
-    constructor(params?: DirectionalLightParameters);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    direction: Vector3;
-    getViewDirection(camera: Camera): Vector3;
-    getWorldDirection(): Vector3;
-    // (undocumented)
-    isDirectionalLight: boolean;
-    get shadow(): DirectionalLightShadowOptions | null;
-    set shadow(value: DirectionalLightShadowOptions | null);
-    // (undocumented)
-    static readonly typeName = "DirectionalLight";
-}
+export const DirectionalLight: ComponentType<DirectionalLightValue>;
 
 // Warning: (ae-forgotten-export) The symbol "ShadowInfo" needs to be exported by the entry point Hilo3d.d.ts
 //
@@ -1903,7 +1803,7 @@ export interface DirectionalLightInfo extends ShadowInfo {
 }
 
 // @public (undocumented)
-export interface DirectionalLightParameters extends Omit<ShadowCastingLightParameters, 'shadow'> {
+interface DirectionalLightParameters extends Omit<ShadowCastingLightParameters, 'shadow'> {
     // (undocumented)
     direction?: Vector3;
     // (undocumented)
@@ -1918,6 +1818,14 @@ export interface DirectionalLightShadowOptions extends LightShadowOptions {
     cascadeSplitLambda?: number;
     shadowStrength?: number;
     stabilizeCascades?: boolean;
+}
+
+// @public (undocumented)
+export interface DirectionalLightValue extends LightComponentValue {
+    // (undocumented)
+    readonly direction?: readonly [number, number, number];
+    // (undocumented)
+    readonly shadow?: DirectionalLightShadowOptions | null;
 }
 
 // @public
@@ -1936,11 +1844,6 @@ export interface DispatchEvent {
 
 // @public (undocumented)
 const DISTANCE = "DISTANCE";
-
-// Warning: (ae-forgotten-export) The symbol "getElementRect" needs to be exported by the entry point Hilo3d.d.ts
-//
-// @public (undocumented)
-type DOMViewport = ReturnType<typeof getElementRect>;
 
 // @public
 export interface DynamicResolutionDiagnostics {
@@ -1974,6 +1877,31 @@ export interface ElasticEaseObject extends TweenEaseObject {
     s: number;
 }
 
+// @public
+export class Engine {
+    // (undocumented)
+    readonly canvas: HTMLCanvasElement;
+    static create(parameters?: EngineParameters): Promise<Engine>;
+    destroy(): void;
+    // (undocumented)
+    fog: Fog | null;
+    frame(world: World, deltaTimeMilliseconds: number): EngineFrameResult;
+    // (undocumented)
+    height: number;
+    // (undocumented)
+    pixelRatio: number;
+    // (undocumented)
+    readonly ready: Promise<void>;
+    // (undocumented)
+    readonly renderer: Renderer;
+    resize(width: number, height: number, pixelRatio?: number, force?: boolean): this;
+    // (undocumented)
+    width: number;
+}
+
+// @public
+export type EngineAutoParameters = Omit<RendererAutoOptions, EngineOwnedRendererFields> & EngineOwnershipOptions;
+
 // @public (undocumented)
 export namespace engineConstants {
     export {
@@ -1983,6 +1911,54 @@ export namespace engineConstants {
         Hilo_POSITION as POSITION,
     };
 }
+
+// @public
+export interface EngineFrameResult {
+    // (undocumented)
+    readonly backend: RendererBackend;
+    // (undocumented)
+    readonly cameraCount: number;
+    // (undocumented)
+    readonly renderObjectCount: number;
+    // (undocumented)
+    readonly submitted: boolean;
+    // (undocumented)
+    readonly worldFrame: number;
+}
+
+// @public
+export type EngineOwnedRendererFields = 'domElement' | 'width' | 'height' | 'pixelRatio';
+
+// @public
+export interface EngineOwnershipOptions {
+    // (undocumented)
+    readonly canvas?: HTMLCanvasElement;
+    // (undocumented)
+    readonly container?: HTMLElement;
+    // (undocumented)
+    readonly height?: number;
+    // (undocumented)
+    readonly pixelRatio?: number;
+    // (undocumented)
+    readonly width?: number;
+}
+
+// @public
+export type EngineParameters = EngineAutoParameters | EngineWebGL2Parameters | EngineWebGPUParameters;
+
+// @public
+export type EngineWebGL2Parameters = Omit<RendererWebGL2Options, EngineOwnedRendererFields> & EngineOwnershipOptions;
+
+// @public
+export type EngineWebGPUParameters = Omit<RendererWebGPUOptions, EngineOwnedRendererFields> & EngineOwnershipOptions;
+
+// @public
+export type Entity = number & {
+    readonly [entityBrand]: 'Entity';
+};
+
+// @public (undocumented)
+const entityBrand: unique symbol;
 
 // @public (undocumented)
 export class Euler {
@@ -2472,16 +2448,14 @@ export type GeometryVertexType = typeof POSITION | typeof NORMAL | typeof DEPTH$
 // @public (undocumented)
 export function getCollectionItem<Value>(collection: GLTFCollection<Value> | undefined, key: GLTFIndex): Value | undefined;
 
-// @public (undocumented)
-function getElementRect(elem: HTMLElement): {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-};
+// @public
+export function getHierarchyStore(world: World): HierarchyStore;
 
 // @public
-export function getRenderNodeExtension(node: Node_2): RenderNodeExtension | null;
+export function getInterpolatedTransformStore(world: World): InterpolatedTransformStore;
+
+// @public
+export function getTransformStore(world: World): TransformStore;
 
 // @public (undocumented)
 export function getUniformBlockBinding(name: string): number;
@@ -2845,25 +2819,23 @@ export interface GLTFMesh extends GLTFProperty {
 // @public (undocumented)
 export interface GLTFModel {
     // (undocumented)
-    anim?: Animation_2;
-    // (undocumented)
     bounds?: GLTFBounds;
     // (undocumented)
-    cameras: Camera[];
+    cameraCount: number;
+    // (undocumented)
+    instantiate(world: World): SceneInstance;
     // (undocumented)
     json: GLTFRoot;
     // (undocumented)
-    lights: Light[];
+    lightCount: number;
     // (undocumented)
     materials: MaterialInstance[];
     // (undocumented)
-    meshes: Mesh[];
+    meshCount: number;
     // (undocumented)
-    node: Node_2;
+    prefab: ScenePrefab;
     ready: Promise<void>;
     resourceErrors: readonly Error[];
-    // (undocumented)
-    scene: Node_2;
     // (undocumented)
     textures: Texture[];
 }
@@ -2919,7 +2891,7 @@ export class GLTFParser {
     // (undocumented)
     bufferViews: Record<string, GLTFBufferViewRuntime>;
     // (undocumented)
-    cameras: Record<string, Camera>;
+    cameras: Record<string, RenderCamera>;
     // (undocumented)
     readonly className = "GLTFParser";
     // (undocumented)
@@ -2973,9 +2945,7 @@ export class GLTFParser {
     // (undocumented)
     handlerGeometry(initial: Geometry | undefined, primitive: GLTFPrimitive): Geometry | Promise<Geometry>;
     // (undocumented)
-    handlerNodeTransform(node: Node_2, data: GLTFNode): void;
-    // (undocumented)
-    handlerSkinnedMesh(mesh: Mesh, skeleton: Skeleton | undefined): void;
+    handlerNodeTransform(node: ScenePrefabRecord, data: GLTFNode): void;
     // (undocumented)
     ignoreTextureError: boolean;
     // (undocumented)
@@ -2995,11 +2965,11 @@ export class GLTFParser {
     // (undocumented)
     isUseExtension(data: GLTFProperty | GLTFRoot | undefined, extensionName: string): boolean;
     // (undocumented)
-    jointMap: Record<string, Node_2>;
+    jointMap: Record<string, ScenePrefabRecord>;
     // (undocumented)
     json: GLTFRoot;
     // (undocumented)
-    lights: Light[];
+    lights: RenderLight[];
     // (undocumented)
     loadBuffers(loader: GLTFResourceLoader): Promise<void>;
     // (undocumented)
@@ -3011,13 +2981,13 @@ export class GLTFParser {
     // (undocumented)
     materials: Record<string, MaterialInstance>;
     // (undocumented)
-    meshes: Mesh[];
+    meshes: RenderMesh[];
     // (undocumented)
-    node: Node_2;
+    node: ScenePrefabRecord;
     // (undocumented)
     parse(loader: GLTFResourceLoader): Promise<GLTFModel>;
     // (undocumented)
-    parseAnimations(): Animation_2 | null;
+    parseAnimations(): ScenePrefabAnimation[];
     // (undocumented)
     parseBinary(buffer: ArrayBuffer): void;
     // (undocumented)
@@ -3035,9 +3005,9 @@ export class GLTFParser {
     // (undocumented)
     parseMaterials(): void;
     // (undocumented)
-    parseMesh(meshName: GLTFIndex, node: Node_2, nodeData: GLTFNode): void;
+    parseMesh(meshName: GLTFIndex, node: ScenePrefabRecord, nodeData: GLTFNode): void;
     // (undocumented)
-    parseNode(nodeName: GLTFIndex, parentNode: Node_2): Node_2;
+    parseNode(nodeName: GLTFIndex, parentNode: ScenePrefabRecord): ScenePrefabRecord;
     // (undocumented)
     parseScene(): GLTFModel;
     // (undocumented)
@@ -3055,15 +3025,13 @@ export class GLTFParser {
     // (undocumented)
     static registerExtensionHandler(name: string, handler: GLTFExtensionHandler): void;
     // (undocumented)
-    resetSkinInfo(rootNode: Node_2): void;
-    // (undocumented)
     readonly resourceErrors: Error[];
     // (undocumented)
     setAccessorDecodeMatrix(data: GeometryData, matrix: readonly number[]): void;
     // (undocumented)
     shaders: Record<string, string>;
     // (undocumented)
-    skins: Record<string, Skeleton>;
+    skins: Record<string, RendererSkeleton>;
     // (undocumented)
     sparseAccessorHandler(data: GeometryData, sparse: GLTFSparseAccessor): GeometryData;
     // (undocumented)
@@ -3180,7 +3148,7 @@ export interface GLTFProgressivePrimitiveState {
     // (undocumented)
     geometry?: Geometry;
     // (undocumented)
-    meshes: Mesh[];
+    meshes: RenderMesh[];
 }
 
 // @public (undocumented)
@@ -3587,6 +3555,42 @@ export type HDRLoadRequest = BasicLoadRequest & LoaderTextureOptions<Float32Arra
 };
 
 // @public
+export const Hierarchy: ComponentType<HierarchyValue>;
+
+// @public
+export interface HierarchyDiagnostics {
+    readonly appliedRelationshipCount: number;
+    readonly validationVisitCount: number;
+}
+
+// @public
+export class HierarchyStore extends SparseSetComponentStore<HierarchyValue> {
+    constructor(initialEntityCapacity?: number);
+    // (undocumented)
+    add(entityIndex: number, value: HierarchyValue): void;
+    applyChanges(world: World, transforms: TransformStore): void;
+    // (undocumented)
+    clear(): void;
+    // @internal
+    detachParent(entityIndex: number): void;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    getDiagnostics(): HierarchyDiagnostics;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: HierarchyValue): void;
+    // (undocumented)
+    validate(value: HierarchyValue): void;
+}
+
+// @public
+export interface HierarchyValue {
+    // (undocumented)
+    readonly parent: Entity | null;
+}
+
+// @public
 export class HiloEvent<Detail = unknown> implements DispatchEvent {
     constructor(type: string, target: unknown, detail?: Detail);
     // (undocumented)
@@ -3613,10 +3617,79 @@ export interface InstancedUniform {
 }
 
 // @public (undocumented)
-export type InterpolatedValue = number | number[] | Vector3 | Quaternion;
+export const INTERACTION_RUNTIME: WorldResource<InteractionRuntime>;
 
-// @public (undocumented)
-export type InterpolationFunction = (first: unknown, second?: unknown, ratio?: number, timeRange?: number) => InterpolatedValue;
+// @public
+export class InteractionRuntime {
+    // (undocumented)
+    capture(pointerId: number, entity: Entity): void;
+    // @internal (undocumented)
+    clear(): void;
+    // (undocumented)
+    drain(): readonly PointerEventDelivery[];
+    // (undocumented)
+    enqueue(input: PointerInput): void;
+    // @internal (undocumented)
+    process(world: World, targets: ComponentStore<PointerTargetValue>, captureTargets: ComponentStore<PointerCaptureValue>, transforms: TransformStore): void;
+    // @internal (undocumented)
+    pushDelivery(input: PointerInput, target: Entity, currentTarget: Entity): void;
+    // (undocumented)
+    release(pointerId: number): void;
+}
+
+// @public
+export const InterpolatedTransform: ComponentType<InterpolatedTransformValue>;
+
+// @public
+export class InterpolatedTransformStore implements ComponentStore<InterpolatedTransformValue> {
+    constructor(initialEntityCapacity?: number, initialDenseCapacity?: number);
+    // (undocumented)
+    add(entityIndex: number, value: InterpolatedTransformValue): void;
+    apply(transforms: TransformStore, alphaValue: number): void;
+    capturePrevious(entityIndex: number): void;
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    get dataRevision(): number;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    get entityCapacity(): number;
+    // (undocumented)
+    get entityIndices(): Uint32Array;
+    // (undocumented)
+    get(entityIndex: number): InterpolatedTransformValue;
+    // (undocumented)
+    getByDenseIndex(denseIndex: number): InterpolatedTransformValue;
+    // (undocumented)
+    getEntryRevision(entityIndex: number): number;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: InterpolatedTransformValue): void;
+    setCurrent2D(entityIndex: number, x: number, y: number, rotation: number): void;
+    setCurrent3D(entityIndex: number, x: number, y: number, z: number, qx: number, qy: number, qz: number, qw: number): void;
+    // (undocumented)
+    get structureRevision(): number;
+    // (undocumented)
+    validate(value: InterpolatedTransformValue): void;
+}
+
+// @public
+export interface InterpolatedTransformValue {
+    // (undocumented)
+    readonly currentPosition: TransformVector3;
+    // (undocumented)
+    readonly currentRotation: TransformQuaternion;
+    // (undocumented)
+    readonly previousPosition: TransformVector3;
+    // (undocumented)
+    readonly previousRotation: TransformQuaternion;
+}
 
 // @public (undocumented)
 export function isArrayCollection<Value>(collection: GLTFCollection<Value>): collection is readonly (Value | null)[];
@@ -3705,44 +3778,26 @@ export interface LazyTextureParameters extends TextureParameters {
 }
 
 // @public
-export class Light extends Node_2 {
-    constructor(params?: LightParameters);
-    amount: number;
+export type LightColor = readonly [number, number, number];
+
+// @public
+export interface LightComponentValue {
     // (undocumented)
-    className: string;
+    readonly amount?: number;
     // (undocumented)
-    color: Color;
-    constantAttenuation: number;
+    readonly color?: LightColor;
     // (undocumented)
-    get enabled(): boolean;
-    set enabled(value: boolean);
-    protected enabledValue: boolean;
-    getRealColor(): Color;
+    readonly constantAttenuation?: number;
     // (undocumented)
-    isAmbientLight: boolean;
+    readonly enabled?: boolean;
     // (undocumented)
-    isAreaLight: boolean;
+    readonly lightLayerMask?: number;
     // (undocumented)
-    isDirectionalLight: boolean;
-    isDirty: boolean;
+    readonly linearAttenuation?: number;
     // (undocumented)
-    isLight: boolean;
+    readonly quadraticAttenuation?: number;
     // (undocumented)
-    isPointLight: boolean;
-    // (undocumented)
-    isSpotLight: boolean;
-    get lightLayerMask(): number;
-    set lightLayerMask(value: number);
-    linearAttenuation: number;
-    quadraticAttenuation: number;
-    get range(): number;
-    set range(value: number);
-    // (undocumented)
-    get shadow(): LightShadowOptions | null;
-    set shadow(value: LightShadowOptions | null);
-    toInfoArray(out: number[] | Float32Array, offset: number): this;
-    // (undocumented)
-    static readonly typeName: string;
+    readonly range?: number;
 }
 
 // @public (undocumented)
@@ -3773,30 +3828,30 @@ export interface LightInfo {
 // @public
 export class LightManager {
     constructor(params?: LightManagerParameters);
-    addLight(light: Light): this;
+    addLight(light: RenderLight): this;
     // (undocumented)
     ambientInfo: Float32Array;
     // (undocumented)
-    ambientLights: AmbientLight[];
+    ambientLights: RenderAmbientLight[];
     // (undocumented)
     areaInfo: AreaLightInfo | null;
     // (undocumented)
-    areaLights: AreaLight[];
+    areaLights: RenderAreaLight[];
     // (undocumented)
     className: string;
     // (undocumented)
     directionalInfo: DirectionalLightInfo | null;
     // (undocumented)
-    directionalLights: DirectionalLight[];
+    directionalLights: RenderDirectionalLight[];
     getAmbientInfo(): Float32Array;
-    getAreaInfo(camera: Camera): AreaLightInfo;
-    getDirectionalInfo(camera: Camera): DirectionalLightInfo;
+    getAreaInfo(camera: RenderCamera): AreaLightInfo;
+    getDirectionalInfo(camera: RenderCamera): DirectionalLightInfo;
     getInfo(): LightInfo;
-    getPointInfo(camera: Camera): PointLightInfo;
+    getPointInfo(camera: RenderCamera): PointLightInfo;
     // (undocumented)
     getRenderOption(option?: Record<string, number>): Record<string, number>;
     getShadowMapCount(type: LightGroupName): number;
-    getSpotInfo(camera: Camera): SpotLightInfo;
+    getSpotInfo(camera: RenderCamera): SpotLightInfo;
     // (undocumented)
     isLightManager: boolean;
     // (undocumented)
@@ -3804,7 +3859,7 @@ export class LightManager {
     // (undocumented)
     pointInfo: PointLightInfo | null;
     // (undocumented)
-    pointLights: PointLight[];
+    pointLights: RenderPointLight[];
     // (undocumented)
     pointShadowMatrices: Float32Array;
     reset(): void;
@@ -3818,9 +3873,9 @@ export class LightManager {
     // (undocumented)
     spotInfo: SpotLightInfo | null;
     // (undocumented)
-    spotLights: SpotLight[];
-    updateCustomInfo: ((manager: LightManager, camera: Camera) => void) | null;
-    updateInfo(camera: Camera): void;
+    spotLights: RenderSpotLight[];
+    updateCustomInfo: ((manager: LightManager, camera: RenderCamera) => void) | null;
+    updateInfo(camera: RenderCamera): void;
 }
 
 // @public (undocumented)
@@ -3828,11 +3883,11 @@ export interface LightManagerParameters {
     // (undocumented)
     shadowEnabled?: boolean;
     // (undocumented)
-    updateCustomInfo?: ((manager: LightManager, camera: Camera) => void) | null;
+    updateCustomInfo?: ((manager: LightManager, camera: RenderCamera) => void) | null;
 }
 
 // @public (undocumented)
-export interface LightParameters extends NodeParameters {
+interface LightParameters extends RenderTransformViewParameters {
     // (undocumented)
     amount?: number;
     // (undocumented)
@@ -3999,6 +4054,19 @@ export const LoadState: {
 // @public (undocumented)
 export type LoadStateValue = (typeof LoadState)[keyof typeof LoadState];
 
+// @public
+export const LocalTransform: ComponentType<LocalTransformValue>;
+
+// @public
+export interface LocalTransformValue {
+    // (undocumented)
+    readonly position?: TransformVector3;
+    // (undocumented)
+    readonly rotation?: TransformQuaternion;
+    // (undocumented)
+    readonly scale?: TransformVector3;
+}
+
 // @public (undocumented)
 export const log: Logger;
 
@@ -4069,7 +4137,7 @@ export type MaterialBinding = MaterialSemanticName | MaterialBindingInfo;
 // @public (undocumented)
 export interface MaterialBindingInfo {
     // (undocumented)
-    get(mesh: Mesh, material: MaterialInstance, programInfo: ProgramBindingInfo): unknown;
+    get(mesh: RenderMesh, material: MaterialInstance, programInfo: ProgramBindingInfo): unknown;
     // (undocumented)
     readonly isBlankInfo?: boolean;
     // (undocumented)
@@ -4269,7 +4337,7 @@ export class MaterialInstance {
     destroyTextures(): void;
     get forwardQueue(): 'opaque' | 'transparent';
     // (undocumented)
-    getAttributeData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
+    getAttributeData(name: string, mesh: RenderMesh, programInfo: ProgramBindingInfo): unknown;
     // (undocumented)
     getAttributeInfo(name: string): MaterialBindingInfo;
     // @internal
@@ -4285,7 +4353,7 @@ export class MaterialInstance {
     // @internal
     getTextureSlotByIndex(index: number): MaterialTextureSlotBinding | null;
     // (undocumented)
-    getUniformData(name: string, mesh: Mesh, programInfo: ProgramBindingInfo): unknown;
+    getUniformData(name: string, mesh: RenderMesh, programInfo: ProgramBindingInfo): unknown;
     // (undocumented)
     getUniformInfo(name: string): MaterialBindingInfo;
     // (undocumented)
@@ -4855,67 +4923,45 @@ export class Matrix4Notifier extends Matrix4 {
 }
 
 // @public
-export class Mesh extends Node_2 {
-    constructor(params?: MeshParameters);
-    castShadows: boolean;
-    // (undocumented)
-    className: string;
-    clone(isChild?: boolean): Mesh;
-    destroy(renderer?: Renderer, needDestroyTextures?: boolean): this;
-    frustumTest: boolean;
-    // (undocumented)
-    geometry: Geometry | null;
-    getRenderOption(opt?: ShaderOptions): ShaderOptions;
-    get instanceCount(): number;
-    set instanceCount(value: number);
-    get isDestroyed(): boolean;
-    // (undocumented)
-    protected _isDestroyed: boolean;
-    // (undocumented)
-    isMesh: boolean;
-    // (undocumented)
-    material: MaterialInstance | null;
-    raycast(ray: Ray, sort?: boolean): Vector3[] | null;
-    receiveShadows: boolean;
-    renderOrder: number;
-    // (undocumented)
-    static readonly typeName: string;
-    useInstanced: boolean;
-}
-
-// @public (undocumented)
-export interface MeshParameters extends NodeParameters {
-    // (undocumented)
-    castShadows?: boolean;
-    // (undocumented)
-    frustumTest?: boolean;
-    // (undocumented)
-    geometry?: Geometry | null;
-    instanceCount?: number;
-    // (undocumented)
-    material?: MaterialInstance | null;
-    // (undocumented)
-    receiveShadows?: boolean;
-    // (undocumented)
-    renderOrder?: number;
-    // (undocumented)
-    useInstanced?: boolean;
-}
-
-// @public
 export class MeshPicker {
     constructor(params: MeshPickerParameters);
+    // (undocumented)
+    readonly camera: Entity;
     readonly className = "MeshPicker";
     destroy(): void;
-    getSelection(x: number, y: number, width?: number, height?: number): Promise<Mesh[]>;
+    getSelection(x: number, y: number, width?: number, height?: number): Promise<Entity[]>;
     readonly isMeshPicker = true;
     readonly renderer: Renderer;
-    readonly stage: Stage;
+    // (undocumented)
+    readonly world: World;
 }
 
 // @public
 export interface MeshPickerParameters {
-    stage: Stage;
+    camera: Entity;
+    engine: Engine;
+    world: World;
+}
+
+// @public
+export const MeshRenderer: ComponentType<MeshRendererValue>;
+
+// @public
+export interface MeshRendererValue {
+    // (undocumented)
+    readonly castShadows?: boolean;
+    // (undocumented)
+    readonly frustumTest?: boolean;
+    // (undocumented)
+    readonly geometry: Geometry;
+    // (undocumented)
+    readonly instanceCount?: number;
+    // (undocumented)
+    readonly material: MaterialInstance;
+    // (undocumented)
+    readonly receiveShadows?: boolean;
+    // (undocumented)
+    readonly useInstanced?: boolean;
 }
 
 // @public
@@ -4947,6 +4993,15 @@ export interface MorphGeometryParameters extends GeometryParameters {
     weights?: number[] | Float32Array;
 }
 
+// @public
+export const MorphPose: ComponentType<MorphPoseValue>;
+
+// @public (undocumented)
+export interface MorphPoseValue {
+    // (undocumented)
+    readonly weights: Float32Array;
+}
+
 // @public (undocumented)
 export type MorphTargets = Record<string, GeometryData[]>;
 
@@ -4966,290 +5021,17 @@ export type MutablePBRMaterialParameters = {
     -readonly [Name in keyof PBRMaterialParameters]: PBRMaterialParameters[Name];
 };
 
-// @public (undocumented)
-export type NetworkResourceType = Exclude<BasicResourceType, 'img'>;
+// @public
+export const Name: ComponentType<NameValue>;
 
 // @public
-class Node_2 extends EventDispatcher {
-    constructor(params?: NodeParameters);
-    __forceUseParentWorldMatrix: boolean;
-    addChild(child: Node_2): this;
-    addTo(parent: Node_2): this;
-    anim: Animation_2 | null;
-    animationId: string;
-    autoUpdateChildWorldMatrix: boolean;
-    autoUpdateWorldMatrix: boolean;
+export interface NameValue {
     // (undocumented)
-    children: Node_2[];
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    clone(isChild?: boolean): Node_2;
-    destroy(renderer?: Renderer, destroyTextures?: boolean): this;
-    protected enableUpdateHook(): void;
-    _firePointerEvent(event: NodePointerEvent): void;
-    getBounds(parent?: Node_2, currentMatrix?: Matrix4, bounds?: Bounds): Bounds | undefined;
-    getChildByFn(fn: NodeGetChildByCallback): Node_2 | null;
-    getChildByFnBFS(fn: NodeGetChildByCallback): Node_2 | null;
-    getChildById(id: string): Node_2 | null;
-    getChildByName(name: string): Node_2 | null;
-    getChildByNamePath(path: string[]): Node_2 | null;
-    getChildrenByBaseClassName(className: string): Node_2[];
-    getChildrenByClassName(className: string): Node_2[];
-    getChildrenByFn(fn: NodeGetChildByCallback): Node_2[];
-    getChildrenByName(name: string): Node_2[];
-    getChildrenNameMap(): Record<string, Node_2>;
-    getConcatenatedMatrix(ancestor?: Node_2): Matrix4;
-    // (undocumented)
-    id: string;
-    invalidateTransformHistory(): this;
-    // (undocumented)
-    isCamera: boolean;
-    // (undocumented)
-    isMesh: boolean;
-    // (undocumented)
-    isNode: boolean;
-    // (undocumented)
-    isSkinnedMesh: boolean;
-    jointName: string;
-    layer: number;
-    lookAt(node: {
-        x: number;
-        y: number;
-        z: number;
-    }): this;
-    get matrix(): Matrix4Notifier;
-    // (undocumented)
-    protected _matrix: Matrix4Notifier;
-    // (undocumented)
-    _matrixDirty: boolean;
-    matrixVersion: number;
-    name: string;
-    needCallChildUpdate: boolean;
-    onlySyncQuaternion: boolean;
-    // (undocumented)
-    _onMatrixUpdate(): void;
-    // (undocumented)
-    _onPivotUpdate(): void;
-    // (undocumented)
-    _onPositionUpdate(): void;
-    // (undocumented)
-    _onQuaternionUpdate(): void;
-    // (undocumented)
-    _onRotationUpdate(): void;
-    // (undocumented)
-    _onScaleUpdate(): void;
-    onUpdate: ((deltaTime: number) => void) | null;
-    // (undocumented)
-    _originName?: string;
-    parent: Node_2 | null;
-    get pivot(): Vector3Notifier;
-    // (undocumented)
-    protected _pivot: Vector3Notifier;
-    get pivotX(): number;
-    set pivotX(value: number);
-    get pivotY(): number;
-    set pivotY(value: number);
-    get pivotZ(): number;
-    set pivotZ(value: number);
-    pointerChildren: boolean;
-    pointerEnabled: boolean;
-    get position(): Vector3Notifier;
-    // (undocumented)
-    protected _position: Vector3Notifier;
-    // (undocumented)
-    _quatDirty: boolean;
-    get quaternion(): Quaternion;
-    // (undocumented)
-    protected _quaternion: QuaternionNotifier;
-    raycast(ray: Ray, sort?: boolean, eventMode?: boolean): NodeRaycastInfo[] | Vector3[] | null;
-    removeChild(child: Node_2): this;
-    removeFromParent(): this;
-    resetSkinnedMeshRootNode(): void;
-    get rotation(): EulerNotifier;
-    // (undocumented)
-    protected _rotation: EulerNotifier;
-    get rotationX(): number;
-    set rotationX(value: number);
-    get rotationY(): number;
-    set rotationY(value: number);
-    get rotationZ(): number;
-    set rotationZ(value: number);
-    get scale(): Vector3Notifier;
-    // (undocumented)
-    protected _scale: Vector3Notifier;
-    get scaleX(): number;
-    set scaleX(value: number);
-    get scaleY(): number;
-    set scaleY(value: number);
-    get scaleZ(): number;
-    set scaleZ(value: number);
-    setAnim(anim: Animation_2): this;
-    setPivot(x: number, y: number, z: number): this;
-    setPosition(x: number, y: number, z: number): this;
-    setRotation(x: number, y: number, z: number): this;
-    setScale(x: number, y?: number, z?: number): this;
-    get sortingLayer(): number;
-    set sortingLayer(value: number);
-    traverse(callback: NodeTraverseCallback, onlyChild?: boolean): this;
-    static readonly TRAVERSE_STOP_ALL: 2;
-    static readonly TRAVERSE_STOP_CHILDREN: 1;
-    static readonly TRAVERSE_STOP_NONE: 0;
-    traverseBFS(callback: NodeTraverseCallback, onlyChild?: boolean): this;
-    traverseUpdate(dt: number): this;
-    // (undocumented)
-    static readonly typeName: string;
-    // (undocumented)
-    up: Vector3;
-    update(_dt: number): void;
-    updateMatrix(): this;
-    updateMatrixWorld(force?: boolean): this;
-    updateQuaternion(): this;
-    updateTransform(): this;
-    useHandCursor: boolean;
-    userData: unknown;
-    visible: boolean;
-    // (undocumented)
-    worldMatrix: Matrix4;
-    worldMatrixVersion: number;
-    get x(): number;
-    set x(value: number);
-    get y(): number;
-    set y(value: number);
-    get z(): number;
-    set z(value: number);
-    get zIndex(): number;
-    set zIndex(value: number);
-}
-export { Node_2 as Node }
-
-// @public (undocumented)
-export type NodeGetChildByCallback = (node: Node_2) => boolean;
-
-// @public (undocumented)
-export interface NodeParameters {
-    // (undocumented)
-    anim?: Animation_2 | null;
-    // (undocumented)
-    animationId?: string;
-    // (undocumented)
-    autoUpdateChildWorldMatrix?: boolean;
-    // (undocumented)
-    autoUpdateWorldMatrix?: boolean;
-    // (undocumented)
-    jointName?: string;
-    layer?: number;
-    // (undocumented)
-    name?: string;
-    // (undocumented)
-    needCallChildUpdate?: boolean;
-    // (undocumented)
-    onlySyncQuaternion?: boolean;
-    // (undocumented)
-    onUpdate?: ((deltaTime: number) => void) | null;
-    // (undocumented)
-    parent?: Node_2 | null;
-    // (undocumented)
-    pivotX?: number;
-    // (undocumented)
-    pivotY?: number;
-    // (undocumented)
-    pivotZ?: number;
-    // (undocumented)
-    pointerChildren?: boolean;
-    // (undocumented)
-    pointerEnabled?: boolean;
-    // (undocumented)
-    rotationX?: number;
-    // (undocumented)
-    rotationY?: number;
-    // (undocumented)
-    rotationZ?: number;
-    // (undocumented)
-    scaleX?: number;
-    // (undocumented)
-    scaleY?: number;
-    // (undocumented)
-    scaleZ?: number;
-    sortingLayer?: number;
-    // (undocumented)
-    up?: Vector3;
-    // (undocumented)
-    useHandCursor?: boolean;
-    // (undocumented)
-    userData?: unknown;
-    // (undocumented)
-    visible?: boolean;
-    // (undocumented)
-    x?: number;
-    // (undocumented)
-    y?: number;
-    // (undocumented)
-    z?: number;
-    zIndex?: number;
+    readonly value: string;
 }
 
 // @public (undocumented)
-export interface NodePointerEvent extends DispatchEvent {
-    // (undocumented)
-    altKey?: boolean;
-    // (undocumented)
-    button?: number;
-    // (undocumented)
-    buttons?: number;
-    // (undocumented)
-    clientX?: number;
-    // (undocumented)
-    clientY?: number;
-    // (undocumented)
-    ctrlKey?: boolean;
-    // (undocumented)
-    eventCurrentTarget?: Node_2;
-    // (undocumented)
-    eventTarget?: Node_2;
-    // (undocumented)
-    height?: number;
-    // (undocumented)
-    hitPoint?: Vector3;
-    // (undocumented)
-    isPrimary?: boolean;
-    // (undocumented)
-    metaKey?: boolean;
-    // (undocumented)
-    pageX?: number;
-    // (undocumented)
-    pageY?: number;
-    // (undocumented)
-    pointerId?: number;
-    // (undocumented)
-    pointerType?: string;
-    // (undocumented)
-    pressure?: number;
-    // (undocumented)
-    shiftKey?: boolean;
-    // (undocumented)
-    stageX?: number;
-    // (undocumented)
-    stageY?: number;
-    // (undocumented)
-    _stopPropagationed?: boolean;
-    // (undocumented)
-    width?: number;
-}
-
-// @public (undocumented)
-export interface NodeRaycastInfo {
-    // (undocumented)
-    mesh: Node_2;
-    // (undocumented)
-    point: Vector3;
-}
-
-// @public (undocumented)
-export type NodeTraverseCallback = (node: Node_2) => NodeTraverseResult | undefined;
-
-// @public (undocumented)
-export type NodeTraverseResult = 0 | 1 | 2;
+export type NetworkResourceType = Exclude<BasicResourceType, 'img'>;
 
 // @public (undocumented)
 const NORMAL = "NORMAL";
@@ -5257,100 +5039,103 @@ const NORMAL = "NORMAL";
 // @public
 export type NormalizedComputeWorkgroupSize = readonly [number, number, number];
 
+// @public (undocumented)
+export interface NormalizedSpriteRendererValue {
+    // (undocumented)
+    readonly geometry: PlaneGeometry;
+    // (undocumented)
+    readonly material: SpriteMaterial;
+    // (undocumented)
+    readonly sizeAnchor: Float32Array;
+    // (undocumented)
+    readonly tint: Float32Array;
+    // (undocumented)
+    readonly uvRect: Float32Array;
+}
+
 // @public
 export class OrbitControls {
-    constructor(stage: Stage, options?: OrbitControlsOptions);
-    readonly camera: PerspectiveCamera;
-    readonly canvas: HTMLCanvasElement;
-    disable(): void;
-    dispose(): void;
-    dolly(scale: number): void;
-    enable(): void;
-    enablePan: boolean;
-    enableRotate: boolean;
-    enableZoom: boolean;
-    isEnabled: boolean;
+    constructor(engine: Engine, world: World, camera: Entity, options?: OrbitControlsOptions);
+    // (undocumented)
+    readonly camera: Entity;
+    // (undocumented)
+    destroy(): void;
+    // (undocumented)
+    dolly(scale: number): this;
+    // (undocumented)
+    enabled: boolean;
+    // (undocumented)
+    readonly engine: Engine;
+    // (undocumented)
     maxDistance: number;
+    // (undocumented)
     maxPolarAngle: number;
+    // (undocumented)
     minDistance: number;
+    // (undocumented)
     minPolarAngle: number;
-    onChange: (() => void) | undefined;
-    pan(deltaX: number, deltaY: number): void;
+    // (undocumented)
+    pan(deltaX: number, deltaY: number): this;
+    // (undocumented)
     panSpeed: number;
-    reset(): void;
-    rotate(deltaX: number, deltaY: number): void;
+    // (undocumented)
+    rotate(deltaX: number, deltaY: number): this;
+    // (undocumented)
     rotateSpeed: number;
-    setTarget(target: Vector3): void;
-    setView(position: Vector3, target: Vector3): void;
-    readonly stage: Stage;
+    setView(target: {
+        readonly x: number;
+        readonly y: number;
+        readonly z: number;
+    }, distance: number, azimuth: number, polar: number): this;
+    // (undocumented)
     readonly target: Vector3;
-    update(): void;
+    // (undocumented)
+    readonly world: World;
+    // (undocumented)
     zoomSpeed: number;
 }
 
-// @public
-export interface OrbitControlsOptions {
-    camera?: PerspectiveCamera;
-    enabled?: boolean;
-    enablePan?: boolean;
-    enableRotate?: boolean;
-    enableZoom?: boolean;
-    maxDistance?: number;
-    maxPolarAngle?: number;
-    minDistance?: number;
-    minPolarAngle?: number;
-    panSpeed?: number;
-    rotateSpeed?: number;
-    target?: Vector3;
-    zoomSpeed?: number;
-}
-
-// @public
-export class OrthographicCamera extends Camera {
-    constructor(params?: OrthographicCameraParameters);
-    // (undocumented)
-    get bottom(): number;
-    set bottom(value: number);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    get far(): number;
-    set far(value: number);
-    // (undocumented)
-    getGeometry(forceUpdate?: boolean): Geometry;
-    // (undocumented)
-    isOrthographicCamera: boolean;
-    // (undocumented)
-    get left(): number;
-    set left(value: number);
-    // (undocumented)
-    get near(): number;
-    set near(value: number);
-    // (undocumented)
-    get right(): number;
-    set right(value: number);
-    // (undocumented)
-    get top(): number;
-    set top(value: number);
-    // (undocumented)
-    static readonly typeName: string;
-    updateProjectionMatrix(): void;
-}
-
 // @public (undocumented)
-export interface OrthographicCameraParameters extends CameraParameters {
+export interface OrbitControlsOptions {
     // (undocumented)
-    bottom?: number;
+    readonly distance?: number;
     // (undocumented)
-    far?: number;
+    readonly enabled?: boolean;
     // (undocumented)
-    left?: number;
+    readonly maxDistance?: number;
     // (undocumented)
-    near?: number;
+    readonly maxPolarAngle?: number;
     // (undocumented)
-    right?: number;
+    readonly minDistance?: number;
     // (undocumented)
-    top?: number;
+    readonly minPolarAngle?: number;
+    // (undocumented)
+    readonly panSpeed?: number;
+    // (undocumented)
+    readonly rotateSpeed?: number;
+    // (undocumented)
+    readonly target?: Vector3;
+    // (undocumented)
+    readonly zoomSpeed?: number;
+}
+
+// @public
+export const OrthographicCamera: ComponentType<OrthographicCameraValue>;
+
+// @public
+export interface OrthographicCameraValue extends CameraComponentValue {
+    // (undocumented)
+    readonly bottom?: number;
+    // (undocumented)
+    readonly far?: number;
+    // (undocumented)
+    readonly left?: number;
+    // (undocumented)
+    readonly near?: number;
+    // (undocumented)
+    readonly right?: number;
+    // (undocumented)
+    readonly top?: number;
 }
 
 // @public
@@ -5594,37 +5379,26 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
 export type PBRMaterialTextureInput = Texture<unknown> | MaterialTextureSlotInput | null;
 
 // @public
-export class PerspectiveCamera extends Camera {
-    constructor(params?: PerspectiveCameraParameters);
-    get aspect(): number;
-    set aspect(value: number);
-    // (undocumented)
-    className: string;
-    get far(): number | null;
-    set far(value: number | null);
-    get fov(): number;
-    set fov(value: number);
-    // (undocumented)
-    getGeometry(forceUpdate?: boolean): Geometry;
-    // (undocumented)
-    isPerspectiveCamera: boolean;
-    get near(): number;
-    set near(value: number);
-    // (undocumented)
-    static readonly typeName: string;
-    updateProjectionMatrix(): void;
-}
+export type PendingEntity = number & {
+    readonly [pendingEntityBrand]: 'PendingEntity';
+};
 
 // @public (undocumented)
-export interface PerspectiveCameraParameters extends CameraParameters {
+const pendingEntityBrand: unique symbol;
+
+// @public
+export const PerspectiveCamera: ComponentType<PerspectiveCameraValue>;
+
+// @public
+export interface PerspectiveCameraValue extends CameraComponentValue {
     // (undocumented)
-    aspect?: number;
+    readonly aspect?: number;
     // (undocumented)
-    far?: number | null;
+    readonly far?: number | null;
     // (undocumented)
-    fov?: number;
+    readonly fov?: number;
     // (undocumented)
-    near?: number;
+    readonly near?: number;
 }
 
 // @public
@@ -5695,16 +5469,62 @@ export type Point2 = readonly number[];
 // @public (undocumented)
 export type Point3 = readonly number[];
 
+// @public (undocumented)
+export const PointerCapture: ComponentType<PointerCaptureValue>;
+
 // @public
-export class PointLight extends Light {
-    constructor(params?: PointLightParameters);
+export interface PointerCaptureValue {
     // (undocumented)
-    className: string;
-    // (undocumented)
-    isPointLight: boolean;
-    // (undocumented)
-    static readonly typeName = "PointLight";
+    readonly enabled?: boolean;
 }
+
+// @public
+export interface PointerEventDelivery extends PointerInput {
+    // (undocumented)
+    readonly currentTarget: Entity;
+    // (undocumented)
+    readonly target: Entity;
+}
+
+// @public (undocumented)
+export type PointerEventType = 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel' | 'pointerenter' | 'pointerleave';
+
+// @public
+export interface PointerInput {
+    // (undocumented)
+    readonly button?: number;
+    // (undocumented)
+    readonly buttons?: number;
+    // (undocumented)
+    readonly pointerId: number;
+    // (undocumented)
+    readonly target: Entity | null;
+    // (undocumented)
+    readonly type: PointerEventType;
+    // (undocumented)
+    readonly x: number;
+    // (undocumented)
+    readonly y: number;
+}
+
+// @public (undocumented)
+export type PointerPropagation = 'target-only' | 'ancestors';
+
+// @public (undocumented)
+export const PointerTarget: ComponentType<PointerTargetValue>;
+
+// @public
+export interface PointerTargetValue {
+    // (undocumented)
+    readonly cursor?: string | null;
+    // (undocumented)
+    readonly enabled?: boolean;
+    // (undocumented)
+    readonly propagation?: PointerPropagation;
+}
+
+// @public
+export const PointLight: ComponentType<PointLightValue>;
 
 // @public (undocumented)
 export interface PointLightInfo extends ShadowInfo {
@@ -5721,13 +5541,19 @@ export interface PointLightInfo extends ShadowInfo {
 }
 
 // @public (undocumented)
-export type PointLightParameters = Omit<ShadowCastingLightParameters, 'shadow'> & {
+type PointLightParameters = Omit<ShadowCastingLightParameters, 'shadow'> & {
     shadow?: PointLightShadowOptions | null;
 };
 
 // @public (undocumented)
 export interface PointLightShadowOptions extends Omit<LightShadowOptions, 'cameraInfo'> {
     cameraInfo?: PointShadowCameraParameters;
+}
+
+// @public (undocumented)
+export interface PointLightValue extends LightComponentValue {
+    // (undocumented)
+    readonly shadow?: PointLightShadowOptions | null;
 }
 
 // @public (undocumented)
@@ -5911,6 +5737,14 @@ export class QuaternionNotifier extends Quaternion {
     set z(value: number);
 }
 
+// @public
+export interface QueryDescription {
+    // (undocumented)
+    readonly all: readonly ComponentType<unknown>[];
+    // (undocumented)
+    readonly none?: readonly ComponentType<unknown>[];
+}
+
 // @public (undocumented)
 export interface RadianceHDRImage {
     // (undocumented)
@@ -5980,10 +5814,166 @@ type RegistryLoadMethod = {
 }['load'];
 
 // @public
-export const RENDER_NODE_EXTENSION: unique symbol;
+export const RENDER_EXTRACTION_SYSTEM_ID = "hilo3d/render-extraction";
+
+// @public
+export const RENDER_WORLD: WorldResource<RenderWorld>;
+
+// @public
+export class RenderAmbientLight extends RenderLight {
+    // Warning: (ae-forgotten-export) The symbol "AmbientLightParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: AmbientLightParameters);
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    isAmbientLight: boolean;
+    // (undocumented)
+    static readonly typeName = "AmbientLight";
+}
+
+// @public
+export class RenderAreaLight extends RenderLight {
+    // Warning: (ae-forgotten-export) The symbol "AreaLightParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: AreaLightParameters);
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    get enabled(): boolean;
+    set enabled(value: boolean);
+    height: number;
+    static initializeLtcTexture(): void;
+    // (undocumented)
+    isAreaLight: boolean;
+    static ltcTexture1: DataTexture | null;
+    get ltcTexture1(): DataTexture | null;
+    set ltcTexture1(texture: DataTexture | null);
+    static ltcTexture2: DataTexture | null;
+    get ltcTexture2(): DataTexture | null;
+    set ltcTexture2(texture: DataTexture | null);
+    static ltcTextureReady: boolean;
+    // (undocumented)
+    static readonly typeName = "AreaLight";
+    width: number;
+}
+
+// Warning: (ae-forgotten-export) The symbol "RenderTransformView" needs to be exported by the entry point Hilo3d.d.ts
+//
+// @public
+export class RenderCamera extends RenderTransformView {
+    // Warning: (ae-forgotten-export) The symbol "CameraParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: CameraParameters);
+    // (undocumented)
+    className: string;
+    clearColor: boolean;
+    clearDepth: boolean;
+    clearProjectionJitter(): this;
+    clearStencil: boolean;
+    get depthMode(): CameraDepthMode;
+    set depthMode(value: CameraDepthMode);
+    // (undocumented)
+    protected readonly _frustum: Frustum;
+    // (undocumented)
+    protected _geometry: Geometry | null;
+    getGeometry(forceUpdate?: boolean): Geometry;
+    getModelProjectionMatrix(node: {
+        readonly worldMatrix: Matrix4;
+    }, out?: Matrix4): Matrix4;
+    getModelViewMatrix(node: {
+        readonly worldMatrix: Matrix4;
+    }, out?: Matrix4): Matrix4;
+    // (undocumented)
+    readonly isCamera = true;
+    // (undocumented)
+    protected _isGeometryDirty: boolean;
+    isLayerVisible(node: {
+        readonly layer: number;
+    }): boolean;
+    isMeshVisible(mesh: RenderMesh): boolean;
+    // (undocumented)
+    isOrthographicCamera: boolean;
+    // (undocumented)
+    isPerspectiveCamera: boolean;
+    isPointVisible(point: Vector3): boolean;
+    isSphereVisible(sphere: Sphere): boolean;
+    readonly jitteredProjectionMatrix: Matrix4;
+    readonly jitteredViewProjectionMatrix: Matrix4;
+    protected _needUpdateProjectionMatrix: boolean;
+    get priority(): number;
+    set priority(value: number);
+    get projectionJitterX(): number;
+    get projectionJitterY(): number;
+    readonly projectionMatrix: Matrix4;
+    projectVector(vector: Vector3, width?: number, height?: number): Vector3;
+    // @internal
+    setExtractedWorldMatrix(source: ArrayLike<number>, offset: number, revision: number): void;
+    setProjectionJitter(x: number, y: number): this;
+    // (undocumented)
+    static readonly typeName: string;
+    unprojectVector(vector: Vector3, width?: number, height?: number): Vector3;
+    updateFrustum(matrix: Matrix4): this;
+    protected updateJitteredProjectionMatrix(): void;
+    updateProjectionMatrix(): void;
+    updateViewMatrix(): this;
+    updateViewProjectionMatrix(): this;
+    // (undocumented)
+    readonly viewMatrix: Matrix4;
+    readonly viewProjectionMatrix: Matrix4;
+    visibility: number;
+}
+
+// @public
+export class RenderCameraStore {
+    constructor(initialEntityCapacity?: number, initialCameraCapacity?: number);
+    // (undocumented)
+    get cameras(): readonly (RenderCamera | null)[];
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    get entities(): Uint32Array;
+    // (undocumented)
+    get(entityIndex: number): RenderCamera;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    isOutputEnabled(denseIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    get revision(): number;
+    // (undocumented)
+    synchronize(entityIndex: number, perspective: PerspectiveCameraValue | undefined, orthographic: OrthographicCameraValue | undefined, output: CameraOutputValue | undefined, transforms: TransformStore): void;
+    // (undocumented)
+    updateOutput(entityIndex: number, output: CameraOutputValue | undefined): void;
+    // (undocumented)
+    updateProjection(entityIndex: number, perspective: PerspectiveCameraValue | undefined, orthographic: OrthographicCameraValue | undefined): void;
+    // (undocumented)
+    updateTransform(entityIndex: number, transforms: TransformStore): void;
+}
 
 // @public
 export type RenderColorEncoding = 'linear' | 'srgb';
+
+// @public
+export class RenderDirectionalLight extends RenderLight {
+    // Warning: (ae-forgotten-export) The symbol "DirectionalLightParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: DirectionalLightParameters);
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    direction: Vector3;
+    getViewDirection(camera: RenderCamera): Vector3;
+    getWorldDirection(): Vector3;
+    // (undocumented)
+    isDirectionalLight: boolean;
+    get shadow(): DirectionalLightShadowOptions | null;
+    set shadow(value: DirectionalLightShadowOptions | null);
+    // (undocumented)
+    static readonly typeName = "DirectionalLight";
+}
 
 // @public
 export class Renderer<Backend extends RendererBackend = RendererBackend> implements RendererContract {
@@ -6173,7 +6163,7 @@ export interface RendererContract {
     // (undocumented)
     releaseGPUResources(): void;
     // (undocumented)
-    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    render(renderWorld: RenderWorld, camera: RenderCamera, fireEvent?: boolean): void;
     renderFrame(callback: RendererFrameCallback): void;
     // (undocumented)
     readonly renderInfo: RenderInfo;
@@ -6182,7 +6172,7 @@ export interface RendererContract {
     // (undocumented)
     readonly renderTarget: RenderTarget | null;
     // (undocumented)
-    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    renderToTarget(target: RenderTarget, renderWorld: RenderWorld, camera: RenderCamera, fireEvent?: boolean): void;
     // (undocumented)
     resize(width: number, height: number, force?: boolean): void;
     // (undocumented)
@@ -6216,9 +6206,9 @@ export interface RendererFrame {
     // (undocumented)
     present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     // (undocumented)
-    render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    render(renderWorld: RenderWorld, camera: RenderCamera, fireEvent?: boolean): void;
     // (undocumented)
-    renderToTarget(target: RenderTarget, stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
+    renderToTarget(target: RenderTarget, renderWorld: RenderWorld, camera: RenderCamera, fireEvent?: boolean): void;
 }
 
 // @public
@@ -6228,7 +6218,7 @@ export type RendererFrameCallback = (frame: RendererFrame) => unknown;
 export interface RendererListDescriptor {
     readonly castShadowsOnly?: boolean;
     readonly cullingResults: CullingResultsHandle;
-    readonly excludeMeshes?: readonly Mesh[];
+    readonly excludeMeshes?: readonly RenderMesh[];
     readonly materialPass?: MaterialPassRole;
     readonly overrideMaterial?: MaterialInstance;
     readonly queue: RendererListQueue;
@@ -6282,15 +6272,25 @@ export interface RendererResourceManager {
     // (undocumented)
     destroyIfNoRef(resource: Resource): void;
     // (undocumented)
-    destroyMesh(mesh: Mesh): void;
+    destroyMesh(mesh: RenderMesh): void;
     // (undocumented)
-    getDiagnostics(rootNode?: Node_2): RendererResourceDiagnostics;
+    getDiagnostics(renderWorld?: RenderWorld): RendererResourceDiagnostics;
 }
 
-// @public (undocumented)
-export type RendererScene = Node_2 & {
-    readonly fog?: Fog | null;
-};
+// @public
+export class RendererSkeleton {
+    constructor(parameters?: SkeletonParameters);
+    // (undocumented)
+    readonly className = "SkeletonAsset";
+    clone(): RendererSkeleton;
+    // (undocumented)
+    inverseBindMatrices: Matrix4[];
+    // (undocumented)
+    readonly isSkeleton = true;
+    get jointCount(): number;
+    // (undocumented)
+    jointNames: string[];
+}
 
 // @public
 export interface RendererSupportOptions {
@@ -6327,6 +6327,47 @@ export interface RendererWebGPUOptions extends RendererCommonOptions, RendererSu
 }
 
 // @public
+export interface RenderExtension {
+    // (undocumented)
+    readonly gpu: RenderGPUExtension | null;
+    // (undocumented)
+    readonly meshes?: readonly RenderMesh[];
+    // (undocumented)
+    prepareRenderer?(renderer: RendererContract): void;
+    // (undocumented)
+    prepareView?(camera: RenderCamera): void;
+    // (undocumented)
+    setWorldTransform?(source: ArrayLike<number>, offset: number, revision: number): void;
+}
+
+// @public
+export const RenderExtensionComponent: ComponentType<RenderExtensionValue>;
+
+// @public
+export interface RenderExtensionValue {
+    // (undocumented)
+    readonly extension: RenderExtension;
+}
+
+// @public
+export interface RenderGPUExtension {
+    // (undocumented)
+    frameDiscarded(frameIndex: number): void;
+    // (undocumented)
+    frameSubmitted(frameIndex: number): void;
+    // (undocumented)
+    readonly hasOpaqueRenderers: boolean;
+    // (undocumented)
+    readonly hasPendingWork: boolean;
+    // (undocumented)
+    isVisible(camera: RenderCamera): boolean;
+    // (undocumented)
+    record(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
+    // (undocumented)
+    readonly requiresSampledDepth: boolean;
+}
+
+// @public
 export type RenderGraphBufferHandle = number & {
     readonly [renderGraphBufferHandleBrand]: true;
 };
@@ -6343,11 +6384,11 @@ export type RenderGraphBufferWriteUse = 'storage' | 'copy-destination';
 // @public
 export interface RenderGraphFramePlan {
     // (undocumented)
-    readonly lights: readonly Light[];
+    readonly lights: readonly RenderLight[];
     // (undocumented)
-    readonly meshes: readonly Mesh[];
+    readonly meshes: readonly RenderMesh[];
     // (undocumented)
-    readonly shadowLights: ReadonlySet<Light>;
+    readonly shadowLights: ReadonlySet<RenderLight>;
 }
 
 // @public
@@ -6426,21 +6467,156 @@ export class RenderInfo {
 }
 
 // @public
-export interface RenderNodeExtension {
-    readonly gpu: RenderNodeGPUExtension | null;
-    prepareRenderer?(renderer: RendererContract): void;
-    prepareView?(camera: Camera): void;
+export class RenderLight extends RenderTransformView {
+    constructor(params?: LightParameters);
+    amount: number;
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    color: Color;
+    constantAttenuation: number;
+    // (undocumented)
+    get enabled(): boolean;
+    set enabled(value: boolean);
+    protected enabledValue: boolean;
+    getRealColor(): Color;
+    // (undocumented)
+    isAmbientLight: boolean;
+    // (undocumented)
+    isAreaLight: boolean;
+    // (undocumented)
+    isDirectionalLight: boolean;
+    isDirty: boolean;
+    // (undocumented)
+    isLight: boolean;
+    // (undocumented)
+    isPointLight: boolean;
+    // (undocumented)
+    isSpotLight: boolean;
+    get lightLayerMask(): number;
+    set lightLayerMask(value: number);
+    linearAttenuation: number;
+    quadraticAttenuation: number;
+    get range(): number;
+    set range(value: number);
+    // @internal
+    setExtractedWorldMatrix(source: ArrayLike<number>, offset: number, revision: number): void;
+    // (undocumented)
+    get shadow(): LightShadowOptions | null;
+    set shadow(value: LightShadowOptions | null);
+    toInfoArray(out: number[] | Float32Array, offset: number): this;
+    // (undocumented)
+    static readonly typeName: string;
+    // (undocumented)
+    updateMatrixWorld(force?: boolean): this;
 }
 
 // @public
-export interface RenderNodeGPUExtension {
-    frameDiscarded(frameIndex: number): void;
-    frameSubmitted(frameIndex: number): void;
-    readonly hasOpaqueRenderers: boolean;
-    readonly hasPendingWork: boolean;
-    isVisible(camera: Camera): boolean;
-    record(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
-    readonly requiresSampledDepth: boolean;
+export class RenderLightStore {
+    constructor(initialEntityCapacity?: number, initialLightCapacity?: number);
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    // (undocumented)
+    get lights(): readonly (RenderLight | null)[];
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    synchronize(entityIndex: number, ambient: AmbientLightValue | undefined, directional: DirectionalLightValue | undefined, point: PointLightValue | undefined, spot: SpotLightValue | undefined, area: AreaLightValue | undefined, transforms: TransformStore): void;
+    // (undocumented)
+    updateTransform(entityIndex: number, transforms: TransformStore): void;
+}
+
+// @public
+export class RenderMesh extends RenderTransformView {
+    constructor(parameters?: RenderMeshParameters);
+    // (undocumented)
+    castShadows: boolean;
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    clone(_isChild?: boolean): RenderMesh;
+    // (undocumented)
+    frustumTest: boolean;
+    // (undocumented)
+    geometry: Geometry | null;
+    getJointMat(): Float32Array;
+    // (undocumented)
+    getRenderOption(options?: ShaderOptions): ShaderOptions;
+    // (undocumented)
+    get instanceCount(): number;
+    set instanceCount(value: number);
+    // (undocumented)
+    readonly isDestroyed = false;
+    // (undocumented)
+    readonly isMesh = true;
+    // (undocumented)
+    isSkinnedMesh: boolean;
+    // (undocumented)
+    isSprite: boolean;
+    // @internal
+    jointMatrices: Float32Array | null;
+    // (undocumented)
+    material: MaterialInstance | null;
+    // @internal
+    morphWeights: Float32Array | null;
+    // (undocumented)
+    raycast(ray: Ray, sort?: boolean): Vector3[] | null;
+    // (undocumented)
+    receiveShadows: boolean;
+    // (undocumented)
+    renderOrder: number;
+    get skinJointCount(): number;
+    // (undocumented)
+    spriteSizeAnchor: Float32Array | null;
+    // (undocumented)
+    spriteTint: ArrayLike<number> | null;
+    // (undocumented)
+    spriteUVRect: Float32Array | null;
+    // (undocumented)
+    static readonly typeName: string;
+    // (undocumented)
+    useInstanced: boolean;
+    // @internal
+    readonly worldBounds: Sphere;
+}
+
+// @public
+export interface RenderMeshParameters extends RenderTransformViewParameters {
+    // (undocumented)
+    readonly castShadows?: boolean;
+    // (undocumented)
+    readonly frustumTest?: boolean;
+    // (undocumented)
+    readonly geometry?: Geometry | null;
+    // (undocumented)
+    readonly instanceCount?: number;
+    // (undocumented)
+    readonly material?: MaterialInstance | null;
+    // (undocumented)
+    readonly receiveShadows?: boolean;
+    // (undocumented)
+    readonly renderOrder?: number;
+    // (undocumented)
+    readonly useInstanced?: boolean;
+}
+
+// @public
+export const RenderOrder: ComponentType<RenderOrderValue>;
+
+// @public
+export interface RenderOrderValue {
+    // (undocumented)
+    readonly renderOrder?: number;
+    // (undocumented)
+    readonly sortingLayer?: number;
+    // (undocumented)
+    readonly zIndex?: number;
 }
 
 // @public
@@ -6497,7 +6673,7 @@ export interface RenderPipelineColorAttachment {
 // @public
 export interface RenderPipelineContext {
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
-    readonly camera: Camera;
+    readonly camera: RenderCamera;
     readonly capabilities: RenderPipelineCapabilities;
     readonly clearColor: Readonly<RenderTargetColor>;
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
@@ -6507,7 +6683,7 @@ export interface RenderPipelineContext {
     readonly output: RenderPipelineOutput;
     prepareScene(): void;
     recordShadows(cullingResults: CullingResultsHandle, options?: Readonly<RenderPipelineShadowOptions>): Readonly<RenderPipelineShadowResources> | null;
-    readonly scene: RendererScene;
+    readonly scene: RenderWorld;
     readonly useLogDepth: boolean;
     readonly viewport: RendererViewport;
     writeStorageBuffer(buffer: StorageBuffer, byteOffset: number, data: ArrayBufferView): void;
@@ -6647,7 +6823,7 @@ export interface RenderPipelineRequirements {
 
 // @public
 export interface RenderPipelineShadowOptions {
-    readonly excludeMeshes?: readonly Mesh[];
+    readonly excludeMeshes?: readonly RenderMesh[];
 }
 
 // @public
@@ -6671,16 +6847,16 @@ export interface RenderPipelineShadowResources {
     readonly directionalCascadeMatrices: Float32Array;
     readonly directionalCascadeParams: Float32Array;
     readonly directionalCascadeSplits: Float32Array;
-    readonly directionalLights: readonly DirectionalLight[];
+    readonly directionalLights: readonly RenderDirectionalLight[];
     readonly directionalShadowCount: number;
     readonly pageRegions: readonly Readonly<RenderPipelineShadowPageRegion>[];
     readonly pointBiases: Float32Array;
-    readonly pointLights: readonly PointLight[];
+    readonly pointLights: readonly RenderPointLight[];
     readonly pointMatrices: Float32Array;
     readonly pointShadowCount: number;
     readonly slices: readonly Readonly<RenderPipelineShadowSlice>[];
     readonly spotBiases: Float32Array;
-    readonly spotLights: readonly SpotLight[];
+    readonly spotLights: readonly RenderSpotLight[];
     readonly spotMatrices: Float32Array;
     readonly spotShadowCount: number;
 }
@@ -6754,6 +6930,48 @@ export interface RenderPipelineTextureViewDescriptor {
 
 // @public
 export type RenderPipelineTextureViewDimension = '1d' | '2d' | '2d-array' | 'cube' | 'cube-array' | '3d';
+
+// @public
+export class RenderPointLight extends RenderLight {
+    // Warning: (ae-forgotten-export) The symbol "PointLightParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: PointLightParameters);
+    // (undocumented)
+    className: string;
+    // (undocumented)
+    isPointLight: boolean;
+    // (undocumented)
+    static readonly typeName = "PointLight";
+}
+
+// @public
+export class RenderSpotLight extends RenderLight {
+    // Warning: (ae-forgotten-export) The symbol "SpotLightParameters" needs to be exported by the entry point Hilo3d.d.ts
+    constructor(params?: SpotLightParameters);
+    // (undocumented)
+    className: string;
+    get cookie(): Readonly<Required<SpotLightCookie>> | null;
+    set cookie(value: Readonly<SpotLightCookie> | null);
+    get cutoff(): number;
+    set cutoff(value: number);
+    // (undocumented)
+    get cutoffCos(): number;
+    // (undocumented)
+    direction: Vector3;
+    // (undocumented)
+    getViewDirection(camera: RenderCamera): Vector3;
+    // (undocumented)
+    getWorldDirection(): Vector3;
+    get iesProfile(): Readonly<Required<SpotLightIESProfile>> | null;
+    set iesProfile(value: Readonly<SpotLightIESProfile> | null);
+    // (undocumented)
+    isSpotLight: boolean;
+    get outerCutoff(): number;
+    set outerCutoff(value: number);
+    // (undocumented)
+    get outerCutoffCos(): number;
+    // (undocumented)
+    static readonly typeName = "SpotLight";
+}
 
 // @public
 export interface RenderTarget {
@@ -6906,6 +7124,258 @@ export interface RenderTargetSelectionOptions extends RenderTargetPresentationOp
 // @public (undocumented)
 export type RenderTargetStoreOp = 'store' | 'discard';
 
+// @internal
+class RenderTransformView {
+    constructor(typeName: string, parameters?: RenderTransformViewParameters);
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    invalidateTransformHistory(): this;
+    // (undocumented)
+    layer: number;
+    // (undocumented)
+    protected readonly localMatrix: Matrix4Notifier;
+    // (undocumented)
+    protected localMatrixDirty: boolean;
+    // (undocumented)
+    protected readonly localPivot: Vector3Notifier;
+    // (undocumented)
+    protected readonly localPosition: Vector3Notifier;
+    // (undocumented)
+    protected readonly localQuaternion: QuaternionNotifier;
+    // (undocumented)
+    protected localQuaternionDirty: boolean;
+    // (undocumented)
+    protected readonly localRotation: EulerNotifier;
+    // (undocumented)
+    protected readonly localScale: Vector3Notifier;
+    // (undocumented)
+    lookAt(target: {
+        readonly x: number;
+        readonly y: number;
+        readonly z: number;
+    }): this;
+    // (undocumented)
+    get matrix(): Matrix4Notifier;
+    // (undocumented)
+    matrixVersion: number;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    get pivot(): Vector3Notifier;
+    // (undocumented)
+    get pivotX(): number;
+    set pivotX(value: number);
+    // (undocumented)
+    get pivotY(): number;
+    set pivotY(value: number);
+    // (undocumented)
+    get pivotZ(): number;
+    set pivotZ(value: number);
+    // (undocumented)
+    get position(): Vector3Notifier;
+    // (undocumented)
+    get quaternion(): Quaternion;
+    // (undocumented)
+    get rotation(): EulerNotifier;
+    // (undocumented)
+    get rotationX(): number;
+    set rotationX(value: number);
+    // (undocumented)
+    get rotationY(): number;
+    set rotationY(value: number);
+    // (undocumented)
+    get rotationZ(): number;
+    set rotationZ(value: number);
+    // (undocumented)
+    get scale(): Vector3Notifier;
+    // (undocumented)
+    get scaleX(): number;
+    set scaleX(value: number);
+    // (undocumented)
+    get scaleY(): number;
+    set scaleY(value: number);
+    // (undocumented)
+    get scaleZ(): number;
+    set scaleZ(value: number);
+    // (undocumented)
+    setExtractedWorldMatrix(source: ArrayLike<number>, offset: number, revision: number): void;
+    // (undocumented)
+    setPivot(x: number, y: number, z: number): this;
+    // (undocumented)
+    setPosition(x: number, y: number, z: number): this;
+    // (undocumented)
+    setRotation(x: number, y: number, z: number): this;
+    // (undocumented)
+    setScale(x: number, y?: number, z?: number): this;
+    // (undocumented)
+    sortingLayer: number;
+    // (undocumented)
+    readonly up: Vector3;
+    // (undocumented)
+    updateMatrix(): this;
+    // (undocumented)
+    updateMatrixWorld(force?: boolean): this;
+    // (undocumented)
+    updateTransform(): this;
+    // (undocumented)
+    visible: boolean;
+    // (undocumented)
+    readonly worldMatrix: Matrix4;
+    // (undocumented)
+    worldMatrixVersion: number;
+    // (undocumented)
+    get x(): number;
+    set x(value: number);
+    // (undocumented)
+    get y(): number;
+    set y(value: number);
+    // (undocumented)
+    get z(): number;
+    set z(value: number);
+    // (undocumented)
+    zIndex: number;
+}
+
+// @internal
+interface RenderTransformViewParameters {
+    // (undocumented)
+    readonly layer?: number;
+    // (undocumented)
+    readonly name?: string;
+    // (undocumented)
+    readonly pivotX?: number;
+    // (undocumented)
+    readonly pivotY?: number;
+    // (undocumented)
+    readonly pivotZ?: number;
+    // (undocumented)
+    readonly rotationX?: number;
+    // (undocumented)
+    readonly rotationY?: number;
+    // (undocumented)
+    readonly rotationZ?: number;
+    // (undocumented)
+    readonly scaleX?: number;
+    // (undocumented)
+    readonly scaleY?: number;
+    // (undocumented)
+    readonly scaleZ?: number;
+    // (undocumented)
+    readonly sortingLayer?: number;
+    // (undocumented)
+    readonly visible?: boolean;
+    // (undocumented)
+    readonly x?: number;
+    // (undocumented)
+    readonly y?: number;
+    // (undocumented)
+    readonly z?: number;
+    // (undocumented)
+    readonly zIndex?: number;
+}
+
+// @public
+export const RenderVisibility: ComponentType<RenderVisibilityValue>;
+
+// @public
+export interface RenderVisibilityValue {
+    // (undocumented)
+    readonly layer?: number;
+    // (undocumented)
+    readonly visible?: boolean;
+}
+
+// @public
+export class RenderWorld {
+    constructor(initialEntityCapacity?: number, initialRenderCapacity?: number);
+    // (undocumented)
+    add(entityIndex: number, mesh: MeshRendererValue, visibility: RenderVisibilityValue | undefined, order: RenderOrderValue | undefined, transforms: TransformStore, sprite?: NormalizedSpriteRendererValue): void;
+    // (undocumented)
+    beginExtraction(): void;
+    readonly cameras: RenderCameraStore;
+    // (undocumented)
+    clear(): void;
+    clearRetiredRenderIds(): void;
+    // (undocumented)
+    denseIndexOf(entityIndex: number): number;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    entityAt(denseIndex: number, resolve: (entityIndex: number) => Entity): Entity;
+    // (undocumented)
+    get entityIndices(): Uint32Array;
+    readonly extensions: RenderExtension[];
+    fog: Fog | null;
+    // (undocumented)
+    get geometryData(): readonly (Geometry | null)[];
+    // (undocumented)
+    getDiagnostics(): RenderWorldDiagnostics;
+    getRetiredMeshes(): readonly (RenderMesh | null)[];
+    getRetiredRenderIds(): Uint32Array;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    get layerData(): Uint32Array;
+    // (undocumented)
+    get length(): number;
+    readonly lights: RenderLightStore;
+    // (undocumented)
+    get materialData(): readonly (MaterialInstance | null)[];
+    get meshes(): readonly (RenderMesh | null)[];
+    // @internal
+    meshForEntity(entityIndex: number): RenderMesh | null;
+    // (undocumented)
+    get previousWorldMatrixData(): Float32Array;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    get renderOrderData(): Float64Array;
+    // (undocumented)
+    get retiredRenderIdCount(): number;
+    // (undocumented)
+    get sortingLayerData(): Int32Array;
+    // (undocumented)
+    get stableRenderIds(): Uint32Array;
+    synchronizeExtension(entityIndex: number, extension: RenderExtension | undefined): void;
+    // (undocumented)
+    updateMesh(entityIndex: number, mesh: MeshRendererValue): void;
+    updateMorph(entityIndex: number, weights: Float32Array | null): void;
+    // (undocumented)
+    updateOrder(entityIndex: number, order: RenderOrderValue | undefined): void;
+    updateSkin(entityIndex: number, matrices: Float32Array | null): void;
+    // (undocumented)
+    updateSprite(entityIndex: number, sprite: NormalizedSpriteRendererValue): void;
+    // (undocumented)
+    updateTransform(entityIndex: number, transforms: TransformStore): void;
+    // (undocumented)
+    updateVisibility(entityIndex: number, visibility: RenderVisibilityValue | undefined): void;
+    // (undocumented)
+    get visibilityData(): Uint8Array;
+    get worldBoundsData(): Float32Array;
+    // (undocumented)
+    get worldMatrixData(): Float32Array;
+    // (undocumented)
+    get worldRevisionData(): Uint32Array;
+    // (undocumented)
+    get zIndexData(): Int32Array;
+}
+
+// @public
+export interface RenderWorldDiagnostics {
+    // (undocumented)
+    readonly boundsUpdateCount: number;
+    // (undocumented)
+    readonly componentUpdateCount: number;
+    // (undocumented)
+    readonly renderObjectCount: number;
+    // (undocumented)
+    readonly retiredRenderObjectCount: number;
+    // (undocumented)
+    readonly structuralUpdateCount: number;
+    // (undocumented)
+    readonly transformUpdateCount: number;
+}
+
 // @public (undocumented)
 export type ResizableTextureImage = HTMLImageElement | HTMLCanvasElement | ImageBitmap | OffscreenCanvas | HTMLVideoElement;
 
@@ -6959,6 +7429,117 @@ export type RGPassTimestampKind = 'render' | 'compute';
 export const SCENE_STORAGE_BIND_GROUP = 3;
 
 // @public
+export interface SceneInstance {
+    // (undocumented)
+    readonly animatorEntities: readonly Entity[];
+    // (undocumented)
+    readonly cameraEntities: readonly Entity[];
+    // (undocumented)
+    readonly entities: readonly Entity[];
+    // (undocumented)
+    readonly entitiesByAssetId: ReadonlyMap<string, Entity>;
+    // (undocumented)
+    readonly lightEntities: readonly Entity[];
+    // (undocumented)
+    readonly meshEntities: readonly Entity[];
+    // (undocumented)
+    readonly roots: readonly Entity[];
+}
+
+// @public
+export class ScenePrefab {
+    constructor(roots: readonly ScenePrefabRecord[], animations?: readonly ScenePrefabAnimation[]);
+    // (undocumented)
+    readonly animations: readonly ScenePrefabAnimation[];
+    instantiate(world: World): SceneInstance;
+    // (undocumented)
+    readonly roots: readonly ScenePrefabRecord[];
+}
+
+// @public
+export interface ScenePrefabAnimation {
+    // (undocumented)
+    readonly channels: readonly ScenePrefabAnimationChannel[];
+    // (undocumented)
+    readonly name: string;
+}
+
+// @public
+export interface ScenePrefabAnimationChannel {
+    // (undocumented)
+    readonly interpolation?: AnimationInterpolation;
+    // (undocumented)
+    readonly property: AnimationTargetProperty;
+    // (undocumented)
+    readonly targetId: string;
+    // (undocumented)
+    readonly times: Float32Array;
+    // (undocumented)
+    readonly values: Float32Array;
+    // (undocumented)
+    readonly width: number;
+}
+
+// @public
+export type ScenePrefabAttachment = RenderMesh | RenderCamera | RenderLight;
+
+// @public
+export class ScenePrefabRecord {
+    constructor(parameters?: {
+        readonly name?: string;
+        readonly animationId?: string;
+    });
+    // (undocumented)
+    animationId: string;
+    // (undocumented)
+    append(child: ScenePrefabRecord | ScenePrefabAttachment): void;
+    // (undocumented)
+    readonly attachments: ScenePrefabAttachment[];
+    // (undocumented)
+    attachSkin(mesh: RenderMesh, skin: ScenePrefabSkin): void;
+    // (undocumented)
+    readonly children: ScenePrefabRecord[];
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    jointName: string;
+    // (undocumented)
+    localTransform(): {
+        readonly position: readonly [number, number, number];
+        readonly rotation: readonly [number, number, number, number];
+        readonly scale: readonly [number, number, number];
+    };
+    // (undocumented)
+    readonly matrix: Matrix4;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    readonly position: Vector3;
+    // (undocumented)
+    readonly quaternion: Quaternion;
+    // (undocumented)
+    readonly scale: Vector3;
+    // (undocumented)
+    setMatrix(values: ArrayLike<number>): void;
+    // (undocumented)
+    setPosition(x: number, y: number, z: number): void;
+    // (undocumented)
+    setScale(x: number, y: number, z: number): void;
+    // (undocumented)
+    readonly skins: Map<RenderMesh, ScenePrefabSkin>;
+    // (undocumented)
+    traverse(visitor: (record: ScenePrefabRecord) => void): void;
+}
+
+// @public
+export interface ScenePrefabSkin {
+    // (undocumented)
+    readonly inverseBindMatrices: readonly Matrix4[];
+    // (undocumented)
+    readonly jointIds: readonly string[];
+}
+
+// @public
 export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassParameters> {
     constructor(name?: string);
     execute(context: ScriptableRenderPassContext, parameters: SceneRenderPassParameters): void;
@@ -6990,7 +7571,7 @@ export interface SceneStorageBufferBinding {
 export interface SceneStorageShaderVariant {
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
     readonly shader: StorageGraphicsShader;
-    readonly shaderByMesh?: ReadonlyMap<Mesh, StorageGraphicsShader>;
+    readonly shaderByMesh?: ReadonlyMap<RenderMesh, StorageGraphicsShader>;
 }
 
 // @public
@@ -7102,15 +7683,15 @@ export interface ScriptableRenderPrepareContext {
 
 // @public
 export const semantic: {
-    camera: Camera | null;
+    camera: RenderCamera | null;
     lightManager: LightManager | null;
     fog: Fog | null;
     renderer: SemanticRenderer | null;
     blankInfo: {
         get(_mesh: SemanticMesh, _material: SemanticMaterial, _programInfo: ProgramBindingInfo): undefined;
     };
-    init(_renderer: SemanticRenderer, _camera: Camera, _lightManager: LightManager, _fog: Fog | null): void;
-    setCamera(_camera: Camera): void;
+    init(_renderer: SemanticRenderer, _camera: RenderCamera, _lightManager: LightManager, _fog: Fog | null): void;
+    setCamera(_camera: RenderCamera): void;
     setViewport(viewport: RendererViewport): void;
     handlerColorOrTexture(value: MaterialTextureValue): Float32Array | TextureBinding;
     handlerTexture(value: TextureBinding | null): TextureBinding;
@@ -7606,7 +8187,7 @@ export interface SemanticMaterial extends MaterialInstance {
 }
 
 // @public (undocumented)
-export interface SemanticMesh extends Mesh {
+export interface SemanticMesh extends RenderMesh {
     // (undocumented)
     geometry: Geometry;
     // (undocumented)
@@ -7639,9 +8220,9 @@ export class Shader {
     fs: string;
     static getBasicShader(material: MaterialInstance, isUseInstance: boolean, header: string, renderer?: ShaderPrecisionProvider, role?: MaterialPassRole): Shader;
     static getCustomShader(vs: string, fs: string, header?: string, cacheKey?: string, useHeaderCache?: boolean, renderer?: ShaderPrecisionProvider): Shader;
-    static getHeader(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
-    static getHeaderKey(mesh: Mesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
-    static getShader(mesh: Mesh, material: MaterialInstance, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean, role?: MaterialPassRole, groundTruthAmbientOcclusion?: boolean): Shader | null;
+    static getHeader(mesh: RenderMesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
+    static getHeaderKey(mesh: RenderMesh, material: MaterialInstance, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, role?: MaterialPassRole): string;
+    static getShader(mesh: RenderMesh, material: MaterialInstance, isUseInstance: boolean, lightManager: LightManager, fog: Fog | null, useLogDepth: boolean, renderer?: ShaderPrecisionProvider, linearOutput?: boolean, role?: MaterialPassRole, groundTruthAmbientOcclusion?: boolean): Shader | null;
     static get headerCache(): Cache_2<string>;
     // (undocumented)
     readonly id: string;
@@ -7859,114 +8440,66 @@ export interface Size {
     width: number;
 }
 
-// @public
-export class Skeleton {
-    constructor(params?: SkeletonParameters);
-    // (undocumented)
-    className: string;
-    clone(rootNode?: Node_2): Skeleton;
-    copy(skeleton: Skeleton, rootNode?: Node_2): this;
-    // (undocumented)
-    readonly id: string;
-    // (undocumented)
-    inverseBindMatrices: Matrix4[];
-    // (undocumented)
-    isSkeleton: boolean;
-    get jointCount(): number;
-    // (undocumented)
-    jointNames: string[];
-    // (undocumented)
-    jointNodeList: Node_2[];
-    resetJointNamesByNodeName(skeleton: Skeleton): void;
-    get rootNode(): Node_2 | null;
-    set rootNode(rootNode: Node_2 | null);
-    userData: unknown;
-}
-
 // @public (undocumented)
 export interface SkeletonParameters {
     // (undocumented)
-    inverseBindMatrices?: Matrix4[];
+    readonly inverseBindMatrices?: readonly Matrix4[];
     // (undocumented)
-    jointNames?: string[];
-    // (undocumented)
-    jointNodeList?: Node_2[];
-    // (undocumented)
-    rootNode?: Node_2 | null;
-    // (undocumented)
-    userData?: unknown;
+    readonly jointNames?: readonly string[];
 }
 
 // @public
-export class SkinnedMesh extends Mesh {
-    constructor(params?: SkinnedMeshParameters);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    clone(isChild?: boolean): SkinnedMesh;
-    frustumTest: boolean;
-    getJointMat(): Float32Array;
-    // (undocumented)
-    getRenderOption(opt?: ShaderOptions): ShaderOptions;
-    // (undocumented)
-    isSkinnedMesh: boolean;
-    resetJointNamesByNodeName(skeleton: Skeleton): void;
-    resetSkinIndices(skeleton: Skeleton): void;
-    skeleton: Skeleton | null;
-    // (undocumented)
-    static readonly typeName: string;
-    useInstanced: boolean;
-}
+export const SkeletonPose: ComponentType<SkeletonPoseValue>;
 
 // @public (undocumented)
-export interface SkinnedMeshParameters extends MeshParameters {
+export interface SkeletonPoseValue {
     // (undocumented)
-    skeleton?: Skeleton | null;
+    readonly inverseBindMatrices: readonly Matrix4[];
+    // (undocumented)
+    readonly joints: readonly Entity[];
 }
 
 // @public
-export class SlicedSprite extends Node_2 {
-    constructor(params: SlicedSpriteParameters);
-    get anchorX(): number;
-    set anchorX(value: number);
-    get anchorY(): number;
-    set anchorY(value: number);
-    // (undocumented)
-    className: string;
-    get frame(): SpriteFrame;
-    get height(): number;
-    set height(value: number);
-    // (undocumented)
-    readonly insets: Readonly<SlicedSpriteInsets>;
-    // (undocumented)
-    readonly isSlicedSprite = true;
-    // (undocumented)
-    readonly parts: readonly Sprite[];
-    setFrame(frame: SpriteFrame): this;
-    setSize(width: number, height: number): this;
-    // (undocumented)
-    static readonly typeName: string;
-    get width(): number;
-    set width(value: number);
-}
+export const Skin: ComponentType<SkinValue>;
 
 // @public (undocumented)
-export interface SlicedSpriteInsets {
-    bottom: number;
-    left: number;
-    right: number;
-    top: number;
+export interface SkinValue {
+    // (undocumented)
+    readonly skeleton: Entity;
 }
 
-// @public (undocumented)
-export interface SlicedSpriteParameters extends NodeParameters {
-    anchorX?: number;
-    anchorY?: number;
-    frame?: SpriteFrame;
-    height?: number;
-    insets: SlicedSpriteInsets;
-    texture?: Texture;
-    width?: number;
+// @public
+export class SparseSetComponentStore<T> implements ComponentStore<T> {
+    constructor(initialEntityCapacity?: number, initialDenseCapacity?: number);
+    // (undocumented)
+    add(entityIndex: number, value: T): void;
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    get dataRevision(): number;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    get entityCapacity(): number;
+    // (undocumented)
+    get entityIndices(): Uint32Array;
+    // (undocumented)
+    get(entityIndex: number): T;
+    // (undocumented)
+    getByDenseIndex(denseIndex: number): T;
+    // (undocumented)
+    getEntryRevision(entityIndex: number): number;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: T): void;
+    // (undocumented)
+    get structureRevision(): number;
+    validate(_value: T): void;
 }
 
 // @public (undocumented)
@@ -8031,33 +8564,7 @@ export class SphericalHarmonics3 {
 }
 
 // @public
-export class SpotLight extends Light {
-    constructor(params?: SpotLightParameters);
-    // (undocumented)
-    className: string;
-    get cookie(): Readonly<Required<SpotLightCookie>> | null;
-    set cookie(value: Readonly<SpotLightCookie> | null);
-    get cutoff(): number;
-    set cutoff(value: number);
-    // (undocumented)
-    get cutoffCos(): number;
-    // (undocumented)
-    direction: Vector3;
-    // (undocumented)
-    getViewDirection(camera: Camera): Vector3;
-    // (undocumented)
-    getWorldDirection(): Vector3;
-    get iesProfile(): Readonly<Required<SpotLightIESProfile>> | null;
-    set iesProfile(value: Readonly<SpotLightIESProfile> | null);
-    // (undocumented)
-    isSpotLight: boolean;
-    get outerCutoff(): number;
-    set outerCutoff(value: number);
-    // (undocumented)
-    get outerCutoffCos(): number;
-    // (undocumented)
-    static readonly typeName = "SpotLight";
-}
+export const SpotLight: ComponentType<SpotLightValue>;
 
 // @public
 export interface SpotLightCookie {
@@ -8086,7 +8593,7 @@ export interface SpotLightInfo extends DirectionalLightInfo {
 }
 
 // @public (undocumented)
-export interface SpotLightParameters extends ShadowCastingLightParameters {
+interface SpotLightParameters extends ShadowCastingLightParameters {
     cookie?: Readonly<SpotLightCookie> | null;
     // (undocumented)
     cutoff?: number;
@@ -8097,53 +8604,37 @@ export interface SpotLightParameters extends ShadowCastingLightParameters {
     outerCutoff?: number;
 }
 
+// @public (undocumented)
+export interface SpotLightValue extends LightComponentValue {
+    // (undocumented)
+    readonly cookie?: Readonly<SpotLightCookie> | null;
+    // (undocumented)
+    readonly cutoff?: number;
+    // (undocumented)
+    readonly direction?: readonly [number, number, number];
+    // (undocumented)
+    readonly iesProfile?: Readonly<SpotLightIESProfile> | null;
+    // (undocumented)
+    readonly outerCutoff?: number;
+    // (undocumented)
+    readonly shadow?: LightShadowOptions | null;
+}
+
+// @public (undocumented)
+export const SpriteAnimation: ComponentType<SpriteAnimationValue>;
+
 // @public
-export class Sprite extends Mesh {
-    constructor(params: SpriteParameters);
-    get anchorX(): number;
-    set anchorX(value: number);
-    get anchorY(): number;
-    set anchorY(value: number);
+export interface SpriteAnimationValue {
     // (undocumented)
-    className: string;
-    get currentFrame(): number;
-    get frameRate(): number;
-    set frameRate(value: number);
+    readonly currentFrame?: number;
     // (undocumented)
-    readonly frames: SpriteFrame[];
-    gotoFrame(index: number): this;
-    get height(): number;
-    set height(value: number);
+    readonly frameRate?: number;
     // (undocumented)
-    readonly isSprite = true;
+    readonly frames: readonly SpriteFrame[];
     // (undocumented)
-    loop: boolean;
+    readonly loop?: boolean;
     // (undocumented)
-    material: SpriteMaterial;
-    pause(): this;
-    play(): this;
-    // (undocumented)
-    playing: boolean;
-    // (undocumented)
-    raycast(ray: Ray, _sort?: boolean): Vector3[] | null;
-    setFrame(frame: SpriteFrame, options?: SpriteFrameUpdateOptions): this;
-    setFrames(frames: readonly SpriteFrame[], options?: SpriteFramesUpdateOptions): this;
-    setTexture(texture: Texture, options?: SpriteFrameUpdateOptions): this;
-    // (undocumented)
-    readonly spriteSizeAnchor: Float32Array<ArrayBuffer>;
-    // (undocumented)
-    get spriteTint(): ArrayLike<number>;
-    // (undocumented)
-    readonly spriteUVRect: Float32Array<ArrayBuffer>;
-    stop(): this;
-    // (undocumented)
-    readonly tint: Color;
-    // (undocumented)
-    static readonly typeName: string;
-    // (undocumented)
-    update(dt: number): void;
-    get width(): number;
-    set width(value: number);
+    readonly playing?: boolean;
 }
 
 // @public
@@ -8175,17 +8666,6 @@ export interface SpriteFrameParameters {
     y?: number;
 }
 
-// @public (undocumented)
-export interface SpriteFramesUpdateOptions extends SpriteFrameUpdateOptions {
-    autoPlay?: boolean;
-    currentFrame?: number;
-}
-
-// @public (undocumented)
-export interface SpriteFrameUpdateOptions {
-    resize?: boolean;
-}
-
 // @public
 export class SpriteMaterial extends ShaderMaterial {
     constructor(params: SpriteMaterialParameters);
@@ -8205,225 +8685,27 @@ export interface SpriteMaterialParameters extends Omit<ShaderMaterialParameters,
 }
 
 // @public (undocumented)
-export interface SpriteParameters extends Omit<MeshParameters, 'geometry' | 'material' | 'useInstanced' | 'frustumTest'> {
-    anchorX?: number;
-    anchorY?: number;
-    autoPlay?: boolean;
-    frame?: SpriteFrame;
-    frameRate?: number;
-    frames?: readonly SpriteFrame[];
-    height?: number;
-    loop?: boolean;
-    material?: SpriteMaterial;
-    texture?: Texture;
-    tint?: Color;
-    width?: number;
-}
+export const SpriteRenderer: ComponentType<NormalizedSpriteRendererValue>;
 
 // @public
-export class Stage<Backend extends RendererBackend = RendererBackend> extends Node_2 {
-    addCamera(camera: Camera): this;
-    get camera(): Camera | null;
-    set camera(value: Camera | null);
-    readonly cameras: Camera[];
-    canvas: HTMLCanvasElement;
+export interface SpriteRendererValue {
     // (undocumented)
-    className: string;
-    static create(params?: StageParameters): Promise<Stage>;
-    static create<Backend extends RendererBackend>(params: StageParameters<Backend>): Promise<Stage<Backend>>;
-    static create(params: StageParameters<StageBackend>): Promise<Stage>;
-    destroy(): this;
-    // Warning: (ae-forgotten-export) The symbol "DOMViewport" needs to be exported by the entry point Hilo3d.d.ts
-    //
+    readonly anchorX?: number;
     // (undocumented)
-    domViewport: DOMViewport | null;
-    enableDOMEvent(types: string | readonly string[], enabled?: boolean): this;
-    fog: Fog | null;
-    getMeshResultAtPoint(x: number, y: number, eventMode?: boolean): NodeRaycastInfo | null;
-    height: number;
-    installSystem(system: StageSystem): Promise<this>;
+    readonly anchorY?: number;
     // (undocumented)
-    isStage: boolean;
-    offsetX: number;
-    offsetY: number;
-    pixelRatio: number;
-    readonly ready: Promise<void>;
-    releaseGPUResources(): this;
-    removeCamera(camera: Camera): this;
-    renderer: Renderer<Backend>;
+    readonly frame?: SpriteFrame;
     // (undocumented)
-    rendererHeight: number;
+    readonly height?: number;
     // (undocumented)
-    rendererWidth: number;
-    resize(width: number, height: number, pixelRatio?: number, force?: boolean): this;
-    setCameras(cameras: readonly Camera[]): this;
-    setOffset(x: number, y: number): this;
-    readonly systems: StageSystemRegistry;
-    tick(dt: number): this;
+    readonly material?: SpriteMaterial;
     // (undocumented)
-    static readonly typeName: string;
-    uninstallSystem(id: string): this;
-    updateDomViewport(): DOMViewport;
-    viewport(x: number, y: number, width: number, height: number): this;
-    width: number;
+    readonly texture?: Texture;
+    // (undocumented)
+    readonly tint?: Color | readonly [number, number, number, number];
+    // (undocumented)
+    readonly width?: number;
 }
-
-// @public
-export const STAGE_SYSTEM_API_VERSION: 1;
-
-// @public
-export type StageBackend = RendererBackend | 'auto';
-
-// @public (undocumented)
-export type StageBackendParameters<Backend extends StageBackend> = [StageBackend] extends [Backend] ? RendererSupportOptions & {
-    backend?: StageBackend;
-    preserveDrawingBuffer?: boolean;
-} : [RendererBackend] extends [Backend] ? RendererSupportOptions & {
-    backend: RendererBackend;
-    preserveDrawingBuffer?: boolean;
-} : Backend extends 'webgpu' ? RendererSupportOptions & {
-    backend: 'webgpu';
-    preserveDrawingBuffer?: never;
-} : Backend extends 'auto' ? RendererSupportOptions & {
-    backend?: 'auto';
-    preserveDrawingBuffer?: boolean;
-} : {
-    backend?: 'webgl2';
-    preserveDrawingBuffer?: boolean;
-};
-
-// @public (undocumented)
-export interface StageCommonParameters extends NodeParameters {
-    // (undocumented)
-    alpha?: boolean;
-    // (undocumented)
-    antialias?: boolean;
-    // (undocumented)
-    camera?: Camera | null;
-    cameras?: readonly Camera[];
-    // (undocumented)
-    canvas?: HTMLCanvasElement;
-    // (undocumented)
-    clearColor?: Color;
-    // (undocumented)
-    container?: HTMLElement;
-    // (undocumented)
-    depth?: boolean;
-    // (undocumented)
-    failIfMajorPerformanceCaveat?: boolean;
-    // (undocumented)
-    fog?: Fog | null;
-    // (undocumented)
-    gameMode?: boolean;
-    // (undocumented)
-    height?: number;
-    // (undocumented)
-    pixelRatio?: number;
-    // (undocumented)
-    premultipliedAlpha?: boolean;
-    renderingProfile?: RendererRenderingProfile;
-    renderPipeline?: RenderPipelineFactory;
-    // (undocumented)
-    stencil?: boolean;
-    systems?: readonly StageSystem[];
-    // (undocumented)
-    useInstanced?: boolean;
-    // (undocumented)
-    useLogDepth?: boolean;
-    // (undocumented)
-    width?: number;
-}
-
-// @public (undocumented)
-export type StageParameters<Backend extends StageBackend = 'auto'> = StageCommonParameters & {
-    backend?: Backend;
-} & StageBackendParameters<Backend>;
-
-// @public (undocumented)
-export interface StagePointerEvent extends NodePointerEvent {
-    // (undocumented)
-    lastEventTarget?: Node_2;
-    // (undocumented)
-    originalEvent: Event;
-    // (undocumented)
-    preventDefault(): void;
-    // (undocumented)
-    stageX: number;
-    // (undocumented)
-    stageY: number;
-    // (undocumented)
-    stopPropagation(): void;
-}
-
-// @public
-export interface StageSystem {
-    readonly descriptor: StageSystemDescriptor;
-    setup(context: StageSystemSetupContext): StageSystemRuntime | Promise<StageSystemRuntime>;
-}
-
-// @public
-export interface StageSystemDescriptor {
-    readonly after?: readonly string[];
-    readonly apiVersion: typeof STAGE_SYSTEM_API_VERSION;
-    readonly before?: readonly string[];
-    readonly id: string;
-    readonly provides?: readonly StageSystemService<unknown>[];
-    readonly requires?: readonly string[];
-    readonly version: string;
-}
-
-// @public
-export class StageSystemRegistry {
-    constructor(stage: Stage);
-    destroy(): void;
-    get<T>(service: StageSystemService<T>): T;
-    getOptional<T>(service: StageSystemService<T>): T | undefined;
-    getRuntime(id: string): StageSystemRuntime | undefined;
-    has(id: string): boolean;
-    initialize(systems: readonly StageSystem[]): Promise<void>;
-    install(system: StageSystem): Promise<void>;
-    runAfterRender(): void;
-    runAfterUpdate(deltaTimeMilliseconds: number): void;
-    runBeforeRender(): void;
-    runBeforeUpdate(deltaTimeMilliseconds: number): void;
-    readonly stage: Stage;
-    uninstall(id: string): void;
-}
-
-// @public
-export interface StageSystemRuntime {
-    afterRender?(): void;
-    afterUpdate?(deltaTimeMilliseconds: number): void;
-    beforeRender?(): void;
-    beforeUpdate?(deltaTimeMilliseconds: number): void;
-    destroy?(): void;
-}
-
-// @public
-export class StageSystemService<T> {
-    constructor(name: string);
-    readonly name: string;
-}
-
-// @public
-export interface StageSystemSetupContext {
-    get<T>(service: StageSystemService<T>): T;
-    getOptional<T>(service: StageSystemService<T>): T | undefined;
-    provide<T>(service: StageSystemService<T>, value: T): void;
-    readonly stage: Stage;
-}
-
-// @public (undocumented)
-export const STATE_TYPES: Readonly<{
-    TRANSLATE: "Translation";
-    POSITION: "Translation";
-    TRANSLATION: "Translation";
-    SCALE: "Scale";
-    ROTATE: "Rotation";
-    ROTATION: "Rotation";
-    QUATERNION: "Quaternion";
-    WEIGHTS: "Weights";
-}>;
 
 // @public (undocumented)
 export type Std140ArrayValue = ArrayLike<number | boolean>;
@@ -8677,51 +8959,6 @@ export interface TemporalAAOptions {
 }
 
 // @public
-export class Text2D extends Sprite {
-    constructor(params?: Text2DParameters);
-    // (undocumented)
-    className: string;
-    // (undocumented)
-    destroy(renderer?: Renderer, _destroyTextures?: boolean): this;
-    // (undocumented)
-    readonly isText2D = true;
-    setStyle(style: Text2DStyle): this;
-    setText(text: string): this;
-    get style(): Readonly<Required<Text2DStyle>>;
-    get text(): string;
-    set text(value: string);
-    // (undocumented)
-    static readonly typeName: string;
-}
-
-// @public (undocumented)
-export interface Text2DParameters extends Omit<SpriteParameters, 'texture' | 'frame' | 'frames' | 'material' | 'width' | 'height' | 'autoPlay'> {
-    // (undocumented)
-    style?: Text2DStyle;
-    // (undocumented)
-    text?: string;
-}
-
-// @public (undocumented)
-export interface Text2DStyle {
-    fillStyle?: string;
-    font?: string;
-    letterSpacing?: number;
-    lineHeight?: number;
-    maxLines?: number;
-    maxWidth?: number;
-    overflow?: 'visible' | 'clip' | 'ellipsis';
-    padding?: number;
-    paragraphSpacing?: number;
-    resolution?: number;
-    strokeStyle?: string;
-    strokeWidth?: number;
-    textAlign?: CanvasTextAlign;
-    textBaseline?: CanvasTextBaseline;
-    wordWrap?: boolean;
-}
-
-// @public
 export class Texture<Image = TextureImageSource> extends EventDispatcher {
     constructor(params?: TextureParameters<Image>);
     anisotropic: number;
@@ -8949,6 +9186,90 @@ export class Ticker {
 // @public
 export type ToneMappingMode = 'pbr-neutral' | 'aces' | 'reinhard' | 'filmic' | 'none';
 
+// @public
+export const TRANSFORM_SYSTEM_ID = "hilo3d/transform";
+
+// @public
+export interface TransformDiagnostics {
+    // (undocumented)
+    readonly hierarchyRevision: number;
+    // (undocumented)
+    readonly queuedDirtyCount: number;
+    // (undocumented)
+    readonly totalWorldMatrixUpdateCount: number;
+    // (undocumented)
+    readonly transformCount: number;
+    // (undocumented)
+    readonly updatedWorldMatrixCount: number;
+}
+
+// @public
+export type TransformQuaternion = readonly [number, number, number, number];
+
+// @public
+export class TransformStore implements ComponentStore<LocalTransformValue> {
+    constructor(initialEntityCapacity?: number, initialDenseCapacity?: number);
+    // (undocumented)
+    add(entityIndex: number, value: LocalTransformValue): void;
+    get changedWorldEntityCount(): number;
+    get changedWorldEntityIndices(): Uint32Array;
+    // (undocumented)
+    clear(): void;
+    clearChangedWorldEntities(): void;
+    commitWorldHistory(): void;
+    copyLocalPose(entityIndex: number, target: Float32Array | Float64Array, targetOffset?: number): void;
+    copyPreviousWorldMatrix(entityIndex: number, target: Float32Array, targetOffset?: number): void;
+    copyWorldMatrix(entityIndex: number, target: Float32Array, targetOffset?: number, origin?: TransformVector3): void;
+    // (undocumented)
+    get dataRevision(): number;
+    denseIndexOf(entityIndex: number): number;
+    discardWorldHistory(): void;
+    // (undocumented)
+    ensureEntityCapacity(capacity: number): void;
+    // (undocumented)
+    get entityCapacity(): number;
+    // (undocumented)
+    get entityIndices(): Uint32Array;
+    // @internal
+    flushDetachedHierarchy(hierarchy: HierarchyStore): void;
+    // (undocumented)
+    get(entityIndex: number): LocalTransformValue;
+    // (undocumented)
+    getByDenseIndex(denseIndex: number): LocalTransformValue;
+    // (undocumented)
+    getDiagnostics(): TransformDiagnostics;
+    // (undocumented)
+    getEntryRevision(entityIndex: number): number;
+    // (undocumented)
+    has(entityIndex: number): boolean;
+    invalidateWorldHistory(entityIndex: number): void;
+    isHistoryValid(entityIndex: number): boolean;
+    // (undocumented)
+    get length(): number;
+    parentIndexOf(entityIndex: number): number;
+    get previousWorldMatrixData(): Float32Array;
+    // (undocumented)
+    remove(entityIndex: number): boolean;
+    // (undocumented)
+    set(entityIndex: number, value: LocalTransformValue): void;
+    // @internal
+    setParentByIndex(entityIndex: number, parentIndex: number): void;
+    setPosition(entityIndex: number, x: number, y: number, z: number): void;
+    setRotation(entityIndex: number, x: number, y: number, z: number, w: number): void;
+    setScale(entityIndex: number, x: number, y: number, z: number): void;
+    // (undocumented)
+    get structureRevision(): number;
+    updateWorldMatrices(): number;
+    // (undocumented)
+    validate(value: LocalTransformValue): void;
+    get worldDataRevision(): number;
+    get worldMatrixData(): Float32Array;
+    worldRevisionOf(entityIndex: number): number;
+}
+
+// @public
+export type TransformVector3 = readonly [number, number, number];
+
 // @public (undocumented)
 export type Triangle = readonly [ArrayLike<number>, ArrayLike<number>, ArrayLike<number>];
 
@@ -9126,46 +9447,6 @@ export interface TypedArrayConstructor {
     // (undocumented)
     readonly BYTES_PER_ELEMENT: number;
 }
-
-// @public
-export class UiButton extends SlicedSprite {
-    constructor(params: UiButtonParameters);
-    // (undocumented)
-    className: string;
-    get enabled(): boolean;
-    // (undocumented)
-    readonly frames: Readonly<UiButtonFrames>;
-    // (undocumented)
-    readonly isUiButton = true;
-    // (undocumented)
-    readonly label: Text2D;
-    setEnabled(enabled: boolean): this;
-    setLabel(text: string): this;
-    // (undocumented)
-    setSize(width: number, height: number): this;
-    get state(): UiButtonState;
-    // (undocumented)
-    static readonly typeName: string;
-}
-
-// @public (undocumented)
-export interface UiButtonFrames {
-    disabled?: SpriteFrame;
-    down?: SpriteFrame;
-    hover?: SpriteFrame;
-    up: SpriteFrame;
-}
-
-// @public (undocumented)
-export interface UiButtonParameters extends Omit<SlicedSpriteParameters, 'frame' | 'texture'> {
-    enabled?: boolean;
-    frames: UiButtonFrames;
-    label?: string;
-    labelStyle?: Text2DStyle;
-}
-
-// @public (undocumented)
-export type UiButtonState = 'up' | 'hover' | 'down' | 'disabled';
 
 // @public (undocumented)
 export const UNIFORM_BLOCK_BINDINGS: Readonly<{
@@ -10194,6 +10475,253 @@ export namespace webglExtensionConstants {
 export const WebGLSupport: {
     readonly get: () => boolean;
 };
+
+// @public
+export class World {
+    add<T>(entity: Entity, component: ComponentType<T>, value: T): void;
+    // @internal (undocumented)
+    addErased(entity: Entity, component: ComponentType<unknown>, value: unknown): void;
+    // @internal
+    beginFrame(deltaTimeMilliseconds: number): void;
+    // @internal (undocumented)
+    beginSystemDispatch(): void;
+    readonly commands: WorldCommandBuffer;
+    // @internal (undocumented)
+    componentTypeId(component: ComponentType<unknown>): number;
+    static create(parameters?: WorldParameters): Promise<World>;
+    createEntity(): Entity;
+    destroy(): void;
+    destroyEntity(entity: Entity): void;
+    // @internal (undocumented)
+    endSystemDispatch(): void;
+    entityAt(entityIndex: number): Entity;
+    get entityCount(): number;
+    entityIndex(entity: Entity): number;
+    // @internal
+    finishFrame(): void;
+    // (undocumented)
+    readonly fixedDeltaMilliseconds: number;
+    get<T>(entity: Entity, component: ComponentType<T>): T;
+    getDiagnostics(): WorldDiagnostics;
+    getOptionalResource<T>(resource: WorldResource<T>): T | undefined;
+    getResource<T>(resource: WorldResource<T>): T;
+    getStore<T>(component: ComponentType<T>): ComponentStore<T>;
+    has<T>(entity: Entity, component: ComponentType<T>): boolean;
+    // @internal (undocumented)
+    hasErased(entity: Entity, component: ComponentType<unknown>): boolean;
+    installSystem(system: WorldSystem): Promise<void>;
+    isAlive(entity: Entity): boolean;
+    // (undocumented)
+    readonly maxDeltaMilliseconds: number;
+    // (undocumented)
+    readonly maxSubSteps: number;
+    readonly measurePhaseDurations: boolean;
+    query(...all: readonly ComponentType<unknown>[]): CachedQuery;
+    // (undocumented)
+    query(description: QueryDescription): CachedQuery;
+    // @internal
+    registerDerivedStore<T>(component: ComponentType<T>, store: ComponentStore<T>): void;
+    remove<T>(entity: Entity, component: ComponentType<T>): boolean;
+    // @internal (undocumented)
+    removeErased(entity: Entity, component: ComponentType<unknown>): boolean;
+    set<T>(entity: Entity, component: ComponentType<T>, value: T): void;
+    // @internal (undocumented)
+    setErased(entity: Entity, component: ComponentType<unknown>, value: unknown): void;
+    subscribeStructureChanges(listener: WorldStructureListener): () => void;
+    readonly systems: WorldSystemRegistry;
+    uninstallSystem(id: string): void;
+    update(deltaTimeMilliseconds: number): void;
+    // @internal (undocumented)
+    validateComponentValue(component: ComponentType<unknown>, value: unknown): void;
+}
+
+// @public
+export const WORLD_SYSTEM_API_VERSION: 1;
+
+// @public
+export const WORLD_SYSTEM_PHASES: readonly ["input", "fixed-pre-physics", "physics", "fixed-post-physics", "update", "animation", "transform", "render-extract", "cleanup"];
+
+// @public
+export class WorldCommandBuffer {
+    add<T>(entity: CommandEntity, component: ComponentType<T>, value: T): void;
+    apply(world: World): void;
+    get capacity(): number;
+    clear(): void;
+    destroy(entity: CommandEntity): void;
+    get length(): number;
+    remove<T>(entity: CommandEntity, component: ComponentType<T>): void;
+    resolve(entity: PendingEntity): Entity;
+    set<T>(entity: CommandEntity, component: ComponentType<T>, value: T): void;
+    spawn(): PendingEntity;
+}
+
+// @public
+export interface WorldDiagnostics {
+    // (undocumented)
+    readonly componentTypeCount: number;
+    // (undocumented)
+    readonly droppedTimeMilliseconds: number;
+    // (undocumented)
+    readonly entityCapacity: number;
+    // (undocumented)
+    readonly entityCount: number;
+    // (undocumented)
+    readonly fixedStepCount: number;
+    // (undocumented)
+    readonly frameCount: number;
+    // (undocumented)
+    readonly interpolationAlpha: number;
+    readonly phaseDurationsMilliseconds: Readonly<Record<WorldSystemPhase, number>>;
+    // (undocumented)
+    readonly queryCount: number;
+    // (undocumented)
+    readonly queuedCommandCount: number;
+}
+
+// @public
+export interface WorldParameters {
+    // (undocumented)
+    readonly fixedDeltaMilliseconds?: number;
+    // (undocumented)
+    readonly initialCapacity?: number;
+    // (undocumented)
+    readonly maxDeltaMilliseconds?: number;
+    // (undocumented)
+    readonly maxSubSteps?: number;
+    readonly measurePhaseDurations?: boolean;
+    // (undocumented)
+    readonly systems?: readonly WorldSystem[];
+}
+
+// @public
+export class WorldResource<T> {
+    constructor(name: string);
+    readonly name: string;
+}
+
+// @public
+export type WorldStructureListener = (entityIndex: number, component: ComponentType<unknown> | null) => void;
+
+// @public
+export interface WorldSystem {
+    // (undocumented)
+    readonly descriptor: WorldSystemDescriptor;
+    // (undocumented)
+    setup(context: WorldSystemSetupContext): WorldSystemRuntime | Promise<WorldSystemRuntime>;
+}
+
+// @public
+export interface WorldSystemAccess {
+    // (undocumented)
+    readonly reads?: readonly ComponentType<unknown>[];
+    // (undocumented)
+    readonly readsResources?: readonly WorldResource<unknown>[];
+    // (undocumented)
+    readonly writes?: readonly ComponentType<unknown>[];
+    // (undocumented)
+    readonly writesResources?: readonly WorldResource<unknown>[];
+}
+
+// @public
+export interface WorldSystemDescriptor {
+    // (undocumented)
+    readonly access?: WorldSystemAccess;
+    // (undocumented)
+    readonly after?: readonly string[];
+    // (undocumented)
+    readonly apiVersion: typeof WORLD_SYSTEM_API_VERSION;
+    // (undocumented)
+    readonly before?: readonly string[];
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly phase: WorldSystemPhase;
+    // (undocumented)
+    readonly provides?: readonly WorldResource<unknown>[];
+    // (undocumented)
+    readonly requires?: readonly string[];
+    // (undocumented)
+    readonly version: string;
+}
+
+// @public
+export interface WorldSystemExecutionContext {
+    // (undocumented)
+    readonly commands: WorldCommandBuffer;
+    // (undocumented)
+    readonly deltaTimeMilliseconds: number;
+    // (undocumented)
+    readonly fixedStepIndex: number;
+    // (undocumented)
+    readonly interpolationAlpha: number;
+    // (undocumented)
+    readonly phase: WorldSystemPhase;
+    // (undocumented)
+    readonly world: World;
+}
+
+// @public
+export type WorldSystemPhase = (typeof WORLD_SYSTEM_PHASES)[number];
+
+// @public
+export class WorldSystemRegistry {
+    constructor(world: World, commands: WorldCommandBuffer);
+    // (undocumented)
+    destroy(): void;
+    // (undocumented)
+    get<T>(resource: WorldResource<T>): T;
+    // (undocumented)
+    getOptional<T>(resource: WorldResource<T>): T | undefined;
+    // (undocumented)
+    getRuntime(id: string): WorldSystemRuntime | undefined;
+    // (undocumented)
+    has(id: string): boolean;
+    // (undocumented)
+    initialize(systems: readonly WorldSystem[]): Promise<void>;
+    // (undocumented)
+    install(system: WorldSystem): Promise<void>;
+    // (undocumented)
+    runPhase(phase: WorldSystemPhase, deltaTimeMilliseconds: number, fixedStepIndex: number, interpolationAlpha: number): void;
+    // (undocumented)
+    uninstall(id: string): void;
+    // (undocumented)
+    readonly world: World;
+}
+
+// @public
+export interface WorldSystemRuntime {
+    // (undocumented)
+    destroy?(): void;
+    // (undocumented)
+    execute(context: WorldSystemExecutionContext): void;
+}
+
+// @public
+export interface WorldSystemSetupContext {
+    // (undocumented)
+    get<T>(resource: WorldResource<T>): T;
+    // (undocumented)
+    getOptional<T>(resource: WorldResource<T>): T | undefined;
+    // (undocumented)
+    provide<T>(resource: WorldResource<T>, value: T): void;
+    // (undocumented)
+    readonly world: World;
+}
+
+// @public
+export const WorldTransform: ComponentType<WorldTransformValue>;
+
+// @public
+export interface WorldTransformValue {
+    // (undocumented)
+    readonly historyValid: boolean;
+    // (undocumented)
+    readonly matrix: Float32Array;
+    // (undocumented)
+    readonly previousMatrix: Float32Array;
+    // (undocumented)
+    readonly revision: number;
+}
 
 // @public (undocumented)
 export interface XYZObject {
