@@ -21,6 +21,33 @@ function queryEntities(world: World, query: ReturnType<World['query']>): readonl
 }
 
 describe('ECS Entity and component storage', () => {
+    it('creates an Entity with one initial component while keeping empty Entities empty', async () => {
+        const world = await World.create();
+        const logical = world.createEntity();
+        const spatial = world.createEntity(LocalTransform);
+        const positioned = world.createEntity(Position, { x: 1, y: 2 });
+
+        expect(world.has(logical, LocalTransform)).toBe(false);
+        expect(world.has(spatial, LocalTransform)).toBe(true);
+        expect(world.get(spatial, LocalTransform)).toMatchObject({
+            position: [0, 0, 0],
+            rotation: [0, 0, 0, 1],
+            scale: [1, 1, 1]
+        });
+        expect(world.get(positioned, Position)).toEqual({ x: 1, y: 2 });
+        world.destroy();
+    });
+
+    it('rolls back Entity creation when its initial component is invalid', async () => {
+        const world = await World.create();
+
+        expect(() => world.createEntity(LocalTransform, { rotation: [0, 0, 0, 0] })).toThrow(
+            /quaternion cannot be zero/u
+        );
+        expect(world.entityCount).toBe(0);
+        world.destroy();
+    });
+
     it('invalidates stale handles and rejects handles owned by another World', async () => {
         const firstWorld = await World.create({ initialCapacity: 1 });
         const secondWorld = await World.create({ initialCapacity: 1 });

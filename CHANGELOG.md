@@ -48,6 +48,9 @@
 
 ### Changes
 
+- Allow `World.createEntity()` to install one initial component transactionally. Component values
+  whose fields are all optional can omit the empty object, so spatial Entities can start with
+  `createEntity(LocalTransform)` without adding transforms to logical Entities.
 - Add a registered three-round cross-commit ECS migration gate for 100,000 static and 10,000 dynamic
   renderables. The gate requires at least 25% lower p95 scene update, Transform, and render
   extraction time, exact dirty-row counts, and zero allocation inside the Transform/extraction hot

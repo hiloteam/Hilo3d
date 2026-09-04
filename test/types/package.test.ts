@@ -70,8 +70,7 @@ const world = await World.create({
     initialCapacity: 1024,
     systems: [system]
 });
-const entity: Entity = world.createEntity();
-world.add(entity, Health, { value: 100 });
+const entity: Entity = world.createEntity(Health, { value: 100 });
 world.add(entity, LocalTransform, {
     position: [0, 0, 0],
     rotation: [0, 0, 0, 1],
@@ -89,8 +88,7 @@ world.add(entity, MeshRenderer, mesh);
 world.add(entity, RenderVisibility, { visible: true, layer: 1 });
 world.add(entity, RenderOrder, { renderOrder: 0 });
 
-const camera: Entity = world.createEntity();
-world.add(camera, LocalTransform, { position: [0, 2, 6] });
+const camera: Entity = world.createEntity(LocalTransform, { position: [0, 2, 6] });
 world.add(camera, PerspectiveCamera, {
     fov: 60,
     near: 0.1,
@@ -98,6 +96,8 @@ world.add(camera, PerspectiveCamera, {
     aspect: 16 / 9
 } satisfies PerspectiveCameraValue);
 world.add(camera, CameraOutput, { enabled: true });
+const identityTransform: Entity = world.createEntity(LocalTransform);
+void identityTransform;
 
 const rigidBody = {
     type: 'dynamic',

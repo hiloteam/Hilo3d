@@ -71,8 +71,7 @@ export async function createExampleRuntime(
         destroyed: false
     };
     window.__HILO_ECS_STATUS__ = renderStatus;
-    const camera = world.createEntity();
-    world.add(camera, LocalTransform, { position: [4, 3, 7] });
+    const camera = world.createEntity(LocalTransform, { position: [4, 3, 7] });
     world.add(camera, PerspectiveCamera, {
         aspect: innerWidth / innerHeight,
         fov: 60,
@@ -80,8 +79,7 @@ export async function createExampleRuntime(
         far: 100
     });
     world.add(camera, CameraOutput, { enabled: true });
-    const ambient = world.createEntity();
-    world.add(ambient, LocalTransform, {});
+    const ambient = world.createEntity(LocalTransform);
     world.add(ambient, AmbientLight, { amount: 0.8, color: [0.8, 0.88, 1] });
     const controls = new OrbitControls(engine, world, camera, {
         target: new Vector3(0, 0.5, 0),

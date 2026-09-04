@@ -62,8 +62,7 @@ const world = await World.create({
     systems: [createTransformSystem(), createRenderExtractionSystem()]
 });
 
-const camera = world.createEntity();
-world.add(camera, LocalTransform, { position: [0, 1.5, 5] });
+const camera = world.createEntity(LocalTransform, { position: [0, 1.5, 5] });
 world.add(camera, PerspectiveCamera, {
     fov: 60,
     near: 0.1,
@@ -72,8 +71,7 @@ world.add(camera, PerspectiveCamera, {
 });
 world.add(camera, CameraOutput, { enabled: true });
 
-const cube = world.createEntity();
-world.add(cube, LocalTransform, {});
+const cube = world.createEntity(LocalTransform);
 world.add(cube, MeshRenderer, {
     geometry: new BoxGeometry(),
     material: new BasicMaterial()
@@ -97,6 +95,10 @@ requestAnimationFrame(frame);
 
 `World` can update headlessly. `Engine` owns only Canvas, Renderer, presentation, and graphics
 recovery. Destroy both explicitly when their lifetimes end.
+
+Entities are empty by default, so logical and resource-only Entities do not pay for transform
+storage. Pass an initial component to `createEntity`; values whose fields are all optional, such as
+`LocalTransform`, may omit the empty object.
 
 For physics, add `RigidBody` and `Collider` to the same Entity as `MeshRenderer`; no application
 binding table is required.

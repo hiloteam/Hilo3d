@@ -10,12 +10,10 @@ import {
 import { createExampleRuntime } from './shared/runtime';
 
 const runtime = await createExampleRuntime();
-const pivot = runtime.world.createEntity();
-runtime.world.add(pivot, LocalTransform, {});
+const pivot = runtime.world.createEntity(LocalTransform);
 for (let index = 0; index < 12; index++) {
     const angle = (index / 12) * Math.PI * 2;
-    const entity = runtime.world.createEntity();
-    runtime.world.add(entity, LocalTransform, {
+    const entity = runtime.world.createEntity(LocalTransform, {
         position: [Math.cos(angle) * 2.2, Math.sin(angle * 3) * 0.35, Math.sin(angle) * 2.2],
         scale: [0.35, 0.35, 0.35]
     });

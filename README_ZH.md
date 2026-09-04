@@ -58,8 +58,7 @@ const world = await World.create({
     systems: [createTransformSystem(), createRenderExtractionSystem()]
 });
 
-const camera = world.createEntity();
-world.add(camera, LocalTransform, { position: [0, 1.5, 5] });
+const camera = world.createEntity(LocalTransform, { position: [0, 1.5, 5] });
 world.add(camera, PerspectiveCamera, {
     fov: 60,
     near: 0.1,
@@ -68,8 +67,7 @@ world.add(camera, PerspectiveCamera, {
 });
 world.add(camera, CameraOutput, { enabled: true });
 
-const cube = world.createEntity();
-world.add(cube, LocalTransform, {});
+const cube = world.createEntity(LocalTransform);
 world.add(cube, MeshRenderer, {
     geometry: new BoxGeometry(),
     material: new BasicMaterial()
@@ -93,6 +91,9 @@ requestAnimationFrame(frame);
 
 `World` 可以脱离图形设备独立 update；`Engine`
 只拥有 Canvas、Renderer、呈现与图形恢复。生命周期结束时应显式销毁二者。
+
+Entity 默认是空的，因此逻辑或纯资源 Entity 不承担 transform 存储成本。`createEntity`
+可直接接收一个初始组件；像 `LocalTransform` 这样字段全为可选的 value 可以省略空对象。
 
 接入物理时，可把 `RigidBody`、`Collider` 与 `MeshRenderer`
 加在同一个 Entity 上，不需要应用维护绑定表。

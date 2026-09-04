@@ -10490,6 +10490,7 @@ export class World {
     componentTypeId(component: ComponentType<unknown>): number;
     static create(parameters?: WorldParameters): Promise<World>;
     createEntity(): Entity;
+    createEntity<T>(component: ComponentType<T>, ...value: Record<PropertyKey, never> extends T ? [value?: T] : [value: T]): Entity;
     destroy(): void;
     destroyEntity(entity: Entity): void;
     // @internal (undocumented)

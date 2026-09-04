@@ -2,8 +2,7 @@ import { BasicMaterial, BoxGeometry, Color, LocalTransform, MeshRenderer } from 
 import { createExampleRuntime } from './shared/runtime';
 
 const runtime = await createExampleRuntime();
-const cube = runtime.world.createEntity();
-runtime.world.add(cube, LocalTransform, {});
+const cube = runtime.world.createEntity(LocalTransform);
 runtime.world.add(cube, MeshRenderer, {
     geometry: new BoxGeometry({ width: 1.8, height: 1.8, depth: 1.8 }),
     material: new BasicMaterial({ diffuse: new Color(0.12, 0.78, 0.9) }),

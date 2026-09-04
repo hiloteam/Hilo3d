@@ -200,12 +200,7 @@ const world = await World.create({
     systems: [physicsSystem, animationSystem, interactionSystem, transformSystem, extractionSystem]
 });
 
-const camera = world.createEntity();
-world.add(camera, LocalTransform, {
-    position: [0, 2, 6],
-    rotation: [0, 0, 0, 1],
-    scale: [1, 1, 1]
-});
+const camera = world.createEntity(LocalTransform, { position: [0, 2, 6] });
 world.add(camera, PerspectiveCamera, {
     fov: 60,
     near: 0.1,
@@ -272,6 +267,9 @@ import，且不接受任意字符串作为运行时组件合同。
 - 必要时的 skin/morph pose index。
 
 TypedArray 扩容只允许发生在结构同步点，按容量批量增长；稳态 frame 不得扩容、创建 iterator、生成临时数组或复制完整 store。
+
+Entity 默认不带 component，避免逻辑实体、动画控制器和纯资源实体承担空间数据成本。创建空间实体时可用
+`world.createEntity(LocalTransform)` 一步安装单位变换；有必填字段的 component 仍必须同时传入 value。
 
 ### 3.4 Query
 
@@ -382,13 +380,7 @@ matrix。层级遍历只服务 Transform 依赖，不再被 Renderer、Physics�
 目标用法：
 
 ```ts
-const crate = world.createEntity();
-
-world.add(crate, LocalTransform, {
-    position: [0, 5, 0],
-    rotation: [0, 0, 0, 1],
-    scale: [1, 1, 1]
-});
+const crate = world.createEntity(LocalTransform, { position: [0, 5, 0] });
 world.add(crate, MeshRenderer, { geometry: boxGeometry, material: crateMaterial });
 world.add(crate, RigidBody, { type: 'dynamic', mass: 10 });
 world.add(crate, Collider, { shape: boxCollider });

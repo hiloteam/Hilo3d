@@ -148,11 +148,30 @@ export default class World {
         return this.entities.size;
     }
 
-    /** Allocate one empty Entity. Components are added independently. */
-    createEntity(): Entity {
+    /** Allocate one empty Entity. */
+    createEntity(): Entity;
+    /** Allocate one Entity with an initial component value. Empty-object values may be omitted. */
+    createEntity<T>(
+        component: ComponentType<T>,
+        ...value: Record<PropertyKey, never> extends T ? [value?: T] : [value: T]
+    ): Entity;
+    createEntity<T>(component?: ComponentType<T>, value?: T): Entity {
         this.requireStructuralMutation('create an Entity');
         const entity = this.entities.create();
         this.ensureEntityCapacity(this.entities.capacity);
+        if (component === undefined) return entity;
+        try {
+            switch (value) {
+                case undefined:
+                    this.add(entity, component, {} as T);
+                    break;
+                default:
+                    this.add(entity, component, value);
+            }
+        } catch (cause) {
+            this.destroyEntity(entity);
+            throw cause;
+        }
         return entity;
     }
 
