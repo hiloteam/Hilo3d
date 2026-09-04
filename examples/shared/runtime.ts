@@ -11,6 +11,7 @@ import {
     createRenderExtractionSystem,
     createTransformSystem,
     type Entity,
+    type RenderPipelineFactory,
     type WorldSystem
 } from 'hilo3d';
 
@@ -33,6 +34,15 @@ export interface ExampleRenderStatus {
     readonly destroyed: boolean;
 }
 
+export interface ExampleRuntimeOptions {
+    readonly antialias?: boolean;
+    readonly stencil?: boolean;
+    readonly renderingProfile?: 'portable' | 'high-end';
+    readonly renderPipeline?: RenderPipelineFactory;
+    readonly initialCapacity?: number;
+    readonly containerSelector?: string;
+}
+
 declare global {
     interface Window {
         __HILO_ECS_STATUS__?: ExampleRenderStatus;
@@ -45,12 +55,15 @@ function requestedBackend(): 'auto' | 'webgl2' | 'webgpu' {
 }
 
 export async function createExampleRuntime(
-    additionalSystems: readonly WorldSystem[] = []
+    additionalSystems: readonly WorldSystem[] = [],
+    options: Readonly<ExampleRuntimeOptions> = {}
 ): Promise<ExampleRuntime> {
-    const container = document.querySelector<HTMLElement>('#app');
-    if (!container) throw new Error('Example requires #app.');
+    const container = document.querySelector<HTMLElement>(
+        options.containerSelector ?? '#app, #container'
+    );
+    if (!container) throw new Error('Example requires #app or #container.');
     const world = await World.create({
-        initialCapacity: 1024,
+        initialCapacity: options.initialCapacity ?? 1024,
         systems: [...additionalSystems, createTransformSystem(), createRenderExtractionSystem()]
     });
     const engine = await Engine.create({
@@ -58,7 +71,10 @@ export async function createExampleRuntime(
         container,
         width: innerWidth,
         height: innerHeight,
-        antialias: true
+        antialias: options.antialias ?? true,
+        stencil: options.stencil ?? false,
+        renderingProfile: options.renderingProfile ?? 'portable',
+        ...(options.renderPipeline === undefined ? {} : { renderPipeline: options.renderPipeline })
     });
     const renderWorld = world.getResource(RENDER_WORLD);
     let renderStatus: ExampleRenderStatus = {
@@ -97,7 +113,16 @@ export async function createExampleRuntime(
         const delta = Math.max(0, Math.min(now - previous, 100));
         previous = now;
         beforeFrameCallback?.(now * 0.001);
-        const result = engine.frame(world, delta);
+        let result: ReturnType<Engine['frame']>;
+        try {
+            result = engine.frame(world, delta);
+        } catch (error) {
+            if (error instanceof Error && error.name === 'RendererRecoveringError') {
+                animationFrame = requestAnimationFrame(frame);
+                return;
+            }
+            throw error;
+        }
         renderStatus = {
             backend: result.backend,
             cameraCount: result.cameraCount,

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="Browse Hilo3D examples running on the WebGL 2 and WebGPU rendering backends."
+        />
+        <title>Hilo3D Examples</title>
+        <link rel="stylesheet" href="./list.css" />
+    </head>
+    <body>
+        <header class="galleryHeader">
+            <div class="brand">
+                <button
+                    class="sidebarToggle"
+                    id="sidebarToggle"
+                    type="button"
+                    aria-label="Open example navigation"
+                    aria-controls="gallerySidebar"
+                    aria-expanded="false"
+                >
+                    ☰
+                </button>
+                <div class="brandMark" aria-hidden="true">H3</div>
+                <div class="brandText">
+                    <h1 class="brandTitle">Hilo3D Examples</h1>
+                    <p class="brandSubtitle">One renderer, two portable backends</p>
+                </div>
+            </div>
+            <div class="headerActions">
+                <nav class="siteLinks" aria-label="Site navigation">
+                    <a href="../">Home</a>
+                    <a href="../docs/">Docs</a>
+                    <a href="../docs/modules/Hilo3d.html">API</a>
+                </nav>
+                <label class="backendControl" for="backendSelect">
+                    <span>Preferred backend</span>
+                    <select id="backendSelect" aria-label="Graphics backend">
+                        <option value="webgl2">WebGL 2</option>
+                        <option value="webgpu">WebGPU</option>
+                    </select>
+                </label>
+                <a
+                    class="repositoryLink"
+                    href="https://github.com/hiloteam/Hilo3d"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    GitHub
+                </a>
+            </div>
+        </header>
+
+        <main class="galleryLayout">
+            <aside class="gallerySidebar" id="gallerySidebar" aria-label="Example navigation">
+                <div class="sidebarInner">
+                    <div class="searchArea">
+                        <div class="catalogMode" role="group" aria-label="Example collection">
+                            <button
+                                class="catalogModeButton"
+                                id="featuredMode"
+                                type="button"
+                                aria-pressed="true"
+                            >
+                                Highlights
+                            </button>
+                            <button
+                                class="catalogModeButton"
+                                id="allMode"
+                                type="button"
+                                aria-pressed="false"
+                            >
+                                All examples
+                            </button>
+                        </div>
+                        <label class="searchLabel" for="exampleSearch">Find an example</label>
+                        <input
+                            class="searchInput"
+                            id="exampleSearch"
+                            type="search"
+                            placeholder="Geometry, PBR, loader…"
+                            autocomplete="off"
+                        />
+                        <div class="searchMeta">
+                            <span id="exampleCount"></span>
+                            <span><kbd>/</kbd> to search</span>
+                        </div>
+                    </div>
+                    <nav
+                        class="exampleNavigation"
+                        id="exampleNavigation"
+                        aria-label="Examples"
+                    ></nav>
+                </div>
+            </aside>
+
+            <section class="viewer" aria-labelledby="currentTitle">
+                <div class="viewerToolbar">
+                    <div class="viewerIdentity">
+                        <div class="viewerMeta">
+                            <span class="viewerCategory" id="currentCategory"></span>
+                            <span class="viewerBackend" id="currentBackend"></span>
+                        </div>
+                        <h2 class="viewerTitle" id="currentTitle">Loading example…</h2>
+                        <p class="viewerDescription" id="currentDescription"></p>
+                    </div>
+                    <div class="viewerActions">
+                        <a
+                            class="viewerAction viewerActionSource"
+                            id="viewSource"
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            Source
+                        </a>
+                        <a class="viewerAction" id="openExample" target="_blank" rel="noreferrer">
+                            Open
+                        </a>
+                    </div>
+                </div>
+                <div class="frameViewport">
+                    <iframe
+                        class="exampleFrame"
+                        id="exampleFrame"
+                        name="exampleFrame"
+                        title="Hilo3D example"
+                    ></iframe>
+                    <div
+                        class="frameStatus"
+                        id="frameStatus"
+                        data-state="loading"
+                        aria-live="polite"
+                    >
+                        <span class="loadingIndicator" id="frameStatusText">Loading example…</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <button
+            class="sidebarBackdrop"
+            id="sidebarBackdrop"
+            type="button"
+            aria-label="Close example navigation"
+        ></button>
+        <script type="module" src="./list.ts"></script>
+    </body>
+</html>

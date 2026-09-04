@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>Hilo3D Rapier Physics</title>
+        <link rel="stylesheet" type="text/css" href="../example.css" />
+        <style>
+            .physics-panel {
+                position: fixed;
+                inset: 20px auto auto 20px;
+                max-width: min(360px, calc(100vw - 40px));
+                padding: 14px 16px;
+                color: #e8f3ff;
+                background: rgb(5 11 24 / 82%);
+                border: 1px solid rgb(113 183 255 / 35%);
+                border-radius: 10px;
+                font:
+                    13px/1.55 system-ui,
+                    sans-serif;
+                pointer-events: none;
+                backdrop-filter: blur(10px);
+            }
+
+            .physics-panel strong {
+                color: #7ddcff;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <aside class="physics-panel">
+            <strong>Rapier 3D · optional Stage System</strong><br />
+            Fixed 60 Hz simulation · interpolated transforms<br />
+            Bodies: <span id="body-count">0</span> · Contacts:
+            <span id="contact-count">0</span>
+        </aside>
+        <script type="module" src="./rapier3d.ts"></script>
+    </body>
+</html>

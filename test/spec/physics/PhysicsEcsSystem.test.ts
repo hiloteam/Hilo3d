@@ -18,11 +18,11 @@ import {
 import { createTransformSystem } from '../../../src/scene/systems/TransformSystem';
 import { FakePhysics3DBackend } from './FakePhysics3DBackend';
 
-function physicsSystem() {
+function physicsSystem(fractionalHandles = false) {
     return createPhysicsSystem({
         id: 'test/fake-physics-system',
         world: {
-            backend: new FakePhysics3DBackend(),
+            backend: new FakePhysics3DBackend(fractionalHandles),
             gravity: { x: 0, y: -9.81, z: 0 },
             fixedTimeStep: 0.01,
             maxSubSteps: 4
@@ -101,9 +101,34 @@ describe('ECS physics integration', () => {
         expect(() => {
             runtime.restoreSnapshot({
                 ...snapshot,
-                bodyHandles: new Uint32Array([0xffff_ffff])
+                bodyHandles: new Float64Array([0xffff_ffff])
             });
         }).toThrow(/stale native handle/u);
+        world.destroy();
+    });
+
+    it('preserves fractional generational handles without 32-bit truncation', async () => {
+        const world = await World.create({
+            fixedDeltaMilliseconds: 10,
+            systems: [physicsSystem(true), createTransformSystem()]
+        });
+        const first = world.createEntity(LocalTransform);
+        const second = world.createEntity(LocalTransform);
+        world.add(first, RigidBody, { type: 'fixed', dimension: '3d' });
+        world.add(second, RigidBody, { type: 'dynamic', dimension: '3d' });
+        world.update(10);
+
+        const runtime = world.getResource(PHYSICS_RUNTIME_3D);
+        const firstHandle = runtime.bodyHandle(world.entityIndex(first));
+        const secondHandle = runtime.bodyHandle(world.entityIndex(second));
+        expect(firstHandle).toBe(Number.MIN_VALUE);
+        expect(secondHandle).toBe(Number.MIN_VALUE * 2);
+        expect(secondHandle).not.toBe(firstHandle);
+
+        const snapshot = runtime.takeSnapshot();
+        runtime.restoreSnapshot(snapshot);
+        expect(runtime.bodyHandle(world.entityIndex(first))).toBe(firstHandle);
+        expect(runtime.bodyHandle(world.entityIndex(second))).toBe(secondHandle);
         world.destroy();
     });
 

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0"
+        />
+        <title>Hilo3D Afterimage — Screen-space Reflections</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./screen_space_reflections_palace.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+
+        <header class="ssrHeader">
+            <a class="ssrBrand" href="./index.html" aria-label="Back to Hilo3D examples">
+                <span class="ssrBrandMark" aria-hidden="true"></span>
+                <span>Hilo3D</span>
+            </a>
+            <p class="ssrEdition">WebGPU study · 01</p>
+        </header>
+
+        <main class="ssrIntro" aria-label="Screen-space reflections showcase">
+            <p class="ssrEyebrow">Screen-space reflections</p>
+            <h1>After<span>image</span></h1>
+            <p class="ssrDescription">Car Concept in a smoked-lacquer study of light and motion.</p>
+        </main>
+
+        <div class="ssrControls" aria-label="Reflection controls">
+            <button id="ssrToggle" type="button" aria-pressed="true">
+                <span class="ssrSwitch" aria-hidden="true"><span></span></span>
+                <span>
+                    <small>reflection</small>
+                    <strong id="ssrToggleLabel">SSR on</strong>
+                </span>
+            </button>
+            <span class="ssrDivider ssrDesktopOnly" aria-hidden="true"></span>
+            <p class="ssrTechnical ssrDesktopOnly">
+                <span>Hi-Z trace</span><span>temporal resolve</span><span>smoked lacquer</span>
+            </p>
+        </div>
+
+        <div class="ssrStatus" aria-live="polite">
+            <span class="ssrPulse" aria-hidden="true"></span>
+            <span id="statusLabel">warming reflection history</span>
+        </div>
+
+        <p class="ssrHint">Drag to orbit</p>
+        <a
+            class="ssrCredit"
+            href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept"
+            target="_blank"
+            rel="noreferrer"
+            >Car Concept · DGG / Khronos · CC BY 4.0</a
+        >
+        <div class="ssrAtmosphere" aria-hidden="true"></div>
+
+        <script type="module" src="./screen_space_reflections_palace.ts"></script>
+    </body>
+</html>

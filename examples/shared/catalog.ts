@@ -1,9 +1,71 @@
-export type CatalogBackend = 'webgl2' | 'webgpu';
+type CatalogBackend = 'webgl2' | 'webgpu';
 
 export const EXAMPLE_CATEGORIES = [
-    { id: 'basics', label: 'ECS basics' },
-    { id: 'assets', label: 'Assets' },
-    { id: 'addons', label: 'Addons' }
+    {
+        id: 'getting-started',
+        label: 'Getting started',
+        description: 'Small examples for learning the basic Hilo3D workflow.'
+    },
+    {
+        id: '2d',
+        label: '2D games',
+        description: 'Sprites, atlas animation, Canvas text, batching, layers, and camera stacks.'
+    },
+    {
+        id: 'geometry',
+        label: 'Geometry',
+        description: 'Mesh construction, attributes, helpers, and instancing.'
+    },
+    {
+        id: 'materials',
+        label: 'Materials & shaders',
+        description: 'Material models, custom shaders, transparency, and environments.'
+    },
+    {
+        id: 'lighting',
+        label: 'Lighting & shadows',
+        description: 'Lights, shadows, and image-based lighting.'
+    },
+    {
+        id: 'textures',
+        label: 'Textures & media',
+        description: 'Texture formats, image data, video, HDR, and color spaces.'
+    },
+    {
+        id: 'animation',
+        label: 'Animation',
+        description: 'Animation clips, tweening, morphing, and dynamic scenes.'
+    },
+    {
+        id: 'particles',
+        label: 'Particles',
+        description: 'Emitters, noise, topology, interaction, and GPU-resident simulation.'
+    },
+    {
+        id: 'rendering',
+        label: 'Rendering',
+        description: 'Render targets, post-processing, buffers, and render pipelines.'
+    },
+    {
+        id: 'interaction',
+        label: 'Interaction',
+        description: 'Picking, ray casting, camera helpers, pointer input, and XR.'
+    },
+    {
+        id: 'loaders',
+        label: 'Loaders & tools',
+        description: 'Asset loaders, cloning, progress reporting, and the glTF viewer.'
+    },
+    {
+        id: 'physics',
+        label: 'Physics',
+        description: 'Physics integration and simulation examples.'
+    },
+    {
+        id: 'advanced',
+        label: 'Advanced',
+        description: 'Diagnostics, resource management, math, and lower-level APIs.'
+    }
 ] as const;
 
 export type ExampleCategoryId = (typeof EXAMPLE_CATEGORIES)[number]['id'];
@@ -14,51 +76,365 @@ export interface ExampleCatalogEntry {
     readonly title: string;
     readonly description: string;
     readonly category: ExampleCategoryId;
+    readonly sourcePath: string;
     readonly supportedBackends: readonly CatalogBackend[];
+    readonly defaultQuery: Readonly<Record<string, string>>;
+    readonly featured: boolean;
+    readonly searchText: string;
 }
 
-const BOTH = ['webgl2', 'webgpu'] as const;
+const CATEGORY_ORDER = new Map(
+    EXAMPLE_CATEGORIES.map((category, index) => [category.id, index] as const)
+);
+const BOTH_BACKENDS = ['webgl2', 'webgpu'] as const;
+const WEBGL2_ONLY = ['webgl2'] as const;
+const WEBGPU_ONLY = ['webgpu'] as const;
 
-export const EXAMPLE_CATALOG: readonly ExampleCatalogEntry[] = Object.freeze([
-    {
-        id: 'quick-start',
-        path: 'quickStart.html',
-        title: 'Quick Start',
-        description: 'Create a World, compose a renderable Entity, and submit it through Engine.',
-        category: 'basics',
-        supportedBackends: BOTH
-    },
-    {
-        id: 'composition',
-        path: 'composition.html',
-        title: 'Composition & hierarchy',
-        description: 'Compose render, interaction data, and transform hierarchy on one Entity.',
-        category: 'basics',
-        supportedBackends: BOTH
-    },
-    {
-        id: 'gltf-prefab',
-        path: 'gltf.html',
-        title: 'glTF prefab',
-        description: 'Load authoring data and instantiate it directly into a World.',
-        category: 'assets',
-        supportedBackends: BOTH
-    },
-    {
-        id: 'physics',
-        path: 'physics.html',
-        title: 'RigidBody + MeshRenderer',
-        description: 'Put render and physics components on one Entity without a binding object.',
-        category: 'addons',
-        supportedBackends: BOTH
-    },
-    {
-        id: 'particles',
-        path: 'particles.html',
-        title: 'Particle World System',
-        description:
-            'Own particle resources through a World System and render extension component.',
-        category: 'addons',
-        supportedBackends: BOTH
-    }
+const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
+    'MultiSampledRenderbuffers.html': 'Multisampled Renderbuffers',
+    'glTFViewer/index.html': 'glTF Viewer',
+    'loader/glTF_clone.html': 'glTF Clone',
+    'loader/glTF_loader.html': 'glTF Loader',
+    'quickStart.html': 'Quick Start',
+    'resourceManagerTest.html': 'Resource Manager Diagnostics',
+    'sRGB.html': 'sRGB Color Space',
+    'shaderToy.html': 'ShaderToy',
+    'sphericalHarmonics.html': 'Spherical Harmonics',
+    'uniformBufferObject.html': 'Uniform Buffer Objects',
+    'update_sub_texture.html': 'Update Sub-texture',
+    'webgl_support.html': 'Graphics Backend Support',
+    'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
+    'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
+    'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
+    'stormfront_observatory.html': 'Tempest Reliquary — Physical Atmosphere',
+    'shadow_residency_sanctum.html': 'Umbra Sanctum — Shadow Page Residency',
+    'screen_space_reflections_palace.html': 'Afterimage — Screen-space Reflections',
+    'screen_space_global_illumination_chapel.html':
+        'Prismatic Vespers — Screen-space Global Illumination',
+    'ground_truth_ambient_occlusion.html': 'The Silent Dragon — Ground-truth Ambient Occlusion',
+    'gtao_acceptance_lab.html': 'GTAO Acceptance Lab',
+    'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
+    'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
+    'compute_particles.html': 'Hilo3D Compute Particle Field',
+    'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer',
+    '2d_sprite_animation.html': '2D Moon Moth Animation',
+    '2d_sorting_town.html': '2D Sorting Town',
+    '2d_text.html': '2D Canvas Text',
+    '2d_text_layout.html': '2D Responsive Text Layout',
+    '2d_ui_button.html': '2D Nine-Slice UI Buttons',
+    '2d_sprite_batch.html': '2D Sprite Batch',
+    'canvas_texture.html': 'Canvas Texture Dashboard',
+    'canvas_texture_animation.html': 'Canvas Texture Animation',
+    'geometry_primitives.html': 'Geometry Primitives',
+    'pbr2.html': 'PBR Material Lab',
+    'pbr_layered_materials.html': 'Layered PBR Studio',
+    'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
+    'physics/rapier3d.html': 'Rapier 3D Physics System',
+    'physics/rapier_materials.html': 'Rapier Material Lab',
+    'physics/rapier_joints.html': 'Rapier Joint Gallery',
+    'physics/rapier2d_marble.html': 'Rapier 2D Marble Machine',
+    'cascaded_shadows.html': 'Cascaded Sunset Garden',
+    'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
+    'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
+    'particle_orbital_weave.html': 'Orbital Weave — Meshes, Ribbons & Trails',
+    'particle_collision_theatre.html': 'Collision Theatre — Particle Interaction',
+    'particle_gpu_nebula.html': 'Event Horizon — WebGPU Particle Nebula'
+});
+
+const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
+    'glTFViewer/index.html': 'Load glTF 2.0 models from a URL, files, or a dropped folder.',
+    'compute_gpu_driven.html':
+        'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
+    'clustered_forward_plus_sponza.html':
+        'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
+    'volumetric_neon_reliquary.html':
+        'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
+    'stormfront_observatory.html':
+        'Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.',
+    'shadow_residency_sanctum.html':
+        'Enter a procedural moonlit nave where moving GPU Scene casters, fair page circulation, camera-layer isolation, CSM cadence, volumetric shafts, SSR, GTAO, and bloom exercise submission-aware shadow residency.',
+    'screen_space_reflections_palace.html':
+        'Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.',
+    'screen_space_global_illumination_chapel.html':
+        'Enter a procedural brutalist chapel where portable stochastic SSGI transports cyan, vermilion, violet, and warm emissive radiance across pale stone.',
+    'ground_truth_ambient_occlusion.html':
+        'Read scales, claws, coils, layered stone contacts, and a deep architectural niche through portable temporal GTAO.',
+    'gtao_acceptance_lab.html':
+        'Validate contact scale, thin geometry, depth edges, normal detail, material response, and temporal rejection in a deterministic dual-backend GTAO fixture.',
+    'temporal_aa_observatory.html':
+        'Stress fused motion vectors, visibility-aware history, logarithmic depth rejection, and fixed-scale TAAU in a kinetic WebGPU constellation.',
+    'compute_eclipse_shrine.html':
+        'Orbit a cinematic eclipse built from 65,536 compute-simulated bodies, three indirect spectral layers, PBR relics, HDR bloom, and interactive gravity.',
+    'compute_particles.html':
+        'Drive 65,536 GPU bodies through aurora, stars, cyber dunes, meteor-wake force fields, boundary collisions, and indirect glow rendering.',
+    'compute_raytracing.html':
+        'Progressively path trace a refractive Hilo3D crystal wordmark, glass sphere, champagne-metal cube, soft shadows, and cinematic HDR bloom.',
+    '2d_sprite_animation.html':
+        'Animate an ImageGen-authored atlas while three ordered cameras compose a 2D background, a 3D moon, and clickable 2D UI.',
+    '2d_sorting_town.html':
+        'Guide an A* courier through an ImageGen-authored pixel town while foot-Y ordering keeps buildings, trees, and the walker correctly layered.',
+    '2d_text.html':
+        'Rasterize styled multiline Canvas text only when content changes, then render and click it as Sprite UI.',
+    '2d_text_layout.html':
+        'Wrap measured Chinese and Latin text responsively with max lines, ellipsis, letter spacing, and paragraph spacing.',
+    '2d_ui_button.html':
+        'Scale an ImageGen-authored nine-slice skin into crisp panels and interactive four-state game buttons.',
+    '2d_sprite_batch.html':
+        'Render 4,096 ImageGen-authored collectibles from one atlas in 32 portable instance batches.',
+    'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
+    'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
+    'scriptable_pipeline.html':
+        'Compose a custom render pipeline through the public scriptable pipeline API.',
+    'shaderToy.html': 'Run an interactive fragment shader with pointer and time inputs.',
+    'webgl_support.html': 'Inspect the graphics backend selected for the current browser.',
+    'canvas_texture.html':
+        'Turn a live Canvas 2D dashboard into a continuously updated Hilo3D texture.',
+    'canvas_texture_animation.html':
+        'Stream a procedural Canvas 2D aquarium into a portable animated texture.',
+    'geometry_primitives.html':
+        'Compare built-in box and sphere meshes with a custom line-mode ring in one polished scene.',
+    'geometry_instanced.html':
+        'Render a deterministic wave of shared spheres through portable instanced batches.',
+    'pointLight.html':
+        'Orbit three colored point lights around a reflective sculpture with dynamic shadows.',
+    'bloom.html':
+        'Compare engine HDR Bloom against the same raw scene in a WebGPU nocturne driven by 32,768 compute-simulated fireflies around an eclipse shrine.',
+    'pbr2.html':
+        'Read metallic and roughness response across a controlled 30-sample HDR material studio.',
+    'pbr_layered_materials.html':
+        'Toggle anisotropy, clearcoat, transmission and volume across a cinematic engine-owned HDR material studio.',
+    'gltf_material_extensions.html':
+        'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
+    'physics/rapier3d.html':
+        'Drop rigid bodies through the optional Rapier 3D Stage System with fixed-step simulation, interpolation, collision events, CCD, and backend-neutral diagnostics.',
+    'physics/rapier_materials.html':
+        'Compare restitution and friction coefficients through synchronized bounce columns and parallel sliding lanes.',
+    'physics/rapier_joints.html':
+        'Put revolute constraints, a damped spring, and a motorized hinge in motion inside one fixed-step Rapier world.',
+    'physics/rapier2d_marble.html':
+        'Run a colorful 2D marble machine with circle and box colliders, angled obstacles, CCD, and a non-solid sensor gate.',
+    'cascaded_shadows.html':
+        'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.',
+    'particle_elemental_forge.html':
+        'Compare every analytic emission shape through elemental sprite effects with lifetime curves, gradients, SubUV animation, alignments, blending, and sorting.',
+    'particle_noise_fields.html':
+        'Read vector and curl noise side by side as stateless position offsets and stateful forces with explicit octave, frequency, scroll, and damping profiles.',
+    'particle_orbital_weave.html':
+        'Orbit lit mesh buckets, topology-preserving ribbons, and velocity trails driven by shared portable particle simulation.',
+    'particle_collision_theatre.html':
+        'Launch particles through plane, sphere, box, and capsule colliders with triggers, bounded events, typed channels, and resident sub-emitters.',
+    'particle_gpu_nebula.html':
+        'Fold 65,536 stateful and stateless bodies around soft scene depth with compute simulation, collision, sorting, and GPU-resident event routing.'
+});
+
+const FEATURED_PATHS = new Set([
+    'quickStart.html',
+    '2d_sprite_animation.html',
+    '2d_sprite_batch.html',
+    '2d_sorting_town.html',
+    '2d_text_layout.html',
+    '2d_ui_button.html',
+    'canvas_texture.html',
+    'geometry_primitives.html',
+    'geometry_instanced.html',
+    'pbr2.html',
+    'pbr_layered_materials.html',
+    'gltf_material_extensions.html',
+    'pointLight.html',
+    'shadow.html',
+    'cascaded_shadows.html',
+    'bloom.html',
+    'scriptable_pipeline.html',
+    'shaderToy.html',
+    'mesh_picker.html',
+    'glTFViewer/index.html',
+    'physics/rapier3d.html',
+    'physics/rapier_materials.html',
+    'physics/rapier_joints.html',
+    'physics/rapier2d_marble.html',
+    'video.html',
+    'compute_gpu_driven.html',
+    'clustered_forward_plus_sponza.html',
+    'volumetric_neon_reliquary.html',
+    'stormfront_observatory.html',
+    'shadow_residency_sanctum.html',
+    'screen_space_reflections_palace.html',
+    'screen_space_global_illumination_chapel.html',
+    'ground_truth_ambient_occlusion.html',
+    'gtao_acceptance_lab.html',
+    'temporal_aa_observatory.html',
+    'compute_eclipse_shrine.html',
+    'compute_particles.html',
+    'compute_raytracing.html',
+    'particle_elemental_forge.html',
+    'particle_noise_fields.html',
+    'particle_orbital_weave.html',
+    'particle_collision_theatre.html',
+    'particle_gpu_nebula.html'
 ]);
+
+function categoryForPath(path: string): ExampleCategoryId {
+    const normalized = path.toLowerCase();
+    if (normalized === 'quickstart.html') return 'getting-started';
+    if (normalized.startsWith('2d_')) return '2d';
+    if (normalized.startsWith('physics/')) return 'physics';
+    if (normalized.startsWith('particle_')) return 'particles';
+    if (normalized.startsWith('loader/') || normalized.startsWith('gltfviewer/')) return 'loaders';
+    if (
+        /(?:geometry|billboard|wireframe|frustum_test|camerahelper|normal_map|uv_map)/u.test(
+            normalized
+        )
+    ) {
+        return 'geometry';
+    }
+    if (/(?:light|shadow|sphericalharmonics)/u.test(normalized)) return 'lighting';
+    if (/(?:animation|tween|morph|lifegame|custom_anim_state)/u.test(normalized)) {
+        return 'animation';
+    }
+    if (
+        /(?:texture|srgb|hdr|video|sphereenvmap|update_sub_texture|compressed_texture)/u.test(
+            normalized
+        )
+    ) {
+        return 'textures';
+    }
+    if (
+        /(?:post_process|bloom|temporal_aa|ground_truth_ambient_occlusion|gtao_acceptance|screen_space_|volumetric|rendertarget|drawbuffers|depthtexture|stencil|multisampled|scriptable_pipeline|clustered_forward_plus|compute_gpu_driven|compute_eclipse_shrine|compute_particles)/u.test(
+            normalized
+        )
+    ) {
+        return 'rendering';
+    }
+    if (/(?:raycast|mesh_picker|mouse_event|webxr)/u.test(normalized)) return 'interaction';
+    if (
+        /(?:pbr|material_extensions|shader|transparent|fog|skybox|refract|snow|spheremap)/u.test(
+            normalized
+        )
+    ) {
+        return 'materials';
+    }
+    return 'advanced';
+}
+
+function formatWord(word: string): string {
+    const normalized = word.toLowerCase();
+    const acronyms: Readonly<Record<string, string>> = {
+        gltf: 'glTF',
+        hdr: 'HDR',
+        pbr: 'PBR',
+        srgb: 'sRGB',
+        uv: 'UV',
+        webgl: 'WebGL',
+        webgpu: 'WebGPU',
+        webxr: 'WebXR'
+    };
+    const acronym = acronyms[normalized];
+    if (acronym) return acronym;
+    return `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`;
+}
+
+function titleForPath(path: string): string {
+    const override = TITLE_OVERRIDES[path];
+    if (override) return override;
+    const filename = path.slice(path.lastIndexOf('/') + 1, -'.html'.length);
+    return filename
+        .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+        .replace(/([A-Za-z])([0-9])/gu, '$1 $2')
+        .replace(/[_-]+/gu, ' ')
+        .split(/\s+/u)
+        .filter(Boolean)
+        .map(formatWord)
+        .join(' ');
+}
+
+function descriptionForEntry(path: string, title: string, category: ExampleCategoryId): string {
+    const override = DESCRIPTION_OVERRIDES[path];
+    if (override) return override;
+    const templates: Readonly<Record<ExampleCategoryId, string>> = {
+        'getting-started': `Learn the core Hilo3D workflow through ${title}.`,
+        '2d': `Build layered 2D content with ${title}.`,
+        geometry: `Inspect mesh construction and vertex data through ${title}.`,
+        materials: `Compare surface and shader behavior with ${title}.`,
+        lighting: `Study illumination, reflections, and shadow response with ${title}.`,
+        textures: `Explore texture sampling, formats, and color handling with ${title}.`,
+        animation: `Bring scene data to life through ${title}.`,
+        particles: `Explore particle authoring and simulation through ${title}.`,
+        rendering: `Inspect the portable render pipeline through ${title}.`,
+        interaction: `Connect cameras, pointers, and scene queries through ${title}.`,
+        loaders: `Load and inspect production asset data with ${title}.`,
+        physics: `Connect Hilo3D rendering to a live ${title} simulation.`,
+        advanced: `Inspect lower-level engine behavior through ${title}.`
+    };
+    return templates[category];
+}
+
+function sourcePathForEntry(path: string): string {
+    if (path === 'glTFViewer/index.html') return 'glTFViewer/app/index.ts';
+    return `${path.slice(0, -'.html'.length)}.ts`;
+}
+
+function createEntry(path: string): ExampleCatalogEntry {
+    const id = path.slice(0, -'.html'.length);
+    const title = titleForPath(path);
+    const category = categoryForPath(path);
+    const description = descriptionForEntry(path, title, category);
+    const featured = FEATURED_PATHS.has(path);
+    const sourcePath = sourcePathForEntry(path);
+    const supportedBackends =
+        path === 'webxr.html'
+            ? WEBGL2_ONLY
+            : path === 'bloom.html' ||
+                path === 'clustered_forward_plus_sponza.html' ||
+                path === 'volumetric_neon_reliquary.html' ||
+                path === 'stormfront_observatory.html' ||
+                path === 'shadow_residency_sanctum.html' ||
+                path === 'screen_space_reflections_palace.html' ||
+                path === 'temporal_aa_observatory.html' ||
+                path === 'compute_gpu_driven.html' ||
+                path === 'compute_eclipse_shrine.html' ||
+                path === 'compute_particles.html' ||
+                path === 'particle_gpu_nebula.html' ||
+                path === 'compute_raytracing.html'
+              ? WEBGPU_ONLY
+              : BOTH_BACKENDS;
+    const defaultQuery =
+        path === 'glTFViewer/index.html'
+            ? Object.freeze({ url: '/examples/models/Tmall/Tmall.gltf' })
+            : Object.freeze({});
+    return Object.freeze({
+        id,
+        path,
+        title,
+        description,
+        category,
+        sourcePath,
+        supportedBackends,
+        defaultQuery,
+        featured,
+        searchText: `${title} ${description} ${path} ${category}`.toLowerCase()
+    });
+}
+
+export function createExampleCatalog(paths: readonly string[]): readonly ExampleCatalogEntry[] {
+    return Object.freeze(
+        paths
+            .filter(path => path !== 'index.html' && path !== 'list.html')
+            .map(createEntry)
+            .sort((left, right) => {
+                const categoryDifference =
+                    (CATEGORY_ORDER.get(left.category) ?? 0) -
+                    (CATEGORY_ORDER.get(right.category) ?? 0);
+                return (
+                    categoryDifference ||
+                    left.title.localeCompare(right.title, 'en', { sensitivity: 'base' })
+                );
+            })
+    );
+}
+
+export function examplesForBackend(
+    catalog: readonly ExampleCatalogEntry[],
+    backend: CatalogBackend
+): readonly ExampleCatalogEntry[] {
+    return catalog.filter(entry => entry.supportedBackends.includes(backend));
+}

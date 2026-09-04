@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="A portable gallery of elemental Hilo3D particle emitters, curves, gradients, sprite alignments, and texture sheets."
+        />
+        <title>Hilo3D Particle Elemental Forge</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./particle_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <header class="particle-hero">
+            <div class="particle-kicker">Particle studies · 01 / portable</div>
+            <h1>Elemental Forge</h1>
+            <p>
+                Fire, frost, plasma and embers built from immutable definitions. Orbit to read how
+                shape, lifetime and alignment change each silhouette.
+            </p>
+            <div class="particle-chips">
+                <span>8 shapes</span><span>curves + gradients</span><span>SubUV atlas</span
+                ><span>4 alignments</span><span>WebGL2 + WebGPU</span>
+            </div>
+        </header>
+        <div class="particle-hint">DRAG TO ORBIT · SCROLL TO DOLLY</div>
+        <nav class="particle-nav" aria-label="Particle example collection">
+            <a aria-current="page" href="./particle_elemental_forge.html">Elemental</a>
+            <a href="./particle_noise_fields.html">Noise</a>
+            <a href="./particle_orbital_weave.html">Topology</a>
+            <a href="./particle_collision_theatre.html">Interaction</a>
+            <a href="./particle_gpu_nebula.html?backend=webgpu">GPU nebula</a>
+        </nav>
+        <script type="module" src="./particle_elemental_forge.ts"></script>
+    </body>
+</html>

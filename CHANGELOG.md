@@ -45,8 +45,19 @@
   sRGB transfer, while display-transformed `srgb` inputs are preserved without a second conversion.
 - Make `ClusteredForwardPlusPipelineFactory.create()` asynchronous so renderer initialization can
   finish its declared material-variant warmup before the first frame.
+- Preserve backend-native physics body and collider handles as `Float64Array` values in
+  `PhysicsEcsSnapshot`; Rapier generational handles are JavaScript numbers and must not be truncated
+  through 32-bit integer storage.
 
 ### Changes
+
+- Restore the complete searchable split-view example gallery and migrate all 90 legacy example pages
+  to the ECS `World`/`Engine` runtime. Keep the newer ECS composition, glTF, physics, and particle
+  entry points alongside the restored catalog, with recursive source discovery and WebGL2/WebGPU
+  browser coverage.
+- Prepare explicitly extracted renderer extensions before graph recording and keep visible
+  transparent GPU extension passes on matching single-sample color/depth attachments, allowing GPU
+  particle rendering to coexist with antialiased Forward outputs.
 
 - Allow `World.createEntity()` to install one initial component transactionally. Component values
   whose fields are all optional can omit the empty object, so spatial Entities can start with

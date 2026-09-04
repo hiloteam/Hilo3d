@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+        />
+        <title>Hilo3D Bloom — Garden of the Last Star</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <link rel="stylesheet" type="text/css" href="./bloom_showcase.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+
+        <main class="bloomPanel" aria-label="Bloom showcase controls">
+            <div class="bloomPanel__rule" aria-hidden="true"></div>
+            <p class="bloomEyebrow">Hilo3D · nocturne study 01</p>
+            <h1>Garden of<br />the Last Star</h1>
+            <p class="bloomIntro">
+                A black-moon shrine composed in linear HDR. A compute-driven firefly current keeps
+                gold, cyan and violet energy above display white before the engine shapes it into
+                light.
+            </p>
+
+            <div class="bloomMode" aria-label="Bloom comparison">
+                <button data-bloom-mode="bloom" type="button" aria-pressed="true">
+                    <span>01</span>
+                    Bloom
+                </button>
+                <button data-bloom-mode="raw" type="button" aria-pressed="false">
+                    <span>02</span>
+                    Raw HDR
+                </button>
+            </div>
+
+            <dl class="bloomMetrics" aria-label="Bloom settings">
+                <div>
+                    <dt>threshold</dt>
+                    <dd>1.05</dd>
+                </div>
+                <div>
+                    <dt>intensity</dt>
+                    <dd>0.74</dd>
+                </div>
+                <div>
+                    <dt>scatter</dt>
+                    <dd>0.78</dd>
+                </div>
+            </dl>
+
+            <div class="bloomPanel__footer">
+                <span id="renderStatus">initializing hdr</span>
+                <button id="motionToggle" class="motionToggle" type="button" aria-pressed="true">
+                    drift · on
+                </button>
+            </div>
+        </main>
+
+        <aside class="bloomCaption" aria-label="Artwork caption">
+            <p class="bloomCaption__index">№ 01 / COMPUTE LIGHT AS MATERIAL</p>
+            <p>
+                <span>Drag</span> to orbit · <span>wheel</span> to inspect<br />
+                <kbd>B</kbd> compare bloom · <kbd>Space</kbd> hold the composition
+            </p>
+        </aside>
+
+        <div class="bloomGrain" aria-hidden="true"></div>
+        <script type="module" src="./bloom.ts"></script>
+    </body>
+</html>

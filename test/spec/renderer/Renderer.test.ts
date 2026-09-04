@@ -65,4 +65,32 @@ describe('Renderer ECS entry point', () => {
         }).not.toThrow();
         target.destroy();
     });
+
+    it('prepares extracted renderer extensions before graph recording', async () => {
+        const renderer = await Renderer.create({
+            backend: 'webgl2',
+            domElement: document.createElement('canvas'),
+            width: 16,
+            height: 8
+        });
+        activeRenderers.push(renderer);
+        const renderWorld = new RenderWorld();
+        const camera = new PerspectiveCamera({ aspect: 2, near: 0.1, far: 100 });
+        const calls: string[] = [];
+        renderWorld.extensions.push({
+            gpu: null,
+            prepareRenderer(value): void {
+                expect(value).toBe(renderer);
+                calls.push('renderer');
+            },
+            prepareView(value): void {
+                expect(value).toBe(camera);
+                calls.push('view');
+            }
+        });
+
+        renderer.render(renderWorld, camera);
+
+        expect(calls).toEqual(['renderer', 'view']);
+    });
 });

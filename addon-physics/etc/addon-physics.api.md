@@ -509,16 +509,11 @@ export type PhysicsDimension = '2d' | '3d';
 
 // @public
 export interface PhysicsEcsSnapshot {
-    // (undocumented)
     readonly backend: PhysicsWorldSnapshot;
-    // (undocumented)
     readonly bodyEntities: Uint32Array;
-    // (undocumented)
-    readonly bodyHandles: Uint32Array;
-    // (undocumented)
+    readonly bodyHandles: Float64Array;
     readonly colliderEntities: Uint32Array;
-    // (undocumented)
-    readonly colliderHandles: Uint32Array;
+    readonly colliderHandles: Float64Array;
 }
 
 // @public

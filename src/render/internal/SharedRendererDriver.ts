@@ -1114,8 +1114,10 @@ class SharedRendererDriver
     }
 
     private prepareAddonRendererResources(scene: RenderWorld, camera: Camera): void {
-        void scene;
-        void camera;
+        for (const extension of scene.extensions) {
+            extension.prepareRenderer?.(this);
+            extension.prepareView?.(camera);
+        }
     }
 
     override onInit(callback: (renderer: this) => void): void {

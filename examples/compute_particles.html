@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+        <title>Hilo3D Compute Particle Field</title>
+        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <style>
+            :root {
+                color-scheme: dark;
+                font-family:
+                    Inter,
+                    ui-sans-serif,
+                    system-ui,
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    sans-serif;
+                background: #02050c;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                overflow: hidden;
+                background:
+                    radial-gradient(circle at 50% 38%, rgb(13 32 66 / 72%), transparent 42%),
+                    #02050c;
+                color: #dbf8ff;
+            }
+
+            #container {
+                position: fixed;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                padding: 22px;
+            }
+
+            canvas {
+                width: min(96vw, 1280px) !important;
+                height: auto !important;
+                max-height: 94vh;
+                border: 1px solid rgb(88 214 255 / 32%);
+                border-radius: 12px;
+                box-shadow:
+                    0 0 0 1px rgb(122 71 255 / 16%),
+                    0 0 80px rgb(25 120 255 / 22%),
+                    0 32px 100px rgb(0 0 0 / 72%);
+                touch-action: none;
+                cursor: crosshair;
+            }
+
+            #hud {
+                position: fixed;
+                inset: 28px 30px;
+                pointer-events: none;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                text-transform: uppercase;
+                letter-spacing: 0.12em;
+                text-shadow: 0 0 16px rgb(66 216 255 / 55%);
+            }
+
+            .topline,
+            .bottomline {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 24px;
+            }
+
+            .brand {
+                display: grid;
+                gap: 4px;
+            }
+
+            .brand strong {
+                font-size: clamp(17px, 2vw, 28px);
+                font-weight: 760;
+                letter-spacing: 0.22em;
+                background: linear-gradient(90deg, #8ef7ff, #6ba8ff 48%, #c684ff);
+                background-clip: text;
+                color: transparent;
+            }
+
+            .brand small,
+            .readout,
+            .controls {
+                color: rgb(160 214 232 / 72%);
+                font-size: 10px;
+                line-height: 1.75;
+            }
+
+            .readout {
+                padding: 8px 11px;
+                border-left: 1px solid rgb(93 231 255 / 52%);
+                text-align: right;
+            }
+
+            .online {
+                color: #91ffd4;
+            }
+
+            .online::before {
+                content: '';
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                margin-right: 7px;
+                border-radius: 50%;
+                background: currentColor;
+                box-shadow: 0 0 12px currentColor;
+            }
+
+            .controls {
+                display: flex;
+                gap: 18px;
+                flex-wrap: wrap;
+            }
+
+            .controls b {
+                color: #d9f9ff;
+                font-weight: 650;
+            }
+
+            .signature {
+                color: rgb(170 151 255 / 68%);
+                font-size: 9px;
+                text-align: right;
+            }
+
+            @media (max-width: 700px) {
+                #container {
+                    padding: 0;
+                }
+
+                canvas {
+                    width: 100vw !important;
+                    border: 0;
+                    border-radius: 0;
+                }
+
+                #hud {
+                    inset: 16px;
+                }
+
+                .readout span:not(.online),
+                .signature {
+                    display: none;
+                }
+
+                .controls {
+                    gap: 9px 14px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <div id="hud" aria-label="Hilo3D compute particle field controls">
+            <div class="topline">
+                <div class="brand">
+                    <strong>Hilo3D</strong>
+                    <small>Compute particle field / WebGPU</small>
+                </div>
+                <div class="readout">
+                    <span class="online">Field online</span><br />
+                    <span>65,536 bodies · word lattice + aurora field</span><br />
+                    <span>GPU simulation · 3× indirect raster</span>
+                </div>
+            </div>
+            <div class="bottomline">
+                <div class="controls">
+                    <span><b>Move</b> magnetic lens</span>
+                    <span><b>Hold</b> shockwave</span>
+                    <span><b>Right drag</b> vortex</span>
+                </div>
+                <div class="signature">Word lattice / meteor wakes / aurora dunes</div>
+            </div>
+        </div>
+        <script type="module" src="./compute_particles.ts"></script>
+    </body>
+</html>

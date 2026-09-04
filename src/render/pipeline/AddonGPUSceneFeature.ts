@@ -48,9 +48,11 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
         let required = false;
         for (const extension of context.scene.extensions) {
             const gpu = extension.gpu;
+            if (gpu === null) continue;
+            const visible = gpu.isVisible(context.camera);
             if (
-                gpu?.requiresSampledDepth === true &&
-                (gpu.hasPendingWork || gpu.isVisible(context.camera))
+                (gpu.requiresSampledDepth || (this.phase === 'transparent' && visible)) &&
+                (gpu.hasPendingWork || visible)
             ) {
                 required = true;
             }

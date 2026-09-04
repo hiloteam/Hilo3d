@@ -40,6 +40,16 @@ updated API reports. Architectural changes also update the corresponding hand-wr
   rendering and ECS migration benchmark protocols.
 - `documentation/`: reviewed source documentation.
 
+The example site retains the established searchable split-view gallery. Its complete legacy page
+catalog is maintained as strict TypeScript, but every runnable scene now creates ECS Entities and
+drives them through `World` and `Engine`; examples do not reintroduce `Stage`, `Node`, or a parallel
+scene runtime. Catalog and browser contracts discover nested pages recursively so restored loader,
+viewer, physics, particle, rendering, and post-processing entries remain covered.
+
+Physics backend handles are opaque JavaScript numbers rather than guaranteed uint32 indices. Runtime
+mappings and `PhysicsEcsSnapshot` therefore use `Float64Array`, preserving Rapier's generational
+handle bits across simulation, snapshot, restore, and interpolation boundaries.
+
 Generated `docs/`, `dist*/`, `coverage/`, `site/`, reports, and test results are never hand-edited
 or committed.
 

@@ -46,9 +46,17 @@ function clonePose3D(pose: PhysicsPose<'3d'>): PhysicsPose<'3d'> {
     };
 }
 
-function createWorld(options: PhysicsBackendWorldOptions<'3d'>): PhysicsBackendWorld<'3d'> {
+function createWorld(
+    options: PhysicsBackendWorldOptions<'3d'>,
+    fractionalHandles: boolean
+): PhysicsBackendWorld<'3d'> {
     let gravity = { ...options.gravity };
-    let nextHandle = 1;
+    let nextHandle = fractionalHandles ? Number.MIN_VALUE : 1;
+    const allocateHandle = (): number => {
+        const handle = nextHandle;
+        nextHandle += fractionalHandles ? Number.MIN_VALUE : 1;
+        return handle;
+    };
     const bodies = new Map<number, BodyRecord>();
     const colliders = new Map<number, number | null>();
     const joints = new Set<number>();
@@ -85,7 +93,7 @@ function createWorld(options: PhysicsBackendWorldOptions<'3d'>): PhysicsBackendW
             }
         },
         createRigidBody(descriptor: PhysicsRigidBodyDescriptor<'3d'>): number {
-            const handle = nextHandle++;
+            const handle = allocateHandle();
             bodies.set(handle, {
                 type: descriptor.type ?? 'dynamic',
                 pose: {
@@ -154,7 +162,7 @@ function createWorld(options: PhysicsBackendWorldOptions<'3d'>): PhysicsBackendW
             _descriptor: PhysicsColliderDescriptor<'3d'>,
             parentHandle?: number
         ): number {
-            const handle = nextHandle++;
+            const handle = allocateHandle();
             colliders.set(handle, parentHandle ?? null);
             return handle;
         },
@@ -169,7 +177,7 @@ function createWorld(options: PhysicsBackendWorldOptions<'3d'>): PhysicsBackendW
             _body2: number,
             _wakeUp: boolean
         ): number {
-            const handle = nextHandle++;
+            const handle = allocateHandle();
             joints.add(handle);
             return handle;
         },
@@ -184,7 +192,7 @@ function createWorld(options: PhysicsBackendWorldOptions<'3d'>): PhysicsBackendW
             return;
         },
         createCharacterController(_options: PhysicsCharacterControllerOptions<'3d'>): number {
-            const handle = nextHandle++;
+            const handle = allocateHandle();
             controllers.add(handle);
             return handle;
         },
@@ -277,7 +285,9 @@ export class FakePhysics3DBackend implements PhysicsBackend<'3d'> {
     readonly id = 'test/fake-physics-3d';
     readonly dimension = '3d' as const;
 
+    constructor(private readonly fractionalHandles = false) {}
+
     createWorld(options: PhysicsBackendWorldOptions<'3d'>): Promise<PhysicsBackendWorld<'3d'>> {
-        return Promise.resolve(createWorld(options));
+        return Promise.resolve(createWorld(options, this.fractionalHandles));
     }
 }

@@ -62,11 +62,16 @@ export interface PhysicsEntityEvent<D extends PhysicsDimension> {
 
 /** Stable snapshot including backend bytes and Entity/native-handle association. */
 export interface PhysicsEcsSnapshot {
+    /** Backend-owned simulation snapshot. */
     readonly backend: PhysicsWorldSnapshot;
+    /** Entity indices associated with `bodyHandles`. */
     readonly bodyEntities: Uint32Array;
-    readonly bodyHandles: Uint32Array;
+    /** Opaque body handles preserved as full JavaScript numbers. */
+    readonly bodyHandles: Float64Array;
+    /** Entity indices associated with `colliderHandles`. */
     readonly colliderEntities: Uint32Array;
-    readonly colliderHandles: Uint32Array;
+    /** Opaque collider handles preserved as full JavaScript numbers. */
+    readonly colliderHandles: Float64Array;
 }
 
 /** Allocation-free counters for the most recent fixed-step synchronization. */
@@ -86,8 +91,8 @@ export interface PhysicsRuntimeDiagnostics {
 /** Addon-owned runtime resource exposed to gameplay Systems. */
 export class PhysicsRuntime<D extends PhysicsDimension> {
     readonly events: PhysicsEntityEvent<D>[] = [];
-    private bodyHandlesByEntity: Int32Array;
-    private colliderHandlesByEntity: Int32Array;
+    private bodyHandlesByEntity: Float64Array;
+    private colliderHandlesByEntity: Float64Array;
     private restoreHandler: (() => void) | null = null;
     private presentBodyCount = 0;
     private presentColliderCount = 0;
@@ -99,8 +104,8 @@ export class PhysicsRuntime<D extends PhysicsDimension> {
         readonly physicsWorld: PhysicsWorld<D>,
         entityCapacity: number
     ) {
-        this.bodyHandlesByEntity = new Int32Array(entityCapacity);
-        this.colliderHandlesByEntity = new Int32Array(entityCapacity);
+        this.bodyHandlesByEntity = new Float64Array(entityCapacity);
+        this.colliderHandlesByEntity = new Float64Array(entityCapacity);
         this.bodyHandlesByEntity.fill(ABSENT_HANDLE);
         this.colliderHandlesByEntity.fill(ABSENT_HANDLE);
     }
@@ -133,9 +138,9 @@ export class PhysicsRuntime<D extends PhysicsDimension> {
         const bodyCount = this.countPresent(this.bodyHandlesByEntity);
         const colliderCount = this.countPresent(this.colliderHandlesByEntity);
         const bodyEntities = new Uint32Array(bodyCount);
-        const bodyHandles = new Uint32Array(bodyCount);
+        const bodyHandles = new Float64Array(bodyCount);
         const colliderEntities = new Uint32Array(colliderCount);
-        const colliderHandles = new Uint32Array(colliderCount);
+        const colliderHandles = new Float64Array(colliderCount);
         this.copyPresent(this.bodyHandlesByEntity, bodyEntities, bodyHandles);
         this.copyPresent(this.colliderHandlesByEntity, colliderEntities, colliderHandles);
         return {
@@ -199,23 +204,23 @@ export class PhysicsRuntime<D extends PhysicsDimension> {
     ensureEntityCapacity(capacity: number): void {
         if (capacity <= this.bodyHandlesByEntity.length) return;
         const next = Math.max(capacity, this.bodyHandlesByEntity.length * 2, 16);
-        const bodyHandles = new Int32Array(next);
+        const bodyHandles = new Float64Array(next);
         bodyHandles.fill(ABSENT_HANDLE);
         bodyHandles.set(this.bodyHandlesByEntity);
         this.bodyHandlesByEntity = bodyHandles;
-        const colliderHandles = new Int32Array(next);
+        const colliderHandles = new Float64Array(next);
         colliderHandles.fill(ABSENT_HANDLE);
         colliderHandles.set(this.colliderHandlesByEntity);
         this.colliderHandlesByEntity = colliderHandles;
     }
 
-    private countPresent(handles: Int32Array): number {
+    private countPresent(handles: Float64Array): number {
         let count = 0;
         for (const handle of handles) if (handle !== ABSENT_HANDLE) count++;
         return count;
     }
 
-    private copyPresent(source: Int32Array, entities: Uint32Array, handles: Uint32Array): void {
+    private copyPresent(source: Float64Array, entities: Uint32Array, handles: Float64Array): void {
         let output = 0;
         for (let entityIndex = 0; entityIndex < source.length; entityIndex++) {
             const handle = source[entityIndex] ?? ABSENT_HANDLE;
@@ -226,7 +231,7 @@ export class PhysicsRuntime<D extends PhysicsDimension> {
         }
     }
 
-    private restoreHandles(entities: Uint32Array, handles: Uint32Array, body: boolean): void {
+    private restoreHandles(entities: Uint32Array, handles: Float64Array, body: boolean): void {
         if (entities.length !== handles.length) {
             throw new TypeError('Physics ECS snapshot association arrays have different lengths.');
         }

@@ -55,11 +55,12 @@ export default defineConfig({
         deviceScaleFactor: 1,
         locale: 'en-US',
         screenshot: 'only-on-failure',
-        trace: 'retain-on-failure',
+        trace: 'off',
         timezoneId: 'UTC',
-        // SwiftShader rendering and full-frame video encoding contend for the same CI CPU. Failure
-        // screenshots and traces retain the browser diagnostics without perturbing presentation.
-        video: isContinuousIntegration ? 'off' : 'retain-on-failure',
+        // SwiftShader rendering and screenshot/trace/video recording contend for the same GPU
+        // process and can prevent a WebGPU device from initializing after WebGL2 coverage. A final
+        // failure screenshot retains visual diagnostics without perturbing presentation.
+        video: 'off',
         viewport: { height: 720, width: 1280 }
     },
     projects: [
