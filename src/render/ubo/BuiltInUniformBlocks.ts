@@ -149,8 +149,7 @@ export const geometryBlockLayout = createStd140Layout({
 
 export const skinningBlockLayout = createStd140Layout({
     u_jointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS },
-    u_previousJointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS },
-    u_skinHistoryParams: 'vec4'
+    u_previousJointMat: { type: 'mat4', arrayLength: MAX_SKIN_JOINTS }
 });
 
 export const morphBlockLayout = createStd140Layout({

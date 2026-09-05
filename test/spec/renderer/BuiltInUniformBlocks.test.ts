@@ -37,7 +37,7 @@ describe('built-in std140 ABI', () => {
             MaterialTextureBlock: 1920,
             ModelBlock: 224,
             GeometryBlock: 224,
-            SkinningBlock: 16400,
+            SkinningBlock: 16384,
             MorphBlock: 80,
             InstanceBlock: 26624
         });
@@ -109,7 +109,7 @@ describe('built-in std140 ABI', () => {
 
         expect(skinningBlockLayout.fields.u_jointMat.arrayStride).toBe(64);
         expect(skinningBlockLayout.fields.u_previousJointMat.offset).toBe(8192);
-        expect(skinningBlockLayout.fields.u_skinHistoryParams.offset).toBe(16384);
+        expect(skinningBlockLayout.byteLength).toBeLessThanOrEqual(16_384);
         expect(morphBlockLayout.fields.u_morphWeights1.offset).toBe(16);
         expect(morphBlockLayout.fields.u_previousMorphWeights0.offset).toBe(32);
         expect(morphBlockLayout.fields.u_previousMorphWeights1.offset).toBe(48);
