@@ -1102,16 +1102,18 @@ npm run release:tag:push
 `release:check` 是完整 `validate`
 的显式别名，仍执行全部单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁。它应在 CI 通过的提交上、生成发布 OTP 之前完成。
 
-`release:tag:push` 要求工作区干净，确认 `package.json` 版本可作为 Git tag，并拒绝本地或 `origin`
-上指向其他提交的同名 tag。命令创建带 `publish <version>` 注释的版本 tag，只推送
+`release:tag:push` 要求工作区干净，确认根包与两个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
+`origin` 上指向其他提交的同名 tag。命令创建带 `publish <version>` 注释的版本 tag，只推送
 `refs/tags/<version>`，再从远端核验其目标提交；同一提交上的重试是幂等的。
 
 `.github/workflows/publish.yml` 监听版本 tag。GitHub-hosted
-runner 先用仓库固定的 Node/npm 工具链确认 tag、包版本与提交完全一致，并执行 portable `validate:ci`
-门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm 11，通过 OIDC 发布。预发布版本自动使用
+runner 先用仓库固定的 Node/npm 工具链确认 tag、三个包版本与提交完全一致，并执行 portable
+`validate:ci` 门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm
+11，通过 OIDC 依次发布核心、粒子 addon 和物理 addon。两个 addon 的 `hilo3d` peer
+dependency 必须等于同批版本；幂等重试跳过 registry 中已经存在的包版本。预发布版本自动使用
 `next`，正式版本使用 `latest`，不得让 prerelease 覆盖 `latest`。npm package 的 Trusted
-Publisher 必须绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许 `npm publish`；workflow 只授予
-`contents: read` 与 `id-token: write`。
+Publisher 必须为三个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许
+`npm publish`；workflow 只授予 `contents: read` 与 `id-token: write`。
 
 `npm publish` 的 `prepublishOnly` 仍运行轻量 `publish:check`：现代性门禁和 tag/commit 复核。Hilo3D
 Skill 由 `validate` 与 `validate:ci` 中的 `test:skill` 回归，不在上传阶段重复高成本矩阵； `prepack`

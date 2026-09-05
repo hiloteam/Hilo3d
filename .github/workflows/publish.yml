@@ -42,7 +42,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify tag matches package version and commit
+      - name: Verify tag matches all package versions and commit
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
@@ -51,6 +51,7 @@ jobs:
             echo "Release tag $RELEASE_TAG does not match package version $package_version."
             exit 1
           fi
+          npm run release:versions:check
           npm run release:tag:verify
 
       - name: Run portable release validation
@@ -70,7 +71,7 @@ jobs:
           npm install --global npm@11.19.1
           npm --version
 
-      - name: Publish package with the matching dist-tag
+      - name: Publish all packages with the matching dist-tag
         run: |
           version=$(node --print "require('./package.json').version")
           if [[ "$version" == *-* ]]; then
@@ -78,4 +79,17 @@ jobs:
           else
             dist_tag=latest
           fi
-          npm publish --tag "$dist_tag" --access public
+
+          publish_package() {
+            package_path="$1"
+            package_name=$(node --print "require('./${package_path}/package.json').name")
+            if npm view "${package_name}@${version}" version >/dev/null 2>&1; then
+              echo "${package_name}@${version} is already published; skipping."
+              return
+            fi
+            npm publish "$package_path" --tag "$dist_tag" --access public
+          }
+
+          publish_package .
+          publish_package addon-particle
+          publish_package addon-physics

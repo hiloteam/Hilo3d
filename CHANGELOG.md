@@ -45,9 +45,11 @@
 
 ### Changes
 
-- Add tag-driven npm releases: the release command creates and pushes an annotated tag matching the
-  package version, then GitHub Actions validates the tagged commit and publishes prereleases under
-  `next` through npm Trusted Publishing.
+- Add tag-driven npm releases: the release command creates and pushes an annotated tag matching all
+  three package versions, then GitHub Actions validates the tagged commit and publishes `hilo3d`,
+  `@hilo3d/addon-particle`, and `@hilo3d/addon-physics` under one dist-tag through npm Trusted
+  Publishing. Addon peer dependencies use the exact synchronized core version, and safe workflow
+  retries skip package versions that are already present in npm.
 - Allow local Playwright release validation to select an unoccupied loopback port with
   `HILO3D_PLAYWRIGHT_PORT`; CI retains the deterministic default port.
 - Make `site:build` own the complete public API declaration/check prerequisite for the core and both

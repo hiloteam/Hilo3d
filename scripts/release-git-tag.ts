@@ -8,6 +8,7 @@ import {
     type GitClient,
     type GitCommandResult
 } from './release-git-tag-core';
+import './release-package-set';
 
 interface PackageManifest {
     readonly version?: unknown;

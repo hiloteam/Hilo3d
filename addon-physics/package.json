@@ -1,6 +1,6 @@
 {
   "name": "@hilo3d/addon-physics",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.5",
   "description": "Optional backend-neutral 2D/3D physics addon for Hilo3D with Rapier adapters.",
   "type": "module",
   "sideEffects": false,
@@ -35,7 +35,7 @@
   "peerDependencies": {
     "@dimforge/rapier2d-compat": "^0.20.0",
     "@dimforge/rapier3d-compat": "^0.20.0",
-    "hilo3d": ">=2.0.0-alpha.5 <3"
+    "hilo3d": "2.0.0-alpha.5"
   },
   "peerDependenciesMeta": {
     "@dimforge/rapier2d-compat": {
@@ -50,6 +50,14 @@
   },
   "engines": {
     "node": ">=20.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiloteam/Hilo3d.git",
+    "directory": "addon-physics"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT"
 }

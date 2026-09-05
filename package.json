@@ -94,6 +94,7 @@
     "release:tag:check": "jiti scripts/release-git-tag.ts check",
     "release:tag:push": "jiti scripts/release-git-tag.ts push",
     "release:tag:verify": "jiti scripts/release-git-tag.ts verify",
+    "release:versions:check": "jiti scripts/release-package-set.ts",
     "publish:check": "npm run check:modernity && npm run release:tag:verify",
     "release:check": "npm run validate",
     "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run pack:check",
