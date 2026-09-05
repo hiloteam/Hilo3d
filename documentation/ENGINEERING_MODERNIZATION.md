@@ -656,6 +656,11 @@ layout。
 - joint index/weight 和 morph target 仍是 vertex attribute；joint palette 进入
   `SkinningBlock`，morph weight 进入
   `MorphBlock`。骨骼、形变与实例化组合必须使用各自 revision，不能共享错误 pose。
+- `SkinningBlock` 仅保存 current/previous 各 128 个 mat4，精确占用 16,384
+  bytes，兼容 WebGL2 最低 uniform-block capacity。skin history validity 使用
+  `ModelBlock.u_modelHistoryParams.y`，model validity 仍使用
+  `.x`；两者独立判断，且不依赖 ModelBlock/SkinningBlock 解析顺序。首次使用、motion
+  participation 间断、显式失效与设备恢复均保持无效历史；失败 submission 不提交待定姿态。
 
 ### ShaderMaterial 迁移
 

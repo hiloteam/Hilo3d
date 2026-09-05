@@ -2,6 +2,11 @@
 
 ### Breaking changes
 
+- Move skin history validity from the removed `SkinningBlock.u_skinHistoryParams.x` to
+  `ModelBlock.u_modelHistoryParams.y`. The two 128-joint palettes now occupy exactly 16,384 bytes,
+  fitting the WebGL2 minimum uniform-block capacity. Custom shaders and block producers must use the
+  new location; model and skin validity remain independent.
+
 - Integrate typed particle parameters into emission and spawn initialization across CPU, stateless,
   and stateful WebGPU command generation; runtime value changes no longer require recompilation.
   Apply `ParticleBudgetManager` decisions directly to live capacity, spawn rate, sorting, soft

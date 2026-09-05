@@ -145,6 +145,7 @@ const MATERIAL_TEXTURE_BLOCK_FIELD_NAMES = Object.freeze(
 );
 const MODEL_HISTORY_INVALID = new Float32Array(4);
 const MODEL_HISTORY_VALID = new Float32Array([1, 0, 0, 0]);
+const MODEL_AND_SKIN_HISTORY_PARAMS = new Float32Array(4);
 const MODEL_LAYER_PARAMS = new Uint32Array(4);
 
 function fieldNamesOf(layout: Std140Layout): readonly string[] {
@@ -341,7 +342,8 @@ function updateModelTransformBlock(
     current: Float32Array,
     previous: Float32Array,
     normal: Matrix3,
-    historyValid: boolean
+    historyValid: boolean,
+    skinHistoryValid: boolean
 ): void {
     let candidate = semanticBlockScratch.get(buffer);
     if (candidate?.byteLength !== modelBlockLayout.byteLength) {
@@ -362,10 +364,12 @@ function updateModelTransformBlock(
         normal.normalFromMat4(mesh.worldMatrix).elements,
         std140WriteResult
     );
+    MODEL_AND_SKIN_HISTORY_PARAMS[0] = historyValid ? 1 : 0;
+    MODEL_AND_SKIN_HISTORY_PARAMS[1] = skinHistoryValid ? 1 : 0;
     modelBlockLayout.writeInto(
         target,
         'u_modelHistoryParams',
-        historyValid ? MODEL_HISTORY_VALID : MODEL_HISTORY_INVALID,
+        MODEL_AND_SKIN_HISTORY_PARAMS,
         std140WriteResult
     );
     modelBlockLayout.writeInto(
@@ -1026,7 +1030,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 history.pending,
                 historyValid ? history.committed : history.pending,
                 cached.normal,
-                historyValid
+                historyValid,
+                this.hasValidSkinHistory(mesh)
             );
             cached.frameIndex = this.frameIndex;
             cached.revision = mesh.worldMatrixVersion;
@@ -1103,20 +1108,23 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             history.pendingRevision = getTransformHistoryRevision(mesh);
             history.pendingFrame = this.frameIndex;
             this.stagedSkinning.push(history);
-            const historyValid =
-                history.committedGeneration === this.historyGeneration &&
-                history.committedRevision === history.pendingRevision &&
-                this.hasConsecutiveMotionParticipation(mesh);
+            const historyValid = this.hasValidSkinHistory(mesh);
             cached.buffer
                 .set('u_jointMat', history.pending)
-                .set('u_previousJointMat', historyValid ? history.committed : history.pending)
-                .set(
-                    'u_skinHistoryParams',
-                    historyValid ? MODEL_HISTORY_VALID : MODEL_HISTORY_INVALID
-                );
+                .set('u_previousJointMat', historyValid ? history.committed : history.pending);
             cached.frameIndex = this.frameIndex;
         }
         return cached.buffer;
+    }
+
+    /** Read committed skin history independently of this frame's block resolution order. */
+    private hasValidSkinHistory(mesh: Mesh): boolean {
+        const history = this.skinningHistory.get(mesh);
+        return (
+            history?.committedGeneration === this.historyGeneration &&
+            history.committedRevision === getTransformHistoryRevision(mesh) &&
+            this.hasConsecutiveMotionParticipation(mesh)
+        );
     }
 
     private getMorphBuffer(

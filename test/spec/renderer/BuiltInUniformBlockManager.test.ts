@@ -666,6 +666,66 @@ describe('BuiltInUniformBlockManager', () => {
         expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(0);
     });
 
+    it.each([false, true])(
+        'keeps skin validity independent of model history and resolution order (skin first: %s)',
+        skinFirst => {
+            const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+            const mesh = new SkinnedMesh({
+                geometry: testEnv.geometry,
+                material: testEnv.material
+            });
+            const pose = new Float32Array(new Matrix4().elements);
+            vi.spyOn(mesh, 'getJointMat').mockImplementation(() => pose);
+            const modelBlock = (): UniformBuffer =>
+                manager.resolveUniformBlock('ModelBlock', mesh, testEnv.material);
+            const skinBlock = (): UniformBuffer =>
+                manager.resolveUniformBlock('SkinningBlock', mesh, testEnv.material);
+            // A model-only committed frame must not make uninitialized skin history valid.
+            manager.beginFrame(testEnv.camera);
+            manager.markMotionVectorParticipation(mesh);
+            modelBlock();
+            manager.commit({} as never);
+            const render = (x: number): { model: UniformBuffer; skin: UniformBuffer } => {
+                pose[12] = x;
+                manager.beginFrame(testEnv.camera);
+                manager.markMotionVectorParticipation(mesh);
+                if (skinFirst) {
+                    const skin = skinBlock();
+                    return { skin, model: modelBlock() };
+                }
+                const model = modelBlock();
+                return { model, skin: skinBlock() };
+            };
+            let blocks = render(2);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([1, 0]);
+            expect(readFloatField(blocks.skin, 'u_previousJointMat', 16)[12]).toBe(2);
+            expect(blocks.skin.byteLength).toBe(16_384);
+            manager.commit({} as never);
+            blocks = render(3);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([1, 1]);
+            expect(readFloatField(blocks.skin, 'u_previousJointMat', 16)[12]).toBe(2);
+            manager.rollback();
+            blocks = render(4);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([1, 1]);
+            expect(readFloatField(blocks.skin, 'u_previousJointMat', 16)[12]).toBe(2);
+            manager.commit({} as never);
+            manager.beginFrame(testEnv.camera);
+            manager.commit({} as never);
+            blocks = render(5);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([0, 0]);
+            expect(readFloatField(blocks.skin, 'u_previousJointMat', 16)[12]).toBe(5);
+            manager.commit({} as never);
+            mesh.invalidateTransformHistory();
+            blocks = render(6);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([0, 0]);
+            manager.commit({} as never);
+            manager.synchronizeAfterRecovery();
+            blocks = render(7);
+            expect(readFloatField(blocks.model, 'u_modelHistoryParams', 2)).toEqual([0, 0]);
+            expect(readFloatField(blocks.skin, 'u_previousJointMat', 16)[12]).toBe(7);
+        }
+    );
+
     it('packs jittered raster matrices beside stable CPU camera matrices', () => {
         const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
         const camera = new PerspectiveCamera({ aspect: 16 / 9 });
