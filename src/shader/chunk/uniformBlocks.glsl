@@ -152,9 +152,8 @@ layout(std140) uniform GeometryBlock {
     layout(std140) uniform SkinningBlock {
         mat4 u_jointMat[HILO_MAX_SKIN_JOINTS];
         mat4 u_previousJointMat[HILO_MAX_SKIN_JOINTS];
-        vec4 u_skinHistoryParams;
     };
-    #define u_skinHistoryValid u_skinHistoryParams.x
+    #define u_skinHistoryValid u_modelHistoryParams.y
 #endif
 
 #ifdef HILO_MORPH_TARGET_COUNT
