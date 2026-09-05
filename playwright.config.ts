@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { testServerOrigin, testServerPort } from './scripts/playwright-test-server';
 
 const isContinuousIntegration = process.env['CI'] === 'true';
 const swiftShaderArguments = [
@@ -50,7 +51,7 @@ export default defineConfig({
         }
     },
     use: {
-        baseURL: 'http://127.0.0.1:4173/examples/',
+        baseURL: `${testServerOrigin}/examples/`,
         colorScheme: 'light',
         deviceScaleFactor: 1,
         locale: 'en-US',
@@ -85,9 +86,9 @@ export default defineConfig({
     ],
     snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePath}/{arg}-{projectName}-linux{ext}',
     webServer: {
-        command: 'npm run examples:serve',
+        command: `npm run examples:serve -- --port ${testServerPort}`,
         reuseExistingServer: !isContinuousIntegration,
         timeout: 120_000,
-        url: 'http://127.0.0.1:4173/examples/list.html'
+        url: `${testServerOrigin}/examples/list.html`
     }
 });

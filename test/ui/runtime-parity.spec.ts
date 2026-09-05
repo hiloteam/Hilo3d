@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { backendsForExample, type ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
+import { testServerOrigin as serverOrigin } from '../../scripts/playwright-test-server';
 import {
     assertStableInstrumentationHealth,
     awaitTrackedGPUQueues,
@@ -13,8 +14,6 @@ import {
     waitForStableAnimationFrames,
     type NativeRenderProgress
 } from './render-health';
-
-const serverOrigin = 'http://127.0.0.1:4173';
 
 async function createPage(
     browser: Browser,

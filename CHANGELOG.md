@@ -45,6 +45,11 @@
 
 ### Changes
 
+- Add tag-driven npm releases: the release command creates and pushes an annotated tag matching the
+  package version, then GitHub Actions validates the tagged commit and publishes prereleases under
+  `next` through npm Trusted Publishing.
+- Allow local Playwright release validation to select an unoccupied loopback port with
+  `HILO3D_PLAYWRIGHT_PORT`; CI retains the deterministic default port.
 - Make `site:build` own the complete public API declaration/check prerequisite for the core and both
   addon packages. The Pages and CI preflight workflows now invoke self-contained `site:build` and
   `lint` commands, while the Node-side repository preflight prevents clean-checkout jobs from
