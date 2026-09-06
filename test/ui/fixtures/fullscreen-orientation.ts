@@ -1,5 +1,5 @@
 import * as Hilo3d from '../../../src/Hilo3d';
-import * as Particle from '@hilo3d/addon-particle';
+import * as Particle from '@hilo/addon-particle';
 
 function createFullscreenPass(
     renderer: Hilo3d.Renderer,

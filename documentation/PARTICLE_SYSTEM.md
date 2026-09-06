@@ -1,6 +1,6 @@
 # Particle system
 
-Hilo3D exposes particles through the optional `@hilo3d/addon-particle` package. The core `hilo3d`
+Hilo3D exposes particles through the optional `@hilo/addon-particle` package. The core `hilo3d`
 entry does not export or import particle implementations, so applications that do not install or
 import the addon do not load particle code. The addon provides one versioned asset model for
 portable CPU simulation, stateful WebGPU simulation, and lightweight stateless reconstruction. The
@@ -26,7 +26,7 @@ import {
     ParticleGradient,
     ParticleSystemDefinition,
     createParticleStageSystem
-} from '@hilo3d/addon-particle';
+} from '@hilo/addon-particle';
 
 const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({
@@ -113,7 +113,7 @@ serialization and `resolveResource` during deserialization:
 import {
     parseParticleSystemDefinitionJSON,
     serializeParticleSystemDefinition
-} from '@hilo3d/addon-particle';
+} from '@hilo/addon-particle';
 
 const document = serializeParticleSystemDefinition(definition, {
     getResourceId: (resource, kind) => assetRegistry.idFor(resource, kind)
@@ -147,7 +147,7 @@ import {
     compileParticleAuthoringGraph,
     createParticleAuthoringGraph,
     ParticleAuthoringPreviewController
-} from '@hilo3d/addon-particle';
+} from '@hilo/addon-particle';
 
 const graph = createParticleAuthoringGraph(definition);
 const compiled = compileParticleAuthoringGraph(graph, {
@@ -284,7 +284,7 @@ unreviewed binary asset. They are part of the recursively discovered WebGL 2/Web
 matrix; the Event Horizon page is explicitly WebGPU-only because it requires compute, storage
 raster, sampled depth, and indirect draws.
 
-All five authored pages import `@hilo3d/addon-particle` explicitly. The Elemental Forge page also
+All five authored pages import `@hilo/addon-particle` explicitly. The Elemental Forge page also
 demonstrates the Stage System owner. The lower-level `compute_particles` page remains a general
 WebGPU compute/Render Graph example rather than an authored particle-addon consumer.
 

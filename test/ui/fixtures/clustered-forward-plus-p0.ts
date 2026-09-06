@@ -17,7 +17,7 @@ import {
     SpotLight,
     Vector3
 } from '../../../src/Hilo3d';
-import { ParticleSystem, ParticleSystemDefinition } from '@hilo3d/addon-particle';
+import { ParticleSystem, ParticleSystemDefinition } from '@hilo/addon-particle';
 import {
     registerRendererDiagnostics,
     unregisterRendererDiagnostics

@@ -7,7 +7,7 @@
     "noEmit": true,
     "types": [],
     "paths": {
-      "@hilo3d/addon-particle": ["../../addon-particle/src/index.ts"]
+      "@hilo/addon-particle": ["../../addon-particle/src/index.ts"]
     }
   },
   "include": ["./package.test.ts"]

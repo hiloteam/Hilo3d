@@ -218,8 +218,8 @@ async function checkDocumentationContracts(): Promise<void> {
     assert(!publicApi.includes('transparent: true'));
     assert(!publicApi.includes('castShadows: true,\n    receiveShadows: true\n});'));
     assert(particles.includes('ParticleSystemDefinition.create'));
-    assert(particles.includes("from '@hilo3d/addon-particle'"));
-    assert(threeDimensional.includes("from '@hilo3d/addon-physics/rapier3d'"));
+    assert(particles.includes("from '@hilo/addon-particle'"));
+    assert(threeDimensional.includes("from '@hilo/addon-physics/rapier3d'"));
     assert(!threeDimensional.includes('cannon-es'));
 }
 

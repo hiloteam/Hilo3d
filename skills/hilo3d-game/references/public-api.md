@@ -293,11 +293,11 @@ Core 2D types are `Camera2D`, `Sprite`, `SpriteFrame`, `SpriteMaterial`, and `Te
 The `hilo3d` root does not export physics or authored-particle implementations. Add them only when
 the game needs them:
 
-- `@hilo3d/addon-particle` provides immutable definitions, CPU/WebGPU runtimes, authoring helpers,
-  and `createParticleStageSystem()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
+- `@hilo/addon-particle` provides immutable definitions, CPU/WebGPU runtimes, authoring helpers, and
+  `createParticleStageSystem()` with the typed `PARTICLE_STAGE_SERVICE` owner. See
   [Particle effects](particle-effects.md).
-- `@hilo3d/addon-physics` provides backend-neutral 2D/3D contracts. Import
-  `@hilo3d/addon-physics/rapier2d` or `/rapier3d` to select one dimension without loading the other.
+- `@hilo/addon-physics` provides backend-neutral 2D/3D contracts. Import
+  `@hilo/addon-physics/rapier2d` or `/rapier3d` to select one dimension without loading the other.
   See [3D games](3d-games.md).
 
 Both addons integrate through `StageParameters.systems`. Retrieve their typed service through

@@ -7,7 +7,7 @@
     "tsBuildInfoFile": "./.cache/tsconfig.test.tsbuildinfo",
     "types": ["node", "vite/client"],
     "paths": {
-      "@hilo3d/addon-particle": ["./addon-particle/src/index.ts"],
+      "@hilo/addon-particle": ["./addon-particle/src/index.ts"],
       "hilo3d": ["./src/Hilo3d.ts"]
     }
   },

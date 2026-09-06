@@ -20,7 +20,7 @@ export type Rapier3DPhysicsSystemOptions = Omit<PhysicsWorldOptions<'3d'>, 'back
 export function createRapier3DPhysicsSystem(options: Rapier3DPhysicsSystemOptions): StageSystem {
     const { setup, ...worldOptions } = options;
     return createPhysicsStageSystem({
-        id: '@hilo3d/addon-physics/rapier3d',
+        id: '@hilo/addon-physics/rapier3d',
         service: PHYSICS_WORLD_3D_SERVICE,
         world: { ...worldOptions, backend: new Rapier3DBackend() },
         ...(setup === undefined ? {} : { setup })

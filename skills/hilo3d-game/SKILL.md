@@ -21,9 +21,8 @@ Preferred stack:
 - Hilo3D 2D composition for scene-integrated UI and effects
 - DOM overlays for text-heavy HUD, menus, settings, and accessibility
 - glTF or GLB for shipped 3D assets
-- `@hilo3d/addon-particle` when scalable authored effects are required
-- `@hilo3d/addon-physics` plus the dimension-specific Rapier peer when rigid-body physics is
-  required
+- `@hilo/addon-particle` when scalable authored effects are required
+- `@hilo/addon-physics` plus the dimension-specific Rapier peer when rigid-body physics is required
 - `backend: 'auto'` unless the task explicitly targets WebGPU or WebGL2
 
 For greenfield projects, resolve `hilo3d@next`, require it to be `2.0.0` or a `2.0.0-*` prerelease,

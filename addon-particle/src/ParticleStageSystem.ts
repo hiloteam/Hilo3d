@@ -14,7 +14,7 @@ import ParticleSystem, { type ParticleSystemParameters } from './ParticleSystem.
 
 /** Stage service that owns optional particle systems and their frame-wide quality budget. */
 export const PARTICLE_STAGE_SERVICE = createStageSystemService<ParticleStageRuntime>(
-    '@hilo3d/addon-particle/runtime'
+    '@hilo/addon-particle/runtime'
 );
 
 /** Configuration for the standard optional particle Stage System. */
@@ -151,7 +151,7 @@ export function createParticleStageSystem(
 ): StageSystem {
     return {
         descriptor: {
-            id: '@hilo3d/addon-particle',
+            id: '@hilo/addon-particle',
             version: '2.0.0-alpha.5',
             apiVersion: STAGE_SYSTEM_API_VERSION,
             provides: [PARTICLE_STAGE_SERVICE]

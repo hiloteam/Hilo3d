@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 interface PackageManifest {
+    readonly name?: unknown;
     readonly peerDependencies?: Readonly<Record<string, unknown>>;
     readonly repository?: {
         readonly url?: unknown;
@@ -12,6 +13,11 @@ interface PackageManifest {
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const packagePaths = ['package.json', 'addon-particle/package.json', 'addon-physics/package.json'];
 const expectedRepository = 'git+https://github.com/hiloteam/Hilo3d.git';
+const expectedNames = new Map<string, string>([
+    ['package.json', 'hilo3d'],
+    ['addon-particle/package.json', '@hilo/addon-particle'],
+    ['addon-physics/package.json', '@hilo/addon-physics']
+]);
 
 function readManifest(relativePath: string): PackageManifest {
     return JSON.parse(
@@ -26,6 +32,11 @@ if (typeof rootManifest.version !== 'string') {
 
 for (const relativePath of packagePaths) {
     const manifest = readManifest(relativePath);
+    if (manifest.name !== expectedNames.get(relativePath)) {
+        throw new Error(
+            `${relativePath} must declare package name ${String(expectedNames.get(relativePath))}.`
+        );
+    }
     if (manifest.version !== rootManifest.version) {
         throw new Error(
             `${relativePath} version ${String(manifest.version)} does not match ${rootManifest.version}.`

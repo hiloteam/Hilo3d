@@ -47,7 +47,7 @@
 
 - Add tag-driven npm releases: the release command creates and pushes an annotated tag matching all
   three package versions, then GitHub Actions validates the tagged commit and publishes `hilo3d`,
-  `@hilo3d/addon-particle`, and `@hilo3d/addon-physics` under one dist-tag through npm Trusted
+  `@hilo/addon-particle`, and `@hilo/addon-physics` under one dist-tag through npm Trusted
   Publishing. Addon peer dependencies use the exact synchronized core version, and safe workflow
   retries skip package versions that are already present in npm.
 - Allow local Playwright release validation to select an unoccupied loopback port with
@@ -75,13 +75,13 @@
   requested; formal enrolled-rig capture still completes the full workload.
 - Add the versioned, dependency-aware public Stage System ABI with typed services, transactional
   asynchronous setup, synchronous frame hooks, dynamic leaf installation, and reverse-order
-  teardown. Add the separately packaged `@hilo3d/addon-physics` portable 2D/3D runtime with bounded
+  teardown. Add the separately packaged `@hilo/addon-physics` portable 2D/3D runtime with bounded
   fixed stepping, interpolated Hilo node bindings, bodies, colliders, joints, events, filtered ray
   and shape queries, bounded overlaps, point projection, kinematic character controllers, snapshots,
   debug geometry, diagnostics, and independently importable Rapier 2D/3D adapters. Replace the
   Cannon example and dependency with a Rapier 3D System example.
 - Move the authored particle runtime out of the `hilo3d` entry into the independently tree-shakable
-  `@hilo3d/addon-particle` ESM package. Add a Stage-owned particle runtime and frame budget service,
+  `@hilo/addon-particle` ESM package. Add a Stage-owned particle runtime and frame budget service,
   route addon rendering through a generic core render-node capability, migrate maintained particle
   examples and package types, and add Rapier material, joint, and 2D sensor showcases.
 

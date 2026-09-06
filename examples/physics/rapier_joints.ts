@@ -3,7 +3,7 @@ import {
     bindNode3D,
     createRapier3DPhysicsSystem,
     type PhysicsRigidBody
-} from '@hilo3d/addon-physics/rapier3d';
+} from '@hilo/addon-physics/rapier3d';
 import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext } from '../shared/init';
 

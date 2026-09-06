@@ -1,4 +1,4 @@
-# @hilo3d/addon-particle
+# @hilo/addon-particle
 
 Optional CPU, stateless, and stateful WebGPU particle systems for Hilo3D. Installing or importing
 `hilo3d` alone does not load this package.
@@ -9,7 +9,7 @@ import {
     PARTICLE_STAGE_SERVICE,
     ParticleSystemDefinition,
     createParticleStageSystem
-} from '@hilo3d/addon-particle';
+} from '@hilo/addon-particle';
 
 const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({

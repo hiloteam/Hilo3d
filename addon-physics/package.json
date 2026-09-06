@@ -1,5 +1,5 @@
 {
-  "name": "@hilo3d/addon-physics",
+  "name": "@hilo/addon-physics",
   "version": "2.0.0-alpha.5",
   "description": "Optional backend-neutral 2D/3D physics addon for Hilo3D with Rapier adapters.",
   "type": "module",

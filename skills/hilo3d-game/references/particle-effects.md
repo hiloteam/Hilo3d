@@ -1,12 +1,12 @@
 # Build particle effects
 
-Install and import `@hilo3d/addon-particle` only for effects that need many sprites, meshes,
-ribbons, trails, or deterministic authored behavior. The core `hilo3d` package deliberately does not
-export particle classes. Keep damage, collision authority, scoring, and save state in the game
-simulation; particle events can request gameplay actions, but particle state is presentation.
+Install and import `@hilo/addon-particle` only for effects that need many sprites, meshes, ribbons,
+trails, or deterministic authored behavior. The core `hilo3d` package deliberately does not export
+particle classes. Keep damage, collision authority, scoring, and save state in the game simulation;
+particle events can request gameplay actions, but particle state is presentation.
 
 ```sh
-npm install @hilo3d/addon-particle
+npm install @hilo/addon-particle
 ```
 
 ```ts
@@ -15,7 +15,7 @@ import {
     PARTICLE_STAGE_SERVICE,
     ParticleSystemDefinition,
     createParticleStageSystem
-} from '@hilo3d/addon-particle';
+} from '@hilo/addon-particle';
 
 const particleSystem = createParticleStageSystem();
 const stage = await Hilo3d.Stage.create({

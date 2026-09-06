@@ -2,7 +2,7 @@ import {
     PHYSICS_WORLD_3D_SERVICE,
     bindNode3D,
     createRapier3DPhysicsSystem
-} from '@hilo3d/addon-physics/rapier3d';
+} from '@hilo/addon-physics/rapier3d';
 import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext } from '../shared/init';
 

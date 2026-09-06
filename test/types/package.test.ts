@@ -141,10 +141,10 @@ import {
     type ParticleStatelessSupport,
     type ParticleSystemDefinitionInput,
     type ParticleSystemParameters
-} from '@hilo3d/addon-particle';
-import { createPhysicsStageSystem } from '@hilo3d/addon-physics';
-import { createRapier2DPhysicsSystem } from '@hilo3d/addon-physics/rapier2d';
-import { createRapier3DPhysicsSystem } from '@hilo3d/addon-physics/rapier3d';
+} from '@hilo/addon-particle';
+import { createPhysicsStageSystem } from '@hilo/addon-physics';
+import { createRapier2DPhysicsSystem } from '@hilo/addon-physics/rapier2d';
+import { createRapier3DPhysicsSystem } from '@hilo/addon-physics/rapier3d';
 
 const clusteredGeometry = new BoxGeometry();
 const clusteredMaterial = new PBRMaterial({ clearcoatFactor: 0.5 });

@@ -1,4 +1,4 @@
-# @hilo3d/addon-physics
+# @hilo/addon-physics
 
 Optional, backend-neutral 2D/3D physics for Hilo3D. The first adapters use Rapier; importing
 `hilo3d` alone never imports this package or a Rapier WASM module.
@@ -11,7 +11,7 @@ import {
     PHYSICS_WORLD_3D_SERVICE,
     bindNode3D,
     createRapier3DPhysicsSystem
-} from '@hilo3d/addon-physics/rapier3d';
+} from '@hilo/addon-physics/rapier3d';
 
 const physicsSystem = createRapier3DPhysicsSystem({
     gravity: { x: 0, y: -9.81, z: 0 },
@@ -33,7 +33,7 @@ world.createCollider({ shape: { type: 'ball', radius: 0.5 }, density: 1 }, body)
 bindNode3D(world, body, mesh);
 ```
 
-Use `@hilo3d/addon-physics/rapier2d` for the independent 2D adapter. Import the package root when
+Use `@hilo/addon-physics/rapier2d` for the independent 2D adapter. Import the package root when
 implementing a different `PhysicsBackend` without loading Rapier. The portable world also includes
 filtered ray/shape/overlap/point queries and kinematic character movement with slope, step, snap,
 grounded, and contact output.

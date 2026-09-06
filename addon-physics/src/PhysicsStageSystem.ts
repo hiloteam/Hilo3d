@@ -9,10 +9,10 @@ import { PhysicsWorld, type PhysicsWorldOptions } from './PhysicsWorld.js';
 import type { PhysicsDimension } from './types.js';
 
 export const PHYSICS_WORLD_2D_SERVICE = createStageSystemService<PhysicsWorld<'2d'>>(
-    '@hilo3d/addon-physics/world-2d'
+    '@hilo/addon-physics/world-2d'
 );
 export const PHYSICS_WORLD_3D_SERVICE = createStageSystemService<PhysicsWorld<'3d'>>(
-    '@hilo3d/addon-physics/world-3d'
+    '@hilo/addon-physics/world-3d'
 );
 
 export interface PhysicsStageSystemOptions<D extends PhysicsDimension> {

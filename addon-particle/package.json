@@ -1,5 +1,5 @@
 {
-  "name": "@hilo3d/addon-particle",
+  "name": "@hilo/addon-particle",
   "version": "2.0.0-alpha.5",
   "description": "Optional production CPU and WebGPU particle systems for Hilo3D.",
   "type": "module",

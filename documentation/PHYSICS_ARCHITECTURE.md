@@ -1,8 +1,8 @@
 # Hilo3D physics architecture
 
-This document defines the production physics boundary introduced by `@hilo3d/addon-physics`. The
-first adapters use Rapier 0.20, but Rapier is an implementation dependency, not Hilo3D's physics
-object model.
+This document defines the production physics boundary introduced by `@hilo/addon-physics`. The first
+adapters use Rapier 0.20, but Rapier is an implementation dependency, not Hilo3D's physics object
+model.
 
 ## Goals and non-goals
 
@@ -26,7 +26,7 @@ through the typed native extension. These omissions are release boundaries, not 
 ```text
 application
   ├─ hilo3d                         render/scene core; no physics import
-  └─ @hilo3d/addon-physics
+  └─ @hilo/addon-physics
        ├─ package root              portable types, scheduler, System, Hilo node bridges
        ├─ /rapier2d                 portable API + Rapier 2D WASM adapter only
        └─ /rapier3d                 portable API + Rapier 3D WASM adapter only

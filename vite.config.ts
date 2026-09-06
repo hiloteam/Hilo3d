@@ -10,19 +10,19 @@ const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
 
 export const addonAliases = [
     {
-        find: '@hilo3d/addon-particle',
+        find: '@hilo/addon-particle',
         replacement: fileURLToPath(new URL('./addon-particle/src/index.ts', import.meta.url))
     },
     {
-        find: '@hilo3d/addon-physics/rapier2d',
+        find: '@hilo/addon-physics/rapier2d',
         replacement: fileURLToPath(new URL('./addon-physics/src/rapier2d.ts', import.meta.url))
     },
     {
-        find: '@hilo3d/addon-physics/rapier3d',
+        find: '@hilo/addon-physics/rapier3d',
         replacement: fileURLToPath(new URL('./addon-physics/src/rapier3d.ts', import.meta.url))
     },
     {
-        find: '@hilo3d/addon-physics',
+        find: '@hilo/addon-physics',
         replacement: fileURLToPath(new URL('./addon-physics/src/index.ts', import.meta.url))
     },
     {

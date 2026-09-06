@@ -204,11 +204,11 @@ coordinates. Use `Ray` and `Mesh.raycast()` for explicit ray tests.
 
 ## Integrate the optional Rapier System
 
-Install `@hilo3d/addon-physics` and the dimension-specific Rapier peer. The addon owns fixed-step
+Install `@hilo/addon-physics` and the dimension-specific Rapier peer. The addon owns fixed-step
 scheduling and keeps native Rapier objects behind a portable API:
 
 ```sh
-npm install @hilo3d/addon-physics @dimforge/rapier3d-compat
+npm install @hilo/addon-physics @dimforge/rapier3d-compat
 ```
 
 ```ts
@@ -216,7 +216,7 @@ import {
     PHYSICS_WORLD_3D_SERVICE,
     bindNode3D,
     createRapier3DPhysicsSystem
-} from '@hilo3d/addon-physics/rapier3d';
+} from '@hilo/addon-physics/rapier3d';
 
 const physicsSystem = createRapier3DPhysicsSystem({
     gravity: { x: 0, y: -9.81, z: 0 },
@@ -238,9 +238,9 @@ world.createCollider({ shape: { type: 'cuboid', halfExtents: { x: 0.5, y: 0.5, z
 bindNode3D(world, body, mesh);
 ```
 
-Use `@hilo3d/addon-physics/rapier2d` for XY simulation. Keep gameplay identity outside native
-handles, use simple or convex shapes for dynamic objects, remove bodies when entities despawn, and
-let `stage.destroy()` own System teardown. Import neither addon when the game does not need physics.
+Use `@hilo/addon-physics/rapier2d` for XY simulation. Keep gameplay identity outside native handles,
+use simple or convex shapes for dynamic objects, remove bodies when entities despawn, and let
+`stage.destroy()` own System teardown. Import neither addon when the game does not need physics.
 
 ## Design a complete 3D vertical slice
 

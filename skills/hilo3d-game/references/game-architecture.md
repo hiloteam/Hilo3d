@@ -232,14 +232,14 @@ the active playfield and give canvas and DOM input one explicit focus policy.
 
 - 2D arcade: axis-aligned boxes, circles, grids, or spatial hashes.
 - Simple 3D: spheres, AABBs, rays, and Hilo3D picking.
-- Dynamic rigid bodies: use `@hilo3d/addon-physics` with its dimension-specific Rapier System.
+- Dynamic rigid bodies: use `@hilo/addon-physics` with its dimension-specific Rapier System.
 
 Separate collision shape from render geometry. Approximate complex art with stable simple shapes.
 Use layer or category masks to skip impossible pairs.
 
 Treat physics and authored particles as optional package boundaries as well as runtime boundaries.
-Only the presentation adapter imports `@hilo3d/addon-particle`; only the physics adapter imports
-`@hilo3d/addon-physics`. Projects without those features should not install or import the packages.
+Only the presentation adapter imports `@hilo/addon-particle`; only the physics adapter imports
+`@hilo/addon-physics`. Projects without those features should not install or import the packages.
 
 ## Load before play
 
