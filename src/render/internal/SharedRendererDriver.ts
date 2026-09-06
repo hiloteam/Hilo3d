@@ -395,6 +395,10 @@ class SharedRendererDriver
         if (renderingProfile !== 'portable' && renderingProfile !== 'high-end') {
             throw new TypeError('Renderer renderingProfile must be "portable" or "high-end"');
         }
+        const shadowUpdateMode: unknown = this.shadowUpdateMode;
+        if (shadowUpdateMode !== 'paged' && shadowUpdateMode !== 'full') {
+            throw new TypeError('Renderer shadowUpdateMode must be "paged" or "full"');
+        }
         if (this.renderingProfile === 'high-end') this.cameraRelative = true;
         const optionRequiredFeatures =
             'requiredFeatures' in options ? options.requiredFeatures : undefined;
@@ -1986,7 +1990,8 @@ class SharedRendererDriver
             plan,
             content,
             updates.scheduledSlices,
-            scope.uploads
+            scope.uploads,
+            this.shadowUpdateMode
         );
         let completedUpdateCount = 0;
         for (let index = 0; index < content.sliceCount; index += 1) {

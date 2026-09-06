@@ -6061,6 +6061,7 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
     readonly setOffset: RendererContract['setOffset'];
     // (undocumented)
     readonly setRenderTarget: (...args: Parameters<RendererContract['setRenderTarget']>) => this;
+    readonly shadowUpdateMode: RendererContract['shadowUpdateMode'];
     // (undocumented)
     readonly supportsTextureCompression: RendererContract['supportsTextureCompression'];
     // (undocumented)
@@ -6117,6 +6118,7 @@ export interface RendererCommonOptions {
     premultipliedAlpha?: boolean;
     renderingProfile?: RendererRenderingProfile;
     renderPipeline?: RenderPipelineFactory;
+    shadowUpdateMode?: RendererShadowUpdateMode;
     // (undocumented)
     stencil?: boolean;
     // (undocumented)
@@ -6191,6 +6193,7 @@ export interface RendererContract {
     setOffset(x: number, y: number): void;
     // (undocumented)
     setRenderTarget(target: RenderTarget | null, options?: RenderTargetSelectionOptions): this;
+    readonly shadowUpdateMode: 'paged' | 'full';
     // (undocumented)
     supportsTextureCompression(format: TextureCompressionFormat): boolean;
     // (undocumented)
@@ -6291,6 +6294,9 @@ export interface RendererResourceManager {
 export type RendererScene = Node_2 & {
     readonly fog?: Fog | null;
 };
+
+// @public
+export type RendererShadowUpdateMode = 'paged' | 'full';
 
 // @public
 export interface RendererSupportOptions {
@@ -8323,6 +8329,7 @@ export interface StageCommonParameters extends NodeParameters {
     premultipliedAlpha?: boolean;
     renderingProfile?: RendererRenderingProfile;
     renderPipeline?: RenderPipelineFactory;
+    shadowUpdateMode?: RendererShadowUpdateMode;
     // (undocumented)
     stencil?: boolean;
     systems?: readonly StageSystem[];

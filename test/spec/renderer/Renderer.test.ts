@@ -142,7 +142,8 @@ describe('Renderer public entry point', () => {
             width: 12,
             height: 6,
             antialias: false,
-            renderingProfile: 'high-end'
+            renderingProfile: 'high-end',
+            shadowUpdateMode: 'full'
         });
         activeRenderers.push(renderer);
         const camera = new PerspectiveCamera({ near: 0.1, far: null });
@@ -152,6 +153,7 @@ describe('Renderer public entry point', () => {
         renderer.renderToTarget(derivedTarget, stage, camera);
 
         expect(renderer.renderingProfile).toBe('high-end');
+        expect(renderer.shadowUpdateMode).toBe('full');
         expect(renderer.cameraRelative).toBe(true);
         expect(camera.depthMode).toBe('reversed');
 
@@ -165,6 +167,16 @@ describe('Renderer public entry point', () => {
         }).toThrow(/depth mode standard does not match camera depth mode reversed/u);
         derivedTarget.destroy();
         incompatibleTarget.destroy();
+    });
+
+    it('rejects an unsupported shadow update mode before creating resources', async () => {
+        await expect(
+            Renderer.create({
+                backend: 'webgl2',
+                domElement: document.createElement('canvas'),
+                shadowUpdateMode: 'incremental' as 'full'
+            })
+        ).rejects.toThrow('Renderer shadowUpdateMode must be "paged" or "full"');
     });
 
     it('probes auto once and falls back to WebGL2 without a facade', async () => {

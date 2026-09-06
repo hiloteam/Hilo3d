@@ -139,6 +139,8 @@ export interface RendererContract {
     useInstanced: boolean;
     readonly cameraRelative: boolean;
     readonly renderingProfile: 'portable' | 'high-end';
+    /** Shadow-atlas page-budget policy selected when this renderer was created. */
+    readonly shadowUpdateMode: 'paged' | 'full';
     forceMaterial: Material | null;
     clearColor: Color;
     resize(width: number, height: number, force?: boolean): void;
@@ -202,6 +204,8 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     /** Use frame-wide camera-relative GPU transforms without changing CPU world coordinates. */
     cameraRelative = false;
     readonly renderingProfile: 'portable' | 'high-end' = 'portable';
+    /** Update complete scheduled shadow slices without page-budget deferral in fully dynamic scenes. */
+    readonly shadowUpdateMode: 'paged' | 'full' = 'paged';
     vertexPrecision: ShaderPrecision = 'highp';
     fragmentPrecision: ShaderPrecision = 'highp';
     fog: Fog | null = null;

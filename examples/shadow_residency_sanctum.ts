@@ -11,6 +11,7 @@ interface SanctumEvidence {
     readonly shadowUpdatedPages: number;
     readonly shadowDeferredPages: number;
     readonly shadowResidentPages: number;
+    readonly shadowBudgetOverflowPages: number;
     readonly hiddenLayerEnabled: boolean;
     readonly drawCount: number;
 }
@@ -216,6 +217,7 @@ const stage = await Hilo3d.Stage.create<'webgpu'>({
     clearColor: new Hilo3d.Color(0.0015, 0.002, 0.007),
     useInstanced: true,
     renderingProfile: 'high-end',
+    shadowUpdateMode: 'full',
     renderPipeline: pipeline
 });
 
@@ -488,6 +490,7 @@ function updateMetrics(): SanctumEvidence {
         shadowUpdatedPages: frame.shadowUpdatedPages,
         shadowDeferredPages: frame.shadowDeferredPages,
         shadowResidentPages: frame.shadowResidentPages,
+        shadowBudgetOverflowPages: frame.shadowBudgetOverflowPages,
         hiddenLayerEnabled: veilEnabled,
         drawCount: stage.renderer.renderInfo.drawCount
     };

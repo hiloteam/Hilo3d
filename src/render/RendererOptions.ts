@@ -14,6 +14,9 @@ export type RendererContextPowerPreference = 'default' | RendererAdapterPowerPre
 /** Shared renderer policy bundle. `high-end` enables reversed-Z cameras and camera-relative GPU transforms. */
 export type RendererRenderingProfile = 'portable' | 'high-end';
 
+/** Shadow-atlas update policy. `full` disables page-budget deferral within a renderer frame. */
+export type RendererShadowUpdateMode = 'paged' | 'full';
+
 /** Optional device capabilities that the renderer can request through the portable RHI. */
 export type RendererFeatureName =
     | 'texture-compression-bc'
@@ -47,6 +50,8 @@ export interface RendererCommonOptions {
     cameraRelative?: boolean;
     /** Renderer policy bundle. Defaults to `portable`. */
     renderingProfile?: RendererRenderingProfile;
+    /** Shadow-atlas update policy. Defaults to `paged`; use `full` for fully dynamic scenes. */
+    shadowUpdateMode?: RendererShadowUpdateMode;
     vertexPrecision?: ShaderPrecision;
     fragmentPrecision?: ShaderPrecision;
     fog?: Fog | null;

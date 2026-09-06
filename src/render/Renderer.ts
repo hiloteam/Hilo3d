@@ -21,6 +21,7 @@ import type {
     RendererOptions,
     RendererOptionsMap,
     RendererRenderingProfile,
+    RendererShadowUpdateMode,
     RendererSupportOptions,
     RendererWebGL2Options,
     RendererWebGPUOptions
@@ -45,6 +46,8 @@ export class Renderer<
     declare readonly renderTarget: RendererContract['renderTarget'];
     declare readonly cameraRelative: RendererContract['cameraRelative'];
     declare readonly renderingProfile: RendererContract['renderingProfile'];
+    /** Shadow-atlas page-budget policy selected at creation. */
+    declare readonly shadowUpdateMode: RendererContract['shadowUpdateMode'];
     declare width: RendererContract['width'];
     declare height: RendererContract['height'];
     declare pixelRatio: RendererContract['pixelRatio'];
@@ -120,6 +123,7 @@ export type {
     RendererOptions,
     RendererOptionsMap,
     RendererRenderingProfile,
+    RendererShadowUpdateMode,
     RendererSupportOptions,
     RendererWebGL2Options,
     RendererWebGPUOptions

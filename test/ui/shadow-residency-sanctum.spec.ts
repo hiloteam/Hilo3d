@@ -16,6 +16,7 @@ interface SanctumEvidence {
     readonly shadowUpdatedPages: number;
     readonly shadowDeferredPages: number;
     readonly shadowResidentPages: number;
+    readonly shadowBudgetOverflowPages: number;
     readonly hiddenLayerEnabled: boolean;
     readonly drawCount: number;
 }
@@ -79,7 +80,7 @@ function differingPixelRatio(referenceBuffer: Buffer, candidateBuffer: Buffer): 
     return changed / pixelCount;
 }
 
-test('Umbra Sanctum keeps moving shadow pages budgeted and camera layers isolated @webgpu', async ({
+test('Umbra Sanctum updates moving shadow slices atomically and keeps camera layers isolated @webgpu', async ({
     page
 }) => {
     test.setTimeout(120_000);
@@ -108,9 +109,10 @@ test('Umbra Sanctum keeps moving shadow pages budgeted and camera layers isolate
         hiddenLayerEnabled: false
     });
     expect(moving?.shadowRequestedPages).toBeGreaterThan(32);
-    expect(moving?.shadowUpdatedPages).toBeGreaterThan(0);
-    expect(moving?.shadowUpdatedPages).toBeLessThanOrEqual(32);
-    expect(moving?.shadowDeferredPages).toBeGreaterThan(0);
+    expect(moving?.shadowUpdatedPages).toBeGreaterThan(32);
+    expect(moving?.shadowUpdatedPages).toBeLessThanOrEqual(moving?.shadowRequestedPages ?? 0);
+    expect(moving?.shadowDeferredPages).toBeGreaterThanOrEqual(0);
+    expect(moving?.shadowBudgetOverflowPages).toBeGreaterThan(0);
     expect(moving?.shadowResidentPages).toBeGreaterThan(32);
 
     await page.evaluate(async () => window.__HILO3D_SHADOW_SANCTUM_TEST_API__?.setMotion(false));

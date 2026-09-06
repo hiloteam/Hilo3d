@@ -244,6 +244,7 @@ export {
     type RendererOptions,
     type RendererOptionsMap,
     type RendererRenderingProfile,
+    type RendererShadowUpdateMode,
     type RendererResourceDiagnostics,
     type RendererResourceManager,
     type RendererScene,
