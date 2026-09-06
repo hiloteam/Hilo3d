@@ -30,7 +30,7 @@ export function createPhysicsStageSystem<D extends PhysicsDimension>(
     return {
         descriptor: {
             id: options.id,
-            version: '2.0.0-alpha.5',
+            version: '2.0.0-alpha.6',
             apiVersion: STAGE_SYSTEM_API_VERSION,
             provides: [options.service]
         },

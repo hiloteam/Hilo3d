@@ -152,7 +152,7 @@ export function createParticleStageSystem(
     return {
         descriptor: {
             id: '@hilo/addon-particle',
-            version: '2.0.0-alpha.5',
+            version: '2.0.0-alpha.6',
             apiVersion: STAGE_SYSTEM_API_VERSION,
             provides: [PARTICLE_STAGE_SERVICE]
         },
