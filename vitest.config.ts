@@ -4,6 +4,8 @@ import { createViteConfig } from './vite.config';
 
 const coverageRun = process.argv.includes('--coverage');
 const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
+const monolithicCoverageRun =
+    githubActionsCoverageRun && process.env['HILO3D_MONOLITHIC_COVERAGE'] === 'true';
 
 export default mergeConfig(
     createViteConfig(),
@@ -24,11 +26,13 @@ export default mergeConfig(
             // coverage process. The dedicated RHI suite runs it immediately afterward.
             exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
-            // Hosted CI keeps one browser file active at a time. Local coverage uses exactly two
-            // workers so one long-lived renderer does not accumulate all isolated test files and
-            // lose its browser RPC connection before the suite completes.
-            fileParallelism: !githubActionsCoverageRun,
-            ...(coverageRun ? { maxWorkers: githubActionsCoverageRun ? 1 : 2 } : {}),
+            // Sharded hosted CI keeps one browser file active at a time. A monolithic release
+            // validation and local coverage use exactly two workers so one long-lived renderer
+            // does not accumulate all isolated test files and lose its browser RPC connection.
+            fileParallelism: !githubActionsCoverageRun || monolithicCoverageRun,
+            ...(coverageRun
+                ? { maxWorkers: githubActionsCoverageRun && !monolithicCoverageRun ? 1 : 2 }
+                : {}),
             testTimeout: 10_000,
             hookTimeout: 10_000,
             coverage: {

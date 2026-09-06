@@ -58,6 +58,7 @@ jobs:
         run: npm run validate:ci
         env:
           CI: 'true'
+          HILO3D_MONOLITHIC_COVERAGE: 'true'
 
       - name: Set up trusted-publishing Node.js
         uses: actions/setup-node@v7
