@@ -36,11 +36,10 @@
   2-only，Bloom 与四个 compute/GPU-driven/path-tracing 页面明确 WebGPU-only，并对适用后端执行确定性视觉、交互、后处理与拾取门禁；真实 WebGPU
   adapter/device/pipeline fixture 作为额外的深度验收，而不是 WebGPU 唯一覆盖。
 - 类型声明、TypeDoc API 页面和 API Extractor 签名报告全部从同一份已检查源码生成。
-- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；CI 与候选版本使用
-  `npm run validate`（或等价别名
-  `npm run release:check`）执行完整双后端浏览器矩阵。npm发布生命周期只执行快速、确定性的
-  `publish:check`，再由 `prepack`
-  构建 tarball，避免在 OTP 已生成后重新运行高成本浏览器矩阵。默认 hosted
+- npm 发布物按真实 tarball 校验，而不是只检查仓库内文件；功能提交 push 后由 CI 执行完整门禁，候选版本也可按需使用
+  `npm run validate`（或等价别名 `npm run release:check`）执行完整双后端浏览器矩阵。npm
+  tag 发布 workflow 和 npm 生命周期只执行快速、确定性的发布检查，再由 `prepack`
+  构建 tarball，避免重复运行功能 CI。默认 hosted
   CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和四个隔离的 WebGL 2
   presentation/UI/视觉分片；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
   benchmark smoke 则由按性能路径、定时或手动触发的独立工作流执行。
@@ -1088,27 +1087,26 @@ corpus 与真实 WebGPU pipeline 互为补充。
 - [x] std140 offset/stride、固定 block binding、dirty-range upload 和非法 classic
       uniform 有自动测试。
 - [x] 旧构建、测试、文档生成和运行时 vendor 链路已删除。
-- [x] CI 只验证固定的最低 Node 20.19.0 档位，发布前复用同一完整门禁。
+- [x] CI 只验证固定的最低 Node 20.19.0 档位；功能提交 push 时运行完整门禁，npm tag 发布不重复执行。
 
 ## npm 发布生命周期
 
-完整候选版本验收与实际 npm 上传分成两个阶段：
+版本提交的功能 CI 通过后，创建并推送 npm 发布 tag：
 
 ```sh
-npm run release:check
 npm run release:tag:push
 ```
 
-`release:check` 是完整 `validate`
-的显式别名，仍执行全部单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁。它应在 CI 通过的提交上、生成发布 OTP 之前完成。
+`release:check` 保留为完整 `validate`
+的显式别名，可用于本地候选版本验收，但不再是 tag 发布步骤。功能提交 push 触发的普通 CI 负责单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁；发布操作应在该提交的 CI 通过后进行。
 
 `release:tag:push` 要求工作区干净，确认根包与两个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
 `origin` 上指向其他提交的同名 tag。命令创建带 `publish <version>` 注释的版本 tag，只推送
 `refs/tags/<version>`，再从远端核验其目标提交；同一提交上的重试是幂等的。
 
 `.github/workflows/publish.yml` 监听版本 tag。GitHub-hosted
-runner 先用仓库固定的 Node/npm 工具链确认 tag、三个包版本与提交完全一致，并执行 portable
-`validate:ci` 门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm
+runner 只用仓库固定的 Node/npm 工具链确认 tag、三个包版本与提交完全一致，不重复执行普通 push
+CI 已经覆盖的功能门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm
 11，通过 OIDC 依次发布核心、粒子 addon 和物理 addon。两个 addon 的 `hilo3d` peer
 dependency 必须等于同批版本；幂等重试跳过 registry 中已经存在的包版本。预发布版本自动使用
 `next`，正式版本使用 `latest`，不得让 prerelease 覆盖 `latest`。npm package 的 Trusted
