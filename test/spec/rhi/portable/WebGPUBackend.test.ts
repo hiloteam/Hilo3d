@@ -2692,8 +2692,9 @@ describe('WebGPU RHI native backend', () => {
 
         const surface = device.createSurface(harness.canvas);
         expect(harness.log).toContain('canvas.getContext:webgpu');
+        expect(surface.preferredFormat).toBe('bgra8unorm');
         surface.configure({
-            format: 'rgba8unorm',
+            format: surface.preferredFormat,
             depthStencilFormat: 'depth24plus',
             width: 320,
             height: 180
@@ -2708,7 +2709,7 @@ describe('WebGPU RHI native backend', () => {
         expect(harness.canvas.height).toBe(180);
         expect(harness.surfaceConfigurations[0]).toMatchObject({
             device: harness.device,
-            format: 'rgba8unorm',
+            format: 'bgra8unorm',
             alphaMode: 'opaque',
             colorSpace: 'srgb'
         });

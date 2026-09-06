@@ -6501,6 +6501,9 @@ export interface RenderPipelineColorAttachment {
 }
 
 // @public
+export type RenderPipelineColorFormat = RenderTargetColorFormat | 'bgra8unorm' | 'bgra8unorm-srgb';
+
+// @public
 export interface RenderPipelineContext {
     acquirePassParameters<P extends object>(pool: RenderPassParameterPool<P>): P;
     readonly camera: Camera;
@@ -6601,7 +6604,7 @@ export interface RenderPipelineLimits {
 export interface RenderPipelineOutput {
     colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
     readonly colorAttachmentCount: number;
-    colorFormat(index: number): RenderTargetColorFormat;
+    colorFormat(index: number): RenderPipelineColorFormat;
     readonly depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment> | null;
     readonly depthStencilFormat: RenderTargetDepthStencilFormat | null;
     readonly height: number;
@@ -6632,7 +6635,7 @@ export type RenderPipelineOutputResources = RenderPipelineTargetResources;
 
 // @public
 export interface RenderPipelinePersistentTargetDescriptor {
-    readonly colorFormats: readonly RenderTargetColorFormat[];
+    readonly colorFormats: readonly RenderPipelineColorFormat[];
     readonly depthStencilFormat?: RenderTargetDepthStencilFormat;
     readonly depthStencilSampled?: boolean;
     readonly extent: RenderPipelineExtent;

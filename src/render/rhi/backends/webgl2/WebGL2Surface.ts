@@ -12,6 +12,7 @@ import { WebGL2DestroyableBase } from './WebGL2Internal';
 import { WebGL2Texture } from './WebGL2Resources';
 
 export class WebGL2Surface extends WebGL2DestroyableBase implements RHISurface {
+    readonly preferredFormat = 'rgba8unorm' as const;
     #state: RHISurfaceState = 'unconfigured';
     #configuration: Readonly<RHINormalizedSurfaceConfiguration> | null = null;
     #externalPresentationConfiguration: Readonly<RHINormalizedSurfaceConfiguration> | null = null;

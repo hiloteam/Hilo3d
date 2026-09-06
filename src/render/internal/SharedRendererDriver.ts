@@ -2311,7 +2311,7 @@ class SharedRendererDriver
         const width = positiveSurfaceDimension(this.width, canvas.width);
         const height = positiveSurfaceDimension(this.height, canvas.height);
         surface.configure({
-            format: 'rgba8unorm',
+            format: surface.preferredFormat,
             depthStencilFormat:
                 this.depth || this.stencil
                     ? this.stencil

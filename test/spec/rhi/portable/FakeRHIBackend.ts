@@ -876,6 +876,7 @@ export class FakeRHIDevice implements RHIDevice {
 }
 
 export class FakeRHISurface extends FakeDestroyableObject implements RHISurface {
+    readonly preferredFormat = 'rgba8unorm' as const;
     private surfaceState: RHISurfaceState = 'unconfigured';
     private normalizedConfiguration: Readonly<RHINormalizedSurfaceConfiguration> | null = null;
     private currentTexture: FakeRHITexture | null = null;

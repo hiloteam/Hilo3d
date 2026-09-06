@@ -45,6 +45,10 @@
 
 ### Changes
 
+- Configure WebGPU canvas surfaces with `navigator.gpu.getPreferredCanvasFormat()` while retaining
+  the portable `rgba8unorm` WebGL 2 surface. Render-pipeline outputs now expose backend-selected
+  canvas formats through `RenderPipelineColorFormat`. This avoids browser presentation copies on
+  devices whose native canvas format is `bgra8unorm`.
 - Add `Renderer`/`Stage` `shadowUpdateMode: 'paged' | 'full'`. Paged updates now defer complete
   caster-only shadow slices instead of publishing mixed page revisions; `full` disables page-budget
   deferral for fully dynamic scenes. This prevents continuously moving or deforming casters from

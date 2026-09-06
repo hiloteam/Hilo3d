@@ -72,7 +72,7 @@ class GrayscaleFeatureRuntime implements Hilo3d.ForwardRenderPipelineFeatureRunt
         }
     );
     readonly #descriptor: {
-        format: Hilo3d.RenderTargetColorFormat;
+        format: Hilo3d.RenderPipelineColorFormat;
         readonly extent: Readonly<{ relativeTo: 'output'; scale: 1 }>;
     } = {
         format: 'rgba8unorm',

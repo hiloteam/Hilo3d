@@ -7,7 +7,6 @@ import type { RendererFeatureName } from '../RendererOptions';
 import type { RendererScene, RendererViewport } from '../RendererCore';
 import type {
     RenderTargetColor,
-    RenderTargetColorFormat,
     RenderTargetDepthStencilFormat,
     RenderTargetLoadOp,
     RenderTargetStoreOp,
@@ -21,7 +20,11 @@ import type {
     RendererListDescriptor,
     RendererListHandle
 } from './RendererList';
-import type { RenderGraphTextureHandle, ScriptableRenderGraph } from './ScriptableRenderGraph';
+import type {
+    RenderGraphTextureHandle,
+    RenderPipelineColorFormat,
+    ScriptableRenderGraph
+} from './ScriptableRenderGraph';
 import type { RenderPipelineTextureFormat } from './RenderPipelineTexture';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
@@ -190,7 +193,7 @@ export interface RenderPipelineOutput {
     /** Selected depth/stencil operations, or null when no depth attachment exists. */
     readonly depthStencilAttachment: Readonly<RenderPipelineOutputDepthStencilAttachment> | null;
     /** Return the format for one output color attachment. */
-    colorFormat(index: number): RenderTargetColorFormat;
+    colorFormat(index: number): RenderPipelineColorFormat;
     /** Return the selected load, store, and clear policy for one output color attachment. */
     colorAttachment(index: number): Readonly<RenderPipelineOutputColorAttachment>;
 }

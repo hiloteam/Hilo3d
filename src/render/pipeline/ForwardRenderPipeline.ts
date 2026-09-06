@@ -38,6 +38,7 @@ import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from './passes/internal/PortableFul
 import { LINEAR_TO_SRGB_FRAGMENT_SOURCE } from './passes/internal/OutputTransferShader';
 import type {
     RenderGraphTextureHandle,
+    RenderPipelineColorFormat,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
@@ -219,7 +220,7 @@ interface MutableDepthStencilAttachment extends RenderPipelineDepthStencilAttach
 }
 
 interface MutableTextureDescriptor {
-    format: RenderTargetColorFormat | RenderTargetDepthStencilFormat;
+    format: RenderPipelineColorFormat | RenderTargetDepthStencilFormat;
     extent: RenderPipelineExtent;
     sampleCount: RenderTargetSampleCount;
     mipLevelCount: number;
@@ -931,11 +932,11 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         mipLevelCount: 1
     };
     readonly #surfaceCompositionKey = Object.freeze({});
-    readonly #surfaceCompositionColorFormats: RenderTargetColorFormat[] = ['rgba8unorm'];
+    readonly #surfaceCompositionColorFormats: RenderPipelineColorFormat[] = ['rgba8unorm'];
     readonly #surfaceCompositionDescriptor: {
         readonly label: string;
         extent: RenderPipelineExtent;
-        readonly colorFormats: RenderTargetColorFormat[];
+        readonly colorFormats: RenderPipelineColorFormat[];
         depthStencilFormat?: RenderTargetDepthStencilFormat;
         depthStencilSampled?: boolean;
         sampleCount: RenderTargetSampleCount;
@@ -1483,7 +1484,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
 
     private colorDescriptor(
         index: number,
-        format: RenderTargetColorFormat,
+        format: RenderPipelineColorFormat,
         sampleCount: RenderTargetSampleCount,
         resolve: boolean
     ): MutableTextureDescriptor {

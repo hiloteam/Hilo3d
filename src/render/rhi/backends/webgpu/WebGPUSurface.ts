@@ -13,7 +13,7 @@ import {
 import { WebGPUDestroyableObject } from './WebGPUBase';
 import type { WebGPUDevice } from './WebGPUDevice';
 import { WebGPUTexture } from './WebGPUResources';
-import { RHITextureUsage } from '../../core/RHITypes';
+import { RHITextureUsage, type RHITextureFormat } from '../../core/RHITypes';
 
 function nativeConfiguration(
     configuration: Readonly<RHINormalizedSurfaceConfiguration>,
@@ -28,8 +28,17 @@ function nativeConfiguration(
     };
 }
 
+function preferredCanvasFormat(): RHITextureFormat {
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    if (format !== 'rgba8unorm' && format !== 'bgra8unorm') {
+        throw new Error(`Unsupported WebGPU preferred canvas format ${format}`);
+    }
+    return format;
+}
+
 export class WebGPUSurface extends WebGPUDestroyableObject implements RHISurface {
     readonly canvas: HTMLCanvasElement;
+    readonly preferredFormat: RHITextureFormat = preferredCanvasFormat();
     readonly #nativeContext: GPUCanvasContext;
     #surfaceState: RHISurfaceState = 'unconfigured';
     #configuration: Readonly<RHINormalizedSurfaceConfiguration> | null = null;

@@ -131,6 +131,9 @@ export interface RenderPipelineTargetResources {
 /** Graph resources representing the current invocation output. */
 export type RenderPipelineOutputResources = RenderPipelineTargetResources;
 
+/** Color formats exposed by render-pipeline outputs, including backend-selected canvas formats. */
+export type RenderPipelineColorFormat = RenderTargetColorFormat | 'bgra8unorm' | 'bgra8unorm-srgb';
+
 /** Recovery-aware persistent render-target recipe owned by a pipeline runtime key. */
 export interface RenderPipelinePersistentTargetDescriptor {
     /** Optional diagnostic label. */
@@ -138,7 +141,7 @@ export interface RenderPipelinePersistentTargetDescriptor {
     /** Absolute or output-relative dimensions. */
     readonly extent: RenderPipelineExtent;
     /** Continuous color attachment formats. */
-    readonly colorFormats: readonly RenderTargetColorFormat[];
+    readonly colorFormats: readonly RenderPipelineColorFormat[];
     /** Optional depth/stencil attachment format. */
     readonly depthStencilFormat?: RenderTargetDepthStencilFormat;
     /** Create a persistent depth-only sampled view for a single-sample depth attachment. */

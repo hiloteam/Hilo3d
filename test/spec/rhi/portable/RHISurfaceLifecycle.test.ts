@@ -16,6 +16,7 @@ interface SurfaceLifecycleHarness {
 
 interface SurfaceLifecycleBackend {
     readonly name: string;
+    readonly preferredFormat: 'rgba8unorm' | 'bgra8unorm';
     create(): SurfaceLifecycleHarness | null;
 }
 
@@ -39,12 +40,13 @@ function expectStateError(
 }
 
 function configure(surface: RHISurface, width = 16, height = 8): void {
-    surface.configure({ format: 'rgba8unorm', width, height });
+    surface.configure({ format: surface.preferredFormat, width, height });
 }
 
 const backends: readonly SurfaceLifecycleBackend[] = [
     {
         name: 'WebGL2',
+        preferredFormat: 'rgba8unorm',
         create() {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('webgl2');
@@ -62,6 +64,7 @@ const backends: readonly SurfaceLifecycleBackend[] = [
     },
     {
         name: 'WebGPU',
+        preferredFormat: 'bgra8unorm',
         create() {
             const native = createStructuredWebGPUMock();
             const device = new WebGPUDevice(native.device);
@@ -84,6 +87,7 @@ describe.each(backends)('$name RHI surface lifecycle contract', backend => {
         const { device, canvas } = harness;
         const surface = device.createSurface(canvas);
         try {
+            expect(surface.preferredFormat).toBe(backend.preferredFormat);
             expect(surface.state).toBe('unconfigured');
             expectStateError(() => {
                 surface.getCurrentTexture();

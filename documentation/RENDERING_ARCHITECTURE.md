@@ -46,6 +46,12 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 - `Renderer.create()` 直接返回初始化完成的
   `SharedRendererDriver`，帧热路径中没有额外 Proxy 或逐调用后端分发。
 
+WebGPU surface 由 backend 在创建时读取
+`navigator.gpu.getPreferredCanvasFormat()`，共享 Renderer 使用该后端中立格式配置 surface 和最终 Present
+pipeline，避免设备首选 `bgra8unorm` 时产生额外的浏览器展示拷贝。`RenderPipelineColorFormat`
+允许 pipeline output 与内部持久 target 保留 backend 选择的 canvas 格式；WebGL 2 surface 保持
+`rgba8unorm`。
+
 相关代码：[`Stage.ts`](../src/core/Stage.ts)、[`Renderer.ts`](../src/render/Renderer.ts)、[`RendererFactory.ts`](../src/render/internal/RendererFactory.ts)、[`RenderPipelineBackendSelection.ts`](../src/render/internal/RenderPipelineBackendSelection.ts)。
 
 ### 1.2 SharedRendererDriver：两套后端共享一条上层流水线

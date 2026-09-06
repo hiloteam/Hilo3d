@@ -22,7 +22,6 @@ import { RenderGraphFramePlanner } from '../RenderGraphFramePlan';
 import type {
     RenderTarget,
     RenderTargetColor,
-    RenderTargetColorFormat,
     RenderTargetDepthStencilFormat,
     RenderTargetLoadOp,
     RenderTargetStoreOp
@@ -104,6 +103,7 @@ import type {
     RenderGraphTextureHandle,
     RenderGraphTextureViewHandle,
     RenderPipelineBufferDescriptor,
+    RenderPipelineColorFormat,
     RenderPipelineColorAttachment,
     RenderPipelineDepthStencilAttachment,
     RenderPipelineExtent,
@@ -3892,7 +3892,7 @@ class PipelineOutputFacade implements RenderPipelineOutput {
             : this.#depthStencilAttachment;
     }
 
-    colorFormat(index: number): RenderTargetColorFormat {
+    colorFormat(index: number): RenderPipelineColorFormat {
         return this.#owner.readOutputColorFormat(this.#lease, index);
     }
 
@@ -4139,7 +4139,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     readonly #targetColorScratch: RenderGraphTextureHandle[] = [];
     readonly #fullscreenInputScratch: RGTextureAccessHandle[] = [];
     readonly #fullscreenUniformScratch: ResourceRegistryHandle<RHIBuffer>[] = [];
-    readonly #outputColorFormats: RenderTargetColorFormat[] = [];
+    readonly #outputColorFormats: RenderPipelineColorFormat[] = [];
     readonly #persistentTargetDescriptors: MutablePersistentTargetResourceDescriptor[] = [];
     readonly #historyFacadeByState = new Map<
         PersistentHistoryState,
@@ -5990,7 +5990,10 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return this.#outputState;
     }
 
-    readOutputColorFormat(lease: PipelineInvocationLease, index: number): RenderTargetColorFormat {
+    readOutputColorFormat(
+        lease: PipelineInvocationLease,
+        index: number
+    ): RenderPipelineColorFormat {
         this.assertLeaseActive(lease);
         return this.outputColorFormat(index);
     }
@@ -6010,7 +6013,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         return this.requireOutputDepthStencilState();
     }
 
-    private outputColorFormat(index: number): RenderTargetColorFormat {
+    private outputColorFormat(index: number): RenderPipelineColorFormat {
         this.assertActive();
         if (
             !Number.isSafeInteger(index) ||
@@ -6094,10 +6097,12 @@ function servicesConfiguration(surface: RHISurface): NonNullable<RHISurface['con
     return configuration;
 }
 
-function pipelineColorFormat(format: RHITextureFormat): RenderTargetColorFormat {
+function pipelineColorFormat(format: RHITextureFormat): RenderPipelineColorFormat {
     switch (format) {
         case 'rgba8unorm':
         case 'rgba8unorm-srgb':
+        case 'bgra8unorm':
+        case 'bgra8unorm-srgb':
         case 'rgba16float':
         case 'rgba32float':
             return format;

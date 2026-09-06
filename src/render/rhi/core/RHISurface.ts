@@ -35,6 +35,8 @@ export type RHISurfaceState = 'unconfigured' | 'configured' | 'acquired' | 'dest
  * and becomes invalid after present(), reconfiguration, loss, or surface destruction.
  */
 export interface RHISurface extends RHIDeviceOwnedDestroyable {
+    /** Backend-selected canvas format that avoids presentation conversion when available. */
+    readonly preferredFormat: RHITextureFormat;
     readonly state: RHISurfaceState;
     readonly configuration: Readonly<RHINormalizedSurfaceConfiguration> | null;
 
