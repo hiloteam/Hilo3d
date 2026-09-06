@@ -45,6 +45,10 @@
 
 ### Changes
 
+- Add `Renderer`/`Stage` `shadowUpdateMode: 'paged' | 'full'`. Paged updates now defer complete
+  caster-only shadow slices instead of publishing mixed page revisions; `full` disables page-budget
+  deferral for fully dynamic scenes. This prevents continuously moving or deforming casters from
+  combining old and new poses in one visible shadow slice.
 - Add tag-driven npm releases: the release command creates and pushes an annotated tag matching all
   three package versions, then GitHub Actions validates the tagged commit and publishes `hilo3d`,
   `@hilo/addon-particle`, and `@hilo/addon-physics` under one dist-tag through npm Trusted

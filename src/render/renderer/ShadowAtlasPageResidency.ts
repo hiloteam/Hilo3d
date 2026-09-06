@@ -26,6 +26,8 @@ export interface ShadowAtlasPageResidencyDecision {
     readonly budgetOverflowCount: number;
 }
 
+export type ShadowAtlasPageUpdateMode = 'paged' | 'full';
+
 interface MutablePageRegion {
     slicePhysicalIndex: number;
     pageX: number;
@@ -122,8 +124,8 @@ function copyRegion(target: MutablePageRegion, source: Readonly<MutablePageRegio
 /**
  * Submission-aware fixed-atlas virtual-page residency for shadow updates. Receiver-driven slice
  * sizing determines the requested virtual grid; dirty pages are redrawn through coalesced scissor
- * rectangles and committed only after a valid RHI submission. Missing pages retain the previous
- * slice contents.
+ * rectangles and committed only after a valid RHI submission. A budget may defer a complete
+ * caster-only slice, but it never publishes a mixture of page revisions within that slice.
  */
 export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
     readonly pageSize: number;
@@ -188,9 +190,14 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         plan: Readonly<ShadowAtlasScenePlan>,
         content: Readonly<ShadowAtlasContentDecision>,
         scheduledSlices: readonly boolean[],
-        uploads: RHIUploadBatch
+        uploads: RHIUploadBatch,
+        updateMode: ShadowAtlasPageUpdateMode = 'paged'
     ): Readonly<ShadowAtlasPageResidencyDecision> {
         this.assertAlive();
+        const selectedUpdateMode: unknown = updateMode;
+        if (selectedUpdateMode !== 'paged' && selectedUpdateMode !== 'full') {
+            throw new TypeError('Shadow page update mode must be "paged" or "full"');
+        }
         const sliceCount = plan.slices.length;
         if (
             content.sliceCount !== sliceCount ||
@@ -223,8 +230,9 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
             const record = this.sliceAt(sliceIndex);
             this.configureSlice(record, slice.viewport);
             const reason = content.reasons[sliceIndex];
-            const forceComplete =
+            const isMandatory =
                 reason === 'allocation' || reason === 'layout' || reason === 'light';
+            const forceComplete = updateMode === 'full' || isMandatory;
             const pageCount = record.columns * record.rows;
             let missing = 0;
             for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
@@ -238,10 +246,10 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
             if (!forceComplete) continue;
             while ((this.#remainingPages[sliceIndex] ?? 0) > 0) {
                 if (!this.scheduleNextPage(sliceIndex, targetUpdateId, record)) {
-                    throw new Error('Mandatory shadow page scheduling made no progress');
+                    throw new Error('Complete shadow slice scheduling made no progress');
                 }
                 this.#remainingPages[sliceIndex] = (this.#remainingPages[sliceIndex] ?? 0) - 1;
-                mandatory++;
+                if (isMandatory) mandatory++;
                 scheduled++;
                 if (budgetRemaining > 0) budgetRemaining--;
             }
@@ -269,18 +277,19 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
             const slice = plan.slices[selectedSlice];
             const record = this.#slices[selectedSlice];
             const targetUpdateId = content.updateIds[selectedSlice] ?? 0;
-            if (
-                slice === undefined ||
-                record === undefined ||
-                targetUpdateId === 0 ||
-                !this.scheduleNextPage(selectedSlice, targetUpdateId, record)
-            ) {
+            if (slice === undefined || record === undefined || targetUpdateId === 0) {
                 throw new Error('Budgeted shadow page scheduling made no progress');
             }
-            this.#remainingPages[selectedSlice] = (this.#remainingPages[selectedSlice] ?? 0) - 1;
-            this.#completedSlices[selectedSlice] = this.#remainingPages[selectedSlice] === 0;
-            scheduled++;
-            budgetRemaining--;
+            const slicePageCount = this.#remainingPages[selectedSlice] ?? 0;
+            for (let pageIndex = 0; pageIndex < slicePageCount; pageIndex += 1) {
+                if (!this.scheduleNextPage(selectedSlice, targetUpdateId, record)) {
+                    throw new Error('Atomic shadow slice scheduling made no progress');
+                }
+            }
+            this.#remainingPages[selectedSlice] = 0;
+            this.#completedSlices[selectedSlice] = true;
+            scheduled += slicePageCount;
+            budgetRemaining = Math.max(0, budgetRemaining - slicePageCount);
             sliceCursor = (selectedSlice + 1) % sliceCount;
             this.#pendingSliceCursor = sliceCursor;
             this.#pendingSliceCursorEpoch = this.#transactionEpoch;

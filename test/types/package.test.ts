@@ -55,6 +55,7 @@ import {
     type RendererBackend,
     type RendererResourceDiagnostics,
     type RendererRenderingProfile,
+    type RendererShadowUpdateMode,
     type RendererSupportOptions,
     type RendererWebGL2Options,
     type RendererWebGPUOptions,
@@ -408,9 +409,12 @@ const webgpuRendererParameters = {
     width: 640,
     height: 360,
     pixelRatio: 1,
-    renderingProfile: 'high-end'
+    renderingProfile: 'high-end',
+    shadowUpdateMode: 'full'
 } satisfies RendererWebGPUOptions;
 const renderingProfile: RendererRenderingProfile = webgpuRendererParameters.renderingProfile;
+const shadowUpdateMode: RendererShadowUpdateMode = webgpuRendererParameters.shadowUpdateMode;
+void shadowUpdateMode;
 const webgpuRendererPromise: Promise<Renderer<'webgpu'>> =
     Renderer.create(webgpuRendererParameters);
 const webgpuRenderer = await webgpuRendererPromise;

@@ -5,6 +5,7 @@ import Renderer, {
     type RendererFrame,
     type RendererOptions,
     type RendererRenderingProfile,
+    type RendererShadowUpdateMode,
     type RendererSupportOptions
 } from '../render/Renderer';
 import Ray from '../math/Ray';
@@ -179,6 +180,8 @@ export interface StageCommonParameters extends NodeParameters {
     useLogDepth?: boolean;
     /** Renderer policy bundle. `high-end` enables reversed-Z and camera-relative transforms. */
     renderingProfile?: RendererRenderingProfile;
+    /** Shadow-atlas update policy. Use `full` for scenes whose shadow casters move every frame. */
+    shadowUpdateMode?: RendererShadowUpdateMode;
     alpha?: boolean;
     depth?: boolean;
     stencil?: boolean;
