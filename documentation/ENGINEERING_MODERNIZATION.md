@@ -1111,7 +1111,9 @@ CI 已经覆盖的功能门禁；随后切换到 npm Trusted Publishing 支持�
 dependency 必须等于同批版本；幂等重试跳过 registry 中已经存在的包版本。预发布版本自动使用
 `next`，正式版本使用 `latest`，不得让 prerelease 覆盖 `latest`。npm package 的 Trusted
 Publisher 必须为三个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许
-`npm publish`；workflow 只授予 `contents: read` 与 `id-token: write`。
+`npm publish`；workflow 只授予 `contents: read` 与
+`id-token: write`。如 registry 只接受了部分包，可通过 workflow dispatch 传入已有 `release_tag`
+重试；workflow 会检出该 tag，并跳过 registry 中已经存在的同版本包。
 
 `npm publish` 的 `prepublishOnly` 仍运行轻量 `publish:check`：现代性门禁和 tag/commit 复核。Hilo3D
 Skill 由 `validate` 与 `validate:ci` 中的 `test:skill` 回归，不在上传阶段重复高成本矩阵； `prepack`
