@@ -2688,11 +2688,12 @@ describe('WebGPU RHI native backend', () => {
     it('keeps device construction headless and acquires a surface explicitly', () => {
         const harness = createNativeHarness();
         const device = new WebGPUDevice(harness.device);
+        const preferredFormat = navigator.gpu.getPreferredCanvasFormat();
         expect(harness.log).not.toContain('canvas.getContext:webgpu');
 
         const surface = device.createSurface(harness.canvas);
         expect(harness.log).toContain('canvas.getContext:webgpu');
-        expect(surface.preferredFormat).toBe('bgra8unorm');
+        expect(surface.preferredFormat).toBe(preferredFormat);
         surface.configure({
             format: surface.preferredFormat,
             depthStencilFormat: 'depth24plus',
@@ -2709,7 +2710,7 @@ describe('WebGPU RHI native backend', () => {
         expect(harness.canvas.height).toBe(180);
         expect(harness.surfaceConfigurations[0]).toMatchObject({
             device: harness.device,
-            format: 'bgra8unorm',
+            format: preferredFormat,
             alphaMode: 'opaque',
             colorSpace: 'srgb'
         });
