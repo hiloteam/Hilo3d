@@ -1,5 +1,7 @@
 # Unreleased
 
+# 2.0.0-alpha.8 (2026-09-08)
+
 ### Breaking changes
 
 - Replace direct-to-node `AnimationStates` playback with immutable `AnimationTrack`/`AnimationClip`
