@@ -24,7 +24,6 @@ const models: Readonly<Record<string, ModelInfo>> = {
         name: 'VC',
         scale: 0.01,
         src: '../models/VC/VC.gltf',
-        isMultiAnim: false,
         camera: 6,
         ambient: 0.8
     },

@@ -1,4 +1,5 @@
 import Animation from '../animation/Animation';
+import { AnimationClip } from '../animation/AnimationClip';
 import Node from '../core/Node';
 import GeometryData, { type GeometryAttributeValue } from '../geometry/GeometryData';
 import DirectionalLight from '../light/DirectionalLight';
@@ -182,15 +183,31 @@ export const WEB3D_quantized_attributes = {
 } satisfies GLTFExtensionHandler;
 
 export const HILO_animation_clips = {
-    parseOnEnd(extensionData: unknown, parser: GLTFParser, result: unknown): GLTFModel {
+    parseOnEnd(extensionData: unknown, _parser: GLTFParser, result: unknown): GLTFModel {
         if (!isGLTFModel(result))
             throw new TypeError('Animation clips require a parsed glTF model.');
-        if (parser.isMultiAnim || !(result.anim instanceof Animation)) return result;
+        if (!(result.anim instanceof Animation)) return result;
         if (!isRecord(extensionData)) throw new TypeError('Animation clips must be an object.');
+        const source = result.anim.clips[0];
+        if (!source) return result;
+        const clips = [...result.anim.clips];
         for (const [name, value] of Object.entries(extensionData)) {
             const range = requireNumberArray(value, `Animation clip ${name}`, 2);
-            result.anim.addClip(name, range[0] ?? 0, range[1] ?? 0, result.anim.animStatesList);
+            const clip = new AnimationClip({
+                name,
+                start: range[0] ?? 0,
+                end: range[1] ?? 0,
+                tracks: source.tracks
+            });
+            const existing = clips.findIndex(candidate => candidate.name === name);
+            if (existing < 0) clips.push(clip);
+            else clips[existing] = clip;
         }
+        const replacement = new Animation({ rootNode: result.node, clips });
+        replacement.play();
+        result.anim.destroy();
+        result.anim = replacement;
+        result.node.setAnim(replacement);
         return result;
     }
 } satisfies GLTFExtensionHandler;

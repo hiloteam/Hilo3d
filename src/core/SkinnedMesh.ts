@@ -116,7 +116,7 @@ class SkinnedMesh extends Mesh {
         }
     }
     override clone(isChild?: boolean): SkinnedMesh {
-        const mesh = super.clone(isChild);
+        const mesh = super.clone(true);
         if (!(mesh instanceof SkinnedMesh)) {
             throw new TypeError(
                 'SkinnedMesh subclasses must construct SkinnedMesh-compatible instances.'
@@ -127,6 +127,10 @@ class SkinnedMesh extends Mesh {
             skeleton: this.skeleton?.clone() ?? null
         });
         mesh.clonedFrom = this;
+        if (!isChild) {
+            if (this.anim) mesh.anim = this.anim.clone(mesh);
+            mesh.resetSkinnedMeshRootNode();
+        }
         return mesh;
     }
     override getRenderOption(opt: ShaderOptions = {}): ShaderOptions {

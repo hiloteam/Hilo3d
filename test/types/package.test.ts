@@ -1,4 +1,8 @@
 import {
+    Animation,
+    AnimationClip,
+    AnimationTrack,
+    AnimationBlendTree1D,
     BasicLoader,
     BasicMaterial,
     BoxGeometry,
@@ -833,3 +837,23 @@ void pointerListener;
 void dispatcher;
 
 export {};
+
+const animationClip = new AnimationClip({
+    name: 'Idle',
+    tracks: [
+        new AnimationTrack({
+            target: 'pet',
+            property: 'translation',
+            times: [0],
+            values: [0, 0, 0]
+        })
+    ]
+});
+const animation = new Animation({ rootNode: new Node({ name: 'pet' }), clips: [animationClip] });
+const locomotion = new AnimationBlendTree1D('Move', 'speed', [
+    { threshold: 0, clip: animationClip },
+    { threshold: 1, clip: animationClip }
+]);
+animation.addLayer({ name: 'base', motions: [locomotion] }).play('Move', { fade: 0.2 });
+animation.update(1 / 60);
+animation.destroy();

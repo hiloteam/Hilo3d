@@ -487,23 +487,33 @@ export { default as AxisHelper, type AxisHelperParameters } from './helper/AxisH
 export { default as AxisNetHelper, type AxisNetHelperParameters } from './helper/AxisNetHelper';
 export { default as CameraHelper, type CameraHelperParameters } from './helper/CameraHelper';
 
+export { default as Animation, type AnimationParameters } from './animation/Animation';
 export {
-    default as Animation,
-    type AnimationClip,
-    type AnimationParameters,
-    type AnimationTimeRange
-} from './animation/Animation';
+    AnimationClip,
+    type AnimationMarker,
+    type AnimationClipParameters
+} from './animation/AnimationClip';
 export {
-    type AnimationInterpolationType,
-    type InterpolatedValue,
-    type InterpolationFunction,
-    type AnimationStateHandler,
-    type AnimationStateType,
-    default as AnimationStates,
-    type AnimationStatesParameters,
-    type BuiltInAnimationStateType,
-    STATE_TYPES
-} from './animation/AnimationStates';
+    AnimationTrack,
+    type AnimationTrackParameters,
+    type AnimationProperty,
+    type AnimationInterpolation
+} from './animation/AnimationTrack';
+export {
+    type AnimationLayer,
+    type AnimationEvent,
+    type AnimationLayerParameters,
+    type AnimationPlayOptions
+} from './animation/AnimationLayer';
+export {
+    AnimationBlendTree1D,
+    type AnimationBlendSample,
+    type AnimationMotion
+} from './animation/AnimationBlendTree1D';
+export type {
+    AnimationPropertyBinding,
+    AnimationBindingResolver
+} from './animation/AnimationBinding';
 
 export { default as Cache } from './utils/Cache';
 export { type BrowserFeatures, default as browser, detectBrowserFeatures } from './utils/browser';

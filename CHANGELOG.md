@@ -2,6 +2,13 @@
 
 ### Breaking changes
 
+- Replace direct-to-node `AnimationStates` playback with immutable `AnimationTrack`/`AnimationClip`
+  assets and a character-local layered pose mixer. Add interruptible crossfades, synchronized 1D
+  locomotion blends, masked override/additive layers, playback-rate controls, semantic markers and
+  one-shot completion. Remove the old state-handler API, mutable clip ranges and `isMultiAnim`; glTF
+  animations remain independent clips. Migrate loader, clone, UV and animation examples. See
+  `documentation/ANIMATION_SYSTEM.md` for behavior-composer integration and explicit boundaries.
+
 - Move skin history validity from the removed `SkinningBlock.u_skinHistoryParams.x` to
   `ModelBlock.u_modelHistoryParams.y`. The two 128-joint palettes now occupy exactly 16,384 bytes,
   fitting the WebGL2 minimum uniform-block capacity. Custom shaders and block producers must use the

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as Hilo3d from '../../../src/Hilo3d';
 import type { GLTFResourceLoader } from '../../../src/loader/GLTFLoader';
 import LazyTexture from '../../../src/texture/LazyTexture';
+import { HILO_animation_clips } from '../../../src/loader/GLTFExtensions';
 
 const GLTFParser = Hilo3d.GLTFParser;
 const unusedLoader: GLTFResourceLoader = {
@@ -381,5 +382,124 @@ describe('GLTFParser', () => {
         await expect(parser.parse(unusedLoader)).rejects.toThrow(
             'glTF node graph contains a cycle at 0.'
         );
+    });
+    it('keeps glTF clips separate and crossfades parsed channels', () => {
+        const parser = new GLTFParser('{}', {});
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            nodes: [{}],
+            animations: [
+                {
+                    name: 'Walk',
+                    channels: [{ sampler: 0, target: { node: 0, path: 'translation' } }],
+                    samplers: [{ input: 0, output: 1 }]
+                },
+                {
+                    name: 'Run',
+                    channels: [{ sampler: 0, target: { node: 0, path: 'translation' } }],
+                    samplers: [{ input: 0, output: 2 }]
+                }
+            ]
+        };
+        const node = new Hilo3d.Node({ animationId: '0' }).addTo(parser.node);
+        vi.spyOn(parser, 'getArrayByAccessor').mockImplementation(index =>
+            index === 0
+                ? [0, 1]
+                : index === 1
+                  ? [
+                        [0, 0, 0],
+                        [0, 0, 0]
+                    ]
+                  : [
+                        [10, 0, 0],
+                        [10, 0, 0]
+                    ]
+        );
+        const animation = parser.parseAnimations();
+        if (!animation) throw new Error('Animation missing');
+        try {
+            expect(animation.clips.map(clip => clip.name)).toEqual(['Walk', 'Run']);
+            animation.play('Walk');
+            animation.play('Run', { fade: 1 });
+            animation.update(0.5);
+            expect(node.x).toBeCloseTo(5);
+        } finally {
+            animation.destroy();
+        }
+    });
+    it('replaces a same-name extension clip window instead of duplicating its asset', () => {
+        const parser = new GLTFParser('{}', {});
+        const node = new Hilo3d.Node({ name: 'pet' });
+        const track = new Hilo3d.AnimationTrack({
+            target: 'pet',
+            property: 'translation',
+            times: [0, 2],
+            values: [0, 0, 0, 2, 0, 0]
+        });
+        const animation = new Hilo3d.Animation({
+            rootNode: node,
+            clips: [new Hilo3d.AnimationClip({ name: 'Take 001', tracks: [track] })]
+        });
+        const model: Hilo3d.GLTFModel = {
+            node,
+            scene: node,
+            cameras: [],
+            lights: [],
+            textures: [],
+            materials: [],
+            ready: Promise.resolve(),
+            resourceErrors: [],
+            meshes: [],
+            json: { asset: { version: '2.0' } },
+            anim: animation
+        };
+        const result = HILO_animation_clips.parseOnEnd({ 'Take 001': [1, 2] }, parser, model);
+        try {
+            expect(result.anim?.clips).toHaveLength(1);
+            expect(result.anim?.clips[0]?.start).toBe(1);
+            result.anim?.update(0);
+            expect(node.x).toBe(1);
+        } finally {
+            result.anim?.destroy();
+            animation.destroy();
+        }
+    });
+    it('ignores channels outside the selected scene and gives duplicate glTF names unique handles', () => {
+        const parser = new GLTFParser('{}', {});
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            nodes: [{}, {}],
+            animations: [
+                {
+                    name: 'Idle',
+                    channels: [
+                        { sampler: 0, target: { node: 0, path: 'translation' } },
+                        { sampler: 0, target: { node: 1, path: 'translation' } }
+                    ],
+                    samplers: [{ input: 0, output: 1 }]
+                },
+                {
+                    name: 'Idle',
+                    channels: [{ sampler: 0, target: { node: 0, path: 'translation' } }],
+                    samplers: [{ input: 0, output: 1 }]
+                }
+            ]
+        };
+        new Hilo3d.Node({ animationId: '0' }).addTo(parser.node);
+        vi.spyOn(parser, 'getArrayByAccessor').mockImplementation(index =>
+            index === 0 ? [0] : [[1, 0, 0]]
+        );
+        const animation = parser.parseAnimations();
+        if (!animation) throw new Error('Animation missing');
+        try {
+            expect(animation.clips.map(clip => clip.name)).toEqual(['Idle', 'Idle#1']);
+            expect(animation.clips[0]?.tracks).toHaveLength(1);
+            animation.play();
+            animation.update(0);
+        } finally {
+            animation.destroy();
+        }
     });
 });

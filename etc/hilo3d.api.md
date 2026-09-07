@@ -31,172 +31,208 @@ export class AmbientLight extends Light {
 export type AmbientLightParameters = LightParameters;
 
 // @public
-class Animation_2 extends EventDispatcher {
+class Animation_2 {
     constructor(params?: AnimationParameters);
-    addClip(name: string, start: number, end: number, animStatesList: AnimationStates[]): void;
+    addLayer(params: AnimationLayerParameters): AnimationLayer;
     // (undocumented)
-    static readonly _anims: Animation_2[];
-    get animStatesList(): AnimationStates[];
-    set animStatesList(value: AnimationStates[]);
-    // (undocumented)
-    className: string;
-    clipEndTime: number;
-    // (undocumented)
-    clips: Record<string, AnimationClip | null>;
-    clipStartTime: number;
+    readonly className = "Animation";
+    get clips(): readonly AnimationClip[];
     clone(rootNode: Node_2): Animation_2;
-    currentLoopCount: number;
-    currentTime: number;
-    endTime: number;
-    getAnimStatesListTimeInfo(animStatesList: AnimationStates[]): AnimationTimeRange;
+    destroy(): void;
+    getParameter(name: string): number;
     // (undocumented)
-    readonly id: string;
-    _initNodeNameMap(): void;
-    // (undocumented)
-    isAnimation: boolean;
-    loop: number;
-    // (undocumented)
-    nodeNameMap: Record<string, Node_2>;
+    readonly isAnimation = true;
     pause(): void;
+    // (undocumented)
     paused: boolean;
-    play(startOrClipName?: number | string, end?: number): void;
-    removeClip(name: string): void;
+    play(name?: string, options?: AnimationPlayOptions): AnimationLayer;
     resume(): void;
-    get rootNode(): Node_2 | null;
-    set rootNode(value: Node_2 | null);
-    startTime: number;
-    stop(): void;
-    static tick(dt: number): void;
-    tick(dt: number): void;
-    timeScale: number;
-    updateAnimStates(): this;
-    validAnimationIds: Readonly<Record<string, boolean>> | null;
+    get rootNode(): Node_2 | undefined;
+    set rootNode(value: Node_2 | undefined);
+    setParameter(name: string, value: number, halfLife?: number, seconds?: number): void;
+    stop(restore?: boolean): void;
+    static tick(milliseconds: number): void;
+    tick(milliseconds: number): void;
+    get timeScale(): number;
+    set timeScale(value: number);
+    update(seconds: number): void;
 }
 export { Animation_2 as Animation }
 
-// @public (undocumented)
-export interface AnimationClip {
-    // (undocumented)
-    animStatesList?: AnimationStates[];
-    // (undocumented)
-    end: number;
-    // (undocumented)
-    start: number;
-}
-
-// @public (undocumented)
-export type AnimationInterpolationType = 'LINEAR' | 'STEP' | 'CUBICSPLINE';
-
-// @public (undocumented)
-export interface AnimationParameters {
-    // (undocumented)
-    animStatesList?: AnimationStates[];
-    // (undocumented)
-    clips?: Record<string, AnimationClip | null>;
-    // (undocumented)
-    currentLoopCount?: number;
-    // (undocumented)
-    currentTime?: number;
-    // (undocumented)
-    endTime?: number;
-    // (undocumented)
-    loop?: number;
-    // (undocumented)
-    paused?: boolean;
-    // (undocumented)
-    rootNode?: Node_2 | null;
-    // (undocumented)
-    startTime?: number;
-    // (undocumented)
-    timeScale?: number;
-    // (undocumented)
-    validAnimationIds?: Readonly<Record<string, boolean>> | null;
-}
-
-// @public (undocumented)
-export type AnimationStateHandler = (node: Node_2, state: unknown) => void;
+// @public
+export type AnimationBindingResolver = (node: Node_2, property: AnimationProperty, components: number) => AnimationPropertyBinding;
 
 // @public
-export class AnimationStates {
-    constructor(params?: AnimationStatesParameters);
+export interface AnimationBlendSample {
     // (undocumented)
-    readonly className = "AnimationStates";
+    clip: AnimationClip;
     // (undocumented)
-    clone(): AnimationStates;
-    // (undocumented)
-    findIndexByTime(time: number): [number, number];
-    // (undocumented)
-    getState(time: number): unknown;
-    // (undocumented)
-    getStateByIndex(index: number): unknown;
-    // (undocumented)
-    static getType(name: string): AnimationStateType;
-    // (undocumented)
-    readonly id: string;
-    // (undocumented)
-    static readonly interpolation: Record<AnimationInterpolationType, InterpolationFunction>;
-    // (undocumented)
-    interpolation(first: unknown, second?: unknown, ratio?: number, timeRange?: number): InterpolatedValue;
-    // (undocumented)
-    interpolationType: AnimationInterpolationType;
-    // (undocumented)
-    readonly isAnimationStates = true;
-    // (undocumented)
-    keyTime: number[];
-    // (undocumented)
-    nodeName: string;
-    // (undocumented)
-    static registerStateHandler(name: string, handler: AnimationStateHandler): void;
-    // (undocumented)
-    states: unknown[];
-    // (undocumented)
-    static readonly StateType: Readonly<{
-        TRANSLATE: "Translation";
-        POSITION: "Translation";
-        TRANSLATION: "Translation";
-        SCALE: "Scale";
-        ROTATE: "Rotation";
-        ROTATION: "Rotation";
-        QUATERNION: "Quaternion";
-        WEIGHTS: "Weights";
-    }>;
-    // (undocumented)
-    type: AnimationStateType;
-    // (undocumented)
-    updateNodeQuaternion(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeScale(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeState(time: number, node?: Node_2): void;
-    // (undocumented)
-    updateNodeTranslation(node: Node_2, value: unknown): void;
-    // (undocumented)
-    updateNodeWeights(node: Node_2, value: unknown): void;
+    threshold: number;
 }
 
-// @public (undocumented)
-export interface AnimationStatesParameters {
+// @public
+export class AnimationBlendTree1D {
+    constructor(name: string, parameter: string, samples: readonly AnimationBlendSample[]);
     // (undocumented)
-    interpolationType?: AnimationInterpolationType;
+    readonly name: string;
     // (undocumented)
-    keyTime?: number[];
+    readonly parameter: string;
     // (undocumented)
-    nodeName?: string;
-    // (undocumented)
-    states?: unknown[];
-    // (undocumented)
-    type?: AnimationStateType;
+    readonly samples: readonly AnimationBlendSample[];
 }
 
-// @public (undocumented)
-export type AnimationStateType = BuiltInAnimationStateType | (string & {});
+// @public
+export class AnimationClip {
+    constructor(params: AnimationClipParameters);
+    // (undocumented)
+    readonly duration: number;
+    // (undocumented)
+    readonly end: number;
+    // (undocumented)
+    readonly markers: readonly AnimationMarker[];
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly start: number;
+    // (undocumented)
+    readonly tracks: readonly AnimationTrack[];
+}
 
-// @public (undocumented)
-export interface AnimationTimeRange {
+// @public
+export interface AnimationClipParameters {
     // (undocumented)
-    endTime: number;
+    end?: number;
     // (undocumented)
-    startTime: number;
+    markers?: readonly AnimationMarker[];
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    start?: number;
+    // (undocumented)
+    tracks: readonly AnimationTrack[];
+}
+
+// @public
+interface AnimationEvent_2 {
+    count: number;
+    // (undocumented)
+    layer: string;
+    // (undocumented)
+    motion: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    type: 'marker' | 'finished';
+}
+export { AnimationEvent_2 as AnimationEvent }
+
+// @public
+export type AnimationInterpolation = 'LINEAR' | 'STEP' | 'CUBICSPLINE';
+
+// @public
+export interface AnimationLayer {
+    readonly currentMotion: string | undefined;
+    readonly finished: boolean;
+    readonly mode: 'override' | 'additive';
+    readonly name: string;
+    readonly normalizedTime: number;
+    play(name: string, options?: AnimationPlayOptions): this;
+    playbackRate: number;
+    seek(phase: number): void;
+    stop(fade?: number): void;
+    weight: number;
+}
+
+// @public
+export interface AnimationLayerParameters {
+    // (undocumented)
+    mask?: Readonly<Record<string, number>>;
+    // (undocumented)
+    mode?: 'override' | 'additive';
+    // (undocumented)
+    motions: readonly AnimationMotion[];
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    onEvent?: (event: AnimationEvent_2) => void;
+    // (undocumented)
+    weight?: number;
+}
+
+// @public
+export interface AnimationMarker {
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    time: number;
+}
+
+// @public
+export type AnimationMotion = AnimationClip | AnimationBlendTree1D;
+
+// @public
+export interface AnimationParameters {
+    // (undocumented)
+    clips?: readonly AnimationClip[];
+    // (undocumented)
+    resolveBinding?: AnimationBindingResolver;
+    // (undocumented)
+    rootNode?: Node_2;
+}
+
+// @public
+export interface AnimationPlayOptions {
+    // (undocumented)
+    fade?: number;
+    // (undocumented)
+    loop?: boolean;
+    // (undocumented)
+    synchronize?: boolean;
+}
+
+// @public
+export type AnimationProperty = 'translation' | 'rotation' | 'scale' | 'weights' | `custom:${string}`;
+
+// @public
+export interface AnimationPropertyBinding {
+    // (undocumented)
+    reference: ArrayLike<number>;
+    // (undocumented)
+    write: (value: Float32Array) => void;
+}
+
+// @public
+export class AnimationTrack {
+    constructor(params: AnimationTrackParameters);
+    // (undocumented)
+    readonly components: number;
+    // (undocumented)
+    readonly endTime: number;
+    // (undocumented)
+    readonly interpolation: AnimationInterpolation;
+    // (undocumented)
+    readonly property: AnimationProperty;
+    sample(time: number, output: Float32Array): void;
+    // (undocumented)
+    readonly startTime: number;
+    // (undocumented)
+    readonly target: string;
+}
+
+// @public
+export interface AnimationTrackParameters {
+    // (undocumented)
+    components?: number;
+    // (undocumented)
+    interpolation?: AnimationInterpolation;
+    // (undocumented)
+    property: AnimationProperty;
+    // (undocumented)
+    target: string;
+    // (undocumented)
+    times: ArrayLike<number>;
+    // (undocumented)
+    values: ArrayLike<number>;
 }
 
 // @public
@@ -655,9 +691,6 @@ export interface BrowserFeatures {
 
 // @public (undocumented)
 export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 10;
-
-// @public (undocumented)
-export type BuiltInAnimationStateType = (typeof STATE_TYPES)[keyof typeof STATE_TYPES];
 
 // @public (undocumented)
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
@@ -2987,8 +3020,6 @@ export class GLTFParser {
     // (undocumented)
     isLoadAllTextures: boolean;
     // (undocumented)
-    isMultiAnim: boolean;
-    // (undocumented)
     isProgressive: boolean;
     // (undocumented)
     isUnQuantizeInShader: boolean;
@@ -3092,8 +3123,6 @@ export interface GLTFParserParameters {
     ignoreTextureError?: boolean;
     // (undocumented)
     isLoadAllTextures?: boolean;
-    // (undocumented)
-    isMultiAnim?: boolean;
     // (undocumented)
     isProgressive?: boolean;
     // (undocumented)
@@ -3611,12 +3640,6 @@ export interface InstancedUniform {
     // (undocumented)
     readonly name: string;
 }
-
-// @public (undocumented)
-export type InterpolatedValue = number | number[] | Vector3 | Quaternion;
-
-// @public (undocumented)
-export type InterpolationFunction = (first: unknown, second?: unknown, ratio?: number, timeRange?: number) => InterpolatedValue;
 
 // @public (undocumented)
 export function isArrayCollection<Value>(collection: GLTFCollection<Value>): collection is readonly (Value | null)[];
@@ -8422,18 +8445,6 @@ export interface StageSystemSetupContext {
     provide<T>(service: StageSystemService<T>, value: T): void;
     readonly stage: Stage;
 }
-
-// @public (undocumented)
-export const STATE_TYPES: Readonly<{
-    TRANSLATE: "Translation";
-    POSITION: "Translation";
-    TRANSLATION: "Translation";
-    SCALE: "Scale";
-    ROTATE: "Rotation";
-    ROTATION: "Rotation";
-    QUATERNION: "Quaternion";
-    WEIGHTS: "Weights";
-}>;
 
 // @public (undocumented)
 export type Std140ArrayValue = ArrayLike<number | boolean>;

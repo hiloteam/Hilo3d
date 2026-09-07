@@ -3,28 +3,6 @@ import { createExampleContext } from './shared/init';
 
 const { stage } = await createExampleContext();
 
-function isNumberArray(value: unknown): value is number[] {
-    return Array.isArray(value) && value.every((item: unknown) => typeof item === 'number');
-}
-
-Hilo3d.AnimationStates.registerStateHandler('UV_Translate', (node, state) => {
-    const mesh =
-        node instanceof Hilo3d.Mesh
-            ? node
-            : node.children.find(child => child instanceof Hilo3d.Mesh);
-    if (!mesh?.material) throw new Error('UV animation requires a mesh material');
-    if (!isNumberArray(state)) {
-        throw new TypeError('UV animation state must be a numeric array');
-    }
-    const diffuseSlot = mesh.material.getTextureSlot('diffuse');
-    if (diffuseSlot?.transform === null || diffuseSlot === null) {
-        throw new Error('UV animation requires a diffuse slot with a mutable transform');
-    }
-    const [x = 0, y = 0, scaleX = 1, scaleY = 1] = state;
-    diffuseSlot.transform.set(scaleX, 0, 0, 0, scaleY, 0, x, y, 1);
-    mesh.material.invalidateData();
-});
-
 const geometry = new Hilo3d.PlaneGeometry();
 
 function createSpriteSheet(): HTMLCanvasElement {
@@ -91,13 +69,43 @@ for (let i = 0; i < h; i++) {
 }
 
 const anim = new Hilo3d.Animation({
-    animStatesList: [
-        new Hilo3d.AnimationStates({
-            interpolationType: 'STEP',
-            nodeName: rect.name,
-            keyTime,
-            states,
-            type: Hilo3d.AnimationStates.getType('UV_Translate')
+    rootNode: rect,
+    resolveBinding(node, property) {
+        if (node !== rect || property !== 'custom:uv') throw new Error('Unknown sprite binding');
+        const slot = mat.getTextureSlot('diffuse');
+        const transform = slot?.transform;
+        if (!transform) throw new Error('UV transform missing');
+        return {
+            reference: [0, 0, 1, 1],
+            write(value) {
+                transform.set(
+                    value[2] ?? 1,
+                    0,
+                    0,
+                    0,
+                    value[3] ?? 1,
+                    0,
+                    value[0] ?? 0,
+                    value[1] ?? 0,
+                    1
+                );
+                mat.invalidateData();
+            }
+        };
+    },
+    clips: [
+        new Hilo3d.AnimationClip({
+            name: 'swim',
+            tracks: [
+                new Hilo3d.AnimationTrack({
+                    interpolation: 'STEP',
+                    target: rect.animationId,
+                    times: keyTime,
+                    values: states.flat(),
+                    components: 4,
+                    property: 'custom:uv'
+                })
+            ]
         })
     ]
 });
