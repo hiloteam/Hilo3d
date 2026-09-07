@@ -3,6 +3,7 @@ import Ray from '../math/Ray';
 import Matrix4 from '../math/Matrix4';
 import type Vector3 from '../math/Vector3';
 import type Geometry from '../geometry/Geometry';
+import MorphGeometry from '../geometry/MorphGeometry';
 import type Material from '../material/MaterialInstance';
 import type { Renderer } from '../render/Renderer';
 import type { ShaderOptions } from '../render/types';
@@ -88,15 +89,20 @@ class Mesh extends Node {
      * @returns 返回clone的实例
      */
     override clone(isChild?: boolean): Mesh {
-        const node = super.clone(isChild);
+        const node = super.clone(true);
         if (!(node instanceof Mesh)) {
             throw new TypeError('Mesh subclasses must construct Mesh-compatible instances.');
         }
         Object.assign(node, {
-            geometry: this.geometry,
+            geometry:
+                this.geometry instanceof MorphGeometry ? this.geometry.clone() : this.geometry,
             material: this.material,
             instanceCount: this.instanceCount
         });
+        if (!isChild) {
+            if (this.anim) node.anim = this.anim.clone(node);
+            node.resetSkinnedMeshRootNode();
+        }
         return node;
     }
     /**

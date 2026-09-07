@@ -22,8 +22,9 @@ import math from '../math/math';
 import Matrix4 from '../math/Matrix4';
 import Matrix3 from '../math/Matrix3';
 import Color from '../math/Color';
-import AnimationStates, { type AnimationInterpolationType } from '../animation/AnimationStates';
-import Animation, { type AnimationClip } from '../animation/Animation';
+import { AnimationTrack, type AnimationInterpolation } from '../animation/AnimationTrack';
+import { AnimationClip } from '../animation/AnimationClip';
+import Animation from '../animation/Animation';
 import Camera from '../camera/Camera';
 import PerspectiveCamera from '../camera/PerspectiveCamera';
 import OrthographicCamera from '../camera/OrthographicCamera';
@@ -174,7 +175,6 @@ export type GLTFExtensionHandlerRegistry = Record<string, GLTFExtensionHandler>;
 export interface GLTFParserParameters {
     src?: string;
     defaultScene?: GLTFIndex;
-    isMultiAnim?: boolean;
     isProgressive?: boolean;
     isUnQuantizeInShader?: boolean;
     isLoadAllTextures?: boolean;
@@ -323,7 +323,7 @@ function readIndex(value: unknown): GLTFIndex | undefined {
     return typeof value === 'string' || typeof value === 'number' ? value : undefined;
 }
 
-function requireAnimationInterpolation(value: unknown): AnimationInterpolationType {
+function requireAnimationInterpolation(value: unknown): AnimationInterpolation {
     if (value === undefined || value === 'LINEAR') return 'LINEAR';
     if (value === 'STEP' || value === 'CUBICSPLINE') return value;
     throw new RangeError(`Unsupported animation interpolation value of type ${typeof value}.`);
@@ -506,7 +506,6 @@ class GLTFParser {
     json: GLTFRoot = createEmptyGLTFRoot();
     src = '';
     defaultScene: GLTFIndex | undefined;
-    isMultiAnim = true;
     isProgressive = false;
     isUnQuantizeInShader = true;
     isLoadAllTextures = false;
@@ -557,7 +556,6 @@ class GLTFParser {
         this.content = content;
         this.src = params.src ?? '';
         this.defaultScene = params.defaultScene;
-        this.isMultiAnim = params.isMultiAnim ?? true;
         this.isProgressive = params.isProgressive ?? false;
         this.isUnQuantizeInShader = params.isUnQuantizeInShader ?? true;
         this.isLoadAllTextures = params.isLoadAllTextures ?? false;
@@ -1677,11 +1675,13 @@ class GLTFParser {
 
     parseAnimations(): Animation | null {
         if (!this.json.animations) return null;
-        const clips: Record<string, AnimationClip | null> = {};
-        let states: AnimationStates[] = [];
-        const validAnimationIds: Record<string, boolean> = {};
+        const clips: AnimationClip[] = [];
+        const activeTargets = new Set<string>();
+        this.node.traverse(node => {
+            activeTargets.add(node.animationId);
+        });
         for (const [animationName, animation] of collectionEntries(this.json.animations)) {
-            const animationStates: AnimationStates[] = [];
+            const tracks: AnimationTrack[] = [];
             for (const channel of animation.channels) {
                 const sampler = requireItem(
                     animation.samplers,
@@ -1708,39 +1708,33 @@ class GLTFParser {
                     keyTime.length,
                     outputValues
                 );
-                const path = targetPath === 'rotation' ? 'quaternion' : targetPath;
-                const state = new AnimationStates({
-                    interpolationType: interpolation,
-                    nodeName: String(nodeId),
-                    keyTime,
-                    states: outputValues,
-                    type: AnimationStates.getType(path)
-                });
-                animationStates.push(state);
-                validAnimationIds[String(nodeId)] = true;
+                // glTF animations may target nodes outside the selected scene.
+                if (!activeTargets.has(String(nodeId))) continue;
+                const values = outputValues.flat();
+                const components =
+                    values.length / keyTime.length / (interpolation === 'CUBICSPLINE' ? 3 : 1);
+                tracks.push(
+                    new AnimationTrack({
+                        interpolation,
+                        target: String(nodeId),
+                        times: keyTime,
+                        values,
+                        components,
+                        property: targetPath
+                    })
+                );
             }
-            if (this.isMultiAnim && animationStates.length > 0) {
-                const range = this.animationRange(animationStates);
-                clips[animation.name ?? animationName] = {
-                    start: range.start,
-                    end: range.end,
-                    animStatesList: animationStates
-                };
-            } else states.push(...animationStates);
+            if (tracks.length) {
+                const baseName =
+                    animation.name === '' ? animationName : (animation.name ?? animationName);
+                let name = baseName;
+                let suffix = 1;
+                while (clips.some(clip => clip.name === name))
+                    name = `${baseName}#${String(suffix++)}`;
+                clips.push(new AnimationClip({ name, tracks }));
+            }
         }
-        if (this.isMultiAnim) {
-            states =
-                Object.values(clips).find((clip): clip is AnimationClip => clip !== null)
-                    ?.animStatesList ?? [];
-        }
-        return states.length === 0
-            ? null
-            : new Animation({
-                  rootNode: this.node,
-                  animStatesList: states,
-                  validAnimationIds,
-                  clips
-              });
+        return clips.length ? new Animation({ rootNode: this.node, clips }) : null;
     }
 
     private animationAccessor(animation: GLTFAnimation, reference: GLTFIndex): GLTFIndex {
@@ -1773,7 +1767,7 @@ class GLTFParser {
 
     private validateAnimationOutput(
         path: GLTFAnimationPath,
-        interpolation: AnimationInterpolationType,
+        interpolation: AnimationInterpolation,
         keyCount: number,
         output: AccessorArray
     ): void {
@@ -1804,21 +1798,6 @@ class GLTFParser {
                 `Animation ${path} output must contain ${String(frameCount)} VEC${String(componentCount)} values.`
             );
         }
-    }
-
-    private animationRange(states: readonly AnimationStates[]): { start: number; end: number } {
-        let start = Infinity;
-        let end = -Infinity;
-        for (const state of states) {
-            const first = state.keyTime[0];
-            const last = state.keyTime[state.keyTime.length - 1];
-            if (first !== undefined) start = Math.min(start, first);
-            if (last !== undefined) end = Math.max(end, last);
-        }
-        return {
-            start: Number.isFinite(start) ? start : 0,
-            end: Number.isFinite(end) ? end : 0
-        };
     }
 
     parseScene(): GLTFModel {

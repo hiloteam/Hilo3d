@@ -28,6 +28,9 @@ committed.
 | [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                     | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                                     |
 | [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                     | RHI design goals, invariants, migration phases, and acceptance criteria                                                             |
 
+- [Character animation and behavior composition](./ANIMATION_SYSTEM.md): pose mixer, locomotion,
+  layers, events and migration.
+
 ## Source-of-truth order
 
 When documents disagree, use this order:
