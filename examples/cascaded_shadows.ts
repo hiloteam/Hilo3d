@@ -10,6 +10,10 @@ import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 type ShadowMode = 0 | 1 | 4;
 type ViewName = 'courtyard' | 'detail' | 'distance' | 'water' | 'compare' | 'seascape';
 type TimeOfDay = 'morning' | 'dusk';
+const BACKEND_LABELS: Readonly<Record<Hilo3d.RendererBackend, string>> = {
+    webgl2: 'WebGL 2',
+    webgpu: 'WebGPU'
+};
 type ShadowBudget = 'study' | 'balanced';
 const SHADOW_MAP_SIZES: Readonly<Record<ShadowBudget, number>> = {
     study: 1024,
@@ -582,7 +586,7 @@ ticker.addTick({
         orbitControls.setView(tourPosition, tourTarget);
     }
 });
-backendBadge.textContent = `${renderer.backend === 'webgpu' ? 'WebGPU' : 'WebGL 2'} / 4× MSAA`;
+backendBadge.textContent = `${BACKEND_LABELS[renderer.backend]} / 4× MSAA`;
 document.body.dataset['csmMsaa'] = '4';
 document.body.dataset['csmAa'] = 'msaa';
 document.body.dataset['csmStrength'] = strengthControl.value;
