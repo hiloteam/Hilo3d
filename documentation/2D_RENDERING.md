@@ -223,24 +223,92 @@ listener 或每帧 picking 成本。
   color/depth/stencil，保证后续 Camera 能无损 load 前序内容，避免新建 MSAA
   attachment 无法加载已 resolve color 的隐式降级分支。
 
-## 示例
+## 2D Studio 交互案例
 
-- [`2d_sprite_animation.html`](../examples/2d_sprite_animation.html)：序列帧月蛾、Sprite 点击暂停，以及背景 2D
-  Camera、3D world Camera、2D UI Camera 的三层合成。
-- [`2d_text.html`](../examples/2d_text.html)：Canvas 多行文字、描边、低频动态分数与点击换文案。
-- [`2d_text_layout.html`](../examples/2d_text_layout.html)：中文/英文/数字混排的实测宽度响应式换行、最多行数、省略号、字距与段落间距。
-- [`2d_ui_button.html`](../examples/2d_ui_button.html)：ImageGen 邮政公会 atlas 驱动的可拉伸面板与四状态按钮。
-- [`2d_sprite_batch.html`](../examples/2d_sprite_batch.html)：单 atlas 的 4,096 Sprite；按 128
-  instances 自动形成 32 个 portable Sprite batch。
-- [`2d_sorting_town.html`](../examples/2d_sorting_town.html)：像素小镇中的 A* 自动寻路角色；建筑、树木与角色统一使用脚底世界 Y 作为
-  `zIndex`，演示稳定顺序与相邻 atlas 合批如何兼容。
+六个案例共用 `examples/shared/studio2d.ts` 的展厅导航与参数面板；场景主体始终由
+`Sprite`、`SlicedSprite`、`UiButton`、`Text2D`
+和共享 Stage 渲染。HTML 负责导航、参数输入和可访问的状态说明，不能用 DOM 画面代替引擎能力。
 
-![2D sorting town example](./assets/2d-sorting-town-example.png)
+| 案例                                                    | 展示能力                                                      | 可操作内容                                                       |
+| ------------------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [Luminous garden](../examples/2d_sprite_animation.html) | 八帧图集动画、Tint、透明倒影、父节点变换、2D/3D/2D 三相机合成 | 点击月蛾暂停、逐帧选择、帧率和缩放、换色、合成层开关             |
+| [Stardust atelier](../examples/2d_sprite_batch.html)    | 同图集共享材质合批、独立位置/尺寸/颜色/透明度                 | 512/2,048/4,096/8,192 精灵、旋涡/流带/轨道队形、速度、展开、暂停 |
+| [Letters to the moon](../examples/2d_text.html)         | Canvas 文字、描边、动态内容、点击 Text2D 命中                 | 编辑明信片、字号、描边、配色、寄信与分数反馈                     |
+| [The field journal](../examples/2d_text_layout.html)    | 中英混排、实测字宽、换行、最多行数、省略号、字距、段落间距    | 实时栏宽、截断行数、字距、排版边界；手机单列堆叠                 |
+| [The travel bureau](../examples/2d_ui_button.html)      | 面板与按钮九宫格、四状态 UiButton、尺寸变化后的真实命中       | 实际图集原图九分区、切线、宽高拉伸、悬停/按下/禁用、解锁目的地   |
+| [Maple afternoon](../examples/2d_sorting_town.html)     | 脚底 Y 排序、稳定场景顺序、四方向序列帧、A* 寻路              | 点击道路、自动巡游、路径提示、速度、时光配色、关闭排序作对照     |
+
+星群页面的“预期精灵批次”仅为
+`ceil(activeSprites / 128)`：4,096 个星种对应 32 个批次，8,192 个对应 64 个批次。它不包含文字、背景等额外绘制，也不是帧率或跨提交性能证据。精灵数组与随机种子在初始化时分配；切换数量只改显隐，动画只更新既有 Sprite。
+
+展厅使用 `ResizeObserver`
+按画布容器实测尺寸调整 Stage 与 Camera，而非假定整个 window 都是画布。明信片、售票界面与排版手帐在窄屏重新排布内容；侧栏参数移到画布下方。所有案例均保留
+`?backend=webgl2`、`?backend=webgpu` 与
+`auto`，在展厅内跳转时保留查询参数。动画与星群初始播放状态尊重 `prefers-reduced-motion`。
+
+### 小镇素材落地点与实体避让
+
+旧对象 atlas 第二行有 74–86
+px 底部透明留白，不能把整个格子的下边界当作地面。案例现在用逐帧有效像素矩形创建
+`SpriteFrame`，并以实际可见底边布置对象及设置
+`zIndex`。地图建筑和树木美术继续复用，位置按完整街区重新布置：北侧三间店面朝向主街，东南两间建筑朝向下方环路，西南为有开放草坪的花园，湖岸用树木和路牌组织边界。
+
+每个物件单独声明底座占地，寻路网格剔除与底座及 8
+px 余量相交的 tile；连通域过滤避免选择与主广场隔离的道路点。可打开“显示实体底座”，或者固定角色到“花坛后方／花坛前方”检查遮挡，再关闭排序观察错误顺序的对照效果。
+
+角色使用重新生成的平泽唯（Yui Hirasawa）像素图集：四行分别为前、左、右、后方向，各四帧。原图为 1254
+× 1254，行列起点存在半像素分界，脚底也有少量帧间偏移；每次 `gotoFrame()` 同步更新以源像素测得的
+`anchorY`。角色 world
+Y 始终表示实际鞋底位置，不受透明留白影响，无需修改引擎排序或制作第二套动画系统。
+
+### 九宫格素材与颜色
+
+售票案例提供 ImageGen 生成的 **Astral Guild · 翡翠鎏金** 与 **Rose Reliquary · 玫瑰秘藏**
+两套原始透明 PNG 图集，每套包含 up/hover/down/disabled 四种状态。`ornateUi2d.ts` 中的 `SpriteFrame`
+按每帧真实 bounds 取图；原图不进行色键去背或二次位图编辑。源像素 inset 为左右 154、上下 140，包住完整宝石与卷草。按钮按 1/7 显示，固定角部为 22
+× 20 个逻辑像素；大面板按 2/7 显示，固定角部为 44 × 40。
+
+大面板保留四角全部美术，四条边取均匀的单行/单列图集样本，中心取平面色块，避免将颗粒纹理拉成条纹。按钮仍采用完整原图九宫格。UiButton 的 label 独立抵消父节点缩放，保持正常字号和Canvas 分辨率。两套按钮在初始化时构建，换皮只切换显隐；状态切换继续复用原有九个分片。源图示意、当前皮肤、按钮切线与宽高控制联动；禁用/解锁状态在两套皮肤间保持一致。
+
+其他文字案例的纸张面板继续使用 `studio2d.ts` 中的 Canvas 矢量图集。合批页面改用 `stardustAtlas.ts`
+的 256 × 256 透明粒子图集，包括柔光、光点、四角星芒、椭圆光斑和光丝。小尺寸纹理通过 Sprite
+Tint 着色，适合密集星群，不依赖缩到几像素的复杂道具图标。
+
+合批页的 **RENDER DEBUG** 以半透明面板悬浮在画布左上角（不拦截指针），每 250 ms 读取
+`renderer.renderInfo.drawCount` 和 `faceCount`，显示实际 Draw
+calls、Triangles，并用观察窗口中的 tick 间隔计算 FPS 和 Frame
+interval。Draw 是整个应用帧的实际绘制统计；Triangles 沿用引擎的可见场景面数合同。Frame
+interval 是帧间隔，不是 GPU 计时。浏览器测试验证 512、4,096、8,192 精灵切换时实际 Draw 和 Triangles 增量，不能用预期批次数冒充真实调试指标。
+
+新生成的 `luminous-garden.png`、既有月蛾/星种/小镇图集，以及 Canvas
+UI 图集均以 sRGB 颜色存储进入线性合成；带动态 Tint
+alpha 的美术 Sprite 使用直通 alpha 混合，避免低 alpha 装饰仍保留完整 RGB 亮度。示例中的 Text2D 在首次上传前指定 sRGB 存储，以保留 CSS 字色。这些都是案例侧的现有 Texture 配置，没有新 shader 或独立渲染路径。
+
+ImageGen 主场景的完整提示词和素材来源见 [2D Studio art](../examples/image/2d/README.md)。
+
+![Luminous garden sprite animation](./assets/2d-sprite-animation-example.png)
 
 ![2D responsive text layout example](./assets/2d-text-layout-example.png)
 
 ![2D nine-slice UI button example](./assets/2d-ui-button-example.png)
 
-三套 “Moonlit Conservatory”、三套 “Maple Post Town”与一套 “Postal Guild
-UI”美术资源由 ImageGen 生成；小镇地表以单张静态纹理上传一次，透明序列帧条与 UI 图集经过 Pillow 做色键去背、边缘消色与 alpha 检查。示例可用
-`?backend=webgl2` 或 `?backend=webgpu` 显式选择后端。
+![Rose Reliquary nine-slice UI](./assets/2d-ui-button-rose-example.png)
+
+![Stardust renderer debug panel](./assets/2d-sprite-batch-example.png)
+
+![2D sorting town example](./assets/2d-sorting-town-example.png)
+
+### 验证入口
+
+`test/ui/examples.spec.ts` 中的 `2D studio`
+用例覆盖双后端逐帧切换、月蛾点击、星群数量与队形、文字编辑和换行、九宫格悬停/按下/禁用/解锁与缩放命中、道路规划及六页手机布局；原有通用案例测试继续校验实际 WebGL2/WebGPU
+draw、图像呈现、资源请求和 GPU 错误。
+
+```sh
+npx playwright test test/ui/examples.spec.ts --project=chromium --grep '2D studio|2d_.*renders through'
+npx vitest run test/spec/2d test/spec/camera/Camera2D.test.ts
+```
+
+若默认 4173 端口已有其他工作目录的服务，必须使用 `HILO3D_PLAYWRIGHT_PORT`
+指向本工作目录的独立服务；不能把另一份源码的浏览器结果作为当前改动证据。上述浏览器矩阵是 Chromium
+SwiftShader 便携覆盖，不替代物理 GPU 的性能和兼容性验收。

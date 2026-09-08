@@ -1204,3 +1204,200 @@ test.describe('WebGPU render-health browser contract', () => {
         });
     });
 });
+
+/** Canvas coordinates follow the exhibit's centered 1000 × 620 design space. */
+async function studioPoint(
+    page: Page,
+    x: number,
+    y: number,
+    designWidth = 1000,
+    designHeight = 620
+): Promise<{ x: number; y: number }> {
+    const bounds = await page.locator('#container canvas').boundingBox();
+    if (!bounds) throw new Error('2D Studio canvas is missing');
+    const scale = Math.min(bounds.width / designWidth, bounds.height / designHeight);
+    return {
+        x: bounds.x + (bounds.width - designWidth * scale) / 2 + x * scale,
+        y: bounds.y + (bounds.height - designHeight * scale) / 2 + y * scale
+    };
+}
+
+for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`2D studio animation and composition controls @${backend}`, async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.goto(`2d_sprite_animation.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        await page.getByRole('button', { name: 'Frame 4', exact: true }).click();
+        await expect(page.locator('body')).toHaveAttribute('data-frame', '3');
+        await expect(page.locator('body')).toHaveAttribute('data-playing', 'false');
+        const frameFour = await page.locator('#container canvas').screenshot();
+        await page.getByRole('button', { name: 'Frame 1', exact: true }).click();
+        await expect(page.locator('body')).toHaveAttribute('data-frame', '0');
+        expect((await page.locator('#container canvas').screenshot()).equals(frameFour)).toBe(
+            false
+        );
+        const moth = await studioPoint(page, 500, 315);
+        await page.mouse.click(moth.x, moth.y);
+        await expect(page.locator('body')).toHaveAttribute('data-playing', 'true');
+        await page.getByRole('checkbox', { name: '显示 3D 天体' }).uncheck();
+        await expect(page.getByRole('checkbox', { name: '显示 3D 天体' })).not.toBeChecked();
+        for (const link of await page.locator('.studio-tab').all()) {
+            await expect(link).toHaveAttribute('href', new RegExp(`backend=${backend}`));
+        }
+    });
+
+    test(`2D studio batch population and formations @${backend}`, async ({ page }) => {
+        test.slow();
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await page.goto(`2d_sprite_batch.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-triangle-count', /^[1-9]\d*$/u);
+        const initialTriangles = Number(
+            await page.locator('body').getAttribute('data-triangle-count')
+        );
+        const initialDraws = Number(await page.locator('body').getAttribute('data-draw-count'));
+        await expect(page.locator('#container .studio-render-debug')).toBeVisible();
+        await expect(page.locator('.studio-inspector .studio-render-debug')).toHaveCount(0);
+        await expect(page.locator('.studio-inspector')).not.toContainText('BATCH NOTES');
+        await page.getByLabel('精灵数量', { exact: true }).selectOption('512');
+        await expect(page.locator('body')).toHaveAttribute('data-sprite-count', '512');
+        await expect(page.locator('body')).toHaveAttribute(
+            'data-triangle-count',
+            String(initialTriangles - 7168)
+        );
+        await expect(page.locator('body')).toHaveAttribute(
+            'data-draw-count',
+            String(initialDraws - 28)
+        );
+        const spiral = await page.locator('#container canvas').screenshot();
+        await page.getByLabel('星群队形', { exact: true }).selectOption('Ribbon river');
+        await expect(page.locator('body')).toHaveAttribute('data-formation', 'Ribbon river');
+        expect((await page.locator('#container canvas').screenshot()).equals(spiral)).toBe(false);
+        await page.getByLabel('精灵数量', { exact: true }).selectOption('8192');
+        await expect(page.locator('body')).toHaveAttribute('data-sprite-count', '8192');
+        await expect(page.locator('body')).toHaveAttribute(
+            'data-triangle-count',
+            String(initialTriangles + 8192)
+        );
+        await expect(page.locator('body')).toHaveAttribute(
+            'data-draw-count',
+            String(initialDraws + 32)
+        );
+        await expect(
+            page.locator('.studio-metric').filter({ hasText: '预期精灵批次' })
+        ).toContainText('64');
+    });
+
+    test(`2D studio nine-slice pointer states and resized hit regions @${backend}`, async ({
+        page
+    }) => {
+        await page.goto(`2d_ui_button.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        await expect(page.locator('.studio-slice-source span')).toHaveCount(9);
+        await expect(page.getByRole('checkbox', { name: '显示九宫格切线' })).toBeChecked();
+        const button = await studioPoint(page, 650, 296);
+        await page.mouse.move(button.x, button.y);
+        await expect(page.locator('body')).toHaveAttribute('data-button-state', 'hover');
+        await page.mouse.down();
+        await expect(page.locator('body')).toHaveAttribute('data-button-state', 'down');
+        await page.mouse.up();
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '1');
+        const locked = await studioPoint(page, 650, 452);
+        await page.mouse.click(locked.x, locked.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '1');
+        await page.getByRole('checkbox', { name: '解锁群星山谷' }).check();
+        await page.mouse.click(locked.x, locked.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '2');
+        await page.getByLabel('按钮宽度', { exact: true }).fill('210');
+        await page.getByLabel('按钮高度', { exact: true }).fill('74');
+        await waitForStableAnimationFrames(page);
+        const outside = await studioPoint(page, 795, 296);
+        await page.mouse.click(outside.x, outside.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '2');
+        await page.mouse.click(button.x, button.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '3');
+        await page.getByLabel('按钮宽度', { exact: true }).fill('410');
+        await page.getByLabel('按钮高度', { exact: true }).fill('42');
+        await waitForStableAnimationFrames(page);
+        await page.mouse.click(outside.x, outside.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '4');
+        await page.getByLabel('九宫格美术皮肤').selectOption('Rose Reliquary · 玫瑰秘藏');
+        await expect(page.locator('body')).toHaveAttribute(
+            'data-ui-skin',
+            'Rose Reliquary · 玫瑰秘藏'
+        );
+        await waitForStableAnimationFrames(page);
+        await page.mouse.click(outside.x, outside.y);
+        await expect(page.locator('body')).toHaveAttribute('data-dispatches', '5');
+    });
+
+    test(`2D studio editable text, wrapping and town routing @${backend}`, async ({ page }) => {
+        await page.goto(`2d_text.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        const before = await page.locator('#container canvas').screenshot();
+        await page.getByLabel('Postcard message').fill('月光来信 / A new journey.');
+        await page.getByRole('button', { name: '寄出明信片 / Send' }).click();
+        await expect(page.locator('body')).toHaveAttribute('data-letters-sent', '1');
+        expect((await page.locator('#container canvas').screenshot()).equals(before)).toBe(false);
+        await page.goto(`2d_text_layout.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        const wide = await page.locator('#container canvas').screenshot();
+        await page.getByLabel('卡片宽度', { exact: true }).fill('260');
+        await expect(page.locator('body')).toHaveAttribute('data-text-width', '208');
+        await page.getByLabel('摘录最多行数', { exact: true }).fill('1');
+        expect((await page.locator('#container canvas').screenshot()).equals(wide)).toBe(false);
+        await page.goto(`2d_sorting_town.html?backend=${backend}`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-town-character', 'yui-hirasawa');
+        await page.getByLabel('角色位置对照').selectOption('花坛后方');
+        await expect(page.locator('body')).toHaveAttribute('data-town-pose', '花坛后方');
+        await waitForStableAnimationFrames(page);
+        const behind = await page.locator('#container canvas').screenshot();
+        await page.getByRole('checkbox', { name: '启用脚底 Y 排序' }).uncheck();
+        await waitForStableAnimationFrames(page);
+        expect((await page.locator('#container canvas').screenshot()).equals(behind)).toBe(false);
+        await page.getByRole('checkbox', { name: '启用脚底 Y 排序' }).check();
+        await page.getByLabel('角色位置对照').selectOption('花坛前方');
+        await expect(page.locator('body')).toHaveAttribute('data-town-pose', '花坛前方');
+        await page.getByLabel('角色位置对照').selectOption('自由寻路');
+        await page.getByRole('checkbox', { name: '自动巡游' }).uncheck();
+        await page.getByRole('checkbox', { name: '启用脚底 Y 排序' }).uncheck();
+        await expect(page.locator('body')).toHaveAttribute('data-sorting', 'false');
+        await page.locator('#container canvas').click({ position: { x: 250, y: 250 } });
+        await expect(page.locator('body')).toHaveAttribute('data-route-mode', 'player');
+    });
+}
+
+test('2D studio phone layout keeps exhibits and controls inside the viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const path of [
+        '2d_sprite_animation',
+        '2d_sprite_batch',
+        '2d_text',
+        '2d_text_layout',
+        '2d_ui_button',
+        '2d_sorting_town'
+    ]) {
+        await page.goto(`${path}.html?backend=webgl2`);
+        await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+            390
+        );
+        if (path === '2d_ui_button') {
+            const point = await studioPoint(page, 230, 489, 460, 780);
+            await page.mouse.click(point.x, point.y);
+            await expect(page.locator('body')).toHaveAttribute('data-dispatches', '1');
+        }
+        if (path === '2d_text') {
+            const point = await studioPoint(page, 130, 626, 460, 790);
+            await page.mouse.click(point.x, point.y);
+            await expect(page.locator('body')).toHaveAttribute('data-letters-sent', '1');
+        }
+        for (const selector of ['#container', '.studio-inspector']) {
+            const bounds = await page.locator(selector).boundingBox();
+            if (!bounds) throw new Error(`${path}: ${selector} is missing`);
+            expect(bounds.x).toBeGreaterThanOrEqual(0);
+            expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+        }
+    }
+});
