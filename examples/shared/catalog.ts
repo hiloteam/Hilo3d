@@ -105,6 +105,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'webgl_support.html': 'Graphics Backend Support',
     'compute_gpu_driven.html': 'WebGPU Compute & GPU-Driven Rendering',
     'clustered_forward_plus_sponza.html': 'Sponza Clustered Forward+ Lighting Lab',
+    'clustered_forward_plus_lumen.html': 'Lumen — A Clustered Forward+ Light Sculpture',
     'volumetric_neon_reliquary.html': 'Neon Reliquary — Froxel Volumetric Lighting',
     'stormfront_observatory.html': 'Tempest Reliquary — Physical Atmosphere',
     'shadow_residency_sanctum.html': 'Umbra Sanctum — Shadow Page Residency',
@@ -147,6 +148,8 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
         'See Forward+, Gaussian splats, and a curl-noise Hilo3D GPU particle wordmark stay on the public Render Graph.',
     'clustered_forward_plus_sponza.html':
         'Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.',
+    'clustered_forward_plus_lumen.html':
+        'Illuminate rounded resin sculptures and sixteen gallery fins with up to 192 lights, four sweeping moving heads, three palettes, and GPU clustered shading.',
     'volumetric_neon_reliquary.html':
         'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
     'stormfront_observatory.html':
@@ -255,6 +258,7 @@ const FEATURED_PATHS = new Set([
     'video.html',
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',
+    'clustered_forward_plus_lumen.html',
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
     'shadow_residency_sanctum.html',
@@ -385,6 +389,7 @@ function createEntry(path: string): ExampleCatalogEntry {
             ? WEBGL2_ONLY
             : path === 'bloom.html' ||
                 path === 'clustered_forward_plus_sponza.html' ||
+                path === 'clustered_forward_plus_lumen.html' ||
                 path === 'volumetric_neon_reliquary.html' ||
                 path === 'stormfront_observatory.html' ||
                 path === 'shadow_residency_sanctum.html' ||

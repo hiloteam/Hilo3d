@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta
+            name="description"
+            content="LUMEN 光之庭 — 看见光源，在掌心般的庭院里玩光。探索 Hilo3D WebGPU Forward+ 的多灯光与色彩交叠。"
+        />
+        <meta name="theme-color" content="#10191a" />
+        <title>LUMEN · 光之庭 — Hilo3D</title>
+        <link rel="stylesheet" href="./clustered_forward_plus_lumen.css" />
+    </head>
+    <body>
+        <main class="exhibition" aria-label="LUMEN 光之庭交互灯光展览">
+            <div id="container" aria-label="可拖动旋转、滚轮缩放的三维灯光庭院"></div>
+            <div class="vignette" aria-hidden="true"></div>
+
+            <header class="masthead">
+                <a class="wordmark" href="./index.html" aria-label="返回 Hilo3D 案例">
+                    <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span>HILO3D <span class="wordmark-divider">/</span> LIGHT STUDIES</span>
+                </a>
+                <div class="edition">INTERACTIVE EXHIBITION <span>№ 001</span></div>
+            </header>
+
+            <section class="introduction" aria-labelledby="exhibitionTitle">
+                <div class="eyebrow"><span></span> A STUDY IN RADIANCE</div>
+                <h1 id="exhibitionTitle">LUMEN<span class="title-period">.</span></h1>
+                <div class="chinese-title">光<span>之</span>庭</div>
+                <p class="introduction-copy">看见每一盏灯，<br />在掌心般的庭院里玩光。</p>
+                <div class="light-legend" aria-label="辨认灯具与受光表面">
+                    <span><i class="legend-fixture" aria-hidden="true"></i>灯具</span>
+                    <span><i class="legend-surface" aria-hidden="true"></i>受光表面</span>
+                </div>
+                <p class="scene-medium">LIGHT · RESIN · COLOUR</p>
+            </section>
+
+            <aside class="live-status" aria-label="实时渲染状态">
+                <div class="backend-badge">
+                    <span class="live-dot"></span> WEBGPU <b>FORWARD+</b>
+                </div>
+                <div class="live-metrics">
+                    <div><strong id="metricLights">144</strong><span>LIGHTS / 光源</span></div>
+                    <span class="metric-divider" aria-hidden="true"></span>
+                    <div><strong id="metricFps">—</strong><span>FPS / 实时</span></div>
+                </div>
+                <p class="live-caption">MANY LIGHTS. ONE LIVING SPACE.</p>
+            </aside>
+
+            <aside
+                id="diagnosticsPanel"
+                class="diagnostics-panel"
+                aria-label="Forward+ 诊断"
+                hidden
+            >
+                <div class="diagnostics-heading">
+                    <span>CLUSTERED FORWARD+</span><span>LIVE</span>
+                </div>
+                <p class="cluster-layout">GRID 32PX <span>×</span> 24 Z-SLICES</p>
+                <dl>
+                    <div>
+                        <dt>LIGHT LINKS <span>簇光源关联</span></dt>
+                        <dd id="metricLinks">—</dd>
+                    </div>
+                    <div>
+                        <dt>GPU OBJECTS <span>可见物体</span></dt>
+                        <dd id="metricVisible">—</dd>
+                    </div>
+                    <div>
+                        <dt>OVERFLOW <span>溢出</span></dt>
+                        <dd id="metricOverflow">—</dd>
+                    </div>
+                </dl>
+                <p class="diagnostics-note">将空间划分为簇，让每个像素只计算附近的光。</p>
+            </aside>
+
+            <section class="control-area" aria-label="灯光控制">
+                <div class="control-area-label">
+                    <span>COMPOSE THE LIGHT</span><span>调配光色，观察交叠</span>
+                </div>
+                <fieldset id="controlsFieldset" class="control-dock" disabled>
+                    <legend class="visually-hidden">灯光与视角</legend>
+                    <div class="control-group palette-group">
+                        <div class="control-label">氛围 <span>PALETTE</span></div>
+                        <div class="palette-options" role="group" aria-label="灯光配色">
+                            <button
+                                type="button"
+                                class="palette-button"
+                                data-palette="nocturne"
+                                aria-pressed="true"
+                            >
+                                <span
+                                    class="palette-swatch swatch-nocturne"
+                                    aria-hidden="true"
+                                ></span
+                                ><span>月映</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="palette-button"
+                                data-palette="ember"
+                                aria-pressed="false"
+                            >
+                                <span class="palette-swatch swatch-ember" aria-hidden="true"></span
+                                ><span>余烬</span>
+                            </button>
+                            <button
+                                type="button"
+                                class="palette-button"
+                                data-palette="spectrum"
+                                aria-pressed="false"
+                            >
+                                <span
+                                    class="palette-swatch swatch-spectrum"
+                                    aria-hidden="true"
+                                ></span
+                                ><span>霓虹</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="control-group slider-group">
+                        <label class="control-label" for="lightControl"
+                            >光源数量
+                            <output id="lightOutput" for="lightControl">144</output></label
+                        >
+                        <input
+                            id="lightControl"
+                            type="range"
+                            min="0"
+                            max="192"
+                            step="24"
+                            value="144"
+                        />
+                        <div class="range-endpoints" aria-hidden="true">
+                            <span>0 盏</span><span>192 盏</span>
+                        </div>
+                    </div>
+                    <div class="control-group slider-group intensity-group">
+                        <label class="control-label" for="intensityControl"
+                            >光的强度
+                            <output id="intensityOutput" for="intensityControl">100%</output></label
+                        >
+                        <input
+                            id="intensityControl"
+                            type="range"
+                            min="0"
+                            max="200"
+                            step="10"
+                            value="100"
+                        />
+                        <div class="range-endpoints" aria-hidden="true">
+                            <span>熄灭照明</span><span>叠加光色</span>
+                        </div>
+                    </div>
+                    <div class="control-actions" role="group" aria-label="场景选项">
+                        <button
+                            id="motionToggle"
+                            class="action-button"
+                            type="button"
+                            aria-pressed="true"
+                            title="暂停或继续四盏扫光灯与灯光律动"
+                        >
+                            <span class="motion-icon" aria-hidden="true"></span
+                            ><span>动态扫光</span>
+                        </button>
+                        <button
+                            id="viewButton"
+                            class="action-button"
+                            type="button"
+                            title="切换庭院视角"
+                        >
+                            <svg viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M3 6V3h3M14 3h3v3M17 14v3h-3M6 17H3v-3" />
+                                <circle cx="10" cy="10" r="3" /></svg
+                            ><span>换个角度</span>
+                        </button>
+                        <button
+                            id="diagnosticsToggle"
+                            class="action-button"
+                            type="button"
+                            aria-pressed="false"
+                            aria-controls="diagnosticsPanel"
+                            title="显示 Forward+ 实时数据"
+                        >
+                            <svg viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M3 17V9M10 17V3M17 17v-5" /></svg
+                            ><span>渲染数据</span>
+                        </button>
+                    </div>
+                </fieldset>
+            </section>
+
+            <footer class="exhibition-footer">
+                <p class="artwork-caption"><span>01</span> LUMEN PLAYHOUSE <i>/</i> 玩光之庭</p>
+                <p class="interaction-hint">
+                    <span class="orbit-hint-icon" aria-hidden="true">↔</span> 拖动探索
+                    <span class="hint-divider">·</span> 滚轮缩放
+                </p>
+                <a class="return-link" href="./index.html"
+                    >探索更多 <span aria-hidden="true">↗</span></a
+                >
+            </footer>
+
+            <div id="loadingPanel" class="loading-panel" role="status" aria-live="polite">
+                <div class="loading-art" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                </div>
+                <p class="loading-kicker">LUMEN / 光之庭</p>
+                <h2 id="loadingTitle">正在点亮庭院</h2>
+                <p id="loadingDetail">准备 WebGPU、材质与光。请稍候。</p>
+                <div class="loading-line" aria-hidden="true"></div>
+            </div>
+        </main>
+        <script type="module" src="./clustered_forward_plus_lumen.ts"></script>
+    </body>
+</html>
