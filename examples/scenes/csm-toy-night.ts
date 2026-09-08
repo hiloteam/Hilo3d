@@ -1,6 +1,7 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import { environmentMaterialDefaults } from '../shared/environment';
 import type { EnvironmentMaps } from '../shared/init';
+import { CsmToyTransition } from './csm-toy-transition';
 
 type Point3 = readonly [number, number, number];
 type ProfilePoint = readonly [number, number];
@@ -9,10 +10,11 @@ interface LightFade {
     readonly targetAmount: number;
     readonly startDelay: number;
     readonly lensMaterial: Hilo3d.PBRMaterial | null;
+    readonly lensEmission: Point3;
+    readonly transition: CsmToyTransition;
 }
 
-const LIGHT_FADE_DURATION = 350;
-const LIGHT_SEQUENCE_DURATION = 1250 + LIGHT_FADE_DURATION;
+const LIGHT_FADE_DURATION = 1800;
 
 /** Rounded, turned toy parts share one radial mesh instead of faceted cylinders. */
 function turnedPart(profile: readonly ProfilePoint[]): Hilo3d.Geometry {
@@ -149,7 +151,8 @@ export function createCsmToyNight(
         startDelay: number,
         lensMaterial: Hilo3d.PBRMaterial | null,
         owner = parent,
-        shadowNear = 0.1
+        shadowNear = 0.1,
+        lensEmission: Point3 = [3.8, 1.7, 0.42]
     ): Hilo3d.SpotLight => {
         const shadowConfiguration: Hilo3d.LightShadowOptions = {
             width: 512,
@@ -172,15 +175,22 @@ export function createCsmToyNight(
             enabled: false,
             shadow: shadowConfiguration
         }).addTo(owner);
-        lightFades.push({ light, targetAmount: amount, startDelay, lensMaterial });
+        lightFades.push({
+            light,
+            targetAmount: amount,
+            startDelay,
+            lensMaterial,
+            lensEmission,
+            transition: new CsmToyTransition(0, LIGHT_FADE_DURATION)
+        });
         shadowConfigurations.set(light, shadowConfiguration);
         return light;
     };
 
     const lampPlan = [
-        { name: 'Station', position: [-3, 0.84, 16], height: 5.9, startDelay: 250 },
-        { name: 'Bridge', position: [10, 0.84, -5], height: 6.4, startDelay: 500 },
-        { name: 'Harbor', position: [9, 0.84, -30], height: 6.1, startDelay: 750 }
+        { name: 'Station', position: [-3, 0.84, 16], height: 5.9, startDelay: 600 },
+        { name: 'Bridge', position: [10, 0.84, -5], height: 6.4, startDelay: 1200 },
+        { name: 'Harbor', position: [9, 0.84, -30], height: 6.1, startDelay: 1800 }
     ] as const;
     for (const lamp of lampPlan) {
         const owner = new Hilo3d.Node({
@@ -190,7 +200,7 @@ export function createCsmToyNight(
             z: lamp.position[2]
         }).addTo(parent);
         const stemHeight = lamp.height - 0.76;
-        const glass = material([0.94, 0.73, 0.37]);
+        const glass = material([0.92, 0.86, 0.66]);
         mesh('ToyStreetlampPole', pole, mint, [0, 0, 0], [1, stemHeight / 5.1, 1], owner);
         mesh('ToyStreetlampFootRing', collar, brass, [0, 0.45, 0], [1, 1, 1], owner);
         mesh('ToyStreetlampCollar', collar, brass, [0, stemHeight - 0.04, 0], [1, 1, 1], owner);
@@ -217,18 +227,21 @@ export function createCsmToyNight(
             // The upright globe has no side-facing optic: its pool is centred vertically below it.
             [0, stemHeight + 0.36, 0],
             [0, -1, 0],
-            85,
+            62,
             12,
-            18,
-            30,
+            // A small core and wide penumbra let the pool fade gently into the path.
+            6,
+            36,
             lamp.startDelay,
             glass,
             owner,
             // A point approximation must not turn the globe's immediate support into a huge
             // dark cone. Start below the near fixture; bridge/rail/tree casters remain in range.
-            1.2
+            1.2,
+            [2.4, 1.85, 1.05]
         );
-        streetlight.color.set(1, 0.48, 0.16, 1);
+        // Warm ivory street lighting stays distinct from the amber house windows and train.
+        streetlight.color.set(1, 0.78, 0.52, 1);
     }
 
     // The locomotive's local +Z is its rail tangent; parenting also rotates the shadow camera.
@@ -250,7 +263,7 @@ export function createCsmToyNight(
         22,
         18,
         28,
-        1000,
+        2400,
         headlightGlass,
         engine
     );
@@ -263,11 +276,10 @@ export function createCsmToyNight(
         75,
         13,
         21,
-        1250,
+        3000,
         null
     );
     let enabled = false;
-    let transitionStartedAt = 0;
     let transitionComplete = true;
     let beaconPhase = -0.35;
     return {
@@ -277,14 +289,12 @@ export function createCsmToyNight(
         setEnabled(value: boolean): void {
             if (value === enabled) return;
             enabled = value;
-            transitionStartedAt = performance.now();
-            transitionComplete = !value;
+            const now = performance.now();
+            transitionComplete = false;
             // Keep one light-count/shadow-layout variant throughout the entire dusk sequence.
             for (const fade of lightFades) {
-                fade.light.enabled = value;
-                fade.light.amount = 0;
-                fade.light.isDirty = true;
-                fade.lensMaterial?.emissionFactor.set(0, 0, 0, 1);
+                fade.transition.setTarget(value ? 1 : 0, now, value ? fade.startDelay : 0);
+                if (value) fade.light.enabled = true;
             }
         },
         setShadowEnabled(value: boolean): void {
@@ -292,28 +302,25 @@ export function createCsmToyNight(
                 light.shadow = value ? (shadowConfigurations.get(light) ?? null) : null;
         },
         tick(dt: number, motion: boolean): void {
-            if (!enabled) return;
             if (!transitionComplete) {
                 // A paused train or a slow frame must not stretch the switch-on sequence.
-                const elapsed = performance.now() - transitionStartedAt;
+                const now = performance.now();
+                transitionComplete = true;
                 for (const fade of lightFades) {
-                    const progress = Math.min(
-                        1,
-                        Math.max(0, (elapsed - fade.startDelay) / LIGHT_FADE_DURATION)
-                    );
-                    const intensity = progress * progress * (3 - 2 * progress);
+                    const intensity = fade.transition.sample(now);
+                    transitionComplete &&= fade.transition.complete;
                     fade.light.amount = fade.targetAmount * intensity;
                     fade.light.isDirty = true;
+                    if (!enabled && fade.transition.complete) fade.light.enabled = false;
                     fade.lensMaterial?.emissionFactor.set(
-                        3.8 * intensity,
-                        1.7 * intensity,
-                        0.42 * intensity,
+                        fade.lensEmission[0] * intensity,
+                        fade.lensEmission[1] * intensity,
+                        fade.lensEmission[2] * intensity,
                         1
                     );
                 }
-                transitionComplete = elapsed >= LIGHT_SEQUENCE_DURATION;
             }
-            if (!motion) return;
+            if (!enabled || !motion) return;
             beaconPhase += (Math.min(dt, 50) / 1000) * 0.16;
             lighthouse.direction.set(Math.sin(beaconPhase), -0.4, Math.cos(beaconPhase));
             lighthouse.isDirty = true;

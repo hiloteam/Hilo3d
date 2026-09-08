@@ -1,4 +1,5 @@
 import * as Hilo3d from '../../src/Hilo3d';
+import { CsmToyTransition } from './csm-toy-transition';
 
 /** Weather is independent of both the train controls and the current shadow technique. */
 export type WeatherType = 'clear' | 'rain' | 'snow' | 'storm';
@@ -292,6 +293,7 @@ export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let weather: WeatherType = 'clear';
     let motionEnabled = true;
+    const dusk = new CsmToyTransition(0, 5000);
     let elapsed = 0;
     let stormElapsed = 0;
     let nextStrike = 6.2;
@@ -330,12 +332,13 @@ export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
             motionEnabled = enabled;
         },
         setDusk(enabled: boolean): void {
-            block.set('u_weatherDusk', enabled ? 1 : 0);
+            dusk.setTarget(enabled ? 1 : 0);
         },
         triggerLightning(): void {
             startLightning();
         },
         tick(dt: number): void {
+            block.set('u_weatherDusk', dusk.sample());
             const seconds = Math.max(0, Math.min(dt, 50)) / 1000;
             // A manually triggered flash always decays, including while motion is paused.
             if (pulseRemaining > 0) {

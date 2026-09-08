@@ -1,4 +1,5 @@
 import * as Hilo3d from '../../src/Hilo3d';
+import { CsmToyTransition } from './csm-toy-transition';
 
 function shaderChunk(name: string): string {
     const source = Hilo3d.Shader.shaders[name];
@@ -297,6 +298,7 @@ export function createCsmToySurroundings(parent: Hilo3d.Node): CsmToySurrounding
     }).addTo(parent);
     let elapsed = 0;
     let motionEnabled = true;
+    const dusk = new CsmToyTransition(0, 5000);
     return {
         setWeather(type: 'clear' | 'rain' | 'snow' | 'storm'): void {
             block.set(
@@ -308,9 +310,10 @@ export function createCsmToySurroundings(parent: Hilo3d.Node): CsmToySurrounding
             block.set('u_lightningFlash', value);
         },
         setDusk(enabled: boolean): void {
-            block.set('u_seasideDusk', enabled ? 1 : 0);
+            dusk.setTarget(enabled ? 1 : 0);
         },
         tick(dt: number): void {
+            block.set('u_seasideDusk', dusk.sample());
             if (!motionEnabled) return;
             elapsed += Math.max(0, Math.min(dt, 50)) / 1000;
             block.set('u_seasideTime', elapsed);
