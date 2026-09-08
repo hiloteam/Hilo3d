@@ -30,6 +30,8 @@ committed.
 
 - [Character animation and behavior composition](./ANIMATION_SYSTEM.md): pose mixer, locomotion,
   layers, events and migration.
+- [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md): original Blender sculpture, 192 local lights,
+  Clustered Forward+ controls, GPU diagnostics, and browser acceptance.
 
 ## Source-of-truth order
 

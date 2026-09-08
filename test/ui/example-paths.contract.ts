@@ -48,6 +48,10 @@ const volumetricReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./volumetric-lighting.spec.ts', import.meta.url)),
     'utf8'
 );
+const lumenReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./clustered-forward-plus-lumen.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -67,11 +71,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(92);
+        expect(examplePaths).toHaveLength(93);
     });
 
-    it('expands 92 pages into the complete 171-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(171);
+    it('expands 93 pages into the complete 172-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(172);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -81,6 +85,7 @@ describe('example release matrix contract', () => {
                     ? ['webgl2']
                     : path === 'bloom.html' ||
                         path === 'clustered_forward_plus_sponza.html' ||
+                        path === 'clustered_forward_plus_lumen.html' ||
                         path === 'volumetric_neon_reliquary.html' ||
                         path === 'stormfront_observatory.html' ||
                         path === 'shadow_residency_sanctum.html' ||
@@ -103,7 +108,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(90);
+        expect(catalog).toHaveLength(91);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -113,7 +118,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(78);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(89);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(90);
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -122,6 +127,11 @@ describe('example release matrix contract', () => {
         expect(
             examplesForBackend(catalog, 'webgl2').some(
                 entry => entry.path === 'clustered_forward_plus_sponza.html'
+            )
+        ).toBe(false);
+        expect(
+            examplesForBackend(catalog, 'webgl2').some(
+                entry => entry.path === 'clustered_forward_plus_lumen.html'
             )
         ).toBe(false);
         expect(
@@ -225,6 +235,7 @@ describe('example release matrix contract', () => {
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
             'bloom.html',
             'clustered_forward_plus_sponza.html',
+            'clustered_forward_plus_lumen.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -240,6 +251,7 @@ describe('example release matrix contract', () => {
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
             'cascaded_shadows.html',
             'clustered_forward_plus_sponza.html',
+            'clustered_forward_plus_lumen.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -247,6 +259,7 @@ describe('example release matrix contract', () => {
         ]);
         expect(exampleUsesDedicatedReleaseTest('cascaded_shadows.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_lumen.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shadow_residency_sanctum.html')).toBe(true);
@@ -274,6 +287,9 @@ describe('example release matrix contract', () => {
         expect(volumetricReleaseTestSource).toContain(
             'renders stable, visually material froxel lighting in Neon Reliquary'
         );
+        expect(lumenReleaseTestSource).toContain(
+            'Lumen renders material multi-light changes through Clustered Forward+ @webgpu'
+        );
         expect(dedicatedReleaseTestSource).toContain(
             "for (const backend of ['webgl2', 'webgpu'] as const)"
         );
@@ -286,6 +302,7 @@ describe('example release matrix contract', () => {
             'resourceManagerTest.html': 'resource-diagnostics'
         });
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
+            'clustered_forward_plus_lumen.html': { test: '1' },
             'compute_eclipse_shrine.html': { test: '1' },
             'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' },
             'ground_truth_ambient_occlusion.html': { test: '1' },
@@ -316,6 +333,12 @@ describe('example release matrix contract', () => {
         );
         expect(packageJson.scripts?.['test:browser:ci']).toBe(
             'npm run test:ui:webgl2 && npm run test:visual:webgl2'
+        );
+        expect(packageJson.scripts?.['test:webgpu:native']).toContain(
+            'test/ui/clustered-forward-plus-lumen.spec.ts'
+        );
+        expect(packageJson.scripts?.['test:webgpu']).not.toContain(
+            'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
         expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
             'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
