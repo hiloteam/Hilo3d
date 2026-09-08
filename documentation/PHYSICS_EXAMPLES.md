@@ -106,7 +106,9 @@ Hz 外，其余五章使用 120 Hz 固定步长。页面右下角显示当前后
 
 [physics-scenes.contract.test.ts](../test/ui/physics-scenes.contract.test.ts) 在 Node 中运行真实
 `Rapier3DBackend`，直接调用展示页共用的材质物理工厂。四项测试覆盖首次回弹的顺序与数值容差、低/高摩擦的分离表现、暂停与四分之一时钟、重播时姿态/速度/碰撞计数及对象数量。运行
-`npm run test:ui:contract` 可将它与既有示例目录合同一起检查。
+`npm run test:ui:contract`
+可将它与既有示例目录合同一起检查。 CPU 合同配置复用引擎的 Vite 源码 aliases、着色器加载器和版本定义，因此干净 checkout 在
+`npm ci` 后即可执行，不依赖本机遗留的核心或 addon `dist`。
 
 本次重做已运行该文件的四项 CPU 合同并全部通过，也完成了材质页、工厂和合同测试的局部严格 TypeScript、ESLint 和 Prettier 检查。这些 CPU 检查不验证光照、相机、移动端排版、标签方向或 WebGL2/WebGPU 管线。
 
