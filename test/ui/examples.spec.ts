@@ -953,10 +953,11 @@ test.describe('examples using the generic release gate', () => {
                 examplePath === 'pbr2.html' ||
                 examplePath === 'ground_truth_ambient_occlusion.html' ||
                 examplePath === 'particle_gpu_nebula.html' ||
+                examplePath === 'particle_noise_fields.html' ||
                 examplePath === 'particle_orbital_weave.html'
             ) {
-                // The HDR material grid and multi-pass GTAO gallery are intentionally expensive
-                // under CI SwiftShader.
+                // HDR material/particle galleries and multi-pass GTAO require extra time for
+                // software rendering under CI SwiftShader.
                 test.slow();
             }
             await installRenderHealthProbe(page);
