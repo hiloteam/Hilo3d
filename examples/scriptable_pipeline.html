@@ -1,16 +1,201 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
     <head>
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#0b1b1e" />
         <meta
-            name="viewport"
-            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+            name="description"
+            content="CHROMATIC 光谱造物。实时编排辉光、色散与深度轮廓，探索 Hilo3D Scriptable Render Pipeline。"
         />
-        <title>Hilo3d Scriptable Render Pipeline Demo</title>
-        <link rel="stylesheet" type="text/css" href="./example.css" />
+        <title>CHROMATIC · 光谱造物 — Scriptable Pipeline · Hilo3D</title>
+        <link rel="stylesheet" href="./scriptable_pipeline.css" />
     </head>
     <body>
-        <div id="container"></div>
+        <main class="atelier" aria-label="CHROMATIC 可编排渲染管线展览">
+            <div id="container" aria-label="拖动旋转雕塑，滚轮缩放"></div>
+            <div class="editorial-shade" aria-hidden="true"></div>
+            <header class="masthead">
+                <a class="brand" href="./index.html"
+                    ><span class="brand-mark" aria-hidden="true">H</span> HILO3D
+                    <span class="brand-divider">/</span> RENDER STUDIES</a
+                >
+                <div class="edition">INTERACTIVE INSTALLATION <span>№ 004</span></div>
+                <div class="runtime">
+                    <i aria-hidden="true"></i><span id="backendLabel">INITIALIZING</span
+                    ><span class="runtime-divider">/</span><span id="frameTime">—</span
+                    ><small>MS / FRAME</small>
+                </div>
+            </header>
+            <aside class="art-direction">
+                <div class="eyebrow"><span></span> SCRIPTABLE PIPELINE</div>
+                <h1>
+                    Chro<span class="title-break"><br /></span>matic<span class="title-dot">.</span>
+                </h1>
+                <div class="chinese-title">光 谱 造 物 <span>STUDY IN LIGHT & MATTER</span></div>
+                <p class="intro-copy">
+                    光的形状，由你编排。<br /><span>从一束高光，到整座展馆的情绪。</span>
+                </p>
+                <fieldset id="controlsFieldset" class="parameters" disabled>
+                    <legend>调配光的质感 <span>ART DIRECTION</span></legend>
+                    <div class="parameter">
+                        <label for="bloomControl"
+                            >光晕 <span>BLOOM</span
+                            ><output id="bloomOutput" for="bloomControl">72%</output></label
+                        ><input
+                            id="bloomControl"
+                            type="range"
+                            min="0"
+                            max="160"
+                            step="1"
+                            value="72"
+                        />
+                    </div>
+                    <div class="parameter">
+                        <label for="dispersionControl"
+                            >色散 <span>DISPERSION</span
+                            ><output id="dispersionOutput" for="dispersionControl"
+                                >24%</output
+                            ></label
+                        ><input
+                            id="dispersionControl"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value="24"
+                        />
+                    </div>
+                    <div class="parameter">
+                        <label for="contourControl"
+                            >轮廓 <span>CONTOUR</span
+                            ><output id="contourOutput" for="contourControl">0%</output></label
+                        ><input
+                            id="contourControl"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value="0"
+                        />
+                    </div>
+                    <div class="parameter">
+                        <label for="exposureControl"
+                            >曝光 <span>EXPOSURE</span
+                            ><output id="exposureOutput" for="exposureControl">1.00×</output></label
+                        ><input
+                            id="exposureControl"
+                            type="range"
+                            min="60"
+                            max="150"
+                            step="1"
+                            value="100"
+                        />
+                    </div>
+                </fieldset>
+            </aside>
+            <nav class="view-selector" aria-label="查看管线输出">
+                <span class="view-label">VIEW OUTPUT</span>
+                <div role="group" aria-label="渲染视图">
+                    <button type="button" data-view="beauty" aria-pressed="true">
+                        成片 <span>01</span>
+                    </button>
+                    <button type="button" data-view="bloom" aria-pressed="false">
+                        辉光 <span>02</span>
+                    </button>
+                    <button type="button" data-view="depth" aria-pressed="false">
+                        深度 <span>03</span>
+                    </button>
+                    <button type="button" data-view="contours" aria-pressed="false">
+                        轮廓 <span>04</span>
+                    </button>
+                </div>
+                <p id="viewDescription">光晕、色散与色调的最终合成</p>
+            </nav>
+            <div id="splitOverlay" class="split-overlay" hidden aria-hidden="true">
+                <div class="split-labels"><span>ORIGINAL</span><span>COMPOSITE</span></div>
+                <div class="split-line"></div>
+            </div>
+            <div class="viewer-actions" role="group" aria-label="展览操作">
+                <button id="compareToggle" type="button" aria-pressed="false">
+                    <span aria-hidden="true">◐</span> 对照
+                </button>
+                <button id="motionToggle" type="button" aria-pressed="true">
+                    <span class="pause-icon" aria-hidden="true"></span> 动态
+                </button>
+                <button id="resetView" type="button">
+                    <span aria-hidden="true">↺</span> 复位视角
+                </button>
+            </div>
+            <div class="artwork-caption">
+                <span>FIG. 01</span> THE INFINITE FOLD <i>无尽之褶</i>
+            </div>
+            <section class="pipeline" aria-label="实时自定义管线">
+                <div class="pipeline-heading">
+                    <span>THE RENDER RECIPE</span><strong>一帧，四次雕琢。</strong
+                    ><button id="pipelineToggle" type="button" aria-pressed="true">
+                        <i aria-hidden="true"></i><span id="pipelineState">管线已启用</span>
+                    </button>
+                </div>
+                <div class="pipeline-flow">
+                    <div class="source-node">
+                        <span class="node-number">IN</span><strong>Scene</strong
+                        ><small>LINEAR HDR + DEPTH</small>
+                    </div>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <button
+                        class="pass-node"
+                        data-pass="highlight"
+                        data-preview="bloom"
+                        type="button"
+                        title="查看高光经过两次扩散后的辉光结果"
+                    >
+                        <span class="node-number">01</span><strong>Extract</strong
+                        ><small>高光提取 <b>½ RES</b></small>
+                    </button>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <button
+                        class="pass-node"
+                        data-pass="blur-x"
+                        data-preview="bloom"
+                        type="button"
+                        title="查看横向与纵向扩散后的辉光结果"
+                    >
+                        <span class="node-number">02</span><strong>Diffuse X</strong
+                        ><small>横向扩散 <b>½ RES</b></small>
+                    </button>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <button class="pass-node" data-pass="blur-y" data-preview="bloom" type="button">
+                        <span class="node-number">03</span><strong>Diffuse Y</strong
+                        ><small>纵向扩散 <b>½ RES</b></small>
+                    </button>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <button
+                        class="pass-node composite-node"
+                        data-pass="composite"
+                        data-preview="beauty"
+                        type="button"
+                    >
+                        <span class="node-number">04</span><strong>Compose</strong
+                        ><small>光谱合成 <b>FULL RES</b></small>
+                    </button>
+                </div>
+                <div class="pipeline-status">
+                    <strong id="passCount">4</strong><span>CUSTOM PASSES</span
+                    ><small id="renderSize">— × —</small>
+                </div>
+            </section>
+            <footer>
+                <span>ONE PIPELINE. TWO BACKENDS.</span><span>拖动环绕 <i>·</i> 滚轮缩放</span
+                ><a href="./index.html">更多实验 ↗</a>
+            </footer>
+            <div id="loadingPanel" class="loading-panel" role="status" aria-live="polite">
+                <div class="loading-orbit" aria-hidden="true"></div>
+                <span>CHROMATIC / 光谱造物</span>
+                <h2 id="loadingTitle">正在雕琢光线</h2>
+                <p id="loadingDetail">准备展馆、材质与渲染管线</p>
+            </div>
+        </main>
         <script type="module" src="./scriptable_pipeline.ts"></script>
     </body>
 </html>
