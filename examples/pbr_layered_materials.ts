@@ -54,21 +54,22 @@ const { stage, renderer, directionLight, ambientLight } = await createExampleCon
         z: 8.4
     },
     stage: {
+        antialias: true,
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
             bloom: {
-                threshold: 1.25,
+                threshold: 1.65,
                 knee: 0.5,
-                intensity: 0.42,
-                scatter: 0.58,
+                intensity: 0.14,
+                scatter: 0.45,
                 maxLevels: 7
             },
             colorUber: {
-                exposure: -0.68,
-                contrast: 0.1,
-                saturation: 0.08,
-                temperature: 0.03,
+                exposure: -0.35,
+                contrast: 0.04,
+                saturation: 0.02,
+                temperature: 0,
                 toneMapping: 'pbr-neutral',
-                vignetteIntensity: 0.72,
+                vignetteIntensity: 0.42,
                 vignetteSmoothness: 0.58,
                 vignetteColor: new Hilo3d.Color(0.004, 0.007, 0.02, 0.52)
             },
@@ -85,8 +86,8 @@ const { stage, renderer, directionLight, ambientLight } = await createExampleCon
 
 galleryRoot.addTo(stage);
 renderer.clearColor.set(0.003, 0.006, 0.018, 1);
-directionLight.amount = 1.8;
-directionLight.color.set(1, 0.82, 0.65, 1);
+directionLight.amount = 1.1;
+directionLight.color.set(1, 0.96, 0.9, 1);
 directionLight.direction.set(-0.65, -1, -0.4);
 ambientLight.amount = 0.08;
 
@@ -156,15 +157,15 @@ const clearcoatMaterial = createFeatureMaterial('clearcoat', true);
 const transmissionMaterial = createFeatureMaterial('transmission', true);
 const pedestalMaterial = new Hilo3d.PBRMaterial({
     ...environmentMaterialDefaults(environment),
-    baseColor: new Hilo3d.Color(0.035, 0.045, 0.075),
-    metallic: 0.88,
-    roughness: 0.32
+    baseColor: new Hilo3d.Color(0.075, 0.08, 0.09),
+    metallic: 0.3,
+    roughness: 0.38
 });
 const floorMaterial = new Hilo3d.PBRMaterial({
     ...environmentMaterialDefaults(environment),
-    baseColor: new Hilo3d.Color(0.018, 0.024, 0.046),
-    metallic: 0.72,
-    roughness: 0.42
+    baseColor: new Hilo3d.Color(0.045, 0.048, 0.055),
+    metallic: 0.12,
+    roughness: 0.52
 });
 
 const sphereGeometry = new Hilo3d.SphereGeometry({
@@ -229,11 +230,11 @@ const neonGeometry = new Hilo3d.BoxGeometry({ width: 0.16, height: 2.6, depth: 0
 const neonMaterials = [
     new Hilo3d.BasicMaterial({
         lightType: 'NONE',
-        diffuse: new Hilo3d.Color(0.12, 1.8, 2.6)
+        diffuse: new Hilo3d.Color(0.28, 0.62, 0.76)
     }),
     new Hilo3d.BasicMaterial({
         lightType: 'NONE',
-        diffuse: new Hilo3d.Color(2.2, 0.2, 1.25)
+        diffuse: new Hilo3d.Color(0.88, 0.68, 0.42)
     })
 ] as const;
 for (let index = 0; index < 7; index += 1) {
@@ -250,10 +251,10 @@ for (let index = 0; index < 7; index += 1) {
 }
 
 const areaLight = new Hilo3d.AreaLight({
-    color: new Hilo3d.Color(1, 0.55, 0.3),
-    amount: 3.6,
-    width: 4.5,
-    height: 2.5,
+    color: new Hilo3d.Color(1, 0.94, 0.86),
+    amount: 1.25,
+    width: 3.5,
+    height: 2,
     x: -1.5,
     y: 4,
     z: 3
@@ -262,7 +263,7 @@ areaLight.lookAt(new Hilo3d.Vector3(0, 0.2, 0));
 
 const cyanLight = new Hilo3d.PointLight({
     color: new Hilo3d.Color(0.2, 0.75, 1),
-    amount: 5,
+    amount: 1.6,
     range: 10,
     x: 3.2,
     y: 1.6,

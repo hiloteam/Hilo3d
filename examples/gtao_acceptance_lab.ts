@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
-import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
+import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
 
 const query = new URLSearchParams(location.search);
 const testMode = query.get('test') === '1';
@@ -158,7 +158,7 @@ directionLight.direction.set(-0.58, -0.82, -0.42);
 ambientLight.amount = 1.72;
 ambientLight.color.set(0.76, 0.81, 0.88, 1);
 
-const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const { diffuseEnvMap, specularEnvMap } = await loadDefaultEnvironmentMaps();
 const brdfLUT = await new Hilo3d.TextureLoader().load({
     src: new URL('./image/brdfLUT.png', import.meta.url).href,
     wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,

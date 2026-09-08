@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import {
     createExampleCatalog,
@@ -213,7 +214,7 @@ describe('example release matrix contract', () => {
             examplesDirectory,
             'image',
             'environment',
-            'ferndale-studio-03'
+            'photo-studio-loft-hall'
         );
         const normalizedEnvironmentSource = environmentSource.replaceAll(/\s+/gu, '');
         expect(initializationSource).toContain('loadDefaultEnvironmentMaps()');
@@ -222,19 +223,74 @@ describe('example release matrix contract', () => {
         const runtimeEnvironmentAssets = [
             'diffuse.rgbd',
             'specular.rgbd',
-            'right.jpg',
-            'left.jpg',
-            'top.jpg',
-            'bottom.jpg',
-            'front.jpg',
-            'back.jpg'
+            'right.png',
+            'left.png',
+            'top.png',
+            'bottom.png',
+            'front.png',
+            'back.png'
         ];
+        let skyboxFaceSize: number | undefined;
         for (const asset of runtimeEnvironmentAssets) {
-            expect(existsSync(join(environmentDirectory, asset)), asset).toBe(true);
+            const assetPath = join(environmentDirectory, asset);
+            expect(existsSync(assetPath), asset).toBe(true);
             expect(normalizedEnvironmentSource, asset).toContain(
-                `newURL('../image/environment/ferndale-studio-03/${asset}',import.meta.url)`
+                `newURL('../image/environment/photo-studio-loft-hall/${asset}',import.meta.url)`
             );
+
+            const bytes = readFileSync(assetPath);
+            if (asset.endsWith('.png')) {
+                const image = PNG.sync.read(bytes);
+                expect(image.width, asset).toBeGreaterThan(0);
+                expect(image.height, asset).toBe(image.width);
+                skyboxFaceSize ??= image.width;
+                expect(image.width, asset).toBe(skyboxFaceSize);
+                continue;
+            }
+
+            expect(bytes.length, asset).toBeGreaterThanOrEqual(16);
+            expect(bytes.subarray(0, 8).toString('ascii'), asset).toBe('H3DRGBD1');
+            const faceSize = bytes.readUInt32LE(8);
+            const levelCount = bytes.readUInt32LE(12);
+            expect(faceSize, asset).toBeGreaterThan(0);
+            expect(faceSize & (faceSize - 1), asset).toBe(0);
+            expect(levelCount, asset).toBe(asset === 'diffuse.rgbd' ? 1 : Math.log2(faceSize) + 1);
+
+            let payloadBytes = 0;
+            for (let level = 0; level < levelCount; level += 1) {
+                const size = Math.max(1, faceSize >> level);
+                payloadBytes += size * size * 4 * 6;
+            }
+            expect(bytes.length, asset).toBe(16 + payloadBytes);
+            const alphaBytes = bytes.subarray(16).filter((_value, index) => index % 4 === 3);
+            expect(
+                alphaBytes.every(value => value > 0),
+                asset
+            ).toBe(true);
+            if (asset === 'diffuse.rgbd') {
+                // Diffuse IBL samples RGB directly; only specular IBL divides by RGBD alpha.
+                expect(
+                    alphaBytes.every(value => value === 255),
+                    asset
+                ).toBe(true);
+            }
         }
+        const harmonics: unknown = JSON.parse(
+            readFileSync(join(environmentDirectory, 'spherical-harmonics.json'), 'utf8')
+        );
+        expect(
+            Array.isArray(harmonics) &&
+                harmonics.length === 9 &&
+                harmonics.every(
+                    (coefficient: unknown) =>
+                        Array.isArray(coefficient) &&
+                        coefficient.length === 3 &&
+                        coefficient.every(
+                            (value: unknown) => typeof value === 'number' && Number.isFinite(value)
+                        )
+                ),
+            'environment irradiance must contain nine finite RGB spherical-harmonic coefficients'
+        ).toBe(true);
         expect(existsSync(join(environmentDirectory, 'README.md'))).toBe(true);
         expect(environmentSource).not.toContain('ASSET_DIRECTORY');
         expect(`${initializationSource}\n${environmentSource}`).not.toMatch(

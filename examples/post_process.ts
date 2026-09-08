@@ -4,7 +4,8 @@ import postProcess from './shared/postProcess';
 import { changedReadbackPixelCount, hashReadback } from './shared/readbackDiagnostics';
 
 const context = await createExampleContext({
-    autoStart: false
+    autoStart: false,
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
 const { camera, stage, renderer, directionLight, ticker } = context;
 

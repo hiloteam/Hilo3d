@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { buildUrl, resolveExampleBackend } from './shared/init';
-import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
+import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
 
 interface ChapelEvidence {
     readonly backend: Hilo3d.RendererBackend;
@@ -31,7 +31,7 @@ const container = requireElement('#container', HTMLElement);
 const toggle = requireElement('#ssgiToggle', HTMLButtonElement);
 const toggleLabel = requireElement('#ssgiToggleLabel', HTMLElement);
 const backendLabel = requireElement('#backendLabel', HTMLElement);
-const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const { diffuseEnvMap, specularEnvMap } = await loadDefaultEnvironmentMaps();
 
 const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
     groundTruthAmbientOcclusion: {
@@ -115,8 +115,8 @@ type MaterialOptions = ConstructorParameters<typeof Hilo3d.PBRMaterial>[0];
 
 function material(options: MaterialOptions): Hilo3d.PBRMaterial {
     return new Hilo3d.PBRMaterial({
-        diffuseEnvMap,
-        specularEnvMap,
+        diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
+        specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
         ...options
     });
 }

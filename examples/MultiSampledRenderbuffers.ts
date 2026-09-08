@@ -2,7 +2,9 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer, ticker } = await createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext({
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
+});
 
 ticker.targetFPS = 1;
 renderer.clearColor = new Hilo3d.Color(0.9, 0.6, 0.3);

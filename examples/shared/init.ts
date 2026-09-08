@@ -3,6 +3,7 @@ import type { PerspectiveCameraParameters } from '../../src/camera/PerspectiveCa
 import Stats from './stats';
 import { resolveExampleBackend } from './backend';
 import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
+import { createExampleLights, createExampleRenderPipeline } from './lighting';
 
 export { resolveExampleBackend };
 
@@ -104,23 +105,15 @@ export async function createExampleContext(
         antialias: false,
         alpha: false,
         useLogDepth: false,
+        renderPipeline: createExampleRenderPipeline(),
         ...options.stage,
         container,
         camera
     });
 
     const renderer = stage.renderer;
-    const directionLight = new Hilo3d.DirectionalLight({
-        color: new Hilo3d.Color(0.86, 0.92, 1),
-        amount: 3.2,
-        direction: new Hilo3d.Vector3(-0.7, -1, -0.35)
-    });
+    const { directionLight, ambientLight } = createExampleLights();
     directionLight.addTo(stage);
-
-    const ambientLight = new Hilo3d.AmbientLight({
-        color: new Hilo3d.Color(0.42, 0.48, 0.68),
-        amount: 0.42
-    });
     ambientLight.addTo(stage);
 
     const ticker = new Hilo3d.Ticker(60);

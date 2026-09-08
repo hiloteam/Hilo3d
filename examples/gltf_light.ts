@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { addEnvironmentSkybox } from './shared/environment';
+import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
 const { stage } = await createExampleContext();
@@ -38,9 +38,7 @@ async function initialize(): Promise<void> {
                 geometry: new Hilo3d.BoxGeometry(),
                 material: new Hilo3d.PBRMaterial({
                     baseColor: new Hilo3d.Color(1, 1, 1, 1),
-                    brdfLUT: environment.brdfLUT,
-                    diffuseEnvMap: environment.diffuseEnvMap,
-                    specularEnvMap: environment.specularEnvMap
+                    ...environmentMaterialDefaults(environment)
                 })
             })
         );

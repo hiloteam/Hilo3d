@@ -462,17 +462,34 @@ for (const backend of backends) {
         }
     });
 
-    test(`life-game ping-pong accepts public texture updates through ${backend} @${backend}`, async ({
+    test(`life-game ping-pong preserves exact state and public texture updates through ${backend} @${backend}`, async ({
         page
     }) => {
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
-            await page.goto(`/examples/lifegame.html?backend=${backend}`, {
+            // An odd-sized grid gives the two-phase oscillator an exact center cell.
+            await page.setViewportSize({ width: 808, height: 616 });
+            await page.goto(`/examples/lifegame.html?backend=${backend}&test=1`, {
                 waitUntil: 'networkidle'
             });
             const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
             await expect(canvas).toBeVisible();
+            const generations = await page.evaluate(async () => {
+                const diagnostics = window.__HILO3D_LIFE_GAME_TEST_API__;
+                if (!diagnostics) throw new Error('Life-game state diagnostics are unavailable.');
+                return diagnostics.blinker();
+            });
+            const expectedPixels = (rows: readonly string[]): number[] =>
+                rows.flatMap(row =>
+                    Array.from(row).flatMap(cell =>
+                        cell === '#' ? [255, 255, 255, 255] : [0, 0, 0, 255]
+                    )
+                );
+            expect(generations).toEqual([
+                expectedPixels(['.....', '..#..', '..#..', '..#..', '.....']),
+                expectedPixels(['.....', '.....', '.###.', '.....', '.....'])
+            ]);
             const before = await currentProgress(page, backend);
 
             await canvas.click({ position: { x: 24, y: 24 } });
@@ -557,6 +574,9 @@ for (const backend of backends) {
 
 declare global {
     interface Window {
+        __HILO3D_LIFE_GAME_TEST_API__?: {
+            blinker(): Promise<readonly (readonly number[])[]>;
+        };
         __HILO3D_LIFE_GAME_INTERACTION_RESULT__?: {
             readonly backend: ExampleBackend;
             readonly sequence: number;

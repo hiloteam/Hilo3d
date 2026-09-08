@@ -1,6 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { addEnvironmentSkybox, environmentMaterialDefaults } from './shared/environment';
 import { loadEnvironmentMaps, resolveExampleBackend } from './shared/init';
+import { createExampleLights, createExampleRenderPipeline } from './shared/lighting';
 
 const cameraTarget = new Hilo3d.Vector3(0, 0.35, 0);
 const camera = new Hilo3d.PerspectiveCamera({
@@ -21,6 +22,7 @@ const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
     width: innerWidth,
     height: innerHeight,
     antialias: true,
+    renderPipeline: createExampleRenderPipeline(),
     clearColor: new Hilo3d.Color(0.008, 0.012, 0.028)
 });
 const orbitControls = new Hilo3d.OrbitControls(stage, {
@@ -35,12 +37,12 @@ addEnvironmentSkybox(stage, environment.skyboxMap);
 
 const floorMaterial = new Hilo3d.PBRMaterial({
     ...environmentMaterialDefaults(environment),
-    baseColor: new Hilo3d.Color(0.26, 0.3, 0.42),
+    baseColor: new Hilo3d.Color(0.3, 0.31, 0.33),
     baseColorMap: new Hilo3d.LazyTexture({
         src: new URL('./image/hilo-showroom-grid-v2.jpg', import.meta.url).href
     }),
-    metallic: 0.35,
-    roughness: 0.64
+    metallic: 0.15,
+    roughness: 0.72
 });
 new Hilo3d.Mesh({
     y: -1,
@@ -55,9 +57,9 @@ new Hilo3d.Mesh({
 const hero = new Hilo3d.Node({ y: 0.05 }).addTo(stage);
 const coreMaterial = new Hilo3d.PBRMaterial({
     ...environmentMaterialDefaults(environment),
-    baseColor: new Hilo3d.Color(0.18, 0.9, 0.78),
+    baseColor: new Hilo3d.Color(0.12, 0.55, 0.44),
     metallic: 0.74,
-    roughness: 0.2
+    roughness: 0.28
 });
 const core = new Hilo3d.Mesh({
     geometry: new Hilo3d.BoxGeometry({ width: 1.25, height: 1.25, depth: 1.25 }),
@@ -96,55 +98,23 @@ hero.onUpdate = deltaTime => {
     core.rotationZ += deltaTime * 0.009;
 };
 
-stage
-    .addChild(
-        new Hilo3d.AmbientLight({
-            color: new Hilo3d.Color(0.28, 0.34, 0.55),
-            amount: 0.32
-        })
-    )
-    .addChild(
-        new Hilo3d.DirectionalLight({
-            color: new Hilo3d.Color(0.82, 0.92, 1),
-            amount: 4.2,
-            direction: new Hilo3d.Vector3(-1.3, -1.8, -0.6),
-            shadow: {
-                width: 2048,
-                height: 2048,
-                cameraInfo: {
-                    left: -7,
-                    right: 7,
-                    bottom: -7,
-                    top: 7,
-                    near: 0.1,
-                    far: 30,
-                    x: 6.5,
-                    y: 9,
-                    z: 3
-                }
-            }
-        })
-    )
-    .addChild(
-        new Hilo3d.PointLight({
-            x: -2.8,
-            y: 2.4,
-            z: 2.4,
-            amount: 20,
-            range: 12,
-            color: new Hilo3d.Color(0.2, 0.9, 0.85)
-        })
-    )
-    .addChild(
-        new Hilo3d.PointLight({
-            x: 3.2,
-            y: 1.2,
-            z: 1.2,
-            amount: 15,
-            range: 10,
-            color: new Hilo3d.Color(0.62, 0.35, 1)
-        })
-    );
+const { directionLight, ambientLight } = createExampleLights();
+directionLight.shadow = {
+    width: 2048,
+    height: 2048,
+    cameraInfo: {
+        left: -7,
+        right: 7,
+        bottom: -7,
+        top: 7,
+        near: 0.1,
+        far: 30,
+        x: 6.5,
+        y: 9,
+        z: 3
+    }
+};
+stage.addChild(ambientLight).addChild(directionLight);
 
 const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);
