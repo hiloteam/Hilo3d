@@ -1,43 +1,59 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
     <head>
         <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
-        />
-        <title>Hilo3D Rapier Physics</title>
-        <link rel="stylesheet" type="text/css" href="../example.css" />
-        <style>
-            .physics-panel {
-                position: fixed;
-                inset: 20px auto auto 20px;
-                max-width: min(360px, calc(100vw - 40px));
-                padding: 14px 16px;
-                color: #e8f3ff;
-                background: rgb(5 11 24 / 82%);
-                border: 1px solid rgb(113 183 255 / 35%);
-                border-radius: 10px;
-                font:
-                    13px/1.55 system-ui,
-                    sans-serif;
-                pointer-events: none;
-                backdrop-filter: blur(10px);
-            }
-
-            .physics-panel strong {
-                color: #7ddcff;
-            }
-        </style>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#152d30" />
+        <title>Impulse garden · Hilo3D Physics Collection</title>
+        <link rel="stylesheet" href="./showcase.css" />
     </head>
     <body>
-        <div id="container"></div>
-        <aside class="physics-panel">
-            <strong>Rapier 3D · optional Stage System</strong><br />
-            Fixed 60 Hz simulation · interpolated transforms<br />
-            Bodies: <span id="body-count">0</span> · Contacts:
-            <span id="contact-count">0</span>
+        <div id="container" aria-label="交互式物理展品"></div>
+        <div id="loading"><span class="loading-orbit"></span>正在组装物理展品…</div>
+        <header class="collection-brand">
+            <a href="../index.html">HILO<span>3D</span></a
+            ><span class="brand-rule"></span><span>THE PHYSICS COLLECTION</span>
+        </header>
+        <nav class="chapter-nav" aria-label="物理展馆">
+            <a class="chapter-link" data-chapter="01" href="./rapier3d.html"
+                ><span>01</span>刚体花园</a
+            >
+            <a class="chapter-link" data-chapter="02" href="./rapier_materials.html"
+                ><span>02</span>材质实验室</a
+            >
+            <a class="chapter-link" data-chapter="03" href="./rapier_joints.html"
+                ><span>03</span>动力机械</a
+            >
+            <a class="chapter-link" data-chapter="04" href="./rapier2d_marble.html"
+                ><span>04</span>弹珠工坊</a
+            >
+            <a class="chapter-link" data-chapter="05" href="./rapier_character.html"
+                ><span>05</span>机械信使</a
+            >
+            <a class="chapter-link" data-chapter="06" href="./rapier_bridge.html"
+                ><span>06</span>悬索桥</a
+            >
+        </nav>
+        <main class="exhibit-caption">
+            <div class="eyebrow"><span id="chapter">01</span> / INTERACTIVE STUDY</div>
+            <h1 id="exhibit-title">Impulse garden</h1>
+            <p id="exhibit-description">刚体花园</p>
+            <div id="metrics" class="metrics" aria-label="实时物理读数"></div>
+            <div id="scene-actions" class="scene-actions"></div>
+            <p id="scene-status" class="scene-status" role="status"></p>
+        </main>
+        <aside class="playback" aria-label="模拟控制">
+            <div class="live">
+                <span class="live-dot"></span><span id="live-state">LIVE SIMULATION</span>
+            </div>
+            <div class="playback-buttons">
+                <button id="pause" type="button" aria-pressed="false">暂停</button
+                ><button id="slow" type="button" aria-pressed="false">慢动作</button
+                ><button id="camera-home" type="button">复位视角</button>
+            </div>
         </aside>
+        <div class="view-hint">拖动环绕 <span>·</span> 滚轮缩放 <span>·</span> 双指平移</div>
+        <div id="engine-info" class="engine-info">60 HZ / FIXED STEP</div>
         <script type="module" src="./rapier3d.ts"></script>
     </body>
 </html>

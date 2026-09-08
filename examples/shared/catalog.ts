@@ -130,10 +130,12 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr2.html': 'PBR Material Lab',
     'pbr_layered_materials.html': 'Layered PBR Studio',
     'gltf_material_extensions.html': 'Khronos Layered Material Gallery',
-    'physics/rapier3d.html': 'Rapier 3D Physics System',
-    'physics/rapier_materials.html': 'Rapier Material Lab',
-    'physics/rapier_joints.html': 'Rapier Joint Gallery',
-    'physics/rapier2d_marble.html': 'Rapier 2D Marble Machine',
+    'physics/rapier3d.html': 'Impulse garden — Rigid Body Studies',
+    'physics/rapier_materials.html': 'Material atelier — Restitution & Friction',
+    'physics/rapier_joints.html': 'Kinetic engine — Coupled Mechanisms',
+    'physics/rapier2d_marble.html': 'Marble works — 2D Physics Machine',
+    'physics/rapier_character.html': 'Clockwork courier — Character Controller',
+    'physics/rapier_bridge.html': 'Suspension atelier — Loads & Constraints',
     'cascaded_shadows.html': 'Cascaded Sunset Garden',
     'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
     'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
@@ -209,13 +211,17 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'gltf_material_extensions.html':
         'Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.',
     'physics/rapier3d.html':
-        'Drop rigid bodies through the optional Rapier 3D Stage System with fixed-step simulation, interpolation, collision events, CCD, and backend-neutral diagnostics.',
+        'Start a 29-domino chain reaction, launch a CCD projectile into a stacked tower, and apply impulses to compound bodies in a porcelain-and-brass physics garden.',
     'physics/rapier_materials.html':
-        'Compare restitution and friction coefficients through synchronized bounce columns and parallel sliding lanes.',
+        'Release four matched samples in calibrated bounce instruments and compare four independent friction ramps with live rebound and travel measurements.',
     'physics/rapier_joints.html':
-        'Put revolute constraints, a damped spring, and a motorized hinge in motion inside one fixed-step Rapier world.',
+        'Drive a machined flywheel, connecting rod and prismatic slider, then disturb a spring-coupled double pendulum to trace motion through a complete mechanism.',
     'physics/rapier2d_marble.html':
-        'Run a colorful 2D marble machine with circle and box colliders, angled obstacles, CCD, and a non-solid sensor gate.',
+        'Guide 30 marbles through motorized splitters, collision pins and five sensor scoring lanes in a layered mechanical cabinet with automatic recirculation.',
+    'physics/rapier_character.html':
+        'Guide a porcelain courier through a miniature obstacle course using collision-constrained character motion, stair assistance, jumping and visible scene queries.',
+    'physics/rapier_bridge.html':
+        'Load a miniature suspension bridge and watch segmented decking, dynamic cable links and spring hangers distribute weight through real constraints.',
     'cascaded_shadows.html':
         'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.',
     'particle_elemental_forge.html':
@@ -255,6 +261,8 @@ const FEATURED_PATHS = new Set([
     'physics/rapier_materials.html',
     'physics/rapier_joints.html',
     'physics/rapier2d_marble.html',
+    'physics/rapier_character.html',
+    'physics/rapier_bridge.html',
     'video.html',
     'compute_gpu_driven.html',
     'clustered_forward_plus_sponza.html',

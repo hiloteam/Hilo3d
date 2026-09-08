@@ -14,7 +14,11 @@
   "include": [
     "benchmarks/**/*.ts",
     "examples/shared/catalog.ts",
+    "examples/physics/materialExperiments.ts",
+    "examples/physics/characterExperiment.ts",
+    "examples/physics/bridgeExperiment.ts",
     "test/**/*.ts",
+    "vite.config.ts",
     "scripts/npm-pack-result.ts",
     "scripts/playwright-test-server.ts",
     "scripts/release-git-tag-core.ts",

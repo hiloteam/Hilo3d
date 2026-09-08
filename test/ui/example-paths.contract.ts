@@ -12,6 +12,8 @@ import {
     EXAMPLE_COMPLETION_CONTRACTS,
     EXAMPLE_QUERY_PARAMETERS,
     NON_RENDERING_EXAMPLE_PATHS,
+    PHYSICS_RELEASE_TEST_CASES,
+    PHYSICS_RELEASE_TEST_EXAMPLES,
     WEBGL2_ONLY_EXAMPLE_PATHS,
     WEBGPU_ONLY_EXAMPLE_PATHS,
     backendsForExample,
@@ -52,6 +54,10 @@ const lumenReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./clustered-forward-plus-lumen.spec.ts', import.meta.url)),
     'utf8'
 );
+const physicsReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./physics.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -71,11 +77,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(93);
+        expect(examplePaths).toHaveLength(95);
     });
 
-    it('expands 93 pages into the complete 172-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(172);
+    it('expands 95 pages into the complete 176-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(176);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -108,7 +114,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(91);
+        expect(catalog).toHaveLength(93);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -117,8 +123,14 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(78);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(90);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(80);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(92);
+        expect(
+            catalog
+                .filter(entry => entry.category === 'physics')
+                .map(entry => entry.path)
+                .sort()
+        ).toEqual(PHYSICS_RELEASE_TEST_EXAMPLES.map(scene => scene.path).sort());
         expect(catalog.filter(entry => entry.featured).length).toBeGreaterThan(12);
         expect(catalog.filter(entry => entry.featured).length).toBeLessThan(catalog.length);
         expect(
@@ -255,7 +267,13 @@ describe('example release matrix contract', () => {
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
-            'shaderToy.html'
+            'shaderToy.html',
+            'physics/rapier3d.html',
+            'physics/rapier_materials.html',
+            'physics/rapier_joints.html',
+            'physics/rapier2d_marble.html',
+            'physics/rapier_character.html',
+            'physics/rapier_bridge.html'
         ]);
         expect(exampleUsesDedicatedReleaseTest('cascaded_shadows.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
@@ -271,7 +289,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(163);
+        expect(genericCases).toHaveLength(155);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
@@ -322,6 +340,71 @@ describe('example release matrix contract', () => {
         ).toBe(true);
     });
 
+    it('assigns every physics backend case to the dedicated interaction and pixel gate', () => {
+        const physicsPaths = [
+            'physics/rapier3d.html',
+            'physics/rapier_materials.html',
+            'physics/rapier_joints.html',
+            'physics/rapier2d_marble.html',
+            'physics/rapier_character.html',
+            'physics/rapier_bridge.html'
+        ];
+        const expectedCases = physicsPaths.flatMap(path =>
+            ['webgl2', 'webgpu'].map(backend => `${path}:${backend}`)
+        );
+        expect(PHYSICS_RELEASE_TEST_EXAMPLES.map(scene => scene.path)).toEqual(physicsPaths);
+        expect(PHYSICS_RELEASE_TEST_CASES.map(scene => `${scene.path}:${scene.backend}`)).toEqual(
+            expectedCases
+        );
+        expect(new Set(expectedCases).size).toBe(12);
+        expect(
+            exampleCases
+                .filter(scene => physicsPaths.includes(scene.path))
+                .map(scene => `${scene.path}:${scene.backend}`)
+                .sort()
+        ).toEqual([...expectedCases].sort());
+        for (const path of physicsPaths) {
+            expect(exampleUsesDedicatedReleaseTest(path), path).toBe(true);
+            expect(backendsForExample(path), path).toEqual(['webgl2', 'webgpu']);
+        }
+        expect(physicsReleaseTestSource).toContain(
+            'for (const scene of PHYSICS_RELEASE_TEST_CASES)'
+        );
+        expect(physicsReleaseTestSource).not.toMatch(/\btest\.(?:skip|fixme)\s*\(/u);
+        expect(physicsReleaseTestSource).toContain(
+            'assertExhibitPixels(page, backend, testInfo, scene.name)'
+        );
+        expect(physicsReleaseTestSource).toContain('PNG.sync.read(capture)');
+        expect(physicsReleaseTestSource).toContain('testInfo.attach(');
+        expect(physicsReleaseTestSource).toContain('installRenderHealthProbe(page)');
+        expect(physicsReleaseTestSource).toContain('awaitTrackedGPUQueues(page)');
+        expect(physicsReleaseTestSource).toContain('assertStableInstrumentationHealth(');
+        const packageJson = JSON.parse(
+            readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
+        ) as { readonly scripts?: Readonly<Record<string, unknown>> };
+        for (const [scriptName, backends] of [
+            ['test:ui', ['webgl2', 'webgpu']],
+            ['test:ui:webgl2', ['webgl2']],
+            ['test:ui:webgl2:ci', ['webgl2']],
+            ['test:ui:webgpu', ['webgpu']]
+        ] as const) {
+            const script = packageJson.scripts?.[scriptName];
+            if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
+            expect(script, scriptName).toContain('test/ui/physics.spec.ts');
+            expect(script, scriptName).toContain('--project=chromium');
+            expect(script, scriptName).not.toContain('--grep-invert');
+            const grep = /--grep (?:"([^"]+)"|(\S+))/u.exec(script);
+            const pattern = grep?.[1] ?? grep?.[2];
+            const filter = pattern === undefined ? null : new RegExp(pattern, 'u');
+            const scheduled = PHYSICS_RELEASE_TEST_CASES.filter(
+                scene => filter?.test(`physics ${scene.name} @${scene.backend}`) ?? true
+            ).map(scene => `${scene.path}:${scene.backend}`);
+            expect(scheduled, scriptName).toEqual(
+                physicsPaths.flatMap(path => backends.map(backend => `${path}:${backend}`))
+            );
+        }
+    });
+
     it('separates the full local browser matrix from hosted CI presentation coverage', () => {
         const packageJson = JSON.parse(
             readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
@@ -341,7 +424,7 @@ describe('example release matrix contract', () => {
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
         expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
-            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
+            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
         );
         expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
             'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'

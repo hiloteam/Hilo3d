@@ -13,6 +13,17 @@ export type ExampleCompletionContract =
     'compressed-textures' | 'gltf-viewer' | 'resource-diagnostics';
 
 export const EXAMPLE_BACKENDS = ['webgl2', 'webgpu'] as const;
+export const PHYSICS_RELEASE_TEST_EXAMPLES = [
+    { name: 'impulse', path: 'physics/rapier3d.html', chapter: '01' },
+    { name: 'materials', path: 'physics/rapier_materials.html', chapter: '02' },
+    { name: 'joints', path: 'physics/rapier_joints.html', chapter: '03' },
+    { name: 'marble', path: 'physics/rapier2d_marble.html', chapter: '04' },
+    { name: 'character', path: 'physics/rapier_character.html', chapter: '05' },
+    { name: 'bridge', path: 'physics/rapier_bridge.html', chapter: '06' }
+] as const;
+export const PHYSICS_RELEASE_TEST_CASES = PHYSICS_RELEASE_TEST_EXAMPLES.flatMap(scene =>
+    EXAMPLE_BACKENDS.map(backend => ({ ...scene, backend }))
+);
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'bloom.html',
@@ -37,7 +48,8 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
     'shadow_residency_sanctum.html',
-    'shaderToy.html'
+    'shaderToy.html',
+    ...PHYSICS_RELEASE_TEST_EXAMPLES.map(scene => scene.path)
 ] as const;
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
