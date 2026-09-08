@@ -3,6 +3,9 @@
 #include "./chunk/precision.vert"
 #include "./chunk/uniformBlocks.glsl"
 
+// Depth, motion, material-attributes and color variants must rasterize identical positions.
+invariant gl_Position;
+
 in vec3 a_position;
 
 #include "./chunk/unQuantize.vert"

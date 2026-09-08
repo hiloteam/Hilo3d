@@ -44,6 +44,10 @@ light。
 - 线性 HDR attachment 输出；材质 Shader 不执行 gamma encode、exposure 或 tone
   mapping，显示变换只在后处理末端发生。
 
+普通 normal map 始终在 tangent space 中应用 `normalScale`，再变换到 view
+space；它是 MaterialBlock 的运行时参数，不依赖额外 shader feature。`normalScale: 0`
+恢复几何法线，并同时影响 forward 光照与 material-attributes 中供 SSR/GTAO 使用的 normal。
+
 ## glTF layered material 扩展
 
 `GLTFParser` 原生解析以下扩展，并把所有引用纹理加入资源预加载集合：

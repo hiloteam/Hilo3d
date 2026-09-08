@@ -4,9 +4,6 @@
         in mat3 v_TBN;
         #ifdef HILO_NORMAL_MAP
             uniform sampler2D u_normalMap;
-            
-            #ifdef HILO_NORMAL_MAP_SCALE
-            #endif
         #endif
 
         #ifdef HILO_CLEARCOAT_NORMAL_MAP
