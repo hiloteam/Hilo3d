@@ -5,6 +5,54 @@ System；展示使用同一套 Hilo3D 渲染前端，支持 `webgl2` 和
 `webgpu`。世界所有权、固定步长和变换同步遵循
 [物理架构](./PHYSICS_ARCHITECTURE.md)，本组示例没有扩展引擎物理 API。
 
+## 审阅截图
+
+以下画面由 Chromium / Metal WebGPU 在 DPR
+2 下原生捕获，操作展品后暂停并逐张审阅构图、材质与界面。桌面视口为 1440 × 900，手机视口为 390 ×
+844；截图是视觉审阅资料，不是自动截图测试或性能基线。拍摄参数与场景状态见
+[截图说明](./assets/physics/README.md)。
+
+机械信使近景：分层镜片、陶瓷机身与黄铜关节。
+
+![机械信使桌面近景](./assets/physics/05-clockwork-courier-detail.jpg)
+
+<details>
+<summary>六座展品 · 桌面全景</summary>
+
+**01 · 刚体花园：完整骨牌、堆叠与复合刚体。**
+
+![刚体花园桌面全景](./assets/physics/01-impulse-garden.jpg)
+
+**02 · 材质实验室：首次回弹与摩擦滑行差异。**
+
+![材质实验室桌面全景](./assets/physics/02-material-atelier.jpg)
+
+**03 · 动力机械：飞轮、连杆、滑块、双摆与弹簧联动。**
+
+![动力机械桌面全景](./assets/physics/03-kinetic-engine.jpg)
+
+**04 · 弹珠工坊：轨道球流与传感计分。**
+
+![弹珠工坊桌面全景](./assets/physics/04-marble-works.jpg)
+
+**05 · 机械信使：台阶、斜坡、通道与包裹配送路线。**
+
+![机械信使桌面路线](./assets/physics/05-clockwork-courier-route.jpg)
+
+**06 · 悬索桥：两件重物加载后的桥面挠曲。**
+
+![悬索桥桌面加载状态](./assets/physics/06-suspension-atelier-loaded.jpg)
+
+</details>
+
+<details>
+<summary>手机布局 · 机械信使近景与悬索桥全景</summary>
+
+<img src="./assets/physics/05-clockwork-courier-mobile.jpg" alt="机械信使手机近景与触屏控制" width="390">
+<img src="./assets/physics/06-suspension-atelier-mobile.jpg" alt="悬索桥手机加载状态与操作按钮" width="390">
+
+</details>
+
 ## 展品与操作
 
 | 章节                               | 页面                                                               | 观察内容                                                                                                | 场景操作                                                                              |
