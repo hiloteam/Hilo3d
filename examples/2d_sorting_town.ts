@@ -1,9 +1,10 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { resolveExampleBackend } from './shared/backend';
+import { createStudio, createStudioScene, createStudioAtlas } from './shared/studio2d';
 
 const WORLD_WIDTH = 1280;
 const WORLD_HEIGHT = 768;
-const TILE_SIZE = 64;
+const TILE_SIZE = 32;
+const ROAD_TILE_SIZE = 64;
 const MAP_COLUMNS = WORLD_WIDTH / TILE_SIZE;
 const MAP_ROWS = WORLD_HEIGHT / TILE_SIZE;
 const WORLD_SORTING_LAYER = 10;
@@ -39,44 +40,140 @@ interface TownObject {
 }
 
 const AUTO_DESTINATIONS = [
-    { column: 3, row: 2 },
-    { column: 10, row: 1 },
-    { column: 10, row: 6 },
-    { column: 17, row: 8 },
-    { column: 15, row: 6 },
-    { column: 9, row: 11 },
-    { column: 1, row: 6 },
-    { column: 7, row: 4 }
+    { column: 3, row: 11 },
+    { column: 13, row: 11 },
+    { column: 24, row: 11 },
+    { column: 32, row: 9 },
+    { column: 36, row: 17 },
+    { column: 25, row: 17 },
+    { column: 19, row: 22 },
+    { column: 9, row: 18 }
 ] as const satisfies readonly TilePoint[];
 
+// Every object rectangle is tightly authored around visible pixels. Its bottom is the ground contact.
+const OBJECT_RECTS = [
+    [29, 61, 151, 189],
+    [25, 61, 153, 188],
+    [17, 79, 151, 168],
+    [7, 58, 155, 196],
+    [35, 26, 142, 154],
+    [39, 6, 111, 174],
+    [13, 44, 140, 126],
+    [15, 70, 123, 112]
+] as const;
 const TOWN_OBJECTS = [
-    { frame: 0, x: 164, y: 324, width: 200, height: 256 },
-    { frame: 1, x: 424, y: 324, width: 200, height: 256 },
-    { frame: 2, x: 738, y: 324, width: 200, height: 256 },
-    { frame: 3, x: 1042, y: 324, width: 226, height: 258 },
-    { frame: 0, x: 1190, y: 324, width: 200, height: 256 },
-    { frame: 3, x: 790, y: 744, width: 216, height: 254 },
-    { frame: 1, x: 1115, y: 744, width: 220, height: 258 },
-    { frame: 4, x: 76, y: 374, width: 138, height: 184 },
-    { frame: 4, x: 326, y: 246, width: 126, height: 170 },
-    { frame: 5, x: 552, y: 384, width: 132, height: 184 },
-    { frame: 4, x: 682, y: 442, width: 130, height: 176 },
-    { frame: 5, x: 908, y: 385, width: 132, height: 184 },
-    { frame: 4, x: 1210, y: 470, width: 138, height: 184 },
-    { frame: 5, x: 875, y: 576, width: 132, height: 184 },
-    { frame: 4, x: 1006, y: 608, width: 130, height: 176 },
-    { frame: 5, x: 1242, y: 682, width: 128, height: 178 },
-    { frame: 6, x: 628, y: 352, width: 104, height: 130 },
-    { frame: 6, x: 1008, y: 574, width: 96, height: 120 },
-    { frame: 7, x: 290, y: 445, width: 200, height: 256 },
-    { frame: 7, x: 744, y: 502, width: 200, height: 256 },
-    { frame: 7, x: 1146, y: 514, width: 200, height: 256 }
+    // North market: three distinct entrances face the broad east-west street.
+    { frame: 0, x: 112, y: 306, width: 168, height: 210 },
+    { frame: 1, x: 428, y: 306, width: 180, height: 221 },
+    { frame: 3, x: 770, y: 306, width: 174, height: 220 },
+    // South-east block: doors open onto the lower loop, roofs can occlude the street behind.
+    { frame: 2, x: 812, y: 502, width: 170, height: 189 },
+    { frame: 0, x: 1166, y: 502, width: 164, height: 205 },
+    // Maple Green: two flowerbeds mark the entry; the central lawn stays open.
+    { frame: 7, x: 195, y: 493, width: 96, height: 87 },
+    { frame: 7, x: 438, y: 493, width: 96, height: 87 },
+    { frame: 6, x: 334, y: 496, width: 66, height: 59 },
+    { frame: 4, x: 68, y: 546, width: 112, height: 122 },
+    { frame: 4, x: 510, y: 604, width: 108, height: 117 },
+    { frame: 5, x: 73, y: 735, width: 86, height: 135 },
+    { frame: 4, x: 206, y: 736, width: 111, height: 120 },
+    { frame: 5, x: 435, y: 739, width: 88, height: 138 },
+    // Northern greenery and lake shore, clear of entrances and the central avenue.
+    { frame: 4, x: 65, y: 118, width: 98, height: 106 },
+    { frame: 5, x: 469, y: 122, width: 64, height: 100 },
+    { frame: 4, x: 731, y: 105, width: 86, height: 93 },
+    { frame: 4, x: 936, y: 293, width: 97, height: 105 },
+    { frame: 5, x: 1230, y: 292, width: 79, height: 124 },
+    { frame: 6, x: 1072, y: 293, width: 65, height: 59 },
+    // The southern lane has a planted edge, with no ornaments in the carriageway.
+    { frame: 7, x: 975, y: 671, width: 91, height: 83 },
+    { frame: 4, x: 760, y: 744, width: 111, height: 120 },
+    { frame: 5, x: 1146, y: 741, width: 84, height: 132 },
+    { frame: 4, x: 1216, y: 648, width: 100, height: 108 }
 ] as const satisfies readonly TownObject[];
+const SORTING_DEMO_PROP = TOWN_OBJECTS[5];
 
-function requireContainer(): HTMLElement {
-    const container = document.querySelector<HTMLElement>('#container');
-    if (!container) throw new Error('2D sorting town example requires #container.');
-    return container;
+interface Footprint {
+    readonly left: number;
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+}
+const FOOTPRINTS: readonly Footprint[] = TOWN_OBJECTS.map(object => {
+    const width =
+        object.frame < 4
+            ? object.width * 0.84
+            : object.frame < 6
+              ? 28
+              : object.frame === 6
+                ? object.width * 0.8
+                : object.width * 0.82;
+    const depth = object.frame < 4 ? 48 : object.frame < 6 ? 20 : object.frame === 6 ? 14 : 30;
+    return {
+        left: object.x - width / 2,
+        right: object.x + width / 2,
+        top: object.y - depth,
+        bottom: object.y
+    };
+});
+
+/** Conservative tile/footprint overlap prevents movement segments from crossing physical bases. */
+function createWalkableMask(): Uint8Array {
+    const mask = new Uint8Array(MAP_COLUMNS * MAP_ROWS);
+    for (let row = 0; row < MAP_ROWS; row++) {
+        for (let column = 0; column < MAP_COLUMNS; column++) {
+            const left = column * TILE_SIZE;
+            const top = row * TILE_SIZE;
+            const obstructed = FOOTPRINTS.some(
+                footprint =>
+                    left < footprint.right + 8 &&
+                    left + TILE_SIZE > footprint.left - 8 &&
+                    top < footprint.bottom + 8 &&
+                    top + TILE_SIZE > footprint.top - 8
+            );
+            // Grass is traversable; the lake and a narrow map boundary remain excluded.
+            const closestLakeX = Math.max(left, Math.min(left + TILE_SIZE, 1005));
+            const closestLakeY = Math.max(top, Math.min(top + TILE_SIZE, 118));
+            const lake =
+                ((closestLakeX - 1005) / 209) ** 2 + ((closestLakeY - 118) / 132) ** 2 <= 1;
+            const insideMap =
+                column > 0 && row > 0 && column < MAP_COLUMNS - 1 && row < MAP_ROWS - 1;
+            if (insideMap && !lake && !obstructed) mask[row * MAP_COLUMNS + column] = 1;
+        }
+    }
+    // Route endpoints must belong to the connected road network around the central plaza.
+    const start = 12 * MAP_COLUMNS + 19;
+    const queue = [start];
+    if (!mask[start]) throw new Error('Town plaza must remain walkable.');
+    const reachable = new Uint8Array(mask.length);
+    reachable[start] = 1;
+    for (const cell of queue) {
+        const column = cell % MAP_COLUMNS;
+        const row = Math.floor(cell / MAP_COLUMNS);
+        for (const [dx, dy] of [
+            [-1, 0],
+            [1, 0],
+            [0, -1],
+            [0, 1]
+        ] as const) {
+            const nextColumn = column + dx;
+            const nextRow = row + dy;
+            if (nextColumn < 0 || nextRow < 0 || nextColumn >= MAP_COLUMNS || nextRow >= MAP_ROWS)
+                continue;
+            const next = nextRow * MAP_COLUMNS + nextColumn;
+            if (mask[next] && !reachable[next]) {
+                reachable[next] = 1;
+                queue.push(next);
+            }
+        }
+    }
+    return reachable;
+}
+const WALKABLE_CELLS = createWalkableMask();
+function roadCost(column: number, row: number): number {
+    const roadColumn = Math.floor((column * TILE_SIZE) / ROAD_TILE_SIZE);
+    const roadRow = Math.floor((row * TILE_SIZE) / ROAD_TILE_SIZE);
+    return WALKABLE_MAP[roadRow]?.[roadColumn] === '#' ? 1 : 1.8;
 }
 
 function requireContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -91,7 +188,7 @@ function tileIndex(column: number, row: number): number {
 
 function isWalkable(column: number, row: number): boolean {
     if (column < 0 || column >= MAP_COLUMNS || row < 0 || row >= MAP_ROWS) return false;
-    return WALKABLE_MAP[row]?.[column] === '#';
+    return WALKABLE_CELLS[row * MAP_COLUMNS + column] === 1;
 }
 
 function tileCenter(tile: TilePoint): readonly [number, number] {
@@ -166,7 +263,8 @@ function findPath(start: TilePoint, goal: TilePoint): TilePoint[] {
             if (!isWalkable(nextColumn, nextRow)) continue;
             const next = tileIndex(nextColumn, nextRow);
             if (closed[next] === 1) continue;
-            const tentativeScore = (scores[current] ?? Number.POSITIVE_INFINITY) + 1;
+            const tentativeScore =
+                (scores[current] ?? Number.POSITIVE_INFINITY) + roadCost(nextColumn, nextRow);
             if (tentativeScore >= (scores[next] ?? Number.POSITIVE_INFINITY)) continue;
             scores[next] = tentativeScore;
             previous[next] = current;
@@ -185,27 +283,6 @@ function findPath(start: TilePoint, goal: TilePoint): TilePoint[] {
     }
     reversePath.reverse();
     return reversePath;
-}
-
-function createLoadingGroundTexture(): Hilo3d.Texture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 4;
-    canvas.height = 4;
-    const context = requireContext(canvas);
-    context.imageSmoothingEnabled = false;
-    context.fillStyle = '#78a85b';
-    context.fillRect(0, 0, 4, 4);
-
-    return new Hilo3d.Texture({
-        image: canvas,
-        flipY: true,
-        premultiplyAlpha: false,
-        minFilter: Hilo3d.constants.webgl.NEAREST,
-        magFilter: Hilo3d.constants.webgl.NEAREST,
-        wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-        wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
-        name: 'SortingTown:loading-ground'
-    });
 }
 
 function createMarkerTexture(): Hilo3d.Texture {
@@ -242,11 +319,12 @@ function createMarkerTexture(): Hilo3d.Texture {
 async function loadPixelTexture(
     url: URL,
     name: string,
-    premultiplyAlpha = true
+    premultiplyAlpha = false
 ): Promise<Hilo3d.Texture> {
     const image = await new Hilo3d.BasicLoader().loadImg(url.href);
     return new Hilo3d.Texture({
         image,
+        internalFormat: Hilo3d.constants.SRGB8_ALPHA8,
         flipY: true,
         premultiplyAlpha,
         minFilter: Hilo3d.constants.webgl.NEAREST,
@@ -281,43 +359,11 @@ function createGridFrames(
     return frames;
 }
 
-const camera = new Hilo3d.Camera2D({
-    width: innerWidth,
-    height: innerHeight,
-    priority: 0,
-    clearColor: true
-});
-const stage = await Hilo3d.Stage.create({
-    backend: resolveExampleBackend(),
-    container: requireContainer(),
-    cameras: [camera],
-    width: innerWidth,
-    height: innerHeight,
-    pixelRatio: Math.min(devicePixelRatio || 1, 2),
-    antialias: false,
-    alpha: false,
-    useInstanced: true,
-    clearColor: new Hilo3d.Color(0.04, 0.09, 0.08)
-});
+const studio = createStudio(5);
+const scene = await createStudioScene(studio);
+const { stage, ticker } = scene;
 const world = new Hilo3d.Node({ name: 'SortingTownWorld' }).addTo(stage);
 let worldScale = 1;
-
-const loadingGround = new Hilo3d.Sprite({
-    texture: createLoadingGroundTexture(),
-    width: WORLD_WIDTH,
-    height: WORLD_HEIGHT,
-    anchorX: 0,
-    anchorY: 0,
-    sortingLayer: -100,
-    pointerEnabled: false,
-    autoPlay: false
-}).addTo(world);
-
-// Present the inexpensive tile map immediately while the authored atlases load. This keeps the
-// cold WebGPU path responsive without introducing a backend-specific loading route.
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(stage);
-ticker.start();
 
 const [groundTexture, objectTexture, courierTexture] = await Promise.all([
     loadPixelTexture(
@@ -330,12 +376,11 @@ const [groundTexture, objectTexture, courierTexture] = await Promise.all([
         'SortingTown:objects'
     ),
     loadPixelTexture(
-        new URL('./image/2d/sorting-town-courier.png', import.meta.url),
-        'SortingTown:courier'
+        new URL('./image/2d/sorting-town-yui.png', import.meta.url),
+        'SortingTown:YuiHirasawa'
     )
 ]);
-loadingGround.removeFromParent();
-new Hilo3d.Sprite({
+const ground = new Hilo3d.Sprite({
     texture: groundTexture,
     width: WORLD_WIDTH,
     height: WORLD_HEIGHT,
@@ -345,8 +390,22 @@ new Hilo3d.Sprite({
     pointerEnabled: false,
     autoPlay: false
 }).addTo(world);
-const objectFrames = createGridFrames(objectTexture, 4, 2);
+const objectFrames = OBJECT_RECTS.map(
+    ([x, y, width, height], index) =>
+        new Hilo3d.SpriteFrame({
+            texture: objectTexture,
+            x: (index % 4) * 192 + x,
+            y: Math.floor(index / 4) * 256 + y,
+            width,
+            height
+        })
+);
 const courierFrames = createGridFrames(courierTexture, 4, 4);
+// Per-frame visible sole positions, including half-pixel grid origins of the 1254 px sheet.
+// Sprite position always remains the ground contact; artwork padding never enters Y sorting.
+const COURIER_SOLES = [
+    304, 300, 304, 300, 300.5, 297.5, 300.5, 297.5, 301, 297, 300, 300, 283.5, 283.5, 280.5, 283.5
+] as const;
 
 const destinationMarker = new Hilo3d.Sprite({
     texture: createMarkerTexture(),
@@ -360,88 +419,179 @@ const destinationMarker = new Hilo3d.Sprite({
     autoPlay: false
 }).addTo(world);
 
+const townSprites: Hilo3d.Sprite[] = [];
 for (const object of TOWN_OBJECTS) {
     const frame = objectFrames[object.frame];
     if (!frame) {
         throw new Error(`Sorting town object frame ${String(object.frame)} is missing.`);
     }
-    new Hilo3d.Sprite({
-        frame,
-        x: object.x,
-        y: object.y,
-        width: object.width,
-        height: object.height,
-        anchorX: 0.5,
-        anchorY: 1,
-        sortingLayer: WORLD_SORTING_LAYER,
-        zIndex: object.y,
-        pointerEnabled: false,
-        autoPlay: false
-    }).addTo(world);
+    townSprites.push(
+        new Hilo3d.Sprite({
+            frame,
+            x: object.x,
+            y: object.y,
+            width: object.width,
+            height: object.height,
+            anchorX: 0.5,
+            anchorY: 1,
+            sortingLayer: WORLD_SORTING_LAYER,
+            zIndex: object.y,
+            pointerEnabled: false,
+            autoPlay: false
+        }).addTo(world)
+    );
 }
 
-const startTile: TilePoint = { column: 1, row: 5 };
+const startTile: TilePoint = nearestWalkable(19, 12);
 const [startX, startY] = tileCenter(startTile);
 const courier = new Hilo3d.Sprite({
     frames: courierFrames,
     x: startX,
     y: startY,
-    width: 76,
-    height: 96,
+    width: 92,
+    height: 108,
     anchorX: 0.5,
-    anchorY: 1,
+    anchorY: COURIER_SOLES[0] / (courierTexture.origHeight / 4),
     sortingLayer: WORLD_SORTING_LAYER,
     zIndex: startY,
     pointerEnabled: false,
     autoPlay: false
 }).addTo(world);
 
-const title = new Hilo3d.Text2D({
-    text: 'MAPLE POST TOWN',
-    style: {
-        font: '800 27px ui-monospace, monospace',
-        fillStyle: '#fff1bb',
-        strokeStyle: '#2c4638',
-        strokeWidth: 6,
-        padding: 9,
-        resolution: 2,
-        textAlign: 'center'
+const status = {
+    setText(text: string): void {
+        studio.status.textContent = text;
+    }
+};
+const uiAtlas = createStudioAtlas();
+const pathDots = Array.from({ length: 80 }, () =>
+    new Hilo3d.Sprite({
+        frame: uiAtlas.frames.up,
+        width: 10,
+        height: 10,
+        visible: false,
+        sortingLayer: 0,
+        pointerEnabled: false,
+        tint: new Hilo3d.Color(1, 0.85, 0.5, 0.8)
+    }).addTo(world)
+);
+const footprintCanvas = document.createElement('canvas');
+footprintCanvas.width = footprintCanvas.height = 32;
+const footprintContext = requireContext(footprintCanvas);
+footprintContext.fillStyle = 'rgba(85,230,190,.16)';
+footprintContext.fillRect(0, 0, 32, 32);
+footprintContext.strokeStyle = '#7bffd5';
+footprintContext.lineWidth = 2;
+footprintContext.strokeRect(1, 1, 30, 30);
+const footprintTexture = new Hilo3d.Texture({
+    image: footprintCanvas,
+    flipY: true,
+    premultiplyAlpha: false
+});
+const footprintGuides = new Hilo3d.Node({ visible: false }).addTo(world);
+for (const footprint of FOOTPRINTS) {
+    new Hilo3d.Sprite({
+        texture: footprintTexture,
+        anchorX: 0,
+        anchorY: 1,
+        x: footprint.left,
+        y: footprint.bottom,
+        width: footprint.right - footprint.left,
+        height: footprint.bottom - footprint.top,
+        sortingLayer: 50,
+        pointerEnabled: false
+    }).addTo(footprintGuides);
+}
+let automatic = true;
+let sorting = true;
+let showRoute = true;
+let speed = 1;
+let pose = '自由寻路';
+studio.section(
+    'AN AFTERNOON DELIVERY',
+    '沿主街逛商店，或走入西南花园。点击空地规划路径，道路具有更低通行成本。'
+);
+studio.toggle('自动巡游', automatic, value => {
+    automatic = value;
+});
+studio.toggle('启用脚底 Y 排序', sorting, value => {
+    sorting = value;
+    townSprites.forEach(sprite => {
+        sprite.zIndex = value ? sprite.y : 0;
+    });
+    courier.zIndex = value ? courier.y : 1000;
+    document.body.dataset['sorting'] = String(value);
+});
+studio.toggle('显示实体底座', false, value => {
+    footprintGuides.visible = value;
+});
+studio.toggle('显示路径', showRoute, value => {
+    showRoute = value;
+    updatePathDots();
+});
+studio.range(
+    '行走速度',
+    0.5,
+    2,
+    1,
+    0.1,
+    value => {
+        speed = value;
     },
-    anchorX: 0.5,
-    anchorY: 0,
-    sortingLayer: 100
-}).addTo(stage);
-const status = new Hilo3d.Text2D({
-    text: 'A* DELIVERY ROUTE  •  CLICK A ROAD TILE',
-    style: {
-        font: '700 12px ui-monospace, monospace',
-        fillStyle: '#f8e3a3',
-        strokeStyle: '#263e33',
-        strokeWidth: 5,
-        padding: 7,
-        resolution: 2,
-        textAlign: 'center'
-    },
-    anchorX: 0.5,
-    anchorY: 1,
-    sortingLayer: 100
-}).addTo(stage);
-const backendLabel = new Hilo3d.Text2D({
-    text: `${stage.renderer.backend.toUpperCase()}  •  FOOT-Y ZINDEX  •  STABLE ATLAS BATCHES`,
-    style: {
-        font: '700 10px ui-monospace, monospace',
-        fillStyle: '#b9ebd1',
-        strokeStyle: '#263e33',
-        strokeWidth: 4,
-        padding: 5,
-        resolution: 2,
-        textAlign: 'center'
-    },
-    anchorX: 0.5,
-    anchorY: 1,
-    sortingLayer: 100
-}).addTo(stage);
-
+    '×'
+);
+studio.select('时光色调', ['Afternoon', 'Golden hour', 'Blue hour'], 'Afternoon', value => {
+    const tint =
+        value === 'Golden hour'
+            ? [1, 0.83, 0.59]
+            : value === 'Blue hour'
+              ? [0.52, 0.7, 0.92]
+              : [1, 1, 1];
+    for (const sprite of [ground, ...townSprites, courier])
+        sprite.tint.set(tint[0] ?? 1, tint[1] ?? 1, tint[2] ?? 1, 1);
+});
+studio.section(
+    'A WORLD IN LAYERS',
+    '关闭排序作对照：角色会一直盖在建筑和树木上。图集动画随行走方向切换。'
+);
+studio.select('角色位置对照', ['自由寻路', '花坛后方', '花坛前方'], pose, value => {
+    pose = value;
+    route = [];
+    routeIndex = 0;
+    destinationMarker.visible = false;
+    updatePathDots();
+    if (value !== '自由寻路') {
+        courier.setPosition(
+            SORTING_DEMO_PROP.x,
+            value === '花坛后方' ? SORTING_DEMO_PROP.y - 40 : SORTING_DEMO_PROP.y + 30,
+            0
+        );
+        courier.zIndex = sorting ? courier.y : 1000;
+        setCourierFrame(0, 0);
+    } else {
+        const tile = nearestWalkable(
+            Math.floor(courier.x / TILE_SIZE),
+            Math.floor(courier.y / TILE_SIZE)
+        );
+        const [x, y] = tileCenter(tile);
+        courier.setPosition(x, y, 0);
+    }
+    document.body.dataset['townPose'] = value;
+    status.setText(
+        value === '自由寻路'
+            ? '点击道路或草地规划路径，或开启自动巡游。'
+            : `${value} · 对照角色脚底与花坛底座`
+    );
+});
+const yMetric = studio.metric('角色脚底 Y', '416');
+const stepsMetric = studio.metric('剩余路径节点', '0');
+studio.metric('角色', '平泽唯 / Yui Hirasawa');
+studio.metric('行走图集', '4 directions × 4 frames');
+document.body.dataset['townCharacter'] = 'yui-hirasawa';
+studio.metric('场景对象', String(TOWN_OBJECTS.length));
+studio.metric('寻路约束', '32 px 网格 / 草地可通行');
+document.body.dataset['townPose'] = pose;
+document.body.dataset['sorting'] = 'true';
 let route: readonly TilePoint[] = [];
 let routeIndex = 1;
 let currentDirectionRow = 0;
@@ -450,9 +600,22 @@ let frameElapsed = 0;
 let waitRemaining = 0;
 let nextAutoDestination = 0;
 
+function updatePathDots(): void {
+    pathDots.forEach((dot, index) => {
+        const tile = route[index + routeIndex];
+        dot.visible = showRoute && tile !== undefined;
+        if (tile) {
+            const [x, y] = tileCenter(tile);
+            dot.setPosition(x, y, 0);
+        }
+    });
+}
+
 function setCourierFrame(row: number, frame: number): void {
     const frameIndex = row * 4 + frame;
     if (courier.currentFrame !== frameIndex) courier.gotoFrame(frameIndex);
+    const sole = COURIER_SOLES[frameIndex];
+    if (sole !== undefined) courier.anchorY = sole / (courierTexture.origHeight / 4);
 }
 
 function planRoute(destination: TilePoint, clicked: boolean): void {
@@ -463,6 +626,8 @@ function planRoute(destination: TilePoint, clicked: boolean): void {
     route = findPath(currentTile, destination);
     routeIndex = 1;
     waitRemaining = 0;
+    updatePathDots();
+    document.body.dataset['routeMode'] = clicked ? 'player' : 'auto';
     const [targetX, targetY] = tileCenter(destination);
     destinationMarker.setPosition(targetX, targetY, 0);
     destinationMarker.zIndex = targetY - 1;
@@ -476,7 +641,11 @@ function planRoute(destination: TilePoint, clicked: boolean): void {
 
 const courierController = {
     tick(deltaTime: number): void {
-        const safeDelta = Math.min(Math.max(deltaTime, 0), 50);
+        const safeDelta = Math.min(Math.max(deltaTime, 0), 50) * speed;
+        yMetric.value = String(Math.round(courier.y));
+        stepsMetric.value = String(Math.max(0, route.length - routeIndex));
+        updatePathDots();
+        if (pose !== '自由寻路') return;
         if (routeIndex >= route.length) {
             if (route.length > 0) {
                 route = [];
@@ -487,7 +656,7 @@ const courierController = {
                 status.setText('DELIVERY COMPLETE  •  CHOOSING NEXT STOP');
             } else if (waitRemaining > 0) {
                 waitRemaining -= safeDelta;
-            } else {
+            } else if (automatic) {
                 const destination =
                     AUTO_DESTINATIONS[nextAutoDestination % AUTO_DESTINATIONS.length];
                 nextAutoDestination += 1;
@@ -518,7 +687,7 @@ const courierController = {
                 remainingDistance = 0;
             }
         }
-        courier.zIndex = Math.round(courier.y);
+        courier.zIndex = sorting ? Math.round(courier.y) : 1000;
         frameElapsed += safeDelta;
         if (frameElapsed >= FRAME_DURATION) {
             frameElapsed %= FRAME_DURATION;
@@ -529,9 +698,11 @@ const courierController = {
 };
 
 stage.on('click', event => {
+    if (pose !== '自由寻路') return;
     const pointer = event as Hilo3d.StagePointerEvent;
     const localX = (pointer.stageX - world.x) / worldScale;
     const localY = (pointer.stageY - world.y) / worldScale;
+    if (localX < 0 || localY < 0 || localX > WORLD_WIDTH || localY > WORLD_HEIGHT) return;
     const destination = nearestWalkable(
         Math.floor(localX / TILE_SIZE),
         Math.floor(localY / TILE_SIZE)
@@ -540,11 +711,7 @@ stage.on('click', event => {
 });
 stage.enableDOMEvent('click');
 
-function resize(): void {
-    const width = innerWidth;
-    const height = innerHeight;
-    stage.resize(width, height);
-    camera.resize(width, height);
+scene.addLayout((width, height) => {
     worldScale = Math.min(width / WORLD_WIDTH, height / WORLD_HEIGHT);
     world.setScale(worldScale);
     world.setPosition(
@@ -552,21 +719,9 @@ function resize(): void {
         Math.round((height - WORLD_HEIGHT * worldScale) * 0.5),
         0
     );
-    title.setScale(Math.min(1, width / 600));
-    title.setPosition(width * 0.5, 18, 0);
-    status.setScale(Math.min(1, width / 650));
-    status.setPosition(width * 0.5, height - 14, 0);
-    backendLabel.setScale(Math.min(1, width / 650));
-    backendLabel.setPosition(width * 0.5, height - 48, 0);
-}
-window.addEventListener('resize', resize);
-resize();
+});
 
-ticker.removeTick(stage);
 ticker.addTick(courierController);
-ticker.addTick(stage);
 planRoute(AUTO_DESTINATIONS[0], false);
 nextAutoDestination = 1;
-document.querySelector<HTMLElement>('#loading')?.remove();
-document.body.dataset['exampleReady'] = 'true';
-console.info(`2D sorting town uses ${stage.renderer.backend}`);
+scene.start();
