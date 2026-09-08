@@ -33,8 +33,30 @@ async function assertExhibitPixels(
     testInfo: TestInfo,
     name: string
 ): Promise<Buffer> {
-    const capture = await page.locator(`canvas[data-hilo3d-backend="${backend}"]`).screenshot({
+    const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+    await expect(canvas).toBeVisible();
+    const frame = await canvas.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const health = window.__HILO3D_UI_RENDER_HEALTH__;
+        if (!health) throw new Error('Physics screenshots require native render instrumentation');
+        return {
+            bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+            viewport: { x: 0, y: 0, width: innerWidth, height: innerHeight },
+            health
+        };
+    });
+    expect(frame.bounds, 'The exhibit canvas must cover the complete viewport').toEqual(
+        frame.viewport
+    );
+    expect(
+        completedRenderCommands([{ url: page.url(), snapshot: frame.health }], backend),
+        'A viewport capture requires real native draws and, on WebGPU, a submitted canvas frame'
+    ).toBeGreaterThan(0);
+    // The canvas fills a fixed viewport. Capture its composited pixels directly without the
+    // locator screenshot's scroll and consecutive-animation-frame element-stability checks.
+    const capture = await page.screenshot({
         type: 'png',
+        fullPage: false,
         animations: 'disabled',
         timeout: POLL_TIMEOUT
     });
@@ -42,11 +64,13 @@ async function assertExhibitPixels(
     const image = PNG.sync.read(capture);
     const mobile = image.width < 700;
     // Measure the unobstructed exhibit region. DOM captions and buttons cannot make a blank
-    // canvas satisfy this gate, even though a locator screenshot includes page compositing.
+    // canvas satisfy this gate, even though the viewport capture includes page compositing.
     const left = Math.floor(image.width * (mobile ? 0.1 : 0.28));
     const right = Math.floor(image.width * (mobile ? 0.9 : 0.92));
     const top = Math.floor(image.height * (mobile ? 0.36 : 0.22));
-    const bottom = Math.floor(image.height * (mobile ? 0.76 : 0.8));
+    const bottom = Math.floor(
+        mobile ? image.height * 0.76 : Math.min(image.height * 0.8, image.height - 160)
+    );
     const colors = new Set<number>();
     let samples = 0;
     let bright = 0;
@@ -97,7 +121,9 @@ function changedPlayfieldRatio(before: Buffer, after: Buffer): number {
     const left = Math.floor(reference.width * (mobile ? 0.1 : 0.28));
     const right = Math.floor(reference.width * (mobile ? 0.9 : 0.92));
     const top = Math.floor(reference.height * (mobile ? 0.36 : 0.22));
-    const bottom = Math.floor(reference.height * (mobile ? 0.76 : 0.8));
+    const bottom = Math.floor(
+        mobile ? reference.height * 0.76 : Math.min(reference.height * 0.8, reference.height - 160)
+    );
     let samples = 0;
     let changed = 0;
     for (let y = top; y < bottom; y += 3) {
@@ -405,6 +431,91 @@ async function graphicsHealth(page: Page, backend: ExampleBackend, context: stri
     });
 }
 
+async function assertMobileControls(
+    page: Page,
+    requiredActionIds: readonly string[]
+): Promise<void> {
+    // The exhibit has finished laying out before its pixel capture. Sample all controls together
+    // so software rendering does not have to service a separate browser RPC for every button.
+    const layout = await page.evaluate(() => {
+        const actions = document.querySelector('#scene-actions')?.getBoundingClientRect();
+        const playback = document.querySelector('.playback')?.getBoundingClientRect();
+        if (!actions || !playback) throw new Error('Physics controls are missing');
+        const sceneButtons = [
+            ...document.querySelectorAll<HTMLButtonElement>('#scene-actions button')
+        ];
+        const playbackButtons = ['pause', 'slow', 'camera-home'].map(id => {
+            const button = document.getElementById(id);
+            if (!(button instanceof HTMLButtonElement)) {
+                throw new Error(`Physics playback control ${id} is missing`);
+            }
+            return button;
+        });
+        const chapters = [...document.querySelectorAll<HTMLAnchorElement>('.chapter-link')];
+        return {
+            width: innerWidth,
+            height: innerHeight,
+            scrollWidth: document.documentElement.scrollWidth,
+            actionBottom: actions.bottom,
+            playbackTop: playback.top,
+            centerIsCanvas:
+                document.elementFromPoint(innerWidth / 2, innerHeight * 0.56)?.tagName === 'CANVAS',
+            chapters: chapters.length,
+            backendLinks: chapters.every(
+                link => new URL(link.href).searchParams.get('backend') === 'webgl2'
+            ),
+            actionIds: sceneButtons.map(button => button.id),
+            controls: [...sceneButtons, ...playbackButtons].map(button => {
+                const bounds = button.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                let opacity = Number(style.opacity);
+                for (let parent = button.parentElement; parent; parent = parent.parentElement) {
+                    opacity *= Number(getComputedStyle(parent).opacity);
+                }
+                return {
+                    id: button.id,
+                    width: bounds.width,
+                    height: bounds.height,
+                    left: bounds.left,
+                    top: bounds.top,
+                    right: bounds.right,
+                    bottom: bounds.bottom,
+                    display: style.display,
+                    visibility: style.visibility,
+                    opacity
+                };
+            })
+        };
+    });
+    expect(layout.chapters).toBe(6);
+    expect(layout.actionIds).toEqual(expect.arrayContaining([...requiredActionIds]));
+    expect(layout.actionIds.length).toBeGreaterThanOrEqual(requiredActionIds.length);
+    for (const control of layout.controls) {
+        expect(control.width, `${control.id} must have positive width`).toBeGreaterThan(0);
+        expect(control.height, `${control.id} must have positive height`).toBeGreaterThan(0);
+        expect(control.display, `${control.id} must be displayed`).not.toBe('none');
+        expect(control.visibility, `${control.id} must be CSS-visible`).toBe('visible');
+        expect(
+            control.opacity,
+            `${control.id} must have visible effective opacity`
+        ).toBeGreaterThan(0);
+        expect(control.left, `${control.id} must fit inside the viewport`).toBeGreaterThanOrEqual(
+            0
+        );
+        expect(control.top, `${control.id} must fit inside the viewport`).toBeGreaterThanOrEqual(0);
+        expect(control.right, `${control.id} must fit inside the viewport`).toBeLessThanOrEqual(
+            layout.width
+        );
+        expect(control.bottom, `${control.id} must fit inside the viewport`).toBeLessThanOrEqual(
+            layout.height
+        );
+    }
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
+    expect(layout.actionBottom).toBeLessThan(layout.playbackTop);
+    expect(layout.centerIsCanvas).toBe(true);
+    expect(layout.backendLinks).toBe(true);
+}
+
 async function exerciseCharacter(page: Page): Promise<void> {
     const resetStep = await pause(page);
     await page.locator('#courier-reset').click();
@@ -514,7 +625,10 @@ for (const scene of PHYSICS_RELEASE_TEST_CASES) {
         page
     }, testInfo) => {
         test.setTimeout(180_000);
-        await page.setViewportSize({ width: 1280, height: 800 });
+        // Keep the desktop 16:10 composition while bounding software-raster cost. The real
+        // scene, shadows, simulation, native health and pixel thresholds remain in this lane;
+        // full-resolution art review is captured separately in documentation/assets/physics.
+        await page.setViewportSize({ width: 960, height: 600 });
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
@@ -581,37 +695,7 @@ test('physics collection keeps mobile controls outside the playfield @webgl2', a
         });
         await expectIncrease(page, 'physicsPasses', 0);
         await assertExhibitPixels(page, 'webgl2', testInfo, 'marble-mobile');
-        await expect(page.locator('.chapter-link')).toHaveCount(6);
-        for (const selector of [
-            '#marble-release',
-            '#marble-reverse',
-            '#pause',
-            '#slow',
-            '#camera-home'
-        ]) {
-            await expect(page.locator(selector)).toBeInViewport();
-        }
-        const layout = await page.evaluate(() => {
-            const actions = document.querySelector('#scene-actions')?.getBoundingClientRect();
-            const playback = document.querySelector('.playback')?.getBoundingClientRect();
-            if (!actions || !playback) throw new Error('Physics controls are missing');
-            return {
-                width: innerWidth,
-                scrollWidth: document.documentElement.scrollWidth,
-                actionBottom: actions.bottom,
-                playbackTop: playback.top,
-                centerIsCanvas:
-                    document.elementFromPoint(innerWidth / 2, innerHeight * 0.56)?.tagName ===
-                    'CANVAS',
-                backendLinks: [
-                    ...document.querySelectorAll<HTMLAnchorElement>('.chapter-link')
-                ].every(link => new URL(link.href).searchParams.get('backend') === 'webgl2')
-            };
-        });
-        expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
-        expect(layout.actionBottom).toBeLessThan(layout.playbackTop);
-        expect(layout.centerIsCanvas).toBe(true);
-        expect(layout.backendLinks).toBe(true);
+        await assertMobileControls(page, ['marble-release', 'marble-reverse']);
         const passes = await numberReadout(page, 'physicsPasses');
         await page.locator('#marble-release').click();
         await expectIncrease(page, 'physicsPasses', passes);
@@ -644,34 +728,28 @@ for (const scene of PHYSICS_RELEASE_TEST_CASES.filter(
             } else {
                 await assertExhibitPixels(page, 'webgl2', testInfo, `${scene.name}-mobile`);
             }
-            await expect(page.locator('.chapter-link')).toHaveCount(6);
-            const sceneActions = page.locator('#scene-actions button');
-            expect(await sceneActions.count()).toBeGreaterThanOrEqual(4);
-            for (const button of await sceneActions.all()) await expect(button).toBeInViewport();
-            for (const selector of ['#pause', '#slow', '#camera-home']) {
-                await expect(page.locator(selector)).toBeInViewport();
-            }
-            const layout = await page.evaluate(() => {
-                const actions = document.querySelector('#scene-actions')?.getBoundingClientRect();
-                const playback = document.querySelector('.playback')?.getBoundingClientRect();
-                if (!actions || !playback) throw new Error('Physics controls are missing');
-                return {
-                    width: innerWidth,
-                    scrollWidth: document.documentElement.scrollWidth,
-                    actionBottom: actions.bottom,
-                    playbackTop: playback.top,
-                    centerIsCanvas:
-                        document.elementFromPoint(innerWidth / 2, innerHeight * 0.56)?.tagName ===
-                        'CANVAS',
-                    backendLinks: [
-                        ...document.querySelectorAll<HTMLAnchorElement>('.chapter-link')
-                    ].every(link => new URL(link.href).searchParams.get('backend') === 'webgl2')
-                };
-            });
-            expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);
-            expect(layout.actionBottom).toBeLessThan(layout.playbackTop);
-            expect(layout.centerIsCanvas).toBe(true);
-            expect(layout.backendLinks).toBe(true);
+            await assertMobileControls(
+                page,
+                scene.name === 'character'
+                    ? [
+                          'courier-auto',
+                          'courier-jump',
+                          'courier-reset',
+                          'courier-step',
+                          'courier-inspect',
+                          'courier-left',
+                          'courier-right',
+                          'courier-forward',
+                          'courier-back'
+                      ]
+                    : [
+                          'bridge-load',
+                          'bridge-unload',
+                          'bridge-sway',
+                          'bridge-reset',
+                          'bridge-focus'
+                      ]
+            );
             const before = nativeRenderProgress(await readRenderHealth(page), 'webgl2');
             if (scene.name === 'character') {
                 await page.locator('#courier-reset').click();
