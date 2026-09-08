@@ -20,6 +20,7 @@ committed.
 | [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks                        |
 | [Physics architecture](./PHYSICS_ARCHITECTURE.md)                               | Optional Stage System ABI, backend-neutral 2D/3D ownership, fixed-step simulation, Rapier adapters, synchronization, and lifecycle  |
+| [CSM toy showcase](./CSM_TOY_SHOWCASE.md)                                       | Toy diorama, equal-budget shadow comparison, dusk lighting, weather, snow accumulation, and reviewed screenshots                    |
 | [Physics examples](./PHYSICS_EXAMPLES.md)                                       | Six interactive physics exhibits, controls, character motion, suspension loads, art/physics boundaries, and validation scope        |
 | [Physics implementation plan](./PHYSICS_IMPLEMENTATION_PLAN.md)                 | Delivered physics slices, packaging and Cannon migration, advanced queries/character motion, acceptance and remaining release gates |
 | [Particle system](./PARTICLE_SYSTEM.md)                                         | Optional addon package, Stage System lifecycle, P0-P5 runtime, P6 authoring, deterministic checkpoints and baking contracts         |
