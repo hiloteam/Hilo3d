@@ -5,37 +5,39 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
             name="description"
-            content="Compare Hilo3D vector and curl particle noise as stateless position offsets and stateful forces."
+            content="Four live particle currents combine coherent emission, vector and curl noise, and soft granular wakes."
         />
         <title>Hilo3D Particle Noise Fields</title>
         <link rel="stylesheet" href="./example.css" />
         <link rel="stylesheet" href="./particle_showcase.css" />
     </head>
-    <body>
+    <body class="particle-gallery noise-page">
         <div id="container"></div>
         <header class="particle-hero">
-            <div class="particle-kicker">Particle studies · 02 / noise fields</div>
+            <div class="particle-kicker">Studies in motion · 02 / flow</div>
             <h1>Turbulence Atlas</h1>
-            <p>
-                Four living fields isolate vector and curl noise as absolute position offsets or
-                accumulated forces, revealing octave, frequency, scroll and damping behavior.
-            </p>
-            <div class="particle-chips">
-                <span>vector noise</span><span>curl noise</span><span>position-offset</span
-                ><span>force + damping</span><span>1–4 octaves</span>
-            </div>
+            <p>Invisible currents, traced in mineral light.</p>
         </header>
-        <div class="noise-label" style="left: 34%; top: 27%; color: #57e9ff">vector offset</div>
-        <div class="noise-label" style="left: 66%; top: 27%; color: #a45aff">curl offset</div>
-        <div class="noise-label" style="left: 34%; top: 67%; color: #ffb349">vector force</div>
-        <div class="noise-label" style="left: 66%; top: 67%; color: #ff4b92">curl force</div>
-        <div class="particle-hint">NOISE PARAMETERS ARE FIXED AND DETERMINISTIC</div>
+        <div class="noise-label noise-label--one">
+            <span>01 / VECTOR OFFSET</span><strong>Jade current</strong>
+        </div>
+        <div class="noise-label noise-label--two">
+            <span>02 / CURL OFFSET</span><strong>Glacial gyre</strong>
+        </div>
+        <div class="noise-label noise-label--three">
+            <span>03 / VECTOR FORCE</span><strong>Gilded drift</strong>
+        </div>
+        <div class="noise-label noise-label--four">
+            <span>04 / CURL FORCE</span><strong>Copper eddy</strong>
+        </div>
+        <div class="particle-hint">DRAG TO EXPLORE · FOUR STUDIES OF MOTION</div>
         <nav class="particle-nav" aria-label="Particle example collection">
             <a href="./particle_elemental_forge.html">Elemental</a>
-            <a aria-current="page" href="./particle_noise_fields.html">Noise</a>
-            <a href="./particle_orbital_weave.html">Topology</a>
-            <a href="./particle_collision_theatre.html">Interaction</a>
-            <a href="./particle_gpu_nebula.html?backend=webgpu">GPU nebula</a>
+            <a aria-current="page" href="./particle_noise_fields.html">Flow</a>
+            <a href="./particle_orbital_weave.html">Orbit</a>
+            <a href="./particle_collision_theatre.html">Impact</a>
+            <a href="./particle_gpu_nebula.html?backend=webgpu">Horizon</a>
+            <a href="./compute_particles.html?backend=webgpu">Tides</a>
         </nav>
         <script type="module" src="./particle_noise_fields.ts"></script>
     </body>

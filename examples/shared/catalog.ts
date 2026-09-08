@@ -116,7 +116,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'gtao_acceptance_lab.html': 'GTAO Acceptance Lab',
     'temporal_aa_observatory.html': 'Temporal Observatory — Signals in Deep Time',
     'compute_eclipse_shrine.html': 'Eclipse Shrine — WebGPU Compute Installation',
-    'compute_particles.html': 'Hilo3D Compute Particle Field',
+    'compute_particles.html': 'Luminous Tides — Interactive Particle Landscape',
     'compute_raytracing.html': 'Hilo3D Crystal Compute Path Tracer',
     '2d_sprite_animation.html': '2D Moon Moth Animation',
     '2d_sorting_town.html': '2D Sorting Town',
@@ -137,10 +137,10 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'physics/rapier_character.html': 'Clockwork courier — Character Controller',
     'physics/rapier_bridge.html': 'Suspension atelier — Loads & Constraints',
     'cascaded_shadows.html': 'Little Sunshine — Toy Shadow Garden',
-    'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
-    'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
-    'particle_orbital_weave.html': 'Orbital Weave — Meshes, Ribbons & Trails',
-    'particle_collision_theatre.html': 'Collision Theatre — Particle Interaction',
+    'particle_elemental_forge.html': 'Elemental Forge — Molten Light',
+    'particle_noise_fields.html': 'Turbulence Atlas — Mineral Currents',
+    'particle_orbital_weave.html': 'Orbital Weave — A Choreography of Light',
+    'particle_collision_theatre.html': 'Collision Theatre — Falling Light',
     'particle_gpu_nebula.html': 'Event Horizon — WebGPU Particle Nebula'
 });
 
@@ -225,15 +225,15 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'cascaded_shadows.html':
         'Explore a rounded plastic toy town with a windmill, lighthouse and miniature train. Compare single-map and four-cascade shadows at the same shadow-texel budget.',
     'particle_elemental_forge.html':
-        'Compare every analytic emission shape through elemental sprite effects with lifetime curves, gradients, SubUV animation, alignments, blending, and sorting.',
+        'Molten light rises through a brass instrument: eight emission shapes, fine embers, cold mineral dust, and a calibrated circular plinth.',
     'particle_noise_fields.html':
-        'Read vector and curl noise side by side as stateless position offsets and stateful forces with explicit octave, frequency, scroll, and damping profiles.',
+        'Fine grains and soft mist flow through four mineral currents, with coherent particle velocities, vector and curl noise, and gradual dissolution.',
     'particle_orbital_weave.html':
-        'Orbit lit mesh buckets, topology-preserving ribbons, and velocity trails driven by shared portable particle simulation.',
+        'Two comets shed granular wakes while three luminous ribbon and trail systems follow independent inclinations, directions, and periods.',
     'particle_collision_theatre.html':
-        'Launch particles through plane, sphere, box, and capsule colliders with triggers, bounded events, typed channels, and resident sub-emitters.',
+        'Release a shower of light onto four polished surfaces. Real particle collisions scatter sparks within a quiet architectural frame.',
     'particle_gpu_nebula.html':
-        'Fold 65,536 stateful and stateless bodies around soft scene depth with compute simulation, collision, sorting, and GPU-resident event routing.'
+        'A copper accretion disk surrounds a dark core, with glacial dust, WebGPU simulation and resident event routing, plus portable stateless stars.'
 });
 
 const FEATURED_PATHS = new Set([

@@ -268,16 +268,16 @@ on the normal Render Graph path.
 ## Maintained visual examples
 
 The example gallery groups particle coverage by the behavior an author is trying to learn rather
-than by implementation phase. Together the five pages exercise the complete P0-P5 rendering and
-interaction surface while keeping each source file readable:
+than by implementation phase. Together the five pages demonstrate representative P0-P5 rendering and
+interaction features while keeping each source file readable:
 
 | Example                                                                      | Primary coverage                                                                                                                                                                                                                                                                                                               |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`particle_elemental_forge.ts`](../examples/particle_elemental_forge.ts)     | Point/line/box/disc/sphere/hemisphere/cone/torus distributions, time and burst emission, lifetime curves, gradients, by-speed values, SubUV animation, sprite alignments, sorting, blending, camera modifiers, custom channels, and kill conditions.                                                                           |
-| [`particle_noise_fields.ts`](../examples/particle_noise_fields.ts)           | Vector and curl noise, position-offset and force modes, one to four octaves, frequency, lacunarity, persistence, scroll velocity, damping, deterministic seeds, and stateless versus CPU stateful execution.                                                                                                                   |
-| [`particle_orbital_weave.ts`](../examples/particle_orbital_weave.ts)         | Mesh buckets, opaque motion-vector eligibility, coherent world-space ribbon/trail sampling, view/world-up facing, repeat UVs, topology-safe ordering, conform/orbit motion, and portable instanced draws.                                                                                                                      |
+| [`particle_elemental_forge.ts`](../examples/particle_elemental_forge.ts)     | Point/line/box/disc/sphere/hemisphere/cone/torus distributions, continuous emission, gravity and orbital forces, noise, lifetime curves, gradients, SubUV animation, sprite alignments, sorting, and blending.                                                                                                                 |
+| [`particle_noise_fields.ts`](../examples/particle_noise_fields.ts)           | Vector and curl noise, position-offset and force modes, deterministic coherent manual emission, tangent velocities, soft grains and mist, and bounded fixed-step CPU simulation.                                                                                                                                               |
+| [`particle_orbital_weave.ts`](../examples/particle_orbital_weave.ts)         | Mesh buckets, opaque motion-vector eligibility, coherent world-space ribbon/trail sampling, view facing, repeat UVs, topology-safe ordering, two scripted comet orbits, and portable instanced draws.                                                                                                                          |
 | [`particle_collision_theatre.ts`](../examples/particle_collision_theatre.ts) | Four color-coded, staggered low-frequency plane/sphere/box/capsule streams, slender projectile trails, short rebounds, dense fire-spark impacts, triggers, bounded event aggregates, batched sub-emitters, typed application channels, and click-triggered full-field meteor rain that collides with every analytic primitive. |
-| [`particle_gpu_nebula.ts`](../examples/particle_gpu_nebula.ts)               | Explicit WebGPU stateful simulation, stateless reconstruction, large capacities, distance sorting, soft particles, scene-depth and analytic collision, GPU-resident sub-emitter routing, fixed bounds, and readback-free runtime diagnostics.                                                                                  |
+| [`particle_gpu_nebula.ts`](../examples/particle_gpu_nebula.ts)               | Explicit WebGPU stateful simulation, stateless reconstruction, large capacities, distance sorting, soft particles, scene-depth and analytic collision, GPU-resident sub-emitter routing, fixed bounds, and a readback-free production loop.                                                                                    |
 
 The pages use procedural textures so their presentation does not depend on a network service or an
 unreviewed binary asset. They are part of the recursively discovered WebGL 2/WebGPU example release
@@ -490,6 +490,28 @@ routing; application-visible GPU diagnostics remain aggregate and asynchronous r
 production-loop particle readback. The public fixed module union rejects arbitrary simulation
 callbacks and arbitrary shader source by design; the offline flipbook capture callback operates only
 at bounded frame/readback boundaries.
+
+## Example collection: Studies in motion
+
+The particle pages share a restrained gallery frame, serif titles, numbered navigation, and short
+exhibit captions. The scene remains the primary surface; rendering statistics are hidden in this
+collection. All artwork uses local procedural geometry and textures with the existing renderer and
+particle materials.
+
+| Exhibit                                                          | Art direction                                                                                       | Runtime boundary                                                                                          |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Elemental Forge](../examples/particle_elemental_forge.html)     | Molten-gold particles inside a brass instrument, with cold mineral dust and a circular plinth       | Portable sprite shapes, curves, gradients and SubUV                                                       |
+| [Turbulence Atlas](../examples/particle_noise_fields.html)       | Four currents of fine grains and softly fading mist, with camera-projected exhibit labels           | Live CPU particles use coherent manual emission and vector/curl noise in force/offset modes               |
+| [Orbital Weave](../examples/particle_orbital_weave.html)         | Blue-white and ember comets, plus three independent luminous ribbons on differently inclined orbits | Portable sprite dust, gas, tiny mesh buckets, and independently moving world-space ribbon/trail particles |
+| [Collision Theatre](../examples/particle_collision_theatre.html) | Falling light, polished surfaces and delicate architectural arches                                  | Portable analytic collisions, events, triggers and interactive rain                                       |
+| [Event Horizon](../examples/particle_gpu_nebula.html)            | Copper gas veil, dark core, thin photon ring and glacial dust                                       | WebGPU stateful simulation and resident events; torus/noise stateless stars reconstruct on CPU            |
+| [Luminous Tides](../examples/compute_particles.html)             | An interactive star landscape presented in the shared gallery frame                                 | The specialized compute simulation and raster remain unchanged                                            |
+
+The first four exhibits support WebGL2 and WebGPU. Event Horizon and Luminous Tides require WebGPU.
+Orbitable exhibits use public `OrbitControls`; the flow atlas rearranges its four studies into a
+vertical composition on narrow portrait displays. Fine particles use a bounded 1.5 pixel ratio for
+presentation, which is a visual-quality choice rather than a performance benchmark configuration. No
+additional raster shaders or external model dependencies are introduced.
 
 The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
 its specialized implementation for now. It will be migrated only after the remaining particle

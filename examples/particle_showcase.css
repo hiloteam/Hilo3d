@@ -1,439 +1,269 @@
 :root {
     color-scheme: dark;
-    font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        'Segoe UI',
-        sans-serif;
+    font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+    --particle-ink: #ece7dd;
+    --particle-muted: #9a9993;
+    --particle-accent: #cfac79;
+    --particle-line: rgb(205 190 161 / 18%);
 }
 
 body {
-    background: #02040c;
-    color: #f4f7ff;
+    background: #080b10;
+    color: var(--particle-ink);
 }
-
+.particle-gallery::after {
+    position: fixed;
+    z-index: 99990;
+    inset: 18px;
+    border: 1px solid rgb(205 190 161 / 9%);
+    pointer-events: none;
+    content: '';
+}
+.particle-gallery .hilo3dStats {
+    display: none;
+}
 .particle-hero {
     position: fixed;
     z-index: 100000;
-    top: 22px;
-    right: 24px;
-    width: min(390px, calc(100vw - 48px));
+    top: 42px;
+    left: 42px;
+    width: 280px;
     pointer-events: none;
 }
-
 .particle-kicker {
-    color: #7fe9ff;
-    font-size: 10px;
-    font-weight: 750;
-    letter-spacing: 0.18em;
+    color: var(--particle-accent);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    line-height: 1.6;
     text-transform: uppercase;
 }
-
 .particle-hero h1 {
-    margin: 7px 0 6px;
-    font-size: clamp(24px, 4vw, 46px);
-    font-weight: 650;
-    letter-spacing: -0.045em;
-    line-height: 0.96;
-    text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55);
+    margin: 17px 0 15px;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    font-size: clamp(42px, 4.4vw, 66px);
+    font-weight: 400;
+    letter-spacing: -0.055em;
+    line-height: 0.94;
+    text-wrap: balance;
 }
-
+.particle-hero h1 span {
+    display: block;
+}
 .particle-hero p {
+    max-width: 248px;
     margin: 0;
-    color: rgba(230, 239, 255, 0.7);
-    font-size: 12px;
-    line-height: 1.55;
+    color: var(--particle-muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.8;
+    text-wrap: pretty;
 }
-
 .particle-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 12px;
+    display: none;
 }
-
-.particle-chips span,
-.particle-nav a,
-.particle-controls button {
-    border: 1px solid rgba(150, 210, 255, 0.18);
-    border-radius: 999px;
-    background: rgba(8, 17, 35, 0.58);
-    box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
-    color: rgba(230, 245, 255, 0.82);
-    font-size: 10px;
-    line-height: 1;
-    text-decoration: none;
-    backdrop-filter: blur(14px);
-}
-
-.particle-chips span {
-    padding: 7px 9px;
-}
-
 .particle-nav {
     position: fixed;
     z-index: 100005;
-    right: 24px;
-    bottom: 22px;
+    right: 42px;
+    bottom: 33px;
+    left: 42px;
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     justify-content: flex-end;
-    gap: 7px;
-    max-width: min(620px, calc(100vw - 48px));
+    gap: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--particle-line);
+    counter-reset: study;
 }
-
+.particle-nav::before {
+    margin-right: auto;
+    color: #8b8880;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    content: 'HILO3D / STUDIES IN MOTION';
+}
 .particle-nav a {
-    padding: 9px 12px;
-    pointer-events: auto;
-    transition:
-        border-color 160ms ease,
-        background 160ms ease,
-        transform 160ms ease;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 6px 0;
+    color: #92928d;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    text-decoration: none;
+    transition: color 180ms ease;
+    counter-increment: study;
 }
-
+.particle-nav a::before {
+    color: #656966;
+    font-family: ui-monospace, monospace;
+    font-size: 8px;
+    content: '0' counter(study);
+}
 .particle-nav a:hover,
-.particle-nav a[aria-current='page'] {
-    border-color: rgba(109, 231, 255, 0.72);
-    background: rgba(23, 82, 112, 0.62);
-    transform: translateY(-1px);
+.particle-nav a[aria-current='page'],
+.particle-nav a[aria-current='page']::before {
+    color: var(--particle-accent);
 }
-
+.particle-nav a:focus-visible,
+.particle-controls button:focus-visible {
+    outline: 1px solid var(--particle-accent);
+    outline-offset: 6px;
+}
 .particle-controls {
     position: fixed;
     z-index: 100005;
-    left: 22px;
-    bottom: 22px;
+    bottom: 94px;
+    left: 42px;
     display: flex;
     gap: 8px;
 }
-
 .particle-controls button {
-    padding: 10px 13px;
+    padding: 10px 15px;
+    border: 1px solid var(--particle-line);
+    border-radius: 2px;
+    background: rgb(14 17 21 / 75%);
+    color: #c3beb3;
+    font: inherit;
+    font-size: 9px;
+    letter-spacing: 0.1em;
     cursor: pointer;
+    backdrop-filter: blur(12px);
+    transition:
+        color 180ms ease,
+        border-color 180ms ease;
 }
-
+.particle-controls button:first-child {
+    border-color: rgb(207 172 121 / 45%);
+    color: var(--particle-accent);
+}
 .particle-controls button:hover {
-    border-color: rgba(255, 183, 93, 0.7);
-    background: rgba(94, 48, 20, 0.7);
+    border-color: var(--particle-accent);
+    color: #fff9ec;
 }
-
 .particle-readout {
     position: fixed;
     z-index: 100002;
-    right: 24px;
-    top: 205px;
-    min-width: 188px;
-    padding: 12px 14px;
-    border: 1px solid rgba(124, 206, 255, 0.14);
-    border-radius: 12px;
-    background: rgba(4, 10, 24, 0.62);
-    color: rgba(210, 233, 255, 0.76);
+    top: 46px;
+    right: 42px;
+    padding: 6px 0 6px 16px;
+    border-left: 1px solid var(--particle-line);
+    color: #989c99;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 10px;
-    line-height: 1.65;
+    font-size: 9px;
+    line-height: 1.9;
     white-space: pre;
-    backdrop-filter: blur(14px);
     pointer-events: none;
 }
-
 .particle-hint {
     position: fixed;
     z-index: 100000;
-    left: 50%;
-    bottom: 24px;
-    transform: translateX(-50%);
-    color: rgba(219, 235, 255, 0.48);
-    font-size: 10px;
-    letter-spacing: 0.08em;
+    bottom: 95px;
+    left: 42px;
+    color: #818780;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    line-height: 1.8;
     pointer-events: none;
 }
-
-.particle-legend {
-    top: 132px;
-    right: auto;
-    left: 22px;
-    border-color: rgba(126, 220, 255, 0.2);
-    color: rgba(224, 241, 255, 0.82);
-}
-
-.particle-legend span {
-    display: block;
-}
-
 .noise-label {
     position: fixed;
     z-index: 100001;
-    transform: translate(-50%, -50%);
-    color: rgba(221, 240, 255, 0.62);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    text-shadow: 0 2px 12px #000;
-    text-transform: uppercase;
+    left: 0;
+    top: 0;
+    text-align: center;
+    color: var(--particle-accent);
     pointer-events: none;
 }
-
-.noise-label::before {
-    display: inline-block;
-    width: 5px;
-    height: 5px;
-    margin-right: 7px;
-    border-radius: 50%;
-    background: currentColor;
-    box-shadow: 0 0 12px currentColor;
-    content: '';
-}
-
-.collision-theatre-page {
-    --theatre-ink: #f0eae1;
-    --theatre-muted: rgba(211, 202, 191, 0.58);
-    --theatre-line: rgba(202, 153, 96, 0.2);
-    --theatre-glass: rgba(18, 15, 18, 0.62);
-    background:
-        radial-gradient(circle at 24% 30%, rgba(91, 73, 64, 0.13), transparent 40%),
-        radial-gradient(circle at 80% 58%, rgba(55, 63, 82, 0.1), transparent 38%), #0d0b0e;
-}
-
-.collision-theatre-page::before,
-.collision-theatre-page::after {
-    position: fixed;
-    z-index: 99990;
-    inset: 0;
-    pointer-events: none;
-    content: '';
-}
-
-.collision-theatre-page::before {
-    background:
-        radial-gradient(circle at 50% 42%, transparent 28%, rgba(0, 0, 0, 0.18) 82%),
-        linear-gradient(110deg, rgba(255, 225, 193, 0.018), transparent 34%);
-}
-
-.collision-theatre-page::after {
-    inset: 18px;
-    border: 1px solid rgba(216, 166, 108, 0.09);
-    border-radius: 2px;
-    box-shadow: inset 0 0 100px rgba(12, 8, 10, 0.12);
-}
-
-.collision-theatre-page .particle-hero {
-    top: 42px;
-    right: auto;
-    left: 48px;
-    width: min(330px, calc(100vw - 96px));
-}
-
-.collision-theatre-page .particle-kicker {
-    color: rgba(211, 159, 101, 0.78);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 8px;
-    font-weight: 620;
-    letter-spacing: 0.26em;
-}
-
-.collision-theatre-page .particle-hero h1 {
-    margin: 12px 0 12px;
-    color: var(--theatre-ink);
-    font-family: 'Iowan Old Style', Baskerville, 'Times New Roman', serif;
-    font-size: clamp(38px, 4.5vw, 66px);
-    font-weight: 400;
-    letter-spacing: -0.055em;
-    line-height: 0.82;
-}
-
-.collision-theatre-page .particle-hero h1 span {
+.noise-label span {
     display: block;
-    margin-bottom: 7px;
-    color: rgba(218, 205, 191, 0.54);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 0.22em;
-    font-weight: 580;
-    letter-spacing: 0.42em;
-    line-height: 1;
-    text-transform: uppercase;
-}
-
-.collision-theatre-page .particle-hero p {
-    max-width: 290px;
-    color: var(--theatre-muted);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 10px;
-    line-height: 1.7;
-}
-
-.collision-theatre-page .particle-readout {
-    top: 44px;
-    right: 48px;
-    min-width: 166px;
-    padding: 34px 0 8px 17px;
-    border: 0;
-    border-left: 1px solid var(--theatre-line);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    color: rgba(205, 197, 187, 0.58);
+    color: #939d9c;
+    font-family: ui-monospace, monospace;
     font-size: 8px;
-    line-height: 1.56;
-    backdrop-filter: none;
-}
-
-.collision-theatre-page .particle-readout::before {
-    position: absolute;
-    top: 7px;
-    right: 0;
-    left: 17px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(202, 153, 96, 0.1);
-    color: rgba(211, 159, 101, 0.68);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 7px;
-    font-weight: 620;
-    letter-spacing: 0.24em;
-    content: 'IMPACT REGISTER';
-}
-
-.collision-theatre-page .hilo3dStats {
-    display: none;
-}
-
-.collision-theatre-page .particle-controls {
-    left: 48px;
-    bottom: 42px;
-    align-items: center;
-}
-
-.collision-theatre-page .particle-controls button {
-    border-color: rgba(208, 189, 169, 0.14);
-    border-radius: 2px;
-    background: rgba(23, 19, 22, 0.62);
-    color: rgba(218, 207, 194, 0.62);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 7px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    transition:
-        border-color 180ms ease,
-        background 180ms ease,
-        color 180ms ease,
-        transform 180ms ease;
-}
-
-.collision-theatre-page .particle-controls button:first-child {
-    padding: 11px 17px;
-    border-color: rgba(211, 159, 101, 0.42);
-    background: rgba(104, 67, 43, 0.42);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16);
-    color: rgba(244, 226, 205, 0.88);
-}
-
-.collision-theatre-page .particle-controls button:hover {
-    border-color: rgba(222, 171, 112, 0.7);
-    background: rgba(111, 72, 47, 0.72);
-    color: #fff8ee;
-    transform: translateY(-2px);
-}
-
-.collision-theatre-page .particle-nav {
-    right: 48px;
-    bottom: 42px;
-    gap: 2px;
-}
-
-.collision-theatre-page .particle-nav a {
-    padding: 7px 9px;
-    border-color: transparent;
-    border-radius: 2px;
-    background: transparent;
-    color: rgba(197, 187, 176, 0.4);
-    font-family: 'Avenir Next', Inter, sans-serif;
-    font-size: 7px;
     letter-spacing: 0.12em;
-    text-transform: uppercase;
-    backdrop-filter: none;
 }
-
-.collision-theatre-page .particle-nav a:hover,
-.collision-theatre-page .particle-nav a[aria-current='page'] {
-    border-color: rgba(211, 159, 101, 0.18);
-    background: rgba(75, 53, 39, 0.26);
-    color: rgba(235, 213, 187, 0.86);
+.noise-label strong {
+    display: block;
+    margin-top: 7px;
+    font-family: 'Iowan Old Style', Palatino, Georgia, serif;
+    font-size: 20px;
+    font-weight: 400;
 }
-
+.noise-page,
+.orbital-page {
+    --particle-accent: #adc6c3;
+}
+.nebula-page {
+    --particle-accent: #d9b387;
+}
 @media (prefers-reduced-motion: reduce) {
-    .collision-theatre-page .particle-controls button,
-    .collision-theatre-page .particle-nav a {
+    .particle-nav a,
+    .particle-controls button {
         transition: none;
     }
 }
-
-@media (max-width: 720px) {
-    .hilo3dStats {
+@media (max-width: 1000px) {
+    .particle-nav {
+        justify-content: space-between;
+        gap: 14px;
+    }
+    .particle-nav::before {
         display: none;
+    }
+}
+@media (max-width: 720px) {
+    .particle-gallery::after {
+        inset: 10px;
     }
     .particle-hero {
-        top: 16px;
-        right: 16px;
-        width: calc(100vw - 32px);
+        top: 28px;
+        left: 26px;
+        width: calc(100vw - 52px);
     }
-    .particle-hero p {
-        max-width: 88%;
+    .particle-kicker {
+        font-size: 8px;
     }
-    .particle-chips span:nth-child(n + 5) {
-        display: none;
-    }
-    .particle-nav {
-        right: 16px;
-        bottom: 16px;
-        max-width: calc(100vw - 32px);
-    }
-    .particle-nav a {
-        padding: 8px 9px;
-    }
-    .particle-controls {
-        left: 16px;
-        bottom: 72px;
-    }
-    .particle-readout {
-        display: none;
-    }
-    .particle-hint {
-        display: none;
-    }
-    .particle-legend,
-    .noise-label {
-        display: none;
-    }
-    .collision-theatre-page::after {
-        inset: 8px;
-        border-radius: 12px;
-    }
-    .collision-theatre-page .particle-hero {
-        top: 24px;
-        right: 22px;
-        left: 22px;
-        width: auto;
-    }
-    .collision-theatre-page .particle-hero h1 {
+    .particle-hero h1 {
+        margin: 12px 0;
+        max-width: 300px;
         font-size: 42px;
     }
-    .collision-theatre-page .particle-hero p {
-        max-width: 280px;
+    .particle-hero p {
+        max-width: 260px;
+        font-size: 10px;
     }
-    .collision-theatre-page .particle-controls {
-        bottom: 58px;
-        left: 22px;
+    .particle-nav {
+        right: 26px;
+        bottom: 26px;
+        left: 26px;
+        gap: 10px;
+        padding-top: 14px;
     }
-    .collision-theatre-page .particle-nav {
-        right: 18px;
-        bottom: 14px;
-        left: 18px;
-        justify-content: center;
+    .particle-nav a {
+        flex-direction: column;
+        gap: 8px;
+        font-size: 9px;
+        letter-spacing: 0;
     }
-    .collision-theatre-page .particle-nav a {
-        padding: 7px 6px;
+    .particle-controls {
+        bottom: 95px;
+        left: 26px;
+    }
+    .particle-controls button {
+        padding: 10px 12px;
+    }
+    .particle-readout,
+    .noise-label strong {
+        display: none;
+    }
+    .noise-label span {
+        font-size: 7px;
+    }
+    .particle-hint {
+        bottom: 98px;
+        left: 26px;
         font-size: 7px;
     }
 }
