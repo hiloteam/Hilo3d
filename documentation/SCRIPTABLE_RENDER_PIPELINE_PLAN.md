@@ -86,6 +86,46 @@ Stage / Renderer.render() / Renderer.renderFrame()
   baseline。因此当前证据可以证明功能、结构、命令路径和双后端正确性，但不替代第 10 章定义的 CPU/GPU 统计门禁与实测
   `0 bytes/frame` 结论；该项继续作为发布签字条件。
 
+### 1.3 CHROMATIC 交互式管线展厅
+
+[`scriptable_pipeline.html`](../examples/scriptable_pipeline.html)
+用同一展台上的不对称金属缎带雕塑、开放式发光拱架、柔和环境反射与发光线条展示 SRP 的实际图像处理能力。场景几何在本地程序化生成，无需远程模型服务；PBR 材质、灯光、阴影与场景队列仍由共享 Forward 前端处理，交互相机使用公共
+`OrbitControls`。
+
+默认相机、复位相机与环绕 target 都对齐雕塑中心，50% 分屏线穿过主体。开放拱架与雕塑共用展台，拱架两端通过底脚连接到展台，暖色与青色发光段嵌入弧形结构，中部保留真实贯通的空间；环绕相机各方向使用同一组持续存在的几何。连续环形背景保持在相机最大环绕范围之外，承担展厅的空间围合。移动端保留同一环绕中心并调整视野角，桌面与移动端使用相同的场景和管线；矮横屏使用紧凑的双列参数布局。
+
+![CHROMATIC Scriptable Pipeline 展厅](./assets/scriptable-pipeline/chromatic-gallery.png)
+
+[`scriptablePipelineEffects.ts`](../examples/shared/scriptablePipelineEffects.ts) 通过
+`ForwardRenderPipelineFeature` 在 `after-transparent` 注入四个自定义 fullscreen pass：
+
+1. 从线性 scene color 提取高光，输出半分辨率 transient texture。
+2. 水平方向执行连续 13-texel Gaussian，以七次相邻双线性采样保持连续光晕。
+3. 垂直方向执行同样的模糊，形成可独立查看的 bloom buffer。
+4. 合成 scene color、bloom 和 sampled scene
+   depth，完成色散、深度轮廓、色彩调整及 filmic/sRGB 显示转换。
+
+四个 pass 都使用 GLSL ES 3.00，可调数值放入注册的 std140 控制块，沿同一 Render
+Graph/RHI 路径运行于 WebGL 2 和 WebGPU。所有附件采样通过 `hiloRenderTargetUV()`
+完成一次坐标归一化；不为任一后端创建独立场景或后处理实现。关闭效果时，图中只保留中性的显示转换 pass，让前后对比使用相同的曝光与显示空间。这里的 pass 计数明确指该 feature 在已提交帧中的自定义 pass 数，不包括共享 scene、shadow 和 output
+pass。
+
+界面曝光以亮度倍率显示，内部转换为 EV 后进入显示变换；`MS / FRAME`
+是浏览器帧间隔的滑动平均，不是 GPU
+pass 时间。深度预览以实际视空间距离的琥珀、青绿、深蓝渐变显示，色带覆盖相机
+`far × 0.5`，让展台尺度的深度变化清晰可见。
+
+展厅支持 Beauty、Bloom、Depth、Contours 四种视图、效果开关、分屏比较，以及 bloom、色散、轮廓和曝光调节。色散位移和轮廓宽度以 900 像素高的参考输出归一化，随渲染尺寸缩放。轮廓从 sampled
+depth 提取，在色调映射后叠加暖金或深青描边，让明亮金属与暗部边界都保留可见对比。交互式滑杆输入会启用管线并切回 Beauty，同时保留已开启的分屏。切换四种视图保持当前分屏状态，开关比较也保持所选视图；左侧始终显示中性原始成片，右侧显示所选视图，标签随输出同步更新。
+
+![色散与轮廓的 0%、50%、100% 对比](./assets/scriptable-pipeline/optics-comparison.png)
+
+`?motion=0`
+冻结雕塑和光学动画，便于观察参数变化、复现实验和进行双后端像素比较；窗口 resize 由图资源相对尺寸描述处理。动画关闭时仍持续提交渲染帧，交互和资源诊断保持有效。
+
+浏览器验收写在
+[`scriptable-pipeline.spec.ts`](../test/ui/scriptable-pipeline.spec.ts)：它分别检查两后端的实际 draw/submit 与错误监控，比较关闭效果前后的原生命令数，并覆盖环绕、复位、resize 与交互状态。色散与轮廓分别使用真实 0 基线、50 和 100 三档截图，在主体区域内先按 4×4 像素块平均，再检查可见对比、覆盖范围、递增强度以及归零复原，避免仅有亚像素边缘变化也通过验收。四种分屏视图分别检查左侧与原始成片一致、右侧输出有效，以及比较开关保留视图。截图采集时隐藏 HTML 覆盖层，避免控件文本变化误算为渲染效果。固定视角的 Beauty、Bloom、Depth 同时执行双后端像素误差和垂直翻转对照，检验不对称图像的行方向。这些是示例正确性验收，不构成物理 GPU 性能基线；本节不追加未经执行的通过记录。
+
 ## 2. 核心决策
 
 | 问题                         | 决策                                                                                                             |

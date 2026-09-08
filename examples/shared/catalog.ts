@@ -189,7 +189,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'pbr.html': 'Render a glTF asset with physically based materials and environment lighting.',
     'quickStart.html': 'Create a stage, camera, lights, and an animated PBR mesh.',
     'scriptable_pipeline.html':
-        'Compose a custom render pipeline through the public scriptable pipeline API.',
+        'Shape a sculptural gallery with portable highlight extraction, separable bloom, and depth-aware spectral finishing. Compare the result and inspect color, bloom, depth, and contours.',
     'shaderToy.html': 'Run an interactive fragment shader with pointer and time inputs.',
     'webgl_support.html': 'Inspect the graphics backend selected for the current browser.',
     'canvas_texture.html':
