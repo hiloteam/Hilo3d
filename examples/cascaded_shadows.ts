@@ -1,212 +1,67 @@
 import * as Hilo3d from '../src/Hilo3d';
+import { createCsmToyWeather, type WeatherType } from './scenes/csm-toy-weather';
+import { createCsmToySnow } from './scenes/csm-toy-snow';
+import { createCsmToySurroundings } from './scenes/csm-toy-surroundings';
+import { createCsmShadowStudy } from './scenes/csm-shadow-study';
+import { createCsmToyDiorama } from './scenes/csm-toy-diorama';
 import { environmentMaterialDefaults } from './shared/environment';
 import { createExampleContext, loadEnvironmentMaps } from './shared/init';
 
-type ShadowMode = 0 | 1 | 2 | 4;
-
-const FULL_CIRCLE = Math.PI * 2;
-const ATLAS_SIZE = 2048;
-const MSAA_SAMPLES = 4;
-const BACKEND_LABELS: Readonly<Record<Hilo3d.RendererBackend, string>> = Object.freeze({
+type ShadowMode = 0 | 1 | 4;
+type ViewName = 'courtyard' | 'detail' | 'distance' | 'water' | 'compare' | 'seascape';
+type TimeOfDay = 'morning' | 'dusk';
+const BACKEND_LABELS: Readonly<Record<Hilo3d.RendererBackend, string>> = {
     webgl2: 'WebGL 2',
     webgpu: 'WebGPU'
-});
-
-function geometryFrom(
-    positions: readonly number[],
-    normals: readonly number[],
-    texcoords: readonly number[],
-    indices: readonly number[]
-): Hilo3d.Geometry {
-    return new Hilo3d.Geometry({
-        vertices: new Hilo3d.GeometryData(new Float32Array(positions), 3),
-        normals: new Hilo3d.GeometryData(new Float32Array(normals), 3),
-        uvs: new Hilo3d.GeometryData(new Float32Array(texcoords), 2),
-        indices: new Hilo3d.GeometryData(new Uint16Array(indices), 1)
-    });
+};
+type ShadowBudget = 'study' | 'balanced';
+const SHADOW_MAP_SIZES: Readonly<Record<ShadowBudget, number>> = {
+    study: 1024,
+    balanced: 2048
+};
+interface CameraView {
+    readonly position: readonly [number, number, number];
+    readonly target: readonly [number, number, number];
+    readonly caption: string;
 }
-
-function createColumnGeometry(
-    topRadius: number,
-    bottomRadius: number,
-    sides = 32
-): Hilo3d.Geometry {
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const texcoords: number[] = [];
-    const indices: number[] = [];
-    const slope = bottomRadius - topRadius;
-    const normalScale = 1 / Math.hypot(1, slope);
-
-    for (let side = 0; side <= sides; side += 1) {
-        const ratio = side / sides;
-        const angle = ratio * FULL_CIRCLE;
-        const cosine = Math.cos(angle);
-        const sine = Math.sin(angle);
-        positions.push(
-            cosine * bottomRadius,
-            -0.5,
-            sine * bottomRadius,
-            cosine * topRadius,
-            0.5,
-            sine * topRadius
-        );
-        normals.push(
-            cosine * normalScale,
-            slope * normalScale,
-            sine * normalScale,
-            cosine * normalScale,
-            slope * normalScale,
-            sine * normalScale
-        );
-        texcoords.push(ratio, 1, ratio, 0);
+const VIEWS: Readonly<Record<ViewName, CameraView>> = {
+    courtyard: {
+        position: [68, 58, 90],
+        target: [0, 2, -10],
+        caption: '把一整个晴天，装进小小的玩具世界。'
+    },
+    compare: {
+        position: [11, 10, -14],
+        target: [16, 1, -3],
+        caption: '观察白色露台上的细杆投影：同样 1.05M 日光阴影像素，四级 CSM 能保留更多空隙。'
+    },
+    seascape: {
+        position: [-60, 22, 98],
+        target: [0, 7, -10],
+        caption: '卡通海面环绕小镇，天空和海水随清晨、黄昏一起变换。'
+    },
+    detail: {
+        position: [29, 17, 47],
+        target: [1, 2, 19],
+        caption: '看近处栅栏与小树的投影，切换单层 / CSM 比较细节。'
+    },
+    water: {
+        position: [-4, 15, 16],
+        target: [4, 1, -10],
+        caption: '树脂般的浅色岸线、细波纹和流动高光，也接收桥梁的真实投影。'
+    },
+    distance: {
+        position: [42, 30, 2],
+        target: [-2, 5, -38],
+        caption: '从桥边望向风车和灯塔，观察远端阴影的覆盖。'
     }
-
-    for (let side = 0; side < sides; side += 1) {
-        const bottom = side * 2;
-        const top = bottom + 1;
-        const nextBottom = bottom + 2;
-        const nextTop = bottom + 3;
-        indices.push(bottom, top, nextTop, bottom, nextTop, nextBottom);
-    }
-
-    const addCap = (height: number, radius: number, normalY: -1 | 1): void => {
-        const centerIndex = positions.length / 3;
-        positions.push(0, height, 0);
-        normals.push(0, normalY, 0);
-        texcoords.push(0.5, 0.5);
-        for (let side = 0; side <= sides; side += 1) {
-            const angle = (side / sides) * FULL_CIRCLE;
-            const cosine = Math.cos(angle);
-            const sine = Math.sin(angle);
-            positions.push(cosine * radius, height, sine * radius);
-            normals.push(0, normalY, 0);
-            texcoords.push(cosine * 0.5 + 0.5, sine * 0.5 + 0.5);
-        }
-        for (let side = 0; side < sides; side += 1) {
-            const current = centerIndex + side + 1;
-            const next = current + 1;
-            if (normalY > 0) indices.push(centerIndex, next, current);
-            else indices.push(centerIndex, current, next);
-        }
-    };
-
-    addCap(-0.5, bottomRadius, -1);
-    addCap(0.5, topRadius, 1);
-    return geometryFrom(positions, normals, texcoords, indices);
+};
+function viewPosition(view: ViewName): readonly [number, number, number] {
+    return view === 'courtyard' && window.innerWidth <= 740 ? [32, 73, 137] : VIEWS[view].position;
 }
-
-function createOpenArcGeometry(
-    startAngle: number,
-    sweepAngle: number,
-    arcSegments = 48,
-    tubeSegments = 16
-): Hilo3d.Geometry {
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const texcoords: number[] = [];
-    const indices: number[] = [];
-    const majorRadius = 1;
-    const tubeRadius = 0.16;
-
-    for (let arc = 0; arc <= arcSegments; arc += 1) {
-        const u = arc / arcSegments;
-        const angle = startAngle + sweepAngle * u;
-        const cosine = Math.cos(angle);
-        const sine = Math.sin(angle);
-        for (let tube = 0; tube <= tubeSegments; tube += 1) {
-            const v = tube / tubeSegments;
-            const tubeAngle = v * FULL_CIRCLE;
-            const radial = Math.cos(tubeAngle);
-            const depth = Math.sin(tubeAngle);
-            positions.push(
-                cosine * (majorRadius + tubeRadius * radial),
-                sine * (majorRadius + tubeRadius * radial),
-                tubeRadius * depth
-            );
-            normals.push(cosine * radial, sine * radial, depth);
-            texcoords.push(u, v);
-        }
-    }
-
-    const rowLength = tubeSegments + 1;
-    for (let arc = 0; arc < arcSegments; arc += 1) {
-        for (let tube = 0; tube < tubeSegments; tube += 1) {
-            const current = arc * rowLength + tube;
-            const nextArc = current + rowLength;
-            indices.push(current, nextArc, nextArc + 1, current, nextArc + 1, current + 1);
-        }
-    }
-
-    return geometryFrom(positions, normals, texcoords, indices);
+function viewTarget(view: ViewName): readonly [number, number, number] {
+    return view === 'courtyard' && window.innerWidth <= 740 ? [-4, 2, -10] : VIEWS[view].target;
 }
-
-function createRoundedSlabGeometry(segments = 64, exponent = 4.4): Hilo3d.Geometry {
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const texcoords: number[] = [];
-    const indices: number[] = [];
-    const points: (readonly [number, number, number, number])[] = [];
-    const power = 2 / exponent;
-
-    for (let segment = 0; segment < segments; segment += 1) {
-        const angle = (segment / segments) * FULL_CIRCLE;
-        const cosine = Math.cos(angle);
-        const sine = Math.sin(angle);
-        const x = Math.sign(cosine) * Math.pow(Math.abs(cosine), power);
-        const z = Math.sign(sine) * Math.pow(Math.abs(sine), power);
-        const gradientX = Math.sign(x) * Math.pow(Math.abs(x), exponent - 1);
-        const gradientZ = Math.sign(z) * Math.pow(Math.abs(z), exponent - 1);
-        const gradientLength = Math.hypot(gradientX, gradientZ) || 1;
-        points.push([x, z, gradientX / gradientLength, gradientZ / gradientLength]);
-    }
-
-    const topCenter = positions.length / 3;
-    positions.push(0, 0.5, 0);
-    normals.push(0, 1, 0);
-    texcoords.push(0.5, 0.5);
-    const topStart = positions.length / 3;
-    for (const [x, z] of points) {
-        positions.push(x, 0.5, z);
-        normals.push(0, 1, 0);
-        texcoords.push(x * 0.5 + 0.5, z * 0.5 + 0.5);
-    }
-
-    const bottomCenter = positions.length / 3;
-    positions.push(0, -0.5, 0);
-    normals.push(0, -1, 0);
-    texcoords.push(0.5, 0.5);
-    const bottomStart = positions.length / 3;
-    for (const [x, z] of points) {
-        positions.push(x, -0.5, z);
-        normals.push(0, -1, 0);
-        texcoords.push(x * 0.5 + 0.5, z * 0.5 + 0.5);
-    }
-
-    for (let segment = 0; segment < segments; segment += 1) {
-        const next = (segment + 1) % segments;
-        indices.push(topCenter, topStart + next, topStart + segment);
-        indices.push(bottomCenter, bottomStart + segment, bottomStart + next);
-    }
-
-    const sideStart = positions.length / 3;
-    for (const [x, z, normalX, normalZ] of points) {
-        positions.push(x, -0.5, z, x, 0.5, z);
-        normals.push(normalX, 0, normalZ, normalX, 0, normalZ);
-        texcoords.push(0, 1, 0, 0);
-    }
-    for (let segment = 0; segment < segments; segment += 1) {
-        const next = (segment + 1) % segments;
-        const bottom = sideStart + segment * 2;
-        const top = bottom + 1;
-        const nextBottom = sideStart + next * 2;
-        const nextTop = nextBottom + 1;
-        indices.push(bottom, nextTop, nextBottom, bottom, top, nextTop);
-    }
-
-    return geometryFrom(positions, normals, texcoords, indices);
-}
-
 function requireElement<ElementType extends HTMLElement>(
     selector: string,
     constructor: new () => ElementType
@@ -215,335 +70,178 @@ function requireElement<ElementType extends HTMLElement>(
     if (!(element instanceof constructor)) throw new Error(`Missing control ${selector}`);
     return element;
 }
-
-function place(
-    parent: Hilo3d.Node,
-    geometry: Hilo3d.Geometry,
-    material: Hilo3d.MaterialInstance,
-    position: readonly [number, number, number],
-    scale: readonly [number, number, number],
-    rotation: readonly [number, number, number] = [0, 0, 0]
-): Hilo3d.Mesh {
-    const mesh = new Hilo3d.Mesh({
-        geometry,
-        material,
-        useInstanced: true,
-        x: position[0],
-        y: position[1],
-        z: position[2],
-        rotationX: rotation[0],
-        rotationY: rotation[1],
-        rotationZ: rotation[2]
-    }).addTo(parent);
-    mesh.setScale(scale[0], scale[1], scale[2]);
-    return mesh;
-}
-
 const sceneContext = await createExampleContext({
-    camera: {
-        fov: 38,
-        near: 0.2,
-        far: 900,
-        x: 12,
-        y: 46,
-        z: 108
-    },
+    camera: { fov: 36, near: 0.5, far: 600, x: 68, y: 58, z: 90 },
     stage: {
         antialias: true,
         pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         useInstanced: true,
-        fog: new Hilo3d.Fog({
-            mode: 'LINEAR',
-            start: 154,
-            end: 294,
-            color: new Hilo3d.Color(0.73, 0.6, 0.72)
-        }),
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+            bloom: { intensity: 0.13, threshold: 1.05, knee: 0.4, maxLevels: 4 },
+            opaqueTexture: false,
             colorUber: {
-                exposure: 0.045,
-                contrast: 0.13,
-                saturation: 0.1,
-                temperature: 0.04,
-                tint: 0.024,
+                exposure: 0.02,
+                contrast: 0.06,
+                saturation: 0.025,
+                temperature: 0.01,
                 toneMapping: 'pbr-neutral',
                 vignetteIntensity: 0.055,
                 vignetteSmoothness: 0.9,
-                vignetteColor: new Hilo3d.Color(0.12, 0.11, 0.27, 0.3)
+                vignetteColor: new Hilo3d.Color(0.24, 0.32, 0.35, 0.25)
             }
         })
     },
     controls: {
-        enabled: true,
-        enablePan: false,
-        minDistance: 78,
-        maxDistance: 225,
-        target: new Hilo3d.Vector3(0, 6, -30),
-        minPolarAngle: Math.PI * 0.18,
-        maxPolarAngle: Math.PI * 0.48,
-        rotateSpeed: 0.72,
-        zoomSpeed: 0.8
+        target: new Hilo3d.Vector3(...VIEWS.courtyard.target),
+        enablePan: true,
+        minDistance: 15,
+        maxDistance: 230,
+        minPolarAngle: Math.PI * 0.1,
+        maxPolarAngle: Math.PI * 0.47,
+        rotateSpeed: 0.55,
+        zoomSpeed: 0.65,
+        panSpeed: 0.65
     },
     autoStart: false
 });
-
-const { stage, renderer, camera, directionLight, ambientLight, ticker } = sceneContext;
-renderer.clearColor.set(0.38, 0.45, 0.68, 1);
-directionLight.amount = 3.45;
-directionLight.color.set(1, 0.72, 0.46, 1);
-directionLight.direction.set(-0.88, -0.68, -0.38);
-ambientLight.amount = 0.022;
-ambientLight.color.set(0.4, 0.5, 0.92, 1);
-
+const { stage, renderer, camera, directionLight, ambientLight, ticker, orbitControls } =
+    sceneContext;
+renderer.clearColor.set(0.67, 0.76, 0.77, 1);
+directionLight.amount = 2.4;
+directionLight.color.set(1, 0.97, 0.92, 1);
+directionLight.direction.set(-0.7, -1, -0.45);
+ambientLight.amount = 0.28;
+ambientLight.color.set(0.58, 0.72, 0.85, 1);
+const fillLight = new Hilo3d.DirectionalLight({
+    direction: new Hilo3d.Vector3(0.7, -0.65, -0.25),
+    color: new Hilo3d.Color(0.7, 0.82, 1),
+    amount: 0.32
+}).addTo(stage);
+// Every preset keeps the total directional-shadow texel count identical between one and four maps.
+let shadowBudget: ShadowBudget = 'balanced';
 const shadowConfiguration: Hilo3d.DirectionalLightShadowOptions = {
-    width: ATLAS_SIZE,
-    height: ATLAS_SIZE,
-    minBias: 0.0002,
-    maxBias: 0.0026,
+    width: 1024,
+    height: 1024,
+    minBias: 0.0015,
+    maxBias: 0.006,
     cascadeCount: 4,
-    cascadeSplitLambda: 0.35,
-    cascadeMaxDistance: 200,
-    cascadeBlend: 0.1,
+    cascadeSplitLambda: 0.3,
+    cascadeMaxDistance: 220,
+    cascadeBlend: 0.12,
     stabilizeCascades: true,
-    shadowStrength: 3
+    shadowStrength: 1
 };
 directionLight.shadow = shadowConfiguration;
-
 const environmentMaps = await loadEnvironmentMaps();
-
-function ceramic(red: number, green: number, blue: number, roughness = 0.61): Hilo3d.PBRMaterial {
-    return new Hilo3d.PBRMaterial({
+const surroundings = createCsmToySurroundings(stage);
+const toyWorld = createCsmToyDiorama(stage, environmentMaps);
+createCsmShadowStudy(stage, environmentMaps);
+const landmarks = await new Hilo3d.GLTFLoader().load({
+    src: new URL('./model/csm/toy-landmarks.glb', import.meta.url).href
+});
+await landmarks.ready;
+if (landmarks.resourceErrors.length > 0) {
+    throw new AggregateError(landmarks.resourceErrors, 'Could not load the toy landmarks');
+}
+for (const node of landmarks.node.getChildrenByClassName('Mesh')) {
+    if (!(node instanceof Hilo3d.Mesh) || !(node.material instanceof Hilo3d.PBRMaterial)) continue;
+    const original = node.material;
+    node.material = new Hilo3d.PBRMaterial({
         ...environmentMaterialDefaults(environmentMaps),
-        baseColor: new Hilo3d.Color(red, green, blue),
-        metallic: 0,
-        roughness,
-        clearcoatFactor: 0.035,
-        clearcoatRoughnessFactor: 0.76,
-        ior: 1.42,
-        specularEnvIntensity: 0.34,
-        diffuseEnvIntensity: 0.86
+        baseColor: original.baseColor,
+        roughness: original.roughness,
+        metallic: original.metallic,
+        clearcoatFactor: 0.22,
+        clearcoatRoughnessFactor: 0.28,
+        diffuseEnvIntensity: 0.5,
+        specularEnvIntensity: 0.45
     });
+    node.useInstanced = true;
 }
+landmarks.node.addTo(stage);
+const windmillRotor = landmarks.node.getChildByName('ToyWindmillRotor');
+if (!windmillRotor) throw new Error('Toy windmill has no rotor pivot');
 
-const porcelain = ceramic(0.9, 0.86, 0.74, 0.7);
-const porcelainLight = ceramic(0.98, 0.91, 0.75, 0.68);
-const coral = ceramic(0.94, 0.3, 0.28, 0.54);
-const saffron = ceramic(0.98, 0.62, 0.14, 0.58);
-const mint = ceramic(0.17, 0.68, 0.59, 0.57);
-const cobalt = ceramic(0.17, 0.32, 0.72, 0.55);
-const lilac = ceramic(0.57, 0.42, 0.8, 0.59);
-const rose = ceramic(0.88, 0.48, 0.58, 0.6);
-const underside = ceramic(0.24, 0.19, 0.38, 0.76);
-
-const skyMaterial = new Hilo3d.ShaderMaterial({
-    sourceRevision: 'FourCourtsProceduralSky',
-    state: { depthTest: false, depthWrite: false },
-    attributes: {
-        a_position: Hilo3d.MaterialAttributeSemantic.POSITION
-    },
-    vs: `#version 300 es
-        precision highp float;
-        in vec2 a_position;
-        out vec2 v_uv;
-        void main(void) {
-            v_uv = a_position * 0.5 + 0.5;
-            gl_Position = vec4(a_position, 0.9999, 1.0);
-        }
-    `,
-    fs: `#version 300 es
-        precision highp float;
-        in vec2 v_uv;
-        layout(location = 0) out vec4 fragmentColor;
-
-        float hash(vec2 point) {
-            return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453123);
-        }
-
-        float noise(vec2 point) {
-            vec2 cell = floor(point);
-            vec2 fraction = fract(point);
-            fraction = fraction * fraction * (3.0 - 2.0 * fraction);
-            float a = hash(cell);
-            float b = hash(cell + vec2(1.0, 0.0));
-            float c = hash(cell + vec2(0.0, 1.0));
-            float d = hash(cell + vec2(1.0, 1.0));
-            return mix(mix(a, b, fraction.x), mix(c, d, fraction.x), fraction.y);
-        }
-
-        float fbm(vec2 point) {
-            float value = 0.0;
-            float amplitude = 0.55;
-            for (int octave = 0; octave < 5; octave += 1) {
-                value += noise(point) * amplitude;
-                point = mat2(1.63, 1.17, -1.17, 1.63) * point + 0.19;
-                amplitude *= 0.48;
-            }
-            return value;
-        }
-
-        void main(void) {
-            vec3 horizon = vec3(1.03, 0.58, 0.39);
-            vec3 lavender = vec3(0.55, 0.48, 0.76);
-            vec3 zenith = vec3(0.23, 0.35, 0.63);
-            vec3 color = mix(horizon, lavender, smoothstep(0.18, 0.67, v_uv.y));
-            color = mix(color, zenith, smoothstep(0.66, 1.0, v_uv.y));
-
-            vec2 sunPoint = vec2(0.73, 0.7);
-            float sunDistance = length((v_uv - sunPoint) * vec2(1.55, 1.0));
-            float sunGlow = exp(-sunDistance * sunDistance * 17.0);
-            float sunCore = 1.0 - smoothstep(0.026, 0.032, sunDistance);
-            color += vec3(0.42, 0.18, 0.035) * sunGlow;
-            color = mix(color, vec3(1.22, 0.84, 0.34), sunCore * 0.96);
-
-            vec2 cloudPoint = vec2(v_uv.x * 3.15, v_uv.y * 5.2);
-            float cloudNoise = fbm(cloudPoint + vec2(0.0, 1.6));
-            float cloudBand =
-                smoothstep(0.56, 0.73, cloudNoise + sin(v_uv.x * 9.0) * 0.045) *
-                smoothstep(0.24, 0.43, v_uv.y) *
-                (1.0 - smoothstep(0.82, 0.96, v_uv.y));
-            float fineCloud = fbm(cloudPoint * 1.7 + vec2(4.2, -2.1));
-            cloudBand *= smoothstep(0.42, 0.68, fineCloud);
-
-            vec3 cloudShadow = vec3(0.56, 0.53, 0.76);
-            vec3 cloudLight = vec3(1.05, 0.87, 0.69);
-            float cloudLightness = smoothstep(0.49, 0.76, fineCloud + v_uv.y * 0.1);
-            vec3 cloudColor = mix(cloudShadow, cloudLight, cloudLightness);
-            color = mix(color, cloudColor, cloudBand * 0.72);
-
-            float horizonGlow = exp(-abs(v_uv.y - 0.34) * 12.0);
-            color = mix(color, vec3(1.04, 0.67, 0.48), horizonGlow * 0.14);
-            fragmentColor = vec4(color, 1.0);
-        }
-    `
-});
-
-const screenGeometry = new Hilo3d.Geometry({
-    mode: Hilo3d.constants.TRIANGLE_STRIP,
-    vertices: new Hilo3d.GeometryData(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), 2)
-});
-new Hilo3d.Mesh({
-    geometry: screenGeometry,
-    material: skyMaterial,
-    frustumTest: false,
-    renderOrder: -1000,
-    castShadows: false,
-    receiveShadows: false
-}).addTo(stage);
-
-const unitBox = new Hilo3d.BoxGeometry().setAllRectUV([
-    [0, 1],
-    [1, 1],
-    [1, 0],
-    [0, 0]
-]);
-const sphere = new Hilo3d.SphereGeometry({
-    radius: 1,
-    heightSegments: 24,
-    widthSegments: 32
-});
-const pillar = createColumnGeometry(1, 1);
-const taper = createColumnGeometry(0.05, 1, 36);
-const crescent = createOpenArcGeometry((-145 * Math.PI) / 180, (286 * Math.PI) / 180);
-const platformSlab = createRoundedSlabGeometry();
-
-function addPlatform(
-    x: number,
-    y: number,
-    z: number,
-    width: number,
-    depth: number,
-    rotationY: number
-): Hilo3d.Node {
-    const platform = new Hilo3d.Node({ x, y, z, rotationY }).addTo(stage);
-    place(platform, platformSlab, underside, [0, -1.05, 0], [width * 0.53, 1.65, depth * 0.54]);
-    place(platform, platformSlab, porcelain, [0, 0, 0], [width * 0.5, 0.62, depth * 0.5]);
-    place(
-        platform,
-        platformSlab,
-        porcelainLight,
-        [0, 0.42, -0.15],
-        [width * 0.47, 0.16, depth * 0.46]
-    );
-    return platform;
+function glowingMaterials(name: string): Hilo3d.PBRMaterial[] {
+    const node = landmarks.node.getChildByName(name);
+    if (!node) throw new Error(`Missing toy light group ${name}`);
+    const children = node instanceof Hilo3d.Mesh ? [node] : node.getChildrenByClassName('Mesh');
+    const materials: Hilo3d.PBRMaterial[] = [];
+    for (const child of children) {
+        if (!(child instanceof Hilo3d.Mesh) || !(child.material instanceof Hilo3d.PBRMaterial))
+            continue;
+        child.castShadows = false;
+        materials.push(child.material);
+    }
+    if (materials.length === 0) throw new Error(`Toy light group ${name} has no PBR meshes`);
+    return materials;
 }
-
-function addPillar(
-    parent: Hilo3d.Node,
-    x: number,
-    z: number,
-    radius: number,
-    height: number,
-    material: Hilo3d.MaterialInstance
-): void {
-    place(parent, pillar, material, [x, height * 0.5 + 0.55, z], [radius, height, radius]);
+const houseWindowMaterials = glowingMaterials('ToyHouseWindows');
+const lanternMaterials = glowingMaterials('ToyLighthouseLantern');
+const windowSpillLights = [
+    new Hilo3d.PointLight({
+        x: -10,
+        y: 3.7,
+        z: -22.7,
+        color: new Hilo3d.Color(1, 0.62, 0.23),
+        amount: 5,
+        range: 5,
+        quadraticAttenuation: 1
+    }).addTo(stage),
+    new Hilo3d.PointLight({
+        x: -12,
+        y: 3.6,
+        z: 17.2,
+        color: new Hilo3d.Color(1, 0.62, 0.23),
+        amount: 5,
+        range: 5,
+        quadraticAttenuation: 1
+    }).addTo(stage)
+];
+const snowCover = createCsmToySnow(stage, environmentMaps);
+const weatherEffects = createCsmToyWeather(stage);
+const materialLighting = new Map<Hilo3d.PBRMaterial, { diffuse: number; specular: number }>();
+for (const node of stage.getChildrenByClassName('Mesh')) {
+    if (
+        node instanceof Hilo3d.Mesh &&
+        node.material instanceof Hilo3d.PBRMaterial &&
+        !materialLighting.has(node.material)
+    ) {
+        materialLighting.set(node.material, {
+            diffuse: node.material.diffuseEnvIntensity,
+            specular: node.material.specularEnvIntensity
+        });
+    }
 }
-
-function addOrb(
-    parent: Hilo3d.Node,
-    x: number,
-    y: number,
-    z: number,
-    radius: number,
-    material: Hilo3d.MaterialInstance
-): void {
-    place(parent, sphere, material, [x, y, z], [radius, radius, radius]);
-}
-
-const nearCourt = addPlatform(24, 23, 68, 18, 11, -11);
-place(nearCourt, crescent, coral, [1.8, 5.5, -0.3], [3.6, 3.6, 3.6], [0, -7, -4]);
-addOrb(nearCourt, 1.8, 5.45, -0.5, 1.16, cobalt);
-addPillar(nearCourt, -4.8, 1.4, 0.34, 5.7, saffron);
-addOrb(nearCourt, -4.8, 6.45, 1.4, 0.62, rose);
-addPillar(nearCourt, 5.4, 2.0, 0.26, 3.8, mint);
-addOrb(nearCourt, -0.9, 1.4, 3.1, 0.82, saffron);
-place(nearCourt, unitBox, lilac, [-3.1, 1.3, -3.0], [1.9, 1.7, 1.9], [0, 22, 0]);
-
-const chimeCourt = addPlatform(-9, 7.5, 32, 25, 15, 13);
-place(chimeCourt, crescent, mint, [-3.4, 6.4, 0.1], [4.1, 4.1, 4.1], [0, 12, 18]);
-addOrb(chimeCourt, -3.4, 6.35, -0.2, 1.25, coral);
-const chimePositions = [
-    [2.0, -2.4, 6.0, cobalt],
-    [4.2, -1.2, 9.4, saffron],
-    [6.3, -0.1, 7.4, rose],
-    [8.1, 1.0, 5.2, lilac]
-] as const;
-for (const [x, z, height, material] of chimePositions) {
-    addPillar(chimeCourt, x, z, 0.25, height, material);
-    addOrb(chimeCourt, x, height + 0.7, z, 0.48, porcelainLight);
-}
-place(chimeCourt, unitBox, saffron, [5.1, 1.4, 4.0], [3.4, 1.7, 3.4], [0, -18, 0]);
-
-const prismCourt = addPlatform(26, 5, 0, 33, 18, -9);
-place(prismCourt, taper, saffron, [0, 5.4, -0.3], [3.2, 10.2, 3.2], [0, 18, 0]);
-place(prismCourt, crescent, lilac, [0, 11.3, -0.3], [3.25, 3.25, 3.25], [0, -12, 14]);
-addOrb(prismCourt, -5.2, 2.05, 2.4, 1.55, mint);
-addOrb(prismCourt, 5.2, 1.65, 1.2, 1.2, coral);
-addPillar(prismCourt, 7.3, -3.2, 0.38, 6.8, cobalt);
-place(prismCourt, unitBox, rose, [-7.4, 1.55, -3.6], [3.2, 2.2, 3.2], [0, 28, 0]);
-
-const horizonCourt = addPlatform(-20, 8.5, -84, 45, 22, 8);
-place(horizonCourt, crescent, cobalt, [-2.5, 8.6, 0], [5.9, 5.9, 5.9], [0, 10, -8]);
-addOrb(horizonCourt, -2.5, 8.55, -0.4, 1.8, saffron);
-addPillar(horizonCourt, -10.5, -1.4, 0.44, 10.4, coral);
-addPillar(horizonCourt, 7.6, -2.4, 0.34, 8.5, mint);
-addPillar(horizonCourt, 10.2, -0.7, 0.3, 6.3, lilac);
-addOrb(horizonCourt, -10.5, 11.45, -1.4, 0.72, porcelainLight);
-addOrb(horizonCourt, 7.6, 9.45, -2.4, 0.62, porcelainLight);
-addOrb(horizonCourt, 10.2, 7.25, -0.7, 0.55, porcelainLight);
-place(horizonCourt, unitBox, rose, [8.4, 1.75, 4.2], [4.4, 2.6, 4.4], [0, -16, 0]);
-
-const fillLight = new Hilo3d.AreaLight({
-    color: new Hilo3d.Color(0.32, 0.46, 1),
-    amount: 0.004,
-    width: 90,
-    height: 46,
-    x: 45,
-    y: 68,
-    z: 16
-}).addTo(stage);
-fillLight.lookAt(new Hilo3d.Vector3(0, 3, -80));
 
 const modeButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-cascade-count]')];
+const viewButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-view]')];
 const stabilizeToggle = requireElement('#stabilizeToggle', HTMLButtonElement);
+const tourToggle = requireElement('#tourToggle', HTMLButtonElement);
+const trainToggle = requireElement('#trainToggle', HTMLButtonElement);
+const weatherButtons = [...document.querySelectorAll<HTMLButtonElement>('button[data-weather]')];
+const lightningButton = requireElement('#lightningButton', HTMLButtonElement);
+const snowAmount = requireElement('#snowAmount', HTMLInputElement);
+const snowAmountOutput = requireElement('#snowAmountOutput', HTMLOutputElement);
+const timeButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-time]')];
+const shadowQuality = requireElement('#shadowQuality', HTMLSelectElement);
+const budgetNote = requireElement('#budgetNote', HTMLElement);
+const localShadowToggle = requireElement('#localShadowToggle', HTMLButtonElement);
+let sceneMoving = false;
+function setSceneMotion(enabled: boolean): void {
+    sceneMoving = enabled;
+    toyWorld.setMotion(enabled);
+    toyWorld.setWaterMotion(enabled);
+    surroundings.setMotion(enabled);
+    weatherEffects.setMotion(enabled);
+    snowCover.setMotion(enabled);
+    trainToggle.setAttribute('aria-pressed', String(enabled));
+    document.body.dataset['csmTrain'] = String(enabled);
+    document.body.dataset['csmMotion'] = String(enabled);
+}
+trainToggle.addEventListener('click', () => {
+    setSceneMotion(!sceneMoving);
+});
 const lambdaControl = requireElement('#lambdaControl', HTMLInputElement);
 const blendControl = requireElement('#blendControl', HTMLInputElement);
 const strengthControl = requireElement('#strengthControl', HTMLInputElement);
@@ -555,69 +253,188 @@ const distanceOutput = requireElement('#distanceOutput', HTMLOutputElement);
 const splitTrack = requireElement('#splitTrack', HTMLDivElement);
 const splitValues = requireElement('#splitValues', HTMLDivElement);
 const modeSummary = requireElement('#modeSummary', HTMLElement);
+const modeDescription = requireElement('#modeDescription', HTMLElement);
+const viewCaption = requireElement('#viewCaption', HTMLElement);
 const backendBadge = requireElement('#backendBadge', HTMLElement);
 const splitSegments = [...splitTrack.querySelectorAll<HTMLElement>('i')];
-
 let shadowMode: ShadowMode = 4;
 let stabilization = true;
+let touring = false;
+let tourTime = 0;
+let localShadows = true;
+let currentWeather: WeatherType = 'clear';
+let currentTime: TimeOfDay = 'morning';
+let lightingStartedAt = 0;
+let lightingTransitionReady = true;
+let nextSnowReadout = 0;
+let baseFillAmount = 0.32;
 
-function calculateSplits(count: Exclude<ShadowMode, 0>): number[] {
-    const near = camera.near;
-    const far = shadowConfiguration.cascadeMaxDistance ?? camera.far ?? 200;
-    const lambda = shadowConfiguration.cascadeSplitLambda ?? 0.5;
-    const splits: number[] = [];
-    for (let index = 1; index <= count; index += 1) {
-        const ratio = index / count;
-        const uniform = near + (far - near) * ratio;
-        const logarithmic = near * Math.pow(far / near, ratio);
-        splits.push(uniform + (logarithmic - uniform) * lambda);
-    }
-    return splits;
+function updateHouseLights(now: number): void {
+    if (lightingTransitionReady) return;
+    const elapsed = now - lightingStartedAt;
+    const ease = (time: number): number => {
+        const t = Math.max(0, Math.min(1, time / 350));
+        return t * t * (3 - 2 * t);
+    };
+    const windows = ease(elapsed);
+    const lantern = ease(elapsed - 1250);
+    for (const material of houseWindowMaterials)
+        material.emissionFactor.set(3.4 * windows, 1.3 * windows, 0.34 * windows, 1);
+    for (const material of lanternMaterials)
+        material.emissionFactor.set(4.5 * lantern, 2.5 * lantern, 0.75 * lantern, 1);
+    for (const light of windowSpillLights) light.amount = 5 * windows;
+    lightingTransitionReady = elapsed >= 1600 && toyWorld.lightsReady;
+    if (lightingTransitionReady) document.body.dataset['csmLightsReady'] = 'true';
 }
 
 function refreshDepthReadout(): void {
-    if (shadowMode === 0) {
-        modeSummary.textContent = 'disabled';
-        splitValues.textContent = 'Directional shadows off';
-        splitSegments.forEach(segment => {
-            segment.hidden = true;
-        });
-        document.body.dataset['csmSplits'] = '';
-        return;
+    const near = camera.near;
+    const far = Math.min(shadowConfiguration.cascadeMaxDistance ?? 220, camera.far ?? 900);
+    const lambda = shadowConfiguration.cascadeSplitLambda ?? 0.3;
+    const splits: number[] = [];
+    for (let index = 1; index <= shadowMode; index += 1) {
+        const ratio = index / shadowMode;
+        splits.push(
+            (near + (far - near) * ratio) * (1 - lambda) +
+                near * Math.pow(far / near, ratio) * lambda
+        );
     }
-
-    const splits = calculateSplits(shadowMode);
-    const distances = splits.map((value, index) => value - (splits[index - 1] ?? camera.near));
     splitSegments.forEach((segment, index) => {
-        const distance = distances[index];
-        segment.hidden = distance === undefined;
-        if (distance !== undefined) segment.style.flexGrow = String(distance);
+        const split = splits[index];
+        segment.hidden = split === undefined;
+        if (split !== undefined)
+            segment.style.flexGrow = String(split - (splits[index - 1] ?? near));
     });
+    const singleSize = SHADOW_MAP_SIZES[shadowBudget];
     modeSummary.textContent =
-        shadowMode === 1
-            ? `single ${String(ATLAS_SIZE)}²`
-            : `${String(shadowMode)} × ${String(ATLAS_SIZE)}²`;
-    splitValues.textContent = splits
-        .map((split, index) => `C${String(index + 1)} ${split.toFixed(1)} m`)
-        .join('  ·  ');
+        shadowMode === 0
+            ? 'Sun shadows off'
+            : shadowMode === 1
+              ? `single ${String(singleSize)}²`
+              : `4 × ${String(singleSize / 2)}²`;
+    budgetNote.textContent = `单层 ${String(singleSize)}² / 四级各 ${String(singleSize / 2)}²，日光阴影总像素相同（${((singleSize * singleSize) / 1e6).toFixed(2)}M）。局部灯光另有阴影预算；四级会增加投影和绘制开销。`;
+    splitValues.textContent =
+        shadowMode === 0
+            ? 'Directional shadows off'
+            : splits
+                  .map((split, index) => `C${String(index + 1)} ${split.toFixed(1)} m`)
+                  .join(' · ');
     document.body.dataset['csmSplits'] = splits.map(split => split.toFixed(1)).join(',');
 }
 
 function setShadowMode(mode: ShadowMode): void {
     shadowMode = mode;
+    const singleSize = SHADOW_MAP_SIZES[shadowBudget];
+    const mapSize = mode === 1 ? singleSize : singleSize / 2;
+    const biasScale = 4096 / singleSize;
+    shadowConfiguration.minBias = 0.0015 * biasScale;
+    shadowConfiguration.maxBias = 0.006 * biasScale;
+    shadowConfiguration.width = mapSize;
+    shadowConfiguration.height = mapSize;
     shadowConfiguration.cascadeCount = mode === 0 ? 1 : mode;
-    shadowConfiguration.stabilizeCascades = stabilization;
     directionLight.shadow = mode === 0 ? null : shadowConfiguration;
     directionLight.isDirty = true;
-    modeButtons.forEach(button => {
+    for (const button of modeButtons)
         button.setAttribute(
             'aria-pressed',
             String(Number(button.dataset['cascadeCount']) === mode)
         );
-    });
     document.body.dataset['csmMode'] = mode === 0 ? 'off' : String(mode);
+    document.body.dataset['csmMapSize'] = String(mapSize);
+    document.body.dataset['csmShadowTexels'] = String(mode === 0 ? 0 : mapSize * mapSize * mode);
+    modeDescription.textContent =
+        mode === 0
+            ? '已关闭日光阴影；黄昏的局部灯光阴影单独控制。'
+            : mode === 1
+              ? '同样的阴影预算，一张图照顾整个小镇。'
+              : '四级 CSM，把清晰投影留给近处，也照顾远方。';
     refreshDepthReadout();
 }
+
+function setBudget(budget: ShadowBudget): void {
+    shadowBudget = budget;
+    shadowQuality.value = budget;
+    document.body.dataset['csmBudget'] = budget;
+    setShadowMode(shadowMode);
+}
+function setTimeOfDay(value: TimeOfDay): void {
+    const timeChanged = currentTime !== value;
+    currentTime = value;
+    const cloudCover = currentWeather === 'clear' ? 1 : currentWeather === 'snow' ? 0.65 : 0.42;
+    const dusk = value === 'dusk';
+    directionLight.amount = (dusk ? 0.2 : 2.4) * cloudCover;
+    directionLight.color.set(1, dusk ? 0.43 : 0.97, dusk ? 0.23 : 0.92, 1);
+    directionLight.direction.set(-0.7, dusk ? -0.12 : -0.75, dusk ? 0.7 : -0.45);
+    directionLight.isDirty = true;
+    ambientLight.amount = dusk ? 0.09 : 0.28;
+    ambientLight.color.set(dusk ? 0.32 : 0.58, dusk ? 0.4 : 0.72, dusk ? 0.78 : 0.85, 1);
+    baseFillAmount = dusk ? 0.22 : 0.32;
+    fillLight.amount = baseFillAmount;
+    fillLight.color.set(dusk ? 0.3 : 0.7, dusk ? 0.43 : 0.82, 1, 1);
+    for (const [material, day] of materialLighting) {
+        material.diffuseEnvIntensity = day.diffuse * (dusk ? 0.2 : 1);
+        material.specularEnvIntensity = day.specular * (dusk ? 0.3 : 1);
+    }
+    toyWorld.setNight(dusk);
+    surroundings.setDusk(dusk);
+    weatherEffects.setDusk(dusk);
+    if (timeChanged || !dusk) {
+        lightingStartedAt = performance.now();
+        lightingTransitionReady = !dusk;
+        for (const material of houseWindowMaterials) material.emissionFactor.set(0, 0, 0, 1);
+        for (const material of lanternMaterials) material.emissionFactor.set(0, 0, 0, 1);
+        for (const light of windowSpillLights) {
+            light.enabled = dusk;
+            light.amount = 0;
+        }
+        document.body.dataset['csmLightsReady'] = String(!dusk);
+    }
+    for (const button of timeButtons)
+        button.setAttribute('aria-pressed', String(button.dataset['time'] === value));
+    document.body.dataset['timeOfDay'] = value;
+    document.body.dataset['csmLocalLights'] = dusk ? '5' : '0';
+    document.body.dataset['csmWindowsLit'] = String(dusk);
+}
+for (const button of timeButtons)
+    button.addEventListener('click', () => {
+        const time = button.dataset['time'];
+        if (time === 'morning' || time === 'dusk') setTimeOfDay(time);
+    });
+function setWeather(value: WeatherType): void {
+    currentWeather = value;
+    weatherEffects.setWeather(value);
+    surroundings.setWeather(value);
+    snowCover.setSnowing(value === 'snow');
+    for (const button of weatherButtons)
+        button.setAttribute('aria-pressed', String(button.dataset['weather'] === value));
+    document.body.dataset['weather'] = value;
+    lightningButton.hidden = value !== 'storm';
+    setTimeOfDay(currentTime);
+}
+for (const button of weatherButtons)
+    button.addEventListener('click', () => {
+        const value = button.dataset['weather'];
+        if (value === 'clear' || value === 'rain' || value === 'snow' || value === 'storm')
+            setWeather(value);
+    });
+lightningButton.addEventListener('click', () => {
+    weatherEffects.triggerLightning();
+});
+snowAmount.addEventListener('input', () => {
+    snowCover.setAccumulation(snowAmount.valueAsNumber / 100);
+    snowAmountOutput.value = `${snowAmount.value}%`;
+    document.body.dataset['csmSnowAmount'] = snowAmount.value;
+});
+shadowQuality.addEventListener('change', () => {
+    const budget = shadowQuality.value;
+    if (budget === 'study' || budget === 'balanced') setBudget(budget);
+});
+localShadowToggle.addEventListener('click', () => {
+    localShadows = !localShadows;
+    toyWorld.setLocalShadows(localShadows);
+    localShadowToggle.setAttribute('aria-pressed', String(localShadows));
+    document.body.dataset['csmLocalShadows'] = String(localShadows);
+});
 
 function setStabilization(enabled: boolean): void {
     stabilization = enabled;
@@ -627,69 +444,169 @@ function setStabilization(enabled: boolean): void {
     document.body.dataset['csmStabilized'] = String(enabled);
 }
 
-for (const button of modeButtons) {
-    button.addEventListener('click', () => {
-        const value = Number(button.dataset['cascadeCount']);
-        if (value !== 0 && value !== 1 && value !== 2 && value !== 4) {
-            throw new RangeError(`Unsupported cascade count ${String(value)}`);
-        }
-        setShadowMode(value);
-    });
+function setTour(enabled: boolean): void {
+    touring = enabled;
+    tourToggle.setAttribute('aria-pressed', String(enabled));
+    tourToggle.textContent = enabled ? 'Ⅱ 暂停环游' : '▷ 环游小镇';
+    document.body.dataset['csmTour'] = String(enabled);
 }
 
+function setView(view: ViewName): void {
+    setTour(false);
+    tourTime = 0;
+    if (view === 'compare') {
+        setTimeOfDay('morning');
+        shadowConfiguration.cascadeSplitLambda = 0.65;
+        lambdaControl.value = '0.65';
+        lambdaOutput.value = '0.65';
+        setBudget('study');
+    } else if (document.body.dataset['csmView'] === 'compare') {
+        shadowConfiguration.cascadeSplitLambda = 0.3;
+        lambdaControl.value = '0.30';
+        lambdaOutput.value = '0.30';
+        setBudget('balanced');
+    }
+    const preset = VIEWS[view];
+    orbitControls.setView(
+        new Hilo3d.Vector3(...viewPosition(view)),
+        new Hilo3d.Vector3(...viewTarget(view))
+    );
+    viewCaption.textContent = preset.caption;
+    document.body.dataset['csmView'] = view;
+    for (const button of viewButtons)
+        button.setAttribute('aria-pressed', String(button.dataset['view'] === view));
+}
+for (const button of modeButtons) {
+    button.addEventListener('click', () => {
+        const mode = Number(button.dataset['cascadeCount']);
+        if (mode === 0 || mode === 1 || mode === 4) setShadowMode(mode);
+    });
+}
+for (const button of viewButtons) {
+    button.addEventListener('click', () => {
+        const view = button.dataset['view'];
+        if (
+            view === 'courtyard' ||
+            view === 'detail' ||
+            view === 'distance' ||
+            view === 'water' ||
+            view === 'compare' ||
+            view === 'seascape'
+        )
+            setView(view);
+    });
+}
 stabilizeToggle.addEventListener('click', () => {
     setStabilization(!stabilization);
 });
-
+tourToggle.addEventListener('click', () => {
+    setTour(!touring);
+});
 lambdaControl.addEventListener('input', () => {
     shadowConfiguration.cascadeSplitLambda = lambdaControl.valueAsNumber;
     lambdaOutput.value = lambdaControl.valueAsNumber.toFixed(2);
     directionLight.isDirty = true;
     refreshDepthReadout();
 });
-
 blendControl.addEventListener('input', () => {
     shadowConfiguration.cascadeBlend = blendControl.valueAsNumber;
     blendOutput.value = `${String(Math.round(blendControl.valueAsNumber * 100))}%`;
     directionLight.isDirty = true;
 });
-
 strengthControl.addEventListener('input', () => {
     shadowConfiguration.shadowStrength = strengthControl.valueAsNumber;
     strengthOutput.value = strengthControl.valueAsNumber.toFixed(2);
-    directionLight.isDirty = true;
     document.body.dataset['csmStrength'] = strengthControl.value;
+    directionLight.isDirty = true;
 });
-
 distanceControl.addEventListener('input', () => {
     shadowConfiguration.cascadeMaxDistance = distanceControl.valueAsNumber;
     distanceOutput.value = `${String(distanceControl.valueAsNumber)} m`;
     directionLight.isDirty = true;
     refreshDepthReadout();
 });
-
+const stopTour = (): void => {
+    if (touring) setTour(false);
+};
+stage.canvas.addEventListener('pointerdown', stopTour);
+stage.canvas.addEventListener('wheel', stopTour, { passive: true });
 const handleKeyboard = (event: KeyboardEvent): void => {
-    if (event.target instanceof HTMLInputElement) return;
+    if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLButtonElement ||
+        (event.target instanceof HTMLElement && event.target.isContentEditable)
+    )
+        return;
     if (event.code === 'Digit1') setShadowMode(1);
-    else if (event.code === 'Digit2') setShadowMode(2);
     else if (event.code === 'Digit4') setShadowMode(4);
     else if (event.code === 'KeyO') setShadowMode(shadowMode === 0 ? 4 : 0);
     else if (event.code === 'KeyS') setStabilization(!stabilization);
+    else if (event.code === 'KeyR') setView('courtyard');
 };
 window.addEventListener('keydown', handleKeyboard);
-
-backendBadge.textContent = `${BACKEND_LABELS[renderer.backend]} · ${String(MSAA_SAMPLES)}× MSAA`;
-document.body.dataset['csmMsaa'] = String(MSAA_SAMPLES);
+const resizeView = (): void => {
+    camera.fov = window.innerWidth <= 740 ? 53 : 36;
+    if (document.body.dataset['csmView'] === 'courtyard' && !touring) {
+        orbitControls.setView(
+            new Hilo3d.Vector3(...viewPosition('courtyard')),
+            new Hilo3d.Vector3(...viewTarget('courtyard'))
+        );
+    }
+};
+window.addEventListener('resize', resizeView);
+resizeView();
+const tourPosition = new Hilo3d.Vector3();
+const tourTarget = new Hilo3d.Vector3();
+ticker.addTick({
+    tick(dt: number): void {
+        toyWorld.tick(dt);
+        surroundings.tick(dt);
+        weatherEffects.tick(dt);
+        snowCover.tick(dt);
+        const now = performance.now();
+        updateHouseLights(now);
+        const flash = weatherEffects.lightningFlash;
+        fillLight.amount = baseFillAmount + flash * 3.2;
+        surroundings.setLightning(flash);
+        if (now >= nextSnowReadout) {
+            nextSnowReadout = now + 200;
+            const amount = Math.round(snowCover.accumulation * 100);
+            if (document.activeElement !== snowAmount) snowAmount.value = String(amount);
+            snowAmountOutput.value = `${String(amount)}%`;
+            document.body.dataset['csmSnowAmount'] = String(amount);
+            document.body.dataset['csmLightning'] = flash > 0 ? 'true' : 'false';
+        }
+        if (sceneMoving)
+            windmillRotor.rotationZ = (windmillRotor.rotationZ + Math.min(dt, 50) * 0.012) % 360;
+        if (!touring) return;
+        tourTime += Math.min(dt, 50) / 1000;
+        const travel = (1 - Math.cos((tourTime * Math.PI) / 28)) * 0.5;
+        tourPosition.set(68 - 44 * travel, 58 - 22 * travel, 90 - 108 * travel);
+        tourTarget.set(0, 3, -10 - 20 * travel);
+        orbitControls.setView(tourPosition, tourTarget);
+    }
+});
+backendBadge.textContent = `${BACKEND_LABELS[renderer.backend]} / 4× MSAA`;
+document.body.dataset['csmMsaa'] = '4';
+document.body.dataset['csmAa'] = 'msaa';
 document.body.dataset['csmStrength'] = strengthControl.value;
-setShadowMode(4);
+setBudget('balanced');
+setTimeOfDay('morning');
+setWeather('clear');
+toyWorld.setLocalShadows(true);
+document.body.dataset['csmLocalShadows'] = 'true';
 setStabilization(true);
+setView('courtyard');
+setSceneMotion(true);
 ticker.start();
 document.body.dataset['csmReady'] = 'true';
-
 window.addEventListener(
     'pagehide',
     () => {
         window.removeEventListener('keydown', handleKeyboard);
+        window.removeEventListener('resize', resizeView);
+        stage.canvas.removeEventListener('pointerdown', stopTour);
+        stage.canvas.removeEventListener('wheel', stopTour);
         sceneContext.dispose();
     },
     { once: true }

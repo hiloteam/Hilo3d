@@ -297,7 +297,7 @@ describe('example release matrix contract', () => {
             'if (exampleUsesDedicatedReleaseTest(examplePath)) continue;'
         );
         expect(genericReleaseTestSource).toContain(
-            'cascaded shadow garden exposes live controls through ${backend}'
+            'cascaded shadow toy diorama demonstrates detail and live controls through ${backend}'
         );
         expect(nativeReleaseTestSource).toContain(
             'Sponza Forward+ exposes stable camera and lighting controls @webgpu'
