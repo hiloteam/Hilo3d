@@ -63,6 +63,12 @@ ordinary Forward opaque 必须先通过正式 `depth-only` material role 把 fal
 scene depth，再构建 Hi-Z。否则 radiance 中虽能看到 fallback 物体，hierarchical
 trace 却没有对应深度可命中；Car Concept 的 layered PBR 车身就是这条回归的发布夹具。
 
+普通 scene 顶点 shader 与 GPU Scene 一样声明
+`invariant gl_Position`，并在 depth、motion、material-attributes 与 color
+variants 中使用同一位置表达式。Naga 产物保留 WGSL position 的 `@invariant`。材质属性 pass 的 `equal`
+深度测试依赖这一约束；否则不同编译变体的微小浮点误差会在大斜面产生覆盖孔洞，SSR 全分辨率 resolve 因缺少属性而露出地板本色，并随 TAA
+jitter 闪烁。
+
 ## Material attribute ABI
 
 `material-attributes` 是内置材质的正式 semantic pass。普通消费者使用一个 single-sample `rgba8unorm`
@@ -103,7 +109,13 @@ Hi-Z 每级保存 device-depth 的 min/max，因此 standard 与 reversed depth 
 culling 从相应边界读取 conservative farthest
 depth，SSR 则使用完整区间做 coarse-to-fine 推进、line-segment refinement、grazing/depth-adaptive
 thickness 和 hit-normal facing 测试。背景 crossing、过深 penetration 和背面候选不会被当作普通 valid
-hit。trace 不假设反射 ray 必须远离相机，因此 camera-facing vertical
+hit。层级步进在投影空间求当前 Hi-Z
+cell 的出口，只在整段射线都位于该 cell 的保守深度区间之前时跳过它；可能相交的 cell 原地降级，而不是用指数增长的 view-space 步长跨过轮廓。最细层直接求 cell 内的 depth-plane 交点；跨薄表面的 front/behind
+bracket 在 thickness
+rejection 前进行最多六次 depth 重采样细化，避免把深度不连续的两个表面做线性插值。粗糙表面保留更充分的迭代预算；实际工作量仍受
+`maxSteps`、roughness 与 active-tile dispatch 限制。
+
+trace 不假设反射 ray 必须远离相机，因此 camera-facing vertical
 mirror 也能追踪位于镜面与相机之间的屏幕内物体。命中辐射按 roughness 与 ray distance 选择四级 HDR
 color cone。perceptual roughness 不高于 0.1 时使用确定性镜面 ray；这与 Unreal legacy SSR 的
 `Roughness < 0.1` 镜面退化一致。更粗糙 receiver 每帧使用四条完整分层的 scrambled Hammersley
@@ -153,7 +165,16 @@ filter 也用 response 与 packed material continuity 阻止跨材质边界借�
 
 当前 3×3 radiance 在 YCoCg 中生成 mean/variance
 clamp，并在粗糙 stochastic 区域先抑制单帧 firefly；history alpha 的整数部分保存最高 31 的 capped
-sample count，小数部分保存 confidence。粗糙表面最多使用 24-frame
+sample count，小数部分保存 confidence。写入 alpha 前先把 sample count 取整；重投影的四个 history
+tap 分别解包 count/confidence 后再做双线性插值，禁止直接过滤 packed
+alpha。这样不同累积年龄不会变成虚假的高置信度。miss 的 count 每帧至少减少一帧。只有当前 3×3 邻域仍有有效命中时才允许短暂 hole
+fill；全邻域 miss 不会借助非零 YCoCg clamp 下限恢复旧倒影。receiver motion 在 2–8 个 scene
+pixel 之间平滑拒绝 miss history，2 像素以内保留静止 TAA
+jitter 的累积，快速运动时立即拒绝。同一个保留权重同时乘预乘 radiance 与 confidence，并受
+`historyWeight` 限制； `historyWeight: 0`
+对 hit 和 miss 两条路径都禁用历史。这样沿地面重投影的旧反射不会在快速 orbit 后残留为暗红/洋红条带。
+
+粗糙表面最多使用 24-frame
 accumulation，镜面、快速 motion、miss 和 disocclusion 更快响应；miss 可以短暂继承低 confidence
 history 完成局部 hole fill，但会持续衰减。
 
@@ -175,18 +196,33 @@ recipe 重建资源，public pipeline identity 不变。
 
 ## 上线证据
 
+- `test/spec/renderer/MaterialPassDepthParity.test.ts`：双后端、standard/reversed 深度、两种大斜面视角与八个 jitter
+  phase，验证 depth-only 已覆盖的像素在 equal-depth 三 MRT attributes 中全部写入。
+  `GlslToWgsl.test.ts` 的内置 shader corpus 验证 invariant 一直保留到 WGSL。
+- Afterimage 浏览器测试额外在 1440×960 下检查连续 32 帧的反射区域局部暗孔，防止稀疏黑条被全图平均差异门槛掩盖。
+- 快速往返 orbit 的浏览器回归逐帧检查运动当帧的空地红色残留，并在停下后检查收敛。
+  `ScreenSpaceReflectionMissHistory.test.ts` 以真实 WebGPU
+  compute/readback 覆盖当前支持、jitter、快速运动拒绝和 history weight 上限。
+
+- `test/spec/renderer/NormalMapScale.test.ts`：双后端真实像素验证 normal
+  scale 的 0、0.5、1 运行时更新；`ScreenSpaceReflectionHistory.test.ts` 用真实 WebGPU
+  compute/readback 验证 fractional
+  count 与不同年龄 history 的 confidence 不串扰；`ScreenSpaceReflectionTrace.test.ts`
+  覆盖薄表面、较大 stride、标准/反向深度与连续反射 ROI。
 - `test/spec/renderer/ClusteredForwardPlus.test.ts`：配置/limit/format 合同，以及真实 WebGPU 的 GPU
   Scene、ordinary fallback、active/hit/miss diagnostics、roughness cutoff、moving receiver、camera
-  cut、camera-facing reflection rays、resize、standard/reversed depth 和 device recovery。
+  cut、resize、standard/reversed depth 和 device recovery。
 - `test/ui/screen-space-reflections.spec.ts`：默认 0.5× trace resolution、真实浏览器 GPU
   validation、roughness 0.08 deterministic 与 0.16/0.24
   stochastic 地面反射 ROI 连续帧的局部 changed-pixel/mean-delta 闪烁门槛、静态与 camera/hero motion
-  history 收敛、低视角 grazing ROI 连续帧门槛、roughness active-work
-  rejection、垂直镜面命中，以及同一视角 SSR on/off 的非零像素贡献。
+  history 收敛、低视角 grazing ROI 连续帧门槛、roughness active-work rejection，以及同一视角 SSR
+  on/off 的非零像素贡献。
 - `examples/screen_space_reflections_palace.html`：使用仓库内 Khronos Car Concept、镜头外 studio
-  light field、ordinary Forward PBR 烟熏漆地面、TAA、Bloom 和高精度 Hi-Z SSR 的独立维护示例；
-  `ssr=false` 可显示确定性无 SSR 对照。Car Concept 资产来源、CC BY 4.0 许可和 hash 记录在
-  `examples/models/CarConcept/README.md`。
+  light field、ordinary Forward PBR 烟熏漆地面（默认 roughness 0.11）、TAA、Bloom 和半分辨率 Hi-Z
+  SSR 的独立维护示例；默认采用车头三分之四视角，车漆 normalScale 为 0.04、clearcoat
+  roughness 至少为 0.12；地面不再受到红、蓝两盏点补光的圆形高光影响；窄屏保持完整车身，physical
+  canvas 不超过 2560×1440。`ssr=false` 可显示保留环境反射的无 SSR 对照。Car Concept 资产来源、CC BY
+  4.0 许可和 hash 记录在 `examples/models/CarConcept/README.md`。
 
 现有 `examples/temporal_aa_observatory.html` 保持为独立 TAA/TAAU 案例，不承担 SSR release evidence。
 

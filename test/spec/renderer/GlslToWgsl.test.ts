@@ -1249,6 +1249,10 @@ describe('built-in shader WebGPU corpus', () => {
 
         expect(translated.vertex.wgsl).toContain('@vertex');
         expect(translated.fragment.wgsl).toContain('@fragment');
+        if (shaderCase.vertex === undefined) {
+            expect(translated.vertex.glsl).toContain('invariant gl_Position;');
+            expect(translated.vertex.wgsl).toMatch(/@builtin\(position\)\s+@invariant/u);
+        }
         expect(translated.vertexInputs.some(input => input.name === 'a_position')).toBe(true);
         const vertexInputNames = new Set(translated.vertexInputs.map(input => input.name));
         for (const name of shaderCase.expectedVertexInputs ?? []) {

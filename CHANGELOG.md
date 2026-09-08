@@ -1,5 +1,22 @@
 # Unreleased
 
+### Fixes
+
+- Reject unsupported or rapidly moving SSR missed-hit history, fade confidence-premultiplied
+  radiance together with confidence, and honor zero history weight on every resolve path. This
+  removes red reflection trails on empty floors during fast camera orbit.
+
+- Keep built-in scene vertex positions invariant across depth, motion, material-attributes and color
+  variants, eliminating jitter-dependent attribute holes and flickering SSR black speckles. Remove
+  the red and blue point fill lights that produced circular floor highlights in Afterimage.
+
+- Apply runtime normal-map scale in shared raster shading, restoring smooth Car Concept paint on
+  WebGL2 and WebGPU.
+- Traverse SSR Hi-Z cells conservatively and refine thin-surface crossings before rejecting hits.
+  Keep integer history counts separate from confidence during packing and bilinear reprojection.
+- Refine the Afterimage studio camera, paint, lighting, and polished floor reflection; fit portrait
+  viewports and cap physical rendering dimensions to the declared GPU budget.
+
 # 2.0.0-alpha.8 (2026-09-08)
 
 ### Breaking changes

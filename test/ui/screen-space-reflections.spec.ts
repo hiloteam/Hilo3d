@@ -49,6 +49,52 @@ function pixelDifference(
     };
 }
 
+// A whole-image frame delta can miss sparse single-pixel holes. Measure dark outliers
+// inside a smooth red reflection against their local median instead of its silhouette.
+function reflectionHoleRatio(frame: Buffer): { readonly holes: number; readonly samples: number } {
+    const pixels = PNG.sync.read(frame);
+    let holes = 0;
+    let samples = 0;
+    const neighbors: number[] = [];
+    for (let y = 740; y < 850; y++) {
+        for (let x = 530; x < 645; x++) {
+            neighbors.length = 0;
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    if (dx !== 0 || dy !== 0) {
+                        neighbors.push(pixels.data[((y + dy) * pixels.width + x + dx) * 4] ?? 0);
+                    }
+                }
+            }
+            neighbors.sort((left, right) => left - right);
+            const median = neighbors[12] ?? 0;
+            const red = pixels.data[(y * pixels.width + x) * 4] ?? 0;
+            if (median > 30) {
+                samples++;
+                if (red < median * 0.65 && median - red > 12) holes++;
+            }
+        }
+    }
+    return { holes, samples };
+}
+
+function meanRedTrail(frame: Buffer): number {
+    const pixels = PNG.sync.read(frame);
+    let excess = 0;
+    // This floor area stays outside the car's reflection throughout the fixed orbit below.
+    for (let y = 630; y < 835; y++) {
+        for (let x = 0; x < 220; x++) {
+            const offset = (y * pixels.width + x) * 4;
+            excess += Math.max(
+                0,
+                (pixels.data[offset] ?? 0) -
+                    Math.max(pixels.data[offset + 1] ?? 0, pixels.data[offset + 2] ?? 0)
+            );
+        }
+    }
+    return excess / (220 * 205);
+}
+
 async function worstConsecutiveDifference(
     page: Page,
     canvas: Locator,
@@ -181,7 +227,7 @@ test('renders a stable and visually material SSR contribution in Afterimage', as
     expect(grazingStability.changedRatio).toBeLessThan(0.1);
     expect(grazingStability.meanChannelDelta).toBeLessThan(2);
 
-    const defaultStochasticActivePixels = evidence?.activePixelCount ?? 0;
+    const defaultActivePixels = evidence?.activePixelCount ?? 0;
     const deterministicActivePixels = await page.evaluate(async () => {
         const activePixels =
             (await window.__HILO3D_SSR_PALACE_TEST_API__?.setFloorRoughness(0.08)) ?? -1;
@@ -200,29 +246,31 @@ test('renders a stable and visually material SSR contribution in Afterimage', as
     expect(deterministicStability.changedRatio).toBeLessThan(0.1);
     expect(deterministicStability.meanChannelDelta).toBeLessThan(1.5);
 
-    const stochasticActivePixels = await page.evaluate(async () => {
-        const activePixels =
-            (await window.__HILO3D_SSR_PALACE_TEST_API__?.setFloorRoughness(0.24)) ?? -1;
-        await window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24);
-        return activePixels;
-    });
-    expect(stochasticActivePixels).toBeGreaterThan(0);
-    const stochasticReflection = await canvas.screenshot({ animations: 'disabled' });
-    const stochasticStability = await worstConsecutiveDifference(
-        page,
-        canvas,
-        stochasticReflection,
-        reflectionRegion,
-        4
-    );
-    expect(stochasticStability.changedRatio).toBeLessThan(0.12);
-    expect(stochasticStability.meanChannelDelta).toBeLessThan(2);
+    for (const roughness of [0.16, 0.24]) {
+        const stochasticActivePixels = await page.evaluate(async value => {
+            const activePixels =
+                (await window.__HILO3D_SSR_PALACE_TEST_API__?.setFloorRoughness(value)) ?? -1;
+            await window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24);
+            return activePixels;
+        }, roughness);
+        expect(stochasticActivePixels).toBeGreaterThan(0);
+        const stochasticReflection = await canvas.screenshot({ animations: 'disabled' });
+        const stochasticStability = await worstConsecutiveDifference(
+            page,
+            canvas,
+            stochasticReflection,
+            reflectionRegion,
+            4
+        );
+        expect(stochasticStability.changedRatio).toBeLessThan(roughness < 0.2 ? 0.075 : 0.12);
+        expect(stochasticStability.meanChannelDelta).toBeLessThan(roughness < 0.2 ? 1.5 : 2);
+    }
 
     const roughActivePixels = await page.evaluate(async () => {
         return (await window.__HILO3D_SSR_PALACE_TEST_API__?.setFloorRoughness(1)) ?? -1;
     });
     expect(roughActivePixels).toBeGreaterThanOrEqual(0);
-    expect(roughActivePixels).toBeLessThan(defaultStochasticActivePixels);
+    expect(roughActivePixels).toBeLessThan(defaultActivePixels);
     await page.evaluate(async () => {
         await window.__HILO3D_SSR_PALACE_TEST_API__?.setFloorRoughness(0.16);
         await window.__HILO3D_SSR_PALACE_TEST_API__?.moveCamera();
@@ -240,10 +288,8 @@ test('renders a stable and visually material SSR contribution in Afterimage', as
     expect(movedStability.changedRatio).toBeLessThan(0.18);
     expect(movedStability.meanChannelDelta).toBeLessThan(4);
 
-    await page.goto(
-        `${examplesOrigin}/examples/screen_space_reflections_palace.html?backend=webgpu&test=1&ssr=false`,
-        { waitUntil: 'load' }
-    );
+    await page.locator('#ssrToggle').click();
+    await expect(page).toHaveURL(/ssr=false/u);
     await expect(page.locator('body')).toHaveAttribute('data-ssr-ready', 'true', {
         timeout: 60_000
     });
@@ -263,6 +309,117 @@ test('renders a stable and visually material SSR contribution in Afterimage', as
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
     expect(gpuValidationErrors).toEqual([]);
+});
+
+test('keeps Afterimage reflections free of fine dark holes across a full jitter cycle', async ({
+    page
+}) => {
+    test.setTimeout(180_000);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 960 });
+    const examplesOrigin = process.env['HILO3D_EXAMPLES_ORIGIN'] ?? '';
+    await page.goto(`${examplesOrigin}/examples/screen_space_reflections_palace.html?test=1`);
+    await expect(page.locator('body')).toHaveAttribute('data-ssr-ready', 'true', {
+        timeout: 60_000
+    });
+    await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24));
+    for (let phase = 0; phase < 32; phase++) {
+        const frame = await page.locator('canvas').screenshot({ animations: 'disabled' });
+        const { holes, samples } = reflectionHoleRatio(frame);
+        expect(samples, `visible reflection at phase ${String(phase)}`).toBeGreaterThan(5_000);
+        expect(holes / samples, `fine dark holes at phase ${String(phase)}`).toBeLessThan(0.005);
+        await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(1));
+    }
+    expect(errors).toEqual([]);
+});
+
+test('rejects stale Afterimage reflection trails during rapid orbit in both directions', async ({
+    page
+}) => {
+    test.setTimeout(180_000);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 960 });
+    const examplesOrigin = process.env['HILO3D_EXAMPLES_ORIGIN'] ?? '';
+    await page.goto(`${examplesOrigin}/examples/screen_space_reflections_palace.html?test=1`);
+    await expect(page.locator('body')).toHaveAttribute('data-ssr-ready', 'true', {
+        timeout: 60_000
+    });
+    await page.evaluate(async () => {
+        await window.__HILO3D_SSR_PALACE_TEST_API__?.setGrazingCamera();
+        await window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24);
+    });
+    await page.mouse.move(1100, 400);
+    await page.mouse.down();
+    for (const step of [1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0]) {
+        await page.mouse.move(1100 - step * 115, 400);
+        // Inspect the moving frame immediately; settling here would conceal the regression.
+        await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(1));
+        const movingFrame = await page.locator('canvas').screenshot({ animations: 'disabled' });
+        expect(meanRedTrail(movingFrame), `red trails at orbit step ${String(step)}`).toBeLessThan(
+            1
+        );
+    }
+    await page.mouse.up();
+    await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(32));
+    const settled = await page.locator('canvas').screenshot({ animations: 'disabled' });
+    expect(meanRedTrail(settled)).toBeLessThan(1);
+    const stability = await worstConsecutiveDifference(
+        page,
+        page.locator('canvas'),
+        settled,
+        { left: 0.2, top: 0.64, right: 0.9, bottom: 0.94 },
+        3
+    );
+    expect(stability.meanChannelDelta).toBeLessThan(2);
+    expect(errors).toEqual([]);
+});
+
+test('keeps the complete car visible in portrait and supports orbit after resizing', async ({
+    page
+}) => {
+    test.setTimeout(90_000);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.setViewportSize({ width: 390, height: 844 });
+    const examplesOrigin = process.env['HILO3D_EXAMPLES_ORIGIN'] ?? '';
+    await page.goto(`${examplesOrigin}/examples/screen_space_reflections_palace.html?test=1`);
+    await expect(page.locator('body')).toHaveAttribute('data-ssr-ready', 'true', {
+        timeout: 60_000
+    });
+    await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(8));
+    await expect(page.locator('#ssrToggle')).toBeInViewport();
+    await expect(page.locator('.ssrIntro')).toBeInViewport();
+    const portrait = PNG.sync.read(await page.locator('canvas').screenshot());
+    let left = portrait.width;
+    let right = 0;
+    for (let y = Math.floor(portrait.height * 0.3); y < portrait.height * 0.7; y++) {
+        for (let x = 0; x < portrait.width; x++) {
+            const offset = (y * portrait.width + x) * 4;
+            if (
+                (portrait.data[offset] ?? 0) > 60 &&
+                (portrait.data[offset] ?? 0) > (portrait.data[offset + 1] ?? 0) * 2
+            ) {
+                left = Math.min(left, x);
+                right = Math.max(right, x);
+            }
+        }
+    }
+    expect(right - left).toBeGreaterThan(180);
+    expect(left).toBeGreaterThan(12);
+    expect(right).toBeLessThan(portrait.width - 12);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24));
+    const beforeOrbit = await page.locator('canvas').screenshot();
+    await page.mouse.move(820, 370);
+    await page.mouse.down();
+    await page.mouse.move(980, 400, { steps: 8 });
+    await page.mouse.up();
+    await page.evaluate(async () => window.__HILO3D_SSR_PALACE_TEST_API__?.settle(24));
+    const afterOrbit = await page.locator('canvas').screenshot();
+    expect(pixelDifference(beforeOrbit, afterOrbit).changedRatio).toBeGreaterThan(0.01);
+    expect(errors).toEqual([]);
 });
 
 declare global {

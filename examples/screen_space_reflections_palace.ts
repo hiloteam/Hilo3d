@@ -63,6 +63,7 @@ if (carModel.resourceErrors.length > 0) {
 }
 for (const material of carModel.materials) {
     if (!(material instanceof Hilo3d.PBRMaterial) || !material.name?.startsWith('Paint')) continue;
+    material.clearcoatRoughnessFactor = Math.max(material.clearcoatRoughnessFactor, 0.12);
     material.normalScale = Math.min(material.normalScale, 0.04);
     material.roughness = Math.max(material.roughness, 0.36);
     material.iridescenceFactor = Math.min(material.iridescenceFactor, 0.02);
@@ -73,22 +74,12 @@ const floorGeometry = new Hilo3d.PlaneGeometry({ width: 80, height: 80 });
 const floorMaterial = new Hilo3d.PBRMaterial({
     baseColor: new Hilo3d.Color(0.018, 0.015, 0.022),
     metallic: 0.38,
-    roughness: 0.16,
+    roughness: 0.11,
     brdfLUT,
     diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
     specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
     diffuseEnvIntensity: 0.03,
     specularEnvIntensity: 0.04
-});
-const verticalMirrorMaterial = new Hilo3d.PBRMaterial({
-    baseColor: new Hilo3d.Color(0.025, 0.03, 0.045),
-    metallic: 0.72,
-    roughness: 0.11,
-    brdfLUT,
-    diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
-    specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
-    diffuseEnvIntensity: 0.015,
-    specularEnvIntensity: 0.065
 });
 const gpuEvidenceGeometry = new Hilo3d.BoxGeometry({ width: 0.16, height: 0.08, depth: 0.16 });
 const gpuEvidenceMaterial = new Hilo3d.PBRMaterial({
@@ -105,8 +96,8 @@ const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
     maxLightsPerCluster: 48,
     tileSize: 24,
     zSlices: 24,
-    maxViewportWidth: testMode ? 960 : 2560,
-    maxViewportHeight: testMode ? 600 : 1440,
+    maxViewportWidth: 2560,
+    maxViewportHeight: 1440,
     hiZ: true,
     bloomStrength: 0.14,
     exposure: 1.08,
@@ -121,23 +112,32 @@ const factory = new Hilo3d.ClusteredForwardPlusPipelineFactory({
         ? {
               resolutionScale: 0.5,
               maxRayDistance: 56,
-              thickness: 0.18,
+              thickness: 0.12,
               stride: 0.06,
               maxSteps: 96,
-              roughnessCutoff: 0.28,
+              roughnessCutoff: 0.32,
               edgeFade: 0.1,
               historyWeight: 0.95,
               depthThreshold: 0.03,
-              intensity: 1.55
+              intensity: 1.15
           }
         : false
 });
 
-const initialWidth = testMode ? 960 : innerWidth;
-const initialHeight = testMode ? 600 : innerHeight;
+// Keep the complete car in portrait viewports and stay within the declared physical GPU budget.
+function cameraFieldOfView(aspect: number): number {
+    return (Math.atan(Math.tan((32 * Math.PI) / 360) * Math.max(1, 1.2 / aspect)) * 360) / Math.PI;
+}
+
+function renderPixelRatio(width: number, height: number): number {
+    return Math.min(testMode ? 1 : devicePixelRatio, 1.5, 2560 / width, 1440 / height);
+}
+
+const initialWidth = innerWidth;
+const initialHeight = innerHeight;
 const camera = new Hilo3d.PerspectiveCamera({
     aspect: initialWidth / Math.max(initialHeight, 1),
-    fov: 32,
+    fov: cameraFieldOfView(initialWidth / Math.max(initialHeight, 1)),
     near: 0.05,
     far: 90,
     depthMode: 'reversed'
@@ -150,7 +150,7 @@ const stage = await Hilo3d.Stage.create<'webgpu'>({
     camera,
     width: initialWidth,
     height: initialHeight,
-    pixelRatio: testMode ? 1 : Math.min(devicePixelRatio, 1.5),
+    pixelRatio: renderPixelRatio(initialWidth, initialHeight),
     antialias: false,
     alpha: false,
     clearColor: new Hilo3d.Color(0.0012, 0.001, 0.0018),
@@ -164,33 +164,19 @@ new Hilo3d.AmbientLight({
     color: new Hilo3d.Color(0.25, 0.28, 0.36)
 }).addTo(stage);
 new Hilo3d.DirectionalLight({
-    amount: 2.4,
+    amount: 1.65,
     color: new Hilo3d.Color(1, 0.86, 0.76),
     direction: new Hilo3d.Vector3(-0.34, -0.91, -0.2)
 }).addTo(stage);
 
-const lightPlan = [
-    { amount: 5.2, range: 12, color: new Hilo3d.Color(1, 0.78, 0.64), x: 3.8, y: 3.2, z: 1.6 },
-    {
-        amount: 2.7,
-        range: 10,
-        color: new Hilo3d.Color(0.32, 0.47, 0.86),
-        x: -4.6,
-        y: 1.4,
-        z: -4.2
-    },
-    {
-        amount: 3.2,
-        range: 11,
-        color: new Hilo3d.Color(1, 0.08, 0.035),
-        x: -0.8,
-        y: 0.65,
-        z: -8.6
-    }
-] as const;
-for (const light of lightPlan) {
-    new Hilo3d.PointLight(light).addTo(stage);
-}
+new Hilo3d.PointLight({
+    amount: 3.8,
+    range: 12,
+    color: new Hilo3d.Color(1, 0.78, 0.64),
+    x: 3.8,
+    y: 3.2,
+    z: 1.6
+}).addTo(stage);
 
 const floor = new Hilo3d.Mesh({
     geometry: floorGeometry,
@@ -202,17 +188,6 @@ const floor = new Hilo3d.Mesh({
     frustumTest: false
 }).addTo(stage);
 floor.receiveShadows = false;
-
-new Hilo3d.Mesh({
-    geometry: new Hilo3d.PlaneGeometry({ width: 5.8, height: 3.3 }),
-    material: verticalMirrorMaterial,
-    x: -3.25,
-    y: -0.12,
-    z: -9.65,
-    rotationY: -8,
-    pointerEnabled: false,
-    frustumTest: false
-}).addTo(stage);
 
 new Hilo3d.Mesh({
     geometry: gpuEvidenceGeometry,
@@ -247,10 +222,10 @@ const carScale = 7.7 / carLargestDimension;
 carModel.node.setScale(carScale);
 carModel.node.setPosition(
     -carBounds.x * carScale + 1.05,
-    -carBounds.y * carScale + carBounds.height * carScale * 0.5 - 1.69,
+    -carBounds.y * carScale + carBounds.height * carScale * 0.5 - 1.755,
     -carBounds.z * carScale - 5.4
 );
-carModel.node.rotationY = 164;
+carModel.node.rotationY = -16;
 for (const mesh of carModel.meshes) {
     mesh.pointerEnabled = false;
     mesh.frustumTest = false;
@@ -259,18 +234,18 @@ carModel.node.addTo(stage);
 
 const controls = new Hilo3d.OrbitControls(stage, {
     camera,
-    target: new Hilo3d.Vector3(0.72, -0.64, -5.35),
+    target: new Hilo3d.Vector3(0.15, -0.85, -5.35),
     enablePan: false,
     enableZoom: false,
     minDistance: 12.5,
     maxDistance: 18,
-    minPolarAngle: Math.PI * 0.39,
-    maxPolarAngle: Math.PI * 0.52,
+    minPolarAngle: Math.PI * 0.34,
+    maxPolarAngle: Math.PI * 0.495,
     rotateSpeed: 0.42,
     zoomSpeed: 0.68
 });
-const heroView = new Hilo3d.Vector3(9.85, 0.82, 5.45);
-const heroTarget = new Hilo3d.Vector3(0.72, -0.64, -5.35);
+const heroView = new Hilo3d.Vector3(10.8, 2.15, 6.55);
+const heroTarget = new Hilo3d.Vector3(0.15, -0.85, -5.35);
 controls.setView(heroView, heroTarget);
 
 const ticker = new Hilo3d.Ticker(60);
@@ -296,9 +271,9 @@ ssrToggleLabel.textContent = reflectionsEnabled ? 'SSR on' : 'SSR off';
 ssrToggle.addEventListener('click', toggleReflections);
 
 const resize = (): void => {
-    if (testMode) return;
     camera.aspect = innerWidth / Math.max(innerHeight, 1);
-    stage.resize(innerWidth, innerHeight, Math.min(devicePixelRatio, 1.5));
+    camera.fov = cameraFieldOfView(camera.aspect);
+    stage.resize(innerWidth, innerHeight, renderPixelRatio(innerWidth, innerHeight));
 };
 window.addEventListener('resize', resize);
 
@@ -347,7 +322,9 @@ window.__HILO3D_SSR_PALACE_TEST_API__ = {
         return (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount;
     }
 };
-statusLabel.textContent = reflectionsEnabled ? 'reflection history stable' : 'direct light only';
+statusLabel.textContent = reflectionsEnabled
+    ? 'reflection history stable'
+    : 'environment reflections only';
 document.body.dataset['ssrReady'] = 'true';
 document.body.dataset['ssrPhase'] = 'ready';
 if (!testMode) ticker.start();

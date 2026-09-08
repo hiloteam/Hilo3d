@@ -1,3 +1,4 @@
+import { MAX_HISTORY_SAMPLE_COUNT, REFLECTION_HISTORY_WGSL } from './ScreenSpaceReflectionHistory';
 import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
 import Shader from '../../shader/Shader';
 import ComputeKernel from '../compute/ComputeKernel';
@@ -37,7 +38,6 @@ const SSR_DIAGNOSTIC_BYTES = 32;
 const TEMPORAL_SEQUENCE_LENGTH = 32;
 const DETERMINISTIC_REFLECTION_ROUGHNESS = 0.1;
 const STOCHASTIC_RAY_COUNT = 4;
-const MAX_HISTORY_SAMPLE_COUNT = 31;
 const MAX_INDIRECT_DISPATCH_X = 65_535;
 
 /** Submitted GPU work counters for the hierarchical SSR trace. */
@@ -677,6 +677,11 @@ function traceShader(
         (_unused, index) =>
             `        case ${String(index)}u: { return textureLoad(hiZ${String(index)}, pixelFor(hiZ${String(index)}, uv), 0).xy; }`
     ).join('\n');
+    const hiZSizeCases = Array.from(
+        { length: Math.max(0, hiZLevelCount - 1) },
+        (_unused, index) =>
+            `        case ${String(index)}u: { return vec2<f32>(textureDimensions(hiZ${String(index)})); }`
+    ).join('\n');
     const lastColor = COLOR_PYRAMID_LEVELS - 1;
     const lastHiZ = hiZLevelCount - 1;
     const bindings: ComputeShaderBinding[] = [
@@ -797,6 +802,36 @@ ${hiZCases}
         default: { return textureLoad(hiZ${String(lastHiZ)}, pixelFor(hiZ${String(lastHiZ)}, uv), 0).xy; }
     }
 }
+fn hiZSize(level: u32) -> vec2<f32> {
+    switch level {
+${hiZSizeCases}
+        default: { return vec2<f32>(textureDimensions(hiZ${String(lastHiZ)})); }
+    }
+}
+fn cellExitDistance(
+    originClip: vec4<f32>,
+    directionClip: vec4<f32>,
+    uv: vec2<f32>,
+    level: u32,
+    distance: f32,
+    maximumDistance: f32
+) -> f32 {
+    let size = hiZSize(level);
+    let screenDirection = (directionClip.xy * originClip.w - originClip.xy * directionClip.w) *
+        vec2<f32>(1.0, -1.0);
+    let cell = floor(uv * size);
+    let boundary = (cell + select(vec2<f32>(0.0), vec2<f32>(1.0), screenDirection > vec2<f32>(0.0))) / size;
+    let ndc = boundary * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0);
+    let denominator = directionClip.xy - ndc * directionClip.w;
+    var result = maximumDistance;
+    for (var axis = 0u; axis < 2u; axis += 1u) {
+        if (abs(denominator[axis]) > 1e-7 && abs(screenDirection[axis]) > 1e-7) {
+            let candidate = (ndc[axis] * originClip.w - originClip[axis]) / denominator[axis];
+            if (candidate > distance) { result = min(result, candidate); }
+        }
+    }
+    return result;
+}
 fn decodeOctahedralNormal(encoded: vec2<f32>) -> vec3<f32> {
     let encodedSigned = encoded * 2.0 - vec2<f32>(1.0);
     var normal = vec3<f32>(
@@ -828,9 +863,6 @@ fn projectViewPosition(position: vec3<f32>) -> vec3<f32> {
 }
 fn rayIsInFront(rayDepth: f32, bounds: vec2<f32>) -> bool {
     return select((rayDepth < bounds.x), (rayDepth > bounds.y), frameData.depth.w > 0.5);
-}
-fn rayIsBehind(rayDepth: f32, bounds: vec2<f32>) -> bool {
-    return select((rayDepth > bounds.y), (rayDepth < bounds.x), frameData.depth.w > 0.5);
 }
 fn isBackgroundDepth(deviceDepth: f32) -> bool {
     return select(
@@ -958,6 +990,7 @@ fn main(
     let origin = surfacePosition + normal * originBias;
     let minimumStep = max(${String(settings.stride)}, -origin.z * 0.002);
     let startDistance = minimumStep;
+    let originClip = frameData.projection * vec4<f32>(origin, 1.0);
     let roughnessRatio = clamp(roughness / ${String(settings.roughnessCutoff)}, 0.0, 1.0);
     let maximumDistance = mix(
         ${String(settings.maxRayDistance)},
@@ -967,8 +1000,7 @@ fn main(
     let maximumIterations = u32(max(
         8.0,
         floor(
-            ${String(settings.maxSteps)}.0 * mix(1.0, 0.35, roughnessRatio) *
-                select(1.0, 0.55, roughness > ${String(DETERMINISTIC_REFLECTION_ROUGHNESS)})
+            ${String(settings.maxSteps)}.0 * mix(1.0, 0.65, roughnessRatio)
         )
     ));
     let rayCount = select(
@@ -1002,6 +1034,7 @@ fn main(
                 direction = stochasticDirection;
             }
         }
+        let directionClip = frameData.projection * vec4<f32>(direction, 0.0);
         var distance = startDistance;
         var previousDistance = 0.0;
         var hasFrontSample = false;
@@ -1012,8 +1045,8 @@ fn main(
         var backfaceRejected = false;
         for (var iteration = 0u; iteration < ${String(settings.maxSteps)}u; iteration += 1u) {
             if (iteration >= maximumIterations || distance > maximumDistance) { break; }
-            let rayPoint = origin + direction * distance;
-            let projected = projectViewPosition(rayPoint);
+            var rayPoint = origin + direction * distance;
+            var projected = projectViewPosition(rayPoint);
             if (
                 projected.x <= 0.0 || projected.y <= 0.0 ||
                 projected.x >= 1.0 || projected.y >= 1.0 ||
@@ -1021,15 +1054,36 @@ fn main(
             ) { break; }
             let bounds = sampleHiZ(level, projected.xy);
             if (rayIsInFront(projected.z, bounds)) {
+                let exitDistance = cellExitDistance(
+                    originClip, directionClip, projected.xy, level, distance, maximumDistance
+                );
+                let epsilon = max(1e-5, distance * 1e-5);
+                let exitPoint = origin + direction * max(distance, exitDistance - epsilon);
+                let exitProjected = projectViewPosition(exitPoint);
+                // Skip only a cell whose complete ray segment stays in front of its depth
+                // interval. View-space exponential steps can leap over entire silhouettes.
+                if (exitProjected.z >= 0.0 && exitProjected.z <= 1.0 &&
+                    rayIsInFront(exitProjected.z, bounds)) {
+                    previousDistance = distance;
+                    hasFrontSample = true;
+                    distance = exitDistance + epsilon;
+                    level = min(level + 1u, ${String(lastHiZ)}u);
+                    continue;
+                }
+                if (level > 0u) {
+                    level -= 1u;
+                    continue;
+                }
                 previousDistance = distance;
                 hasFrontSample = true;
-                distance += minimumStep * exp2(f32(level));
-                level = min(level + 1u, ${String(lastHiZ)}u);
-                continue;
-            }
-            if (level > 0u) {
+                let sceneZ = reconstructViewPosition(projected.xy, bounds.x).z;
+                if (abs(direction.z) > 1e-7) {
+                    distance = clamp((sceneZ - origin.z) / direction.z, distance, max(distance, exitDistance - epsilon));
+                    rayPoint = origin + direction * distance;
+                    projected = projectViewPosition(rayPoint);
+                }
+            } else if (level > 0u) {
                 level -= 1u;
-                distance = max(startDistance, mix(previousDistance, distance, 0.5));
                 continue;
             }
             let exactPixel = clamp(
@@ -1047,57 +1101,54 @@ fn main(
             let grazingScale = 1.0 / max(abs(dot(normal, direction)), 0.25);
             let thickness = ${String(settings.thickness)} *
                 (1.0 + max(-rayPoint.z, 0.0) * 0.002) * min(grazingScale, 2.5);
-            if (
-                !rayIsBehind(projected.z, bounds) ||
-                (penetration >= -thickness * 0.25 && penetration <= thickness)
-            ) {
-                if (penetration >= -thickness * 0.25 && penetration <= thickness) {
-                    var refinedDistance = distance;
-                    if (hasFrontSample && previousDistance < distance) {
-                        let previousPoint = origin + direction * previousDistance;
-                        let previousProjected = projectViewPosition(previousPoint);
-                        let previousDepthPixel = clamp(
-                            vec2<i32>(previousProjected.xy * vec2<f32>(depthSize)),
-                            vec2<i32>(0),
-                            vec2<i32>(depthSize) - vec2<i32>(1)
-                        );
-                        let previousDepth = textureLoad(sceneDepth, previousDepthPixel, 0);
-                        if (!isBackgroundDepth(previousDepth)) {
-                            let previousScene = reconstructViewPosition(
-                                previousProjected.xy,
-                                previousDepth
-                            );
-                            let previousPenetration =
-                                (-previousPoint.z) - (-previousScene.z);
-                            let denominator = previousPenetration - penetration;
-                            if (abs(denominator) > 1e-5) {
-                                refinedDistance = mix(
-                                    previousDistance,
-                                    distance,
-                                    clamp(previousPenetration / denominator, 0.0, 1.0)
-                                );
-                            }
-                        }
-                    }
-                    let refinedUv = projectViewPosition(
-                        origin + direction * refinedDistance
-                    ).xy;
-                    let hitAttributes = textureLoad(
-                        materialAttributes,
-                        pixelFor(materialAttributes, refinedUv),
-                        0
+            // A coarse step can cross a thin surface without landing inside its thickness
+            // band. Refine the front/behind bracket before deciding that it is a miss.
+            // Re-sample depth at every candidate; interpolating two unrelated surface depths
+            // across a silhouette can otherwise produce a hit in empty space.
+            var refinedDistance = distance;
+            var refinedUv = projected.xy;
+            var refinedPenetration = penetration;
+            if (penetration > 0.0 && hasFrontSample && previousDistance < distance) {
+                var frontDistance = previousDistance;
+                var behindDistance = distance;
+                for (var refinement = 0u; refinement < 6u; refinement += 1u) {
+                    let candidateDistance = (frontDistance + behindDistance) * 0.5;
+                    let candidatePoint = origin + direction * candidateDistance;
+                    let candidateProjected = projectViewPosition(candidatePoint);
+                    let candidatePixel = clamp(
+                        vec2<i32>(candidateProjected.xy * vec2<f32>(depthSize)),
+                        vec2<i32>(0),
+                        vec2<i32>(depthSize) - vec2<i32>(1)
                     );
-                    let hitNormal = decodeOctahedralNormal(hitAttributes.xy);
-                    if (dot(hitNormal, direction) >= -0.01) {
-                        backfaceRejected = true;
-                        break;
+                    let candidateDepth = textureLoad(sceneDepth, candidatePixel, 0);
+                    let candidateScene = reconstructViewPosition(candidateProjected.xy, candidateDepth);
+                    let candidatePenetration = candidateScene.z - candidatePoint.z;
+                    if (isBackgroundDepth(candidateDepth) || candidatePenetration < 0.0) {
+                        frontDistance = candidateDistance;
+                    } else {
+                        behindDistance = candidateDistance;
+                        refinedDistance = candidateDistance;
+                        refinedUv = candidateProjected.xy;
+                        refinedPenetration = candidatePenetration;
                     }
-                    hitUv = refinedUv;
-                    hitDistance = refinedDistance;
-                    break;
                 }
             }
-            if (penetration > thickness) {
+            if (refinedPenetration >= -thickness * 0.25 && refinedPenetration <= thickness) {
+                let hitAttributes = textureLoad(
+                    materialAttributes,
+                    pixelFor(materialAttributes, refinedUv),
+                    0
+                );
+                let hitNormal = decodeOctahedralNormal(hitAttributes.xy);
+                if (dot(hitNormal, direction) >= -0.01) {
+                    backfaceRejected = true;
+                    break;
+                }
+                hitUv = refinedUv;
+                hitDistance = refinedDistance;
+                break;
+            }
+            if (refinedPenetration > thickness) {
                 uncertain = true;
                 break;
             }
@@ -1410,7 +1461,6 @@ struct TileList { values: array<u32> };
 @group(0) @binding(9) var previousDepth: texture_2d<f32>;
 @group(0) @binding(10) var previousState: texture_2d<f32>;
 @group(0) @binding(11) var previousResponseState: texture_2d<f32>;
-@group(0) @binding(12) var linearSampler: sampler;
 @group(0) @binding(13) var historyOutput: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(14) var depthOutput: texture_storage_2d<r32float, write>;
 @group(0) @binding(15) var stateOutput: texture_storage_2d<rgba16float, write>;
@@ -1451,13 +1501,22 @@ fn rgbToYCoCg(value: vec3<f32>) -> vec3<f32> {
 fn yCoCgToRGB(value: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(value.x + value.y - value.z, value.x + value.z, value.x - value.y - value.z);
 }
-fn historySampleCount(packed: f32) -> f32 { return floor(max(packed, 0.0)); }
-fn historyConfidence(packed: f32) -> f32 {
-    return clamp(fract(max(packed, 0.0)) * 2.0, 0.0, 1.0);
-}
-fn packHistoryState(sampleCount: f32, confidence: f32) -> f32 {
-    return min(sampleCount, ${String(MAX_HISTORY_SAMPLE_COUNT)}.0) +
-        min(confidence, 0.999) * 0.5;
+${REFLECTION_HISTORY_WGSL}
+// Decode the integer sample count and fractional confidence before interpolation.
+// Filtering their packed alpha directly lets neighboring counts masquerade as confidence.
+fn sampleHistory(uv: vec2<f32>) -> vec4<f32> {
+    let size = textureDimensions(previousHistory);
+    let coordinate = uv * vec2<f32>(size) - vec2<f32>(0.5);
+    let base = vec2<i32>(floor(coordinate));
+    let fraction = fract(coordinate);
+    let maximum = vec2<i32>(size) - vec2<i32>(1);
+    return interpolateHistory(
+        textureLoad(previousHistory, clamp(base, vec2<i32>(0), maximum), 0),
+        textureLoad(previousHistory, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), maximum), 0),
+        textureLoad(previousHistory, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), maximum), 0),
+        textureLoad(previousHistory, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), maximum), 0),
+        fraction
+    );
 }
 fn materialContinuity(currentPacked: f32, previousPacked: f32) -> f32 {
     let currentBits = u32(clamp(round(currentPacked * 255.0), 0.0, 255.0));
@@ -1534,7 +1593,8 @@ fn main(
             }
         }
     }
-    if (neighborhoodWeight < 0.5) {
+    let hasCurrentSupport = neighborhoodWeight >= 0.5;
+    if (!hasCurrentSupport) {
         let fallback = rgbToYCoCg(current.rgb);
         neighborhoodSum = fallback;
         neighborhoodSquaredSum = fallback * fallback;
@@ -1581,12 +1641,7 @@ fn main(
     var surfaceHistory = vec4<f32>(0.0);
     var surfaceScore = 0.0;
     if (surfaceInside && motion.z >= 0.0) {
-        surfaceHistory = textureSampleLevel(
-            previousHistory,
-            linearSampler,
-            surfaceHistoryUv,
-            0.0
-        );
+        surfaceHistory = sampleHistory(surfaceHistoryUv);
         let surfaceState = textureLoad(
             previousState,
             pixelFor(previousState, surfaceHistoryUv),
@@ -1633,7 +1688,7 @@ fn main(
         current.a > 0.0 && currentHitValue.z >= 0.0 && hitInside &&
         dominantDirection > 0.0
     ) {
-        hitHistory = textureSampleLevel(previousHistory, linearSampler, hitHistoryUv, 0.0);
+        hitHistory = sampleHistory(hitHistoryUv);
         let hitState = textureLoad(
             previousState,
             pixelFor(previousState, hitHistoryUv),
@@ -1691,7 +1746,12 @@ fn main(
         selectedHistory = hitHistory;
         selectedScore = hitScore;
     }
-    let historyAvailable = selectedScore > 0.01;
+    let velocityPixels = length(motion.xy * vec2<f32>(motionSize));
+    let missHistoryWeight = reflectionMissHistoryWeight(
+        velocityPixels, hasCurrentSupport, ${String(settings.historyWeight)}, selectedScore
+    );
+    let historyAvailable = selectedScore > 0.01 && ${String(settings.historyWeight)} > 0.0 &&
+        (current.a > 0.0 || missHistoryWeight > 0.0);
     let selectedYCoCg = clamp(
         rgbToYCoCg(selectedHistory.rgb),
         neighborhoodCenter - neighborhoodExtent,
@@ -1705,7 +1765,6 @@ fn main(
         24.0,
         denoiseStrength
     );
-    let velocityPixels = length(motion.xy * vec2<f32>(motionSize));
     let motionResponse = clamp(velocityPixels / 24.0, 0.0, 1.0);
     var resolvedRadiance = stableCurrent;
     var resolvedConfidence = current.a;
@@ -1721,9 +1780,11 @@ fn main(
             resolvedRadiance = mix(stableCurrent, clampedHistory, blend);
             resolvedConfidence = max(current.a, previousConfidence * blend);
         } else {
-            resolvedCount = max(previousCount * selectedScore - 0.25, 1.0);
-            resolvedRadiance = clampedHistory;
-            resolvedConfidence = previousConfidence * min(selectedScore, 0.82);
+            resolvedCount = max(previousCount * selectedScore - 1.0, 1.0);
+            // Radiance is already confidence-premultiplied. Fading alpha alone leaves
+            // the old reflection at full brightness until the composite gate closes.
+            resolvedRadiance = clampedHistory * missHistoryWeight;
+            resolvedConfidence = previousConfidence * missHistoryWeight;
         }
     } else {
         atomicAdd(&diagnostics.historyRejectedPixels, 1u);
@@ -1829,7 +1890,6 @@ fn main(
                     kind: 'sampled-texture',
                     sampleType: 'float'
                 },
-                { name: 'linearSampler', group: 0, binding: 12, kind: 'sampler' },
                 {
                     name: 'historyOutput',
                     group: 0,
@@ -2026,14 +2086,7 @@ fn decodeOctahedralNormal(encoded: vec2<f32>) -> vec3<f32> {
     }
     return normalize(normal);
 }
-fn historySampleCount(packed: f32) -> f32 { return floor(max(packed, 0.0)); }
-fn historyConfidence(packed: f32) -> f32 {
-    return clamp(fract(max(packed, 0.0)) * 2.0, 0.0, 1.0);
-}
-fn packHistoryState(sampleCount: f32, confidence: f32) -> f32 {
-    return min(sampleCount, ${String(MAX_HISTORY_SAMPLE_COUNT)}.0) +
-        min(confidence, 0.999) * 0.5;
-}
+${REFLECTION_HISTORY_WGSL}
 @compute @workgroup_size(${String(TRACE_WORKGROUP_SIZE)}, ${String(TRACE_WORKGROUP_SIZE)})
 fn main(
     @builtin(workgroup_id) groupId: vec3<u32>,
@@ -2419,7 +2472,7 @@ export class ScreenSpaceReflectionsController {
         () => new MutableComputeParameters(0, 4, 0)
     );
     readonly #resolvePool = new RenderPassParameterPool(
-        () => new MutableComputeParameters(2, 14, 1)
+        () => new MutableComputeParameters(2, 14, 0)
     );
     readonly #filterResetPool = new RenderPassParameterPool(
         () => new MutableComputeParameters(0, 1, 0)
