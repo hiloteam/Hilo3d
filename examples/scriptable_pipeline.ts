@@ -99,7 +99,9 @@ async function run(): Promise<void> {
     const pipeline = element('.pipeline', HTMLElement);
     const pipelineState = element('#pipelineState', HTMLElement);
     const viewDescription = element('#viewDescription', HTMLElement);
-    backendLabel.textContent = context.renderer.backend === 'webgpu' ? 'WEBGPU' : 'WEBGL 2';
+    backendLabel.textContent = (
+        { webgpu: 'WEBGPU', webgl2: 'WEBGL 2' } satisfies Record<Hilo3d.RendererBackend, string>
+    )[context.renderer.backend];
     motionToggle.setAttribute('aria-pressed', String(motion));
 
     const resetView = (): void => {

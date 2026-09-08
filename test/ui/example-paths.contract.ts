@@ -480,7 +480,7 @@ describe('example release matrix contract', () => {
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
         expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
-            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
+            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
         );
         expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
             'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'

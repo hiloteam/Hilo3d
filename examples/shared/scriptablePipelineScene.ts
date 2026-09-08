@@ -1,6 +1,6 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import { createLumenRoundedBox } from './lumenGeometry';
-import { createStudioEnvironmentMaps } from './studioEnvironment';
+import { loadDefaultEnvironmentMaps } from './defaultEnvironment';
 
 type Triple = readonly [number, number, number];
 type Surface = (along: number, across: number) => Triple;
@@ -284,7 +284,7 @@ export async function createScriptablePipelineScene(stage: Hilo3d.Stage): Promis
     update(timeSeconds: number): void;
     dispose(): void;
 }> {
-    const environment = createStudioEnvironmentMaps();
+    const environment = await loadDefaultEnvironmentMaps();
     const brdfLUT = await new Hilo3d.TextureLoader().load({
         src: new URL('../image/brdfLUT.png', import.meta.url).href,
         wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,

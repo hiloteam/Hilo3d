@@ -22,6 +22,9 @@ const htmlInputs = Object.fromEntries(
 function copyExampleAssets(): Plugin {
     return {
         name: 'hilo3d-example-assets',
+        transformIndexHtml() {
+            return [{ tag: 'link', attrs: { rel: 'icon', href: 'data:,' }, injectTo: 'head' }];
+        },
         closeBundle() {
             const copyDirectory = (directory: string): void => {
                 for (const entry of readdirSync(directory, { withFileTypes: true })) {

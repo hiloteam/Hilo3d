@@ -68,6 +68,8 @@ export default defineConfig({
             name: 'chromium',
             use: {
                 browserName: 'chromium',
+                // Use Chromium's full compositor for canvas presentation and screenshots.
+                channel: 'chromium',
                 launchOptions: {
                     args: swiftShaderArguments
                 }

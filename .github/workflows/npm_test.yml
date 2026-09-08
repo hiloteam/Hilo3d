@@ -107,7 +107,7 @@ jobs:
 
   coverage-report:
     name: Coverage report
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.coverage.result != 'skipped' }}
     needs: coverage
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -293,7 +293,7 @@ jobs:
 
   ui-report:
     name: WebGL2 UI report
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.ui-webgl2.result != 'skipped' }}
     needs: ui-webgl2
     runs-on: ubuntu-latest
     timeout-minutes: 10

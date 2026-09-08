@@ -978,10 +978,14 @@ coverage 分片、RHI/架构、包/API/文档，以及四个 Playwright WebGL 2 
 job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；coverage 模式因此关闭 Vitest 文件并行，同时保留跨 runner 的两个分片。coverage
 artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套 `reports/vitest` 目录只读取 blob
 report；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的 `Required CI`
-聚合门禁统一给 branch protection 使用。Linux hosted runner 的 SwiftShader 会在 coverage
-instrumentation 下销毁 storage-aware raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub
-Actions coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI
-job 验证。
+聚合门禁统一给 branch
+protection 使用。预检导致测试分片跳过时，报告汇总也跳过，避免缺失产物掩盖最初的失败。Playwright
+presentation/UI 使用 `channel: chromium` 的完整 Chromium headless
+compositor，保留 SwiftShader、单 worker、零重试和既有像素/物理/交互断言；不使用独立的 headless
+shell。示例 HTML 由 Vite 统一声明空 favicon，避免浏览器自动请求不存在的 `/favicon.ico`。Linux hosted
+runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
+raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
+coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
 
 WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
