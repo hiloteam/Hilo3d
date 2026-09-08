@@ -27,6 +27,21 @@ that responds clearly to colored illumination. The authored GLB and its original
 unchanged; its source and reproducible Blender recipe are in
 [`examples/models/Lumen/`](../examples/models/Lumen/README.md).
 
+## Screenshots
+
+Reviewed desktop and mobile captures of the final resin courtyard, taken with native Metal WebGPU at
+DPR 2 and the engine's 1.5 pixel-ratio cap. Motion is paused for inspection; the FPS readout is a
+local runtime observation, not benchmark evidence.
+
+![Lumen desktop lighting exhibition](./assets/lumen/desktop.png)
+
+<details>
+<summary>Mobile layout</summary>
+
+![Lumen mobile lighting exhibition](./assets/lumen/mobile.png)
+
+</details>
+
 ## Controls and rendering
 
 - **光源数量** selects 0–192 local lights in steps of 24; the initial count is 144. A coprime
