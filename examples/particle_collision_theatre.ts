@@ -1,6 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
-import { createExampleContext, loadEnvironmentMaps } from './shared/init';
+import { createExampleContext } from './shared/init';
+import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
 import {
     createParticleTexture,
     installExampleDisposal,
@@ -32,15 +33,16 @@ const context = await createExampleContext({
         far: 60,
         x: 0.1,
         y: compactViewport ? 3.8 : 2.7,
-        z: compactViewport ? 22.5 : 12.6
+        z: compactViewport ? 25 : 12.6
     },
     stage: {
+        pixelRatio: 1.5,
         renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
-            bloom: { threshold: 0.82, knee: 0.24, intensity: 0.26, scatter: 0.36, maxLevels: 4 },
+            bloom: { threshold: 0.94, knee: 0.3, intensity: 0.3, scatter: 0.48, maxLevels: 5 },
             colorUber: {
-                exposure: -0.12,
-                contrast: 0.14,
-                saturation: 0.04,
+                exposure: 0.18,
+                contrast: 0.08,
+                saturation: -0.08,
                 toneMapping: 'pbr-neutral',
                 vignetteIntensity: 0.34,
                 vignetteSmoothness: 0.78,
@@ -58,15 +60,16 @@ const context = await createExampleContext({
 });
 const { stage, renderer, directionLight, ambientLight } = context;
 
-renderer.clearColor.set(0.016, 0.014, 0.019, 1);
-directionLight.amount = 1.8;
-directionLight.color.set(1, 0.88, 0.74, 1);
+renderer.clearColor.set(0.018, 0.026, 0.036, 1);
+directionLight.amount = 2.2;
+directionLight.color.set(0.92, 0.94, 1, 1);
 directionLight.direction.set(-0.65, -1, -0.4);
-ambientLight.amount = 0.08;
+ambientLight.amount = 0.24;
+ambientLight.color.set(0.48, 0.6, 0.7, 1);
 
 const areaLight = new Hilo3d.AreaLight({
-    color: new Hilo3d.Color(1, 0.55, 0.3),
-    amount: 3.6,
+    color: new Hilo3d.Color(1, 0.82, 0.62),
+    amount: 2.8,
     width: 4.5,
     height: 2.5,
     x: -1.5,
@@ -75,47 +78,38 @@ const areaLight = new Hilo3d.AreaLight({
 }).addTo(stage);
 areaLight.lookAt(new Hilo3d.Vector3(0, 0.2, 0));
 new Hilo3d.PointLight({
-    color: new Hilo3d.Color(0.2, 0.75, 1),
-    amount: 5,
+    color: new Hilo3d.Color(0.52, 0.76, 1),
+    amount: 3.8,
     range: 10,
     x: 3.2,
     y: 1.6,
     z: 2.4
 }).addTo(stage);
 
-const environmentMaps = await loadEnvironmentMaps();
-const { brdfLUT, diffuseEnvMap, specularEnvMap } = environmentMaps;
+const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const brdfLUT = await new Hilo3d.TextureLoader().load({
+    src: new URL('./image/brdfLUT.png', import.meta.url).href,
+    wrapS: Hilo3d.constants.CLAMP_TO_EDGE,
+    wrapT: Hilo3d.constants.CLAMP_TO_EDGE
+});
 const studioEnvironment = Object.freeze({
     brdfLUT,
     diffuseEnvMap: Object.freeze({ texture: diffuseEnvMap, encoding: 'srgb' as const }),
     specularEnvMap: Object.freeze({ texture: specularEnvMap, encoding: 'srgb' as const }),
     diffuseEnvIntensity: 1,
-    specularEnvIntensity: 1
+    specularEnvIntensity: 0.6
 });
 
 const floorY = -1.24;
 const planeY = floorY + 0.32;
 new Hilo3d.Mesh({
-    y: floorY - 0.18,
-    geometry: new Hilo3d.BoxGeometry({ width: 9.5, height: 0.36, depth: 6.1 }),
+    y: floorY - 0.08,
+    geometry: new Hilo3d.BoxGeometry({ width: 8.8, height: 0.16, depth: 2.75 }),
     material: new Hilo3d.PBRMaterial({
         ...studioEnvironment,
-        baseColor: new Hilo3d.Color(0.038, 0.036, 0.043),
+        baseColor: new Hilo3d.Color(0.022, 0.032, 0.04),
         metallic: 0.2,
         roughness: 0.48
-    }),
-    receiveShadows: true
-}).addTo(stage);
-
-new Hilo3d.Mesh({
-    y: 0.78,
-    z: -2.72,
-    geometry: new Hilo3d.BoxGeometry({ width: 9.5, height: 4.35, depth: 0.12 }),
-    material: new Hilo3d.PBRMaterial({
-        ...studioEnvironment,
-        baseColor: new Hilo3d.Color(0.038, 0.038, 0.047),
-        metallic: 0.12,
-        roughness: 0.78
     }),
     receiveShadows: true
 }).addTo(stage);
@@ -127,7 +121,7 @@ const lanes: readonly CollisionLane[] = Object.freeze([
         x: -2.7,
         phase: 0.15,
         burstCounts: [1, 3, 1],
-        color: [0.08, 0.88, 1],
+        color: [0.26, 0.65, 0.67],
         collider: { type: 'sphere', center: [-2.7, -0.4, 0], radius: 0.68 }
     },
     {
@@ -136,7 +130,7 @@ const lanes: readonly CollisionLane[] = Object.freeze([
         x: -0.88,
         phase: 0.65,
         burstCounts: [2, 1, 4],
-        color: [0.92, 0.16, 1],
+        color: [0.49, 0.56, 0.73],
         collider: { type: 'box', center: [-0.88, -0.5, 0], size: [1.08, 1.08, 1.08] }
     },
     {
@@ -145,7 +139,7 @@ const lanes: readonly CollisionLane[] = Object.freeze([
         x: 1.12,
         phase: 1.1,
         burstCounts: [1, 2, 1],
-        color: [1, 0.42, 0.06],
+        color: [1, 0.68, 0.32],
         collider: {
             type: 'capsule',
             start: [0.68, -0.92, 0],
@@ -159,7 +153,7 @@ const lanes: readonly CollisionLane[] = Object.freeze([
         x: 3,
         phase: 1.6,
         burstCounts: [3, 1, 2],
-        color: [0.34, 1, 0.46],
+        color: [0.6, 0.69, 0.5],
         collider: { type: 'plane', normal: [0, 1, 0], offset: planeY }
     }
 ]);
@@ -231,12 +225,6 @@ function accentMaterial(
     });
 }
 
-const nicheMaterial = new Hilo3d.PBRMaterial({
-    ...studioEnvironment,
-    baseColor: new Hilo3d.Color(0.048, 0.047, 0.058),
-    metallic: 0.1,
-    roughness: 0.82
-});
 const plinthMaterial = new Hilo3d.PBRMaterial({
     ...studioEnvironment,
     baseColor: new Hilo3d.Color(0.075, 0.072, 0.084),
@@ -266,20 +254,35 @@ const colliderTrimMaterial = new Hilo3d.PBRMaterial({
 
 new Hilo3d.Mesh({
     y: floorY - 0.01,
-    z: 3.035,
-    geometry: new Hilo3d.BoxGeometry({ width: 9.2, height: 0.028, depth: 0.035 }),
+    z: 1.37,
+    geometry: new Hilo3d.BoxGeometry({ width: 8.65, height: 0.012, depth: 0.012 }),
     material: stageEdgeMaterial,
     castShadows: false
 }).addTo(stage);
 
 function addLaneArchitecture(lane: CollisionLane): void {
+    const arch = new Hilo3d.Geometry({ mode: Hilo3d.constants.LINES });
+    arch.addPoints([-0.68, -1.18, 0], [-0.68, 1.82, 0]);
+    arch.addPoints([0.68, -1.18, 0], [0.68, 1.82, 0]);
+    for (let segment = 0; segment < 64; segment += 1) {
+        const angle = (segment / 64) * Math.PI;
+        const next = ((segment + 1) / 64) * Math.PI;
+        arch.addPoints(
+            [Math.cos(angle) * 0.68, 1.82 + Math.sin(angle) * 0.68, 0],
+            [Math.cos(next) * 0.68, 1.82 + Math.sin(next) * 0.68, 0]
+        );
+    }
     new Hilo3d.Mesh({
         x: lane.x,
-        y: 0.52,
-        z: -2.63,
-        geometry: new Hilo3d.BoxGeometry({ width: 1.28, height: 3.28, depth: 0.1 }),
-        material: nicheMaterial,
-        receiveShadows: true
+        z: -1.18,
+        geometry: arch,
+        material: new Hilo3d.BasicMaterial({
+            lightType: 'NONE',
+            diffuse: new Hilo3d.Color(lane.color[0], lane.color[1], lane.color[2]),
+            opacity: 0.22,
+            compositing: { mode: 'alpha-blend', premultiplied: false }
+        }),
+        castShadows: false
     }).addTo(stage);
     new Hilo3d.Mesh({
         x: lane.x,
@@ -312,7 +315,7 @@ function addLaneArchitecture(lane: CollisionLane): void {
         x: lane.x,
         y: 2.94,
         z: -0.04,
-        geometry: new Hilo3d.BoxGeometry({ width: 0.64, height: 0.1, depth: 0.36 }),
+        geometry: new Hilo3d.BoxGeometry({ width: 0.38, height: 0.055, depth: 0.24 }),
         material: sourceHousingMaterial,
         castShadows: false
     }).addTo(stage);
@@ -336,8 +339,8 @@ for (const lane of lanes) addLaneArchitecture(lane);
 const stageAccent = accentMaterial([0.96, 0.62, 0.28], 0.035);
 new Hilo3d.Mesh({
     y: floorY + 0.06,
-    z: -2.63,
-    geometry: new Hilo3d.BoxGeometry({ width: 9.05, height: 0.02, depth: 0.035 }),
+    z: -1.35,
+    geometry: new Hilo3d.BoxGeometry({ width: 8.6, height: 0.015, depth: 0.02 }),
     material: stageAccent,
     castShadows: false
 }).addTo(stage);
@@ -636,7 +639,7 @@ new Hilo3d.Mesh({
     geometry: new Hilo3d.BoxGeometry({ width: 1.08, height: 0.022, depth: 1.08 }),
     material: new Hilo3d.PBRMaterial({
         ...studioEnvironment,
-        baseColor: new Hilo3d.Color(0.048, 0.25, 0.13),
+        baseColor: new Hilo3d.Color(0.13, 0.17, 0.11),
         metallic: 0.12,
         roughness: 0.17,
         clearcoatFactor: 1,
@@ -709,7 +712,7 @@ function collisionEmitter(lane: CollisionLane): Particle.ParticleEmitterDefiniti
         eventOverflow: 'drop-oldest',
         bounds: { mode: 'dynamic' },
         emission: {
-            rateOverTime: { min: 0.12, max: 0.45 },
+            rateOverTime: { min: 2.4, max: 3.6 },
             bursts: lane.burstCounts.map((count, index) => ({
                 time: lane.phase + index * 3.1,
                 count
@@ -721,7 +724,7 @@ function collisionEmitter(lane: CollisionLane): Particle.ParticleEmitterDefiniti
             direction: { min: [-0.08, -1, -0.04], max: [0.08, -0.96, 0.04] },
             speed: { min: 1.4, max: 2.05 },
             lifetime: { min: 3.8, max: 5.2 },
-            size: { min: 0.11, max: 0.145 },
+            size: { min: 0.055, max: 0.095 },
             mass: { min: 0.8, max: 1.25 }
         },
         modules: [
@@ -741,7 +744,7 @@ function collisionEmitter(lane: CollisionLane): Particle.ParticleEmitterDefiniti
                 type: 'sub-emitter',
                 event: lane.event,
                 emitter: 'impact-sparks',
-                count: 72,
+                count: 48,
                 inheritVelocity: false
             },
             {
@@ -878,7 +881,7 @@ const definition = Particle.ParticleSystemDefinition.create({
             initialize: {
                 lifetime: { min: 0.42, max: 0.92 },
                 speed: { min: 0.35, max: 2.45 },
-                size: { min: 0.025, max: 0.06 }
+                size: { min: 0.014, max: 0.04 }
             },
             modules: [
                 { type: 'gravity', force: [0, -1.35, 0] },
@@ -1068,17 +1071,11 @@ particles.onUpdate = () => {
             lanes.reduce((sum, lane) => sum + (totals[lane.event] ?? 0), 0) +
             (totals['impact-rain'] ?? 0);
         readout.textContent = [
-            `alive      ${String(particles.aliveCount).padStart(5)}`,
-            `collisions ${String(impactCount).padStart(5)}`,
-            `sphere     ${String(totals['impact-sphere'] ?? 0).padStart(5)}`,
-            `box        ${String(totals['impact-box'] ?? 0).padStart(5)}`,
-            `capsule    ${String(totals['impact-capsule'] ?? 0).padStart(5)}`,
-            `plane      ${String(totals['impact-plane'] ?? 0).padStart(5)}`,
-            `rain       ${String(totals['impact-rain'] ?? 0).padStart(5)}`,
-            `trigger    ${String(totals['gate-enter'] ?? 0).padStart(5)}`,
-            `dropped    ${String(aggregate.droppedCount + rainChannel.droppedCount).padStart(5)}`,
+            'THE IMPACT REGISTER',
+            `${String(impactCount).padStart(6, '0')}  encounters`,
+            `${String(particles.aliveCount).padStart(6, '0')}  sparks in motion`,
             '',
-            'click field · four-body meteor rain'
+            'Click the field to release rain'
         ].join('\n');
         readingEvents = false;
     });
@@ -1089,6 +1086,5 @@ installExampleDisposal(() => {
     brdfLUT.destroy();
     diffuseEnvMap.destroy();
     specularEnvMap.destroy();
-    environmentMaps.skyboxMap.destroy();
     context.dispose();
 });
