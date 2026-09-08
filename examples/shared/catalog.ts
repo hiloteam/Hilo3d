@@ -136,7 +136,7 @@ const TITLE_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'physics/rapier2d_marble.html': 'Marble works — 2D Physics Machine',
     'physics/rapier_character.html': 'Clockwork courier — Character Controller',
     'physics/rapier_bridge.html': 'Suspension atelier — Loads & Constraints',
-    'cascaded_shadows.html': 'Cascaded Sunset Garden',
+    'cascaded_shadows.html': 'Little Sunshine — Toy Shadow Garden',
     'particle_elemental_forge.html': 'Elemental Forge — Particle Fundamentals',
     'particle_noise_fields.html': 'Turbulence Atlas — Particle Noise Fields',
     'particle_orbital_weave.html': 'Orbital Weave — Meshes, Ribbons & Trails',
@@ -223,7 +223,7 @@ const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
     'physics/rapier_bridge.html':
         'Load a miniature suspension bridge and watch segmented decking, dynamic cable links and spring hangers distribute weight through real constraints.',
     'cascaded_shadows.html':
-        'Compare one and four camera-relative cascades across a procedural pastel sunset garden with live split, blend, contrast, stabilization, reach, and 4× MSAA.',
+        'Explore a rounded plastic toy town with a windmill, lighthouse and miniature train. Compare single-map and four-cascade shadows at the same shadow-texel budget.',
     'particle_elemental_forge.html':
         'Compare every analytic emission shape through elemental sprite effects with lifetime curves, gradients, SubUV animation, alignments, blending, and sorting.',
     'particle_noise_fields.html':

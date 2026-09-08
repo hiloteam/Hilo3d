@@ -1,109 +1,165 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
     <head>
         <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-        />
-        <title>Hilo3D — Four Courts of Light</title>
-        <link rel="stylesheet" type="text/css" href="./example.css" />
-        <link rel="stylesheet" type="text/css" href="./cascaded_shadows.css" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Hilo3D — Little Sunshine · 微光小镇</title>
+        <link rel="stylesheet" href="./example.css" />
+        <link rel="stylesheet" href="./cascaded_shadows.css" />
     </head>
     <body>
-        <div id="container"></div>
-
-        <header class="titleCard">
-            <p>Hilo3D · Cascaded shadow maps</p>
-            <h1>Four courts<br />of light.</h1>
-            <span>200 metres of sunset, held in one frame.</span>
+        <div id="container" aria-label="可交互的玩具微缩小镇三维场景"></div>
+        <header class="titleCard csmOverlay">
+            <p class="eyebrow">
+                <svg class="sunIcon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <path
+                        d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+                    />
+                </svg>
+                A LITTLE WORLD OF LIGHT
+            </p>
+            <h1>Little<br />Sunshine<span>微光小镇</span></h1>
         </header>
-
-        <aside class="depthReadout" aria-label="Cascade distance readout">
-            <div class="depthHeading">
-                <span>View depth</span>
-                <strong id="modeSummary">4 × 2048²</strong>
-            </div>
-            <div id="splitTrack" class="depthTrack">
-                <i class="depthNear"></i>
-                <i class="depthMiddle"></i>
-                <i class="depthDeep"></i>
-                <i class="depthFar"></i>
-            </div>
-            <div id="splitValues" class="depthValues"></div>
+        <aside class="sceneMeta csmOverlay" aria-label="渲染状态">
+            <span class="liveDot"></span><span id="backendBadge">PREPARING THE SUNSHINE</span>
         </aside>
-
-        <section class="controlDock" aria-label="Cascaded shadow controls">
-            <div class="backendPill">
-                <span class="statusLight"></span>
-                <span id="backendBadge">initializing</span>
-            </div>
-
+        <nav class="timeControl csmOverlay" aria-label="清晨与黄昏">
+            <button data-time="morning" aria-pressed="true">☀ 清晨</button>
+            <button data-time="dusk" aria-pressed="false">☾ 黄昏</button>
+        </nav>
+        <nav class="weatherControl csmOverlay" aria-label="天气">
+            <button data-weather="clear" aria-pressed="true">晴天</button>
+            <button data-weather="rain" aria-pressed="false">下雨</button>
+            <button data-weather="snow" aria-pressed="false">下雪</button>
+            <button data-weather="storm" aria-pressed="false">雷雨</button>
+            <button id="lightningButton" hidden>⚡ 闪电</button>
+        </nav>
+        <section class="viewPanel csmOverlay" aria-label="观赏机位">
+            <nav class="viewButtons" aria-label="Camera views">
+                <button data-view="courtyard" aria-pressed="true">全景</button>
+                <button data-view="detail" aria-pressed="false">近处投影</button>
+                <button data-view="distance" aria-pressed="false">远处覆盖</button>
+                <button data-view="water" aria-pressed="false">河水细节</button>
+                <button data-view="seascape" aria-pressed="false">海天</button>
+            </nav>
+            <p id="viewCaption" class="viewCaption"></p>
+        </section>
+        <section class="controlPanel csmOverlay" aria-label="Cascaded shadow controls">
+            <button class="compareButton" data-view="compare" aria-pressed="false">放大对比</button>
             <fieldset class="modeGroup">
-                <legend>Shadow layers</legend>
-                <button data-cascade-count="0" aria-pressed="false">Off</button>
-                <button data-cascade-count="1" aria-pressed="false">1</button>
-                <button data-cascade-count="2" aria-pressed="false">2</button>
-                <button data-cascade-count="4" aria-pressed="true">4</button>
+                <legend>Shadow mode</legend>
+                <button data-cascade-count="1" aria-pressed="false">单层阴影</button>
+                <button data-cascade-count="4" aria-pressed="true">四级 CSM</button>
+                <button data-cascade-count="0" aria-pressed="false" aria-label="关闭阴影">
+                    关闭
+                </button>
             </fieldset>
-
-            <button id="stabilizeToggle" class="stabilizeButton" aria-pressed="true">
-                <span class="toggleGlyph" aria-hidden="true"><i></i></span>
-                <span><strong>Stable</strong><small>texel lock</small></span>
-            </button>
-
+            <div class="playControls">
+                <button
+                    id="trainToggle"
+                    class="playButton"
+                    aria-pressed="true"
+                    title="播放或暂停小镇与天气动效"
+                >
+                    <svg class="trainIcon" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M4 13V7h6v6m0-8h5v8H3m12-5h2v5h-2M2 17h16M5 5h4" />
+                        <circle cx="6" cy="14" r="1.5" />
+                        <circle cx="14" cy="14" r="1.5" />
+                    </svg>
+                    动起来
+                </button>
+                <button id="tourToggle" class="playButton" aria-pressed="false">▷ 环游小镇</button>
+            </div>
             <details class="tuningPanel">
-                <summary>Fine tune</summary>
-                <div class="tuningGrid">
-                    <label>
-                        <span>Split <output id="lambdaOutput">0.35</output></span>
-                        <input
-                            id="lambdaControl"
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value="0.35"
-                        />
+                <summary>
+                    <span>Shadow settings</span
+                    ><span class="settingsGlyph" aria-hidden="true">＋</span>
+                </summary>
+                <div class="tuningContent">
+                    <div class="tuningHeading">
+                        <span>日光实验室</span><span class="budget">相同阴影预算</span>
+                    </div>
+                    <label class="qualityControl"
+                        >日光阴影预算
+                        <select id="shadowQuality">
+                            <option value="study">对比 · 1.05M</option>
+                            <option value="balanced" selected>精致 · 4.19M</option>
+                        </select></label
+                    >
+                    <div class="depthHeading">
+                        <span>视距分配</span><strong id="modeSummary">4 × 1024²</strong>
+                    </div>
+                    <div id="splitTrack" class="depthTrack"><i></i><i></i><i></i><i></i></div>
+                    <div id="splitValues" class="depthValues"></div>
+                    <div class="tuningGrid">
+                        <label
+                            ><span>近景分配 <output id="lambdaOutput">0.30</output></span
+                            ><input
+                                id="lambdaControl"
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value="0.30"
+                        /></label>
+                        <label
+                            ><span>级联过渡 <output id="blendOutput">12%</output></span
+                            ><input
+                                id="blendControl"
+                                type="range"
+                                min="0"
+                                max="0.3"
+                                step="0.02"
+                                value="0.12"
+                        /></label>
+                        <label
+                            ><span>阴影强度 <output id="strengthOutput">1.00</output></span
+                            ><input
+                                id="strengthControl"
+                                type="range"
+                                min="0.5"
+                                max="4"
+                                step="0.05"
+                                value="1"
+                        /></label>
+                        <label
+                            ><span>覆盖距离 <output id="distanceOutput">220 m</output></span
+                            ><input
+                                id="distanceControl"
+                                type="range"
+                                min="80"
+                                max="260"
+                                step="10"
+                                value="220"
+                        /></label>
+                    </div>
+                    <button id="stabilizeToggle" aria-pressed="true">
+                        <span class="toggleGlyph"></span>稳定阴影<small>减轻移动时的闪烁</small>
+                    </button>
+                    <label class="snowControl"
+                        ><span>积雪 <output id="snowAmountOutput">0%</output></span>
+                        <input id="snowAmount" type="range" min="0" max="100" step="1" value="0" />
+                        <small>下雪逐渐积起；晴天慢慢融化</small>
                     </label>
-                    <label>
-                        <span>Blend <output id="blendOutput">10%</output></span>
-                        <input
-                            id="blendControl"
-                            type="range"
-                            min="0"
-                            max="0.3"
-                            step="0.02"
-                            value="0.1"
-                        />
-                    </label>
-                    <label>
-                        <span>Contrast <output id="strengthOutput">3.00</output></span>
-                        <input
-                            id="strengthControl"
-                            type="range"
-                            min="0.5"
-                            max="4"
-                            step="0.05"
-                            value="3"
-                        />
-                    </label>
-                    <label>
-                        <span>Reach <output id="distanceOutput">200 m</output></span>
-                        <input
-                            id="distanceControl"
-                            type="range"
-                            min="80"
-                            max="260"
-                            step="10"
-                            value="200"
-                        />
-                    </label>
+                    <button id="localShadowToggle" aria-pressed="true">路灯 / 车灯阴影</button>
+                    <p id="budgetNote" class="budgetNote">
+                        单层 4096² / 四级各 2048²，共 16.78M
+                        阴影像素。四级阴影会增加投影与绘制开销。
+                    </p>
                 </div>
             </details>
+            <p id="modeDescription" class="dockCaption" aria-live="polite"></p>
         </section>
-
-        <p class="interactionHint">Drag to orbit · Wheel to zoom · O toggles shadows</p>
+        <div class="loading csmOverlay">
+            <svg class="sunIcon loadingSun" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path
+                    d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+                />
+            </svg>
+            <p>把一点阳光，放进小镇。</p>
+        </div>
         <script type="module" src="./cascaded_shadows.ts"></script>
     </body>
 </html>

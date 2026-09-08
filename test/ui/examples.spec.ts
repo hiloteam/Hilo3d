@@ -489,34 +489,152 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
 }
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
-    test(`cascaded shadow garden exposes live controls through ${backend} @${backend}`, async ({
+    test(`cascaded shadow toy diorama demonstrates detail and live controls through ${backend} @${backend}`, async ({
         page
     }) => {
         test.slow();
+        // Software WebGL2 needs time for the daylight comparisons and the complete dusk sequence.
+        test.setTimeout(backend === 'webgl2' ? 270_000 : 210_000);
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => {
+            recordUnique(pageErrors, error.message);
+        });
+        await page.setViewportSize({ width: 960, height: 640 });
         await installRenderHealthProbe(page);
         await page.goto(exampleRequestUrl('cascaded_shadows.html', backend), {
             waitUntil: 'networkidle'
         });
         await expect(page.locator('body')).toHaveAttribute('data-csm-ready', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-train', 'true');
+        await expect(page.locator('#trainToggle')).toHaveAttribute('aria-pressed', 'true');
+        await page.locator('#trainToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'false');
         await expect(page.locator('body')).toHaveAttribute('data-csm-msaa', '4');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-aa', 'msaa');
         await expect(page.locator('body')).toHaveAttribute('data-csm-mode', '4');
-        await expect(page.locator('body')).toHaveAttribute('data-csm-strength', '3');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-strength', '1');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-view', 'courtyard');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-tour', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-budget', 'balanced');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-map-size', '1024');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-shadow-texels', '4194304');
+        await expect(page.locator('body')).toHaveAttribute('data-time-of-day', 'morning');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '0');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'false');
         await expect(page.locator('[data-cascade-count="4"]')).toHaveAttribute(
             'aria-pressed',
             'true'
         );
-        await expect(page.locator('#splitValues')).toContainText('C4 200.0 m');
+        await expect(page.locator('#splitValues')).toContainText('C4 220.0 m');
+        await expect(page.locator('#modeSummary')).toContainText('4 ×');
+        await expect(page.locator('[data-view="courtyard"]')).toHaveAttribute(
+            'aria-pressed',
+            'true'
+        );
+
+        const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+        const captureScene = async (): Promise<PNG> => {
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            return PNG.sync.read(
+                await canvas.screenshot({
+                    animations: 'disabled',
+                    style: '.csmOverlay { visibility: hidden !important; }'
+                })
+            );
+        };
+        const changedPixelFraction = (before: PNG, after: PNG): number => {
+            expect(after.width).toBe(before.width);
+            expect(after.height).toBe(before.height);
+            let changed = 0;
+            for (let offset = 0; offset < before.data.length; offset += 4) {
+                const difference = Math.max(
+                    Math.abs((before.data[offset] ?? 0) - (after.data[offset] ?? 0)),
+                    Math.abs((before.data[offset + 1] ?? 0) - (after.data[offset + 1] ?? 0)),
+                    Math.abs((before.data[offset + 2] ?? 0) - (after.data[offset + 2] ?? 0))
+                );
+                if (difference > 12) changed++;
+            }
+            return changed / (before.width * before.height);
+        };
+        const meanLuminance = (scene: PNG): number => {
+            let total = 0;
+            for (let offset = 0; offset < scene.data.length; offset += 4)
+                total +=
+                    0.2126 * (scene.data[offset] ?? 0) +
+                    0.7152 * (scene.data[offset + 1] ?? 0) +
+                    0.0722 * (scene.data[offset + 2] ?? 0);
+            return total / (scene.width * scene.height);
+        };
+        const courtyardScene = await captureScene();
+        const courtyardCaption = await page.locator('#viewCaption').textContent();
+
+        await page.locator('[data-view="compare"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-view', 'compare');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-budget', 'study');
+        await expect(page.locator('#shadowQuality')).toHaveValue('study');
+        await expect(page.locator('#lambdaControl')).toHaveValue('0.65');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-map-size', '512');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-shadow-texels', '1048576');
+        const cascadedStudy = await captureScene();
 
         await page.locator('[data-cascade-count="1"]').click();
         await expect(page.locator('body')).toHaveAttribute('data-csm-mode', '1');
         await expect(page.locator('#modeSummary')).toContainText('single');
-
-        await page.locator('#stabilizeToggle').click();
-        await expect(page.locator('body')).toHaveAttribute('data-csm-stabilized', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-map-size', '1024');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-shadow-texels', '1048576');
+        expect(
+            changedPixelFraction(cascadedStudy, await captureScene()),
+            'The paused comparison view must make equal-budget single and cascaded shadows visibly different'
+        ).toBeGreaterThan(0.002);
 
         await page.locator('[data-cascade-count="0"]').click();
         await expect(page.locator('body')).toHaveAttribute('data-csm-mode', 'off');
+        expect(
+            changedPixelFraction(cascadedStudy, await captureScene()),
+            'Disabling shadows must visibly change the rendered toy landscape'
+        ).toBeGreaterThan(0.0002);
         await page.locator('[data-cascade-count="4"]').click();
+
+        await page.locator('[data-view="detail"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-view', 'detail');
+        await expect(page.locator('[data-view="detail"]')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('#viewCaption')).not.toHaveText(courtyardCaption ?? '');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-budget', 'balanced');
+        await expect(page.locator('#shadowQuality')).toHaveValue('balanced');
+        await expect(page.locator('#lambdaControl')).toHaveValue('0.3');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-map-size', '1024');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-shadow-texels', '4194304');
+        expect(
+            changedPixelFraction(courtyardScene, await captureScene()),
+            'The detail preset must change the camera view, beyond its UI label'
+        ).toBeGreaterThan(0.05);
+
+        await page.locator('#tourToggle').click();
+        await expect(page.locator('#tourToggle')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-tour', 'true');
+        await page.locator('[data-view="distance"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-view', 'distance');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-tour', 'false');
+        await expect(page.locator('#tourToggle')).toHaveAttribute('aria-pressed', 'false');
+
+        await page.locator('#trainToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-train', 'true');
+        await page.locator('[data-cascade-count="1"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-train', 'true');
+        await expect(page.locator('#trainToggle')).toHaveAttribute('aria-pressed', 'true');
+        await page.locator('[data-cascade-count="4"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'true');
+        await page.locator('#trainToggle').click();
+        await page.locator('[data-cascade-count="1"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'false');
+        await page.locator('[data-cascade-count="4"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-train', 'false');
+
+        await page.getByText('Shadow settings', { exact: true }).click();
+        await page.locator('#stabilizeToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-stabilized', 'false');
         await page.locator('#distanceControl').evaluate(element => {
             if (!(element instanceof HTMLInputElement)) {
                 throw new Error('Expected #distanceControl to be an input element');
@@ -536,8 +654,196 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         });
         await expect(page.locator('body')).toHaveAttribute('data-csm-strength', '1.2');
         await expect(page.locator('#strengthOutput')).toHaveText('1.20');
+        await page.getByText('Shadow settings', { exact: true }).click();
+
+        await page.locator('[data-view="courtyard"]').click();
+        const morningScene = await captureScene();
+        await page.locator('[data-time="dusk"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-time-of-day', 'dusk');
+        await expect(page.locator('[data-time="dusk"]')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '5');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-shadows', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-lights-ready', 'true');
+        const illuminatedDusk = await captureScene();
+        expect(
+            changedPixelFraction(morningScene, illuminatedDusk),
+            'Dusk must visibly transform the rendered landscape beyond the time-of-day label'
+        ).toBeGreaterThan(0.08);
+        expect(
+            meanLuminance(illuminatedDusk),
+            'Dusk must visibly darken the scene while the town lights are enabled'
+        ).toBeLessThan(meanLuminance(morningScene) * 0.82);
+
+        await page.getByText('Shadow settings', { exact: true }).click();
+        await page.locator('#localShadowToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-shadows', 'false');
+        await expect(page.locator('#localShadowToggle')).toHaveAttribute('aria-pressed', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '5');
+        const unshadowedDusk = await captureScene();
+        expect(
+            changedPixelFraction(illuminatedDusk, unshadowedDusk),
+            'Local spotlights must cast visible shadows on the paused dusk scene'
+        ).toBeGreaterThan(0.0002);
+        await page.locator('#localShadowToggle').click();
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-shadows', 'true');
+        await expect(page.locator('#localShadowToggle')).toHaveAttribute('aria-pressed', 'true');
+        expect(
+            changedPixelFraction(illuminatedDusk, await captureScene()),
+            'Restoring local shadows must reproduce the paused dusk image'
+        ).toBeLessThan(0.00002);
+
+        await page.locator('[data-time="morning"]').click();
+        await expect(page.locator('body')).toHaveAttribute('data-time-of-day', 'morning');
+        await expect(page.locator('[data-time="morning"]')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '0');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'false');
 
         await assertObservableRender(page, 'cascaded_shadows.html', backend);
+        await assertStableInstrumentationHealth(
+            backend,
+            `cascaded shadow toy diorama render health on ${backend}`,
+            {
+                waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+                awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+                readRenderHealth: () => readRenderHealth(page)
+            }
+        );
+        expect(pageErrors).toEqual([]);
+    });
+
+    test(`cascaded shadow toy weather accumulates snow and preserves motion through ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(210_000);
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => {
+            recordUnique(pageErrors, error.message);
+        });
+        await page.setViewportSize({ width: 960, height: 640 });
+        await installRenderHealthProbe(page);
+        await page.goto(exampleRequestUrl('cascaded_shadows.html', backend), {
+            waitUntil: 'networkidle'
+        });
+        const body = page.locator('body');
+        await expect(body).toHaveAttribute('data-csm-ready', 'true');
+        await expect(body).toHaveAttribute('data-weather', 'clear');
+        await expect(body).toHaveAttribute('data-csm-motion', 'true');
+        await expect(page.locator('#lightningButton')).toBeHidden();
+        await page.locator('#trainToggle').click();
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+
+        const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
+        const captureScene = async (): Promise<PNG> => {
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            return PNG.sync.read(
+                await canvas.screenshot({
+                    animations: 'disabled',
+                    style: '.csmOverlay { visibility: hidden !important; }'
+                })
+            );
+        };
+        const changedPixelFraction = (before: PNG, after: PNG): number => {
+            expect(after.width).toBe(before.width);
+            expect(after.height).toBe(before.height);
+            let changed = 0;
+            for (let offset = 0; offset < before.data.length; offset += 4) {
+                if (
+                    Math.max(
+                        Math.abs((before.data[offset] ?? 0) - (after.data[offset] ?? 0)),
+                        Math.abs((before.data[offset + 1] ?? 0) - (after.data[offset + 1] ?? 0)),
+                        Math.abs((before.data[offset + 2] ?? 0) - (after.data[offset + 2] ?? 0))
+                    ) > 12
+                )
+                    changed++;
+            }
+            return changed / (before.width * before.height);
+        };
+        const setSnowAmount = async (amount: number): Promise<void> => {
+            await page.locator('#snowAmount').evaluate((element, value) => {
+                if (!(element instanceof HTMLInputElement)) {
+                    throw new Error('Expected #snowAmount to be a range input');
+                }
+                element.value = String(value);
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+            }, amount);
+            await expect(body).toHaveAttribute('data-csm-snow-amount', String(amount));
+            await expect(page.locator('#snowAmountOutput')).toHaveText(`${String(amount)}%`);
+        };
+
+        const clearScene = await captureScene();
+        await page.locator('button[data-weather="rain"]').click();
+        await expect(body).toHaveAttribute('data-weather', 'rain');
+        await expect(page.locator('button[data-weather="rain"]')).toHaveAttribute(
+            'aria-pressed',
+            'true'
+        );
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        await expect(body).toHaveAttribute('data-csm-train', 'false');
+        expect(
+            changedPixelFraction(clearScene, await captureScene()),
+            'Rain must change the rendered weather beyond its selected button'
+        ).toBeGreaterThan(0.0003);
+
+        await page.locator('button[data-weather="snow"]').click();
+        await expect(body).toHaveAttribute('data-weather', 'snow');
+        await expect(body).toHaveAttribute('data-csm-snow-amount', '0');
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        const fallingSnowWithoutCover = await captureScene();
+        await page.getByText('Shadow settings', { exact: true }).click();
+        await setSnowAmount(80);
+        expect(
+            changedPixelFraction(fallingSnowWithoutCover, await captureScene()),
+            'Accumulation must visibly cover the town surfaces while flakes stay at the same phase'
+        ).toBeGreaterThan(0.03);
+        await setSnowAmount(0);
+        expect(
+            changedPixelFraction(fallingSnowWithoutCover, await captureScene()),
+            'Removing accumulated snow must restore the paused scene without hiding falling flakes'
+        ).toBeLessThan(0.0002);
+
+        await page.locator('#trainToggle').click();
+        await expect(body).toHaveAttribute('data-csm-train', 'true');
+        await expect
+            .poll(async () => Number(await body.getAttribute('data-csm-snow-amount')))
+            .toBeGreaterThan(0);
+        await page.locator('button[data-weather="storm"]').click();
+        await expect(body).toHaveAttribute('data-weather', 'storm');
+        await expect(body).toHaveAttribute('data-csm-motion', 'true');
+        await expect(body).toHaveAttribute('data-csm-train', 'true');
+        await page.locator('#trainToggle').click();
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        await expect(page.locator('#lightningButton')).toBeVisible();
+        await page.locator('#lightningButton').click();
+        await expect(body).toHaveAttribute('data-csm-lightning', 'true', { timeout: 3000 });
+        await expect(body).toHaveAttribute('data-csm-lightning', 'false');
+
+        const lightsReadyImmediately = await page.locator('[data-time="dusk"]').evaluate(button => {
+            if (!(button instanceof HTMLButtonElement)) {
+                throw new Error('Expected the dusk control to be a button');
+            }
+            button.click();
+            return document.body.dataset['csmLightsReady'];
+        });
+        expect(lightsReadyImmediately).toBe('false');
+        await expect(body).toHaveAttribute('data-csm-lights-ready', 'true');
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        await page.locator('button[data-weather="clear"]').click();
+        await expect(body).toHaveAttribute('data-weather', 'clear');
+        await expect(page.locator('#lightningButton')).toBeHidden();
+
+        await assertStableInstrumentationHealth(
+            backend,
+            `cascaded shadow toy weather render health on ${backend}`,
+            {
+                waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+                awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+                readRenderHealth: () => readRenderHealth(page)
+            }
+        );
+        expect(pageErrors).toEqual([]);
     });
 }
 
