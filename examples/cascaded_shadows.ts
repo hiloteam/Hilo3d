@@ -266,24 +266,110 @@ let currentWeather: WeatherType = 'clear';
 let currentTime: TimeOfDay = 'morning';
 let lightingStartedAt = 0;
 let lightingTransitionReady = true;
+const DAYLIGHT_TRANSITION_DURATION = 5000;
+const WINDOW_FADE_DURATION = 1800;
+const LANTERN_START_DELAY = 3000;
+let duskAmount = 0;
+let duskStartAmount = 0;
+let windowAmount = 0;
+let windowStartAmount = 0;
+let lanternAmount = 0;
+let lanternStartAmount = 0;
 let nextSnowReadout = 0;
 let baseFillAmount = 0.32;
 
-function updateHouseLights(now: number): void {
+function transitionEase(elapsed: number, duration: number): number {
+    const progress = Math.max(0, Math.min(1, elapsed / duration));
+    return progress * progress * (3 - 2 * progress);
+}
+
+function mixLighting(from: number, to: number, amount: number): number {
+    return from + (to - from) * amount;
+}
+
+function applyDaylight(): void {
+    const cloudCover = currentWeather === 'clear' ? 1 : currentWeather === 'snow' ? 0.65 : 0.42;
+    directionLight.amount = mixLighting(2.4, 0.2, duskAmount) * cloudCover;
+    directionLight.color.set(
+        1,
+        mixLighting(0.97, 0.43, duskAmount),
+        mixLighting(0.92, 0.23, duskAmount),
+        1
+    );
+    directionLight.direction.set(
+        -0.7,
+        mixLighting(-0.75, -0.12, duskAmount),
+        mixLighting(-0.45, 0.7, duskAmount)
+    );
+    directionLight.isDirty = true;
+    ambientLight.amount = mixLighting(0.28, 0.09, duskAmount);
+    ambientLight.color.set(
+        mixLighting(0.58, 0.32, duskAmount),
+        mixLighting(0.72, 0.4, duskAmount),
+        mixLighting(0.85, 0.78, duskAmount),
+        1
+    );
+    ambientLight.isDirty = true;
+    baseFillAmount = mixLighting(0.32, 0.22, duskAmount);
+    fillLight.color.set(
+        mixLighting(0.7, 0.3, duskAmount),
+        mixLighting(0.82, 0.43, duskAmount),
+        1,
+        1
+    );
+    fillLight.isDirty = true;
+    renderer.clearColor.set(
+        mixLighting(0.67, 0.036, duskAmount),
+        mixLighting(0.76, 0.061, duskAmount),
+        mixLighting(0.77, 0.15, duskAmount),
+        1
+    );
+    for (const [material, day] of materialLighting) {
+        material.diffuseEnvIntensity = day.diffuse * mixLighting(1, 0.2, duskAmount);
+        material.specularEnvIntensity = day.specular * mixLighting(1, 0.3, duskAmount);
+    }
+    document.body.dataset['csmDuskProgress'] = duskAmount.toFixed(4);
+}
+
+function applyHouseLights(): void {
+    for (const material of houseWindowMaterials)
+        material.emissionFactor.set(3.4 * windowAmount, 1.3 * windowAmount, 0.34 * windowAmount, 1);
+    for (const material of lanternMaterials)
+        material.emissionFactor.set(
+            4.5 * lanternAmount,
+            2.5 * lanternAmount,
+            0.75 * lanternAmount,
+            1
+        );
+    for (const light of windowSpillLights) {
+        light.amount = 5 * windowAmount;
+        light.enabled = currentTime === 'dusk' || windowAmount > 0;
+        light.isDirty = true;
+    }
+}
+
+function updateLighting(now: number): void {
     if (lightingTransitionReady) return;
     const elapsed = now - lightingStartedAt;
-    const ease = (time: number): number => {
-        const t = Math.max(0, Math.min(1, time / 350));
-        return t * t * (3 - 2 * t);
-    };
-    const windows = ease(elapsed);
-    const lantern = ease(elapsed - 1250);
-    for (const material of houseWindowMaterials)
-        material.emissionFactor.set(3.4 * windows, 1.3 * windows, 0.34 * windows, 1);
-    for (const material of lanternMaterials)
-        material.emissionFactor.set(4.5 * lantern, 2.5 * lantern, 0.75 * lantern, 1);
-    for (const light of windowSpillLights) light.amount = 5 * windows;
-    lightingTransitionReady = elapsed >= 1600 && toyWorld.lightsReady;
+    const target = currentTime === 'dusk' ? 1 : 0;
+    duskAmount = mixLighting(
+        duskStartAmount,
+        target,
+        transitionEase(elapsed, DAYLIGHT_TRANSITION_DURATION)
+    );
+    windowAmount = mixLighting(
+        windowStartAmount,
+        target,
+        transitionEase(elapsed, WINDOW_FADE_DURATION)
+    );
+    lanternAmount = mixLighting(
+        lanternStartAmount,
+        target,
+        transitionEase(elapsed - (target === 1 ? LANTERN_START_DELAY : 0), WINDOW_FADE_DURATION)
+    );
+    applyDaylight();
+    applyHouseLights();
+    lightingTransitionReady = elapsed >= DAYLIGHT_TRANSITION_DURATION && toyWorld.lightsReady;
     if (lightingTransitionReady) document.body.dataset['csmLightsReady'] = 'true';
 }
 
@@ -359,36 +445,25 @@ function setBudget(budget: ShadowBudget): void {
 }
 function setTimeOfDay(value: TimeOfDay): void {
     const timeChanged = currentTime !== value;
-    currentTime = value;
-    const cloudCover = currentWeather === 'clear' ? 1 : currentWeather === 'snow' ? 0.65 : 0.42;
     const dusk = value === 'dusk';
-    directionLight.amount = (dusk ? 0.2 : 2.4) * cloudCover;
-    directionLight.color.set(1, dusk ? 0.43 : 0.97, dusk ? 0.23 : 0.92, 1);
-    directionLight.direction.set(-0.7, dusk ? -0.12 : -0.75, dusk ? 0.7 : -0.45);
-    directionLight.isDirty = true;
-    ambientLight.amount = dusk ? 0.09 : 0.28;
-    ambientLight.color.set(dusk ? 0.32 : 0.58, dusk ? 0.4 : 0.72, dusk ? 0.78 : 0.85, 1);
-    baseFillAmount = dusk ? 0.22 : 0.32;
-    fillLight.amount = baseFillAmount;
-    fillLight.color.set(dusk ? 0.3 : 0.7, dusk ? 0.43 : 0.82, 1, 1);
-    for (const [material, day] of materialLighting) {
-        material.diffuseEnvIntensity = day.diffuse * (dusk ? 0.2 : 1);
-        material.specularEnvIntensity = day.specular * (dusk ? 0.3 : 1);
+    if (timeChanged) {
+        const now = performance.now();
+        // Reversing a partly completed sunset starts from the light already on screen.
+        updateLighting(now);
+        duskStartAmount = duskAmount;
+        windowStartAmount = windowAmount;
+        lanternStartAmount = lanternAmount;
+        lightingStartedAt = now;
+        lightingTransitionReady = false;
+        currentTime = value;
+        toyWorld.setNight(dusk);
+        surroundings.setDusk(dusk);
+        weatherEffects.setDusk(dusk);
     }
-    toyWorld.setNight(dusk);
-    surroundings.setDusk(dusk);
-    weatherEffects.setDusk(dusk);
-    if (timeChanged || !dusk) {
-        lightingStartedAt = performance.now();
-        lightingTransitionReady = !dusk;
-        for (const material of houseWindowMaterials) material.emissionFactor.set(0, 0, 0, 1);
-        for (const material of lanternMaterials) material.emissionFactor.set(0, 0, 0, 1);
-        for (const light of windowSpillLights) {
-            light.enabled = dusk;
-            light.amount = 0;
-        }
-        document.body.dataset['csmLightsReady'] = String(!dusk);
-    }
+    // Weather changes reuse the visible daylight amount and do not restart the sunset.
+    applyDaylight();
+    applyHouseLights();
+    document.body.dataset['csmLightsReady'] = String(lightingTransitionReady);
     for (const button of timeButtons)
         button.setAttribute('aria-pressed', String(button.dataset['time'] === value));
     document.body.dataset['timeOfDay'] = value;
@@ -564,7 +639,7 @@ ticker.addTick({
         weatherEffects.tick(dt);
         snowCover.tick(dt);
         const now = performance.now();
-        updateHouseLights(now);
+        updateLighting(now);
         const flash = weatherEffects.lightningFlash;
         fillLight.amount = baseFillAmount + flash * 3.2;
         surroundings.setLightning(flash);

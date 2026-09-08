@@ -519,6 +519,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(page.locator('body')).toHaveAttribute('data-csm-map-size', '1024');
         await expect(page.locator('body')).toHaveAttribute('data-csm-shadow-texels', '4194304');
         await expect(page.locator('body')).toHaveAttribute('data-time-of-day', 'morning');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-dusk-progress', '0.0000');
         await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '0');
         await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'false');
         await expect(page.locator('[data-cascade-count="4"]')).toHaveAttribute(
@@ -665,7 +666,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'true');
         await expect(page.locator('body')).toHaveAttribute('data-csm-motion', 'false');
         await expect(page.locator('body')).toHaveAttribute('data-csm-local-shadows', 'true');
-        await expect(page.locator('body')).toHaveAttribute('data-csm-lights-ready', 'true');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-lights-ready', 'true', {
+            timeout: 15_000
+        });
+        await expect(page.locator('body')).toHaveAttribute('data-csm-dusk-progress', '1.0000');
         const illuminatedDusk = await captureScene();
         expect(
             changedPixelFraction(morningScene, illuminatedDusk),
@@ -699,11 +703,98 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(page.locator('[data-time="morning"]')).toHaveAttribute('aria-pressed', 'true');
         await expect(page.locator('body')).toHaveAttribute('data-csm-local-lights', '0');
         await expect(page.locator('body')).toHaveAttribute('data-csm-windows-lit', 'false');
+        await expect(page.locator('body')).toHaveAttribute('data-csm-lights-ready', 'true', {
+            timeout: 15_000
+        });
+        await expect(page.locator('body')).toHaveAttribute('data-csm-dusk-progress', '0.0000');
 
         await assertObservableRender(page, 'cascaded_shadows.html', backend);
         await assertStableInstrumentationHealth(
             backend,
             `cascaded shadow toy diorama render health on ${backend}`,
+            {
+                waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+                awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
+                readRenderHealth: () => readRenderHealth(page)
+            }
+        );
+        expect(pageErrors).toEqual([]);
+    });
+
+    test(`cascaded shadow toy transitions gradually and reversibly while paused through ${backend} @${backend}`, async ({
+        page
+    }) => {
+        test.setTimeout(120_000);
+        const pageErrors: string[] = [];
+        page.on('pageerror', error => {
+            recordUnique(pageErrors, error.message);
+        });
+        await page.setViewportSize({ width: 640, height: 420 });
+        // Install before navigation so the running scene never changes clock implementations.
+        await page.clock.install();
+        await installRenderHealthProbe(page);
+        await page.goto(exampleRequestUrl('cascaded_shadows.html', backend), {
+            waitUntil: 'networkidle'
+        });
+        const body = page.locator('body');
+        await expect(body).toHaveAttribute('data-csm-ready', 'true');
+        await page.locator('#trainToggle').click();
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        // Leave headroom for software frames; pauseAt fires each pending timer only once.
+        await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60_000));
+        const switchTime = async (
+            time: 'morning' | 'dusk'
+        ): Promise<{ progress: number; lightsReady: string | undefined }> =>
+            page.locator(`[data-time="${time}"]`).evaluate(button => {
+                if (!(button instanceof HTMLButtonElement)) {
+                    throw new Error('Expected the time-of-day control to be a button');
+                }
+                button.click();
+                return {
+                    progress: Number(document.body.dataset['csmDuskProgress']),
+                    lightsReady: document.body.dataset['csmLightsReady']
+                };
+            });
+        const readDuskProgress = async (): Promise<number> =>
+            Number(await body.getAttribute('data-csm-dusk-progress'));
+        expect(await switchTime('dusk')).toEqual({ progress: 0, lightsReady: 'false' });
+        // Sample one intermediate frame without relying on software rendering speed.
+        await page.clock.fastForward(2500);
+        const midpoint = await readDuskProgress();
+        expect(midpoint).toBeGreaterThan(0.2);
+        expect(midpoint).toBeLessThan(0.8);
+        expect(await switchTime('morning')).toEqual({
+            progress: midpoint,
+            lightsReady: 'false'
+        });
+        await page.clock.fastForward(1000);
+        const returning = await readDuskProgress();
+        expect(returning).toBeGreaterThan(0);
+        expect(returning).toBeLessThan(midpoint);
+        expect(await switchTime('dusk')).toEqual({
+            progress: returning,
+            lightsReady: 'false'
+        });
+        await page.clock.fastForward(5000);
+        await expect(body).toHaveAttribute('data-csm-dusk-progress', '1.0000');
+        await expect(body).toHaveAttribute('data-csm-lights-ready', 'true');
+        await expect(body).toHaveAttribute('data-csm-local-lights', '5');
+        expect(await switchTime('morning')).toEqual({ progress: 1, lightsReady: 'false' });
+        await page.clock.fastForward(2500);
+        const sunrise = await readDuskProgress();
+        expect(sunrise).toBeGreaterThan(0.2);
+        expect(sunrise).toBeLessThan(0.8);
+        await expect(body).toHaveAttribute('data-csm-lights-ready', 'false');
+        await page.clock.fastForward(2500);
+        await expect(body).toHaveAttribute('data-csm-dusk-progress', '0.0000');
+        await expect(body).toHaveAttribute('data-csm-lights-ready', 'true');
+        await expect(body).toHaveAttribute('data-csm-local-lights', '0');
+        await expect(body).toHaveAttribute('data-csm-motion', 'false');
+        await page.clock.resume();
+        await assertObservableRender(page, 'cascaded_shadows.html', backend);
+        await assertStableInstrumentationHealth(
+            backend,
+            `cascaded shadow toy transition render health on ${backend}`,
             {
                 waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
                 awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
@@ -828,7 +919,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             return document.body.dataset['csmLightsReady'];
         });
         expect(lightsReadyImmediately).toBe('false');
-        await expect(body).toHaveAttribute('data-csm-lights-ready', 'true');
+        await expect(body).toHaveAttribute('data-csm-lights-ready', 'true', { timeout: 15_000 });
         await expect(body).toHaveAttribute('data-csm-motion', 'false');
         await page.locator('button[data-weather="clear"]').click();
         await expect(body).toHaveAttribute('data-weather', 'clear');

@@ -1,4 +1,5 @@
 import * as Hilo3d from '../../src/Hilo3d';
+import { CsmToyTransition } from './csm-toy-transition';
 
 function shaderChunk(name: string): string {
     const source = Hilo3d.Shader.shaders[name];
@@ -171,12 +172,14 @@ void main() {
     fragmentColor = vec4(color, 1.0);
 }`;
     return new Hilo3d.MaterialDefinition({
-        id: 'example:csm-toy-resin-water-v2',
+        id: 'example:csm-toy-resin-water-v3',
         family: 'custom',
         domain: 'surface',
-        shaderRevision: 'csm-toy-resin-water-v2',
+        shaderRevision: 'csm-toy-resin-water-v3',
         // A lit definition participates in the shared light count, CSM and spot-shadow variants.
-        staticFeatures: { LIGHT_MODEL: 1 },
+        // Match the PBR fixtures' inverse-square attenuation and finite range fade. The legacy
+        // falloff kept distant lights bright beyond their shadow cameras, exposing hard lit bands.
+        staticFeatures: { LIGHT_MODEL: 1, USE_PHYSICS_LIGHT: 1 },
         passes: [
             {
                 role: 'forward',
@@ -184,7 +187,7 @@ void main() {
                     kind: 'glsl',
                     vertexSource,
                     fragmentSource,
-                    sourceRevision: 'csm-toy-resin-water-v2'
+                    sourceRevision: 'csm-toy-resin-water-v3'
                 },
                 fragmentOutput: 'color',
                 state: Hilo3d.DEFAULT_MATERIAL_PIPELINE_STATE,
@@ -216,9 +219,11 @@ export function createCsmToyWater(): CsmToyWater {
     });
     let elapsed = 0;
     let enabled = true;
+    const skyIntensity = new CsmToyTransition(1, 5000);
     return {
         material,
         tick(dt: number): void {
+            block.set('u_waterSkyIntensity', skyIntensity.sample());
             if (!enabled) return;
             elapsed += Math.max(0, Math.min(dt, 50)) / 1000;
             block.set('u_waterTime', elapsed);
@@ -227,7 +232,7 @@ export function createCsmToyWater(): CsmToyWater {
             enabled = value;
         },
         setDusk(value: boolean): void {
-            block.set('u_waterSkyIntensity', value ? 0.12 : 1);
+            skyIntensity.setTarget(value ? 0.12 : 1);
         }
     };
 }
