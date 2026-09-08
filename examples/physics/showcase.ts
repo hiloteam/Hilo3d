@@ -1,7 +1,7 @@
 import { PHYSICS_WORLD_2D_SERVICE, PHYSICS_WORLD_3D_SERVICE } from '@hilo/addon-physics';
 import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext, type ExampleContext } from '../shared/init';
-import { createStudioEnvironmentMaps } from '../shared/studioEnvironment';
+import { loadDefaultEnvironmentMaps } from '../shared/defaultEnvironment';
 
 interface ExhibitOptions {
     readonly system: Hilo3d.StageSystem;
@@ -238,7 +238,7 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
         amount: 1.1,
         direction: new Hilo3d.Vector3(0.7, -0.3, 0.8)
     }).addTo(stage);
-    const maps = createStudioEnvironmentMaps();
+    const maps = await loadDefaultEnvironmentMaps();
     const brdfLUT = await new Hilo3d.TextureLoader().load({
         src: new URL('../image/brdfLUT.png', import.meta.url).href
     });

@@ -2,7 +2,9 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { stage, renderer } = await createExampleContext();
+const { stage, renderer } = await createExampleContext({
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
+});
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([

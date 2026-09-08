@@ -2,7 +2,9 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { hashReadback } from './shared/readbackDiagnostics';
 
-const { camera, stage, renderer, ticker } = await createExampleContext();
+const { camera, stage, renderer, ticker } = await createExampleContext({
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
+});
 
 const shaderToyCode = `
 

@@ -1,19 +1,25 @@
 import * as Hilo3d from '../../src/Hilo3d';
 
 const ENVIRONMENT_ASSET_URLS = {
-    'diffuse.rgbd': new URL('../image/environment/ferndale-studio-03/diffuse.rgbd', import.meta.url)
-        .href,
-    'specular.rgbd': new URL(
-        '../image/environment/ferndale-studio-03/specular.rgbd',
+    'diffuse.rgbd': new URL(
+        '../image/environment/photo-studio-loft-hall/diffuse.rgbd',
         import.meta.url
     ).href,
-    'right.jpg': new URL('../image/environment/ferndale-studio-03/right.jpg', import.meta.url).href,
-    'left.jpg': new URL('../image/environment/ferndale-studio-03/left.jpg', import.meta.url).href,
-    'top.jpg': new URL('../image/environment/ferndale-studio-03/top.jpg', import.meta.url).href,
-    'bottom.jpg': new URL('../image/environment/ferndale-studio-03/bottom.jpg', import.meta.url)
+    'specular.rgbd': new URL(
+        '../image/environment/photo-studio-loft-hall/specular.rgbd',
+        import.meta.url
+    ).href,
+    'right.png': new URL('../image/environment/photo-studio-loft-hall/right.png', import.meta.url)
         .href,
-    'front.jpg': new URL('../image/environment/ferndale-studio-03/front.jpg', import.meta.url).href,
-    'back.jpg': new URL('../image/environment/ferndale-studio-03/back.jpg', import.meta.url).href
+    'left.png': new URL('../image/environment/photo-studio-loft-hall/left.png', import.meta.url)
+        .href,
+    'top.png': new URL('../image/environment/photo-studio-loft-hall/top.png', import.meta.url).href,
+    'bottom.png': new URL('../image/environment/photo-studio-loft-hall/bottom.png', import.meta.url)
+        .href,
+    'front.png': new URL('../image/environment/photo-studio-loft-hall/front.png', import.meta.url)
+        .href,
+    'back.png': new URL('../image/environment/photo-studio-loft-hall/back.png', import.meta.url)
+        .href
 } as const;
 const RGBD_MAGIC = 'H3DRGBD1';
 const HEADER_BYTES = 16;
@@ -116,16 +122,27 @@ export async function loadDefaultEnvironmentMaps(): Promise<{
     return { diffuseEnvMap, specularEnvMap };
 }
 
+export function getDefaultSkyboxFaceUrls(): readonly [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string
+] {
+    return [
+        assetUrl('right.png'),
+        assetUrl('left.png'),
+        assetUrl('top.png'),
+        assetUrl('bottom.png'),
+        assetUrl('front.png'),
+        assetUrl('back.png')
+    ];
+}
+
 export function loadDefaultSkyboxMap(): Promise<Hilo3d.CubeTexture> {
     return new Hilo3d.CubeTextureLoader().load({
-        images: [
-            assetUrl('right.jpg'),
-            assetUrl('left.jpg'),
-            assetUrl('top.jpg'),
-            assetUrl('bottom.jpg'),
-            assetUrl('front.jpg'),
-            assetUrl('back.jpg')
-        ],
+        images: getDefaultSkyboxFaceUrls(),
         internalFormat: Hilo3d.constants.SRGB8,
         format: Hilo3d.constants.RGB,
         minFilter: Hilo3d.constants.webgl.LINEAR,

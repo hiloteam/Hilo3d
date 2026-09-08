@@ -1,5 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
+import environmentIrradiance from './image/environment/photo-studio-loft-hall/spherical-harmonics.json';
 
 const { stage, ambientLight } = await createExampleContext();
 
@@ -7,18 +8,7 @@ initModel();
 initLight();
 
 function initModel() {
-    const sh3Data = [
-        [1.8839140747279468, 1.2336689528140037, 1.6815759445875258],
-        [1.0005113784288704, 0.8691400255493019, 1.4887876533795357],
-        [0.5603794677467341, 0.2578132145126057, 0.19374826573501497],
-        [1.3072342827477732, 0.6636485650699964, 0.6695344061570127],
-        [0.5640030294080713, 0.37938937249123666, 0.49194331732327273],
-        [0.27256774141207746, 0.143343904079048, 0.1155890697070088],
-        [-0.1381991414602802, -0.057096853570897485, -0.04879314267934546],
-        [0.5350810043540868, 0.263230477756704, 0.24531039907656563],
-        [0.43283339060831905, 0.12637845128810607, -0.0041528480118368585]
-    ];
-    const sh3 = new Hilo3d.SphericalHarmonics3().fromArray(sh3Data).scaleForRender();
+    const sh3 = new Hilo3d.SphericalHarmonics3().fromArray(environmentIrradiance).scaleForRender();
     const node = new Hilo3d.Node();
     node.setScale(0.2);
     stage.addChild(node);

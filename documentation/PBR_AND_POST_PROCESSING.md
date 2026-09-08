@@ -85,9 +85,26 @@ block 从 group 3 binding 2 开始；WebGL 2 使用同一 reflection 计划映�
 sampler。同一 transparent pass 内的所有 transmission shader variant 共用 renderer-owned canonical
 group 3 layout，避免不同 glTF 材质排列各自创建 native layout 后无法绑定同一 opaque scene texture。
 
-材质 texture slot 的 encoding 同时覆盖 2D、cube 与 environment sampling。示例的 LDR studio
-IBL 显式声明为 sRGB，shader 在 HDR 光照计算前解码；两后端不依赖各自 external-image
-upload 的隐式颜色转换。
+材质 texture slot 的 encoding 同时覆盖 2D、cube 与 environment sampling。示例的默认环境来自 Poly
+Haven 的 CC0
+[Photo Studio Loft Hall](https://polyhaven.com/a/photo_studio_loft_hall)，由同一 HDR 源离线烘焙 cosine-convolved
+diffuse 和 GGX-prefiltered specular mip chain。烘焙脚本为
+[`bake-example-environment.ts`](../scripts/bake-example-environment.ts)，来源、校验值与烘焙参数见[资产说明](../examples/image/environment/photo-studio-loft-hall/README.md)。运行时只加载本地资产。
+
+漫反射 cube 储存 sRGB irradiance（alpha 固定为 1）；specular
+cube 使用 RGBD 储存扩展范围的 sRGB 值，shader 先除以 D 再解码到线性 radiance。两后端不依赖 external-image
+upload 的隐式颜色转换。可见背景与照明分别预过滤：背景 PNG 从同一室内 HDR 做球面模糊与显示压缩，保留窗户和房间的明暗层次，并显式使用 sRGB
+texture format；材质反射仍使用独立的完整 GGX mip chain。这种背景与反射分开的配置参考
+[Sketchfab 的 environment blur](https://sketchfab.com/developers/viewer/functions)，使用可再分发的 CC0 源资产。共享示例灯光为偏暖主光与少量冷色 ambient
+fill；PBR 有 diffuse IBL 时遵循现有材质合同，不额外叠加 ambient。Quick
+Start 复用这套灯光，并使用中性地台与方向光阴影。
+
+`createExampleContext()` 和 Quick Start 默认通过 `rgba16float` scene color 与 `ColorUber` 的 PBR
+Neutral tone mapping（曝光 -0.15 EV）显示，保留明亮反射的层次。示例显式传入的 `stage.renderPipeline`
+仍优先，独立设计的光照和后处理由各页面配置。物理、GTAO、SSR、SSGI 和贴图释放示例也使用同一套环境资产；球谐示例使用同一旋转与曝光下烘焙的 SH 系数。
+
+离屏纹理、MRT、MSAA resolve、逐 pass 后处理、生命游戏数据反馈与 ShaderToy 示例显式使用普通
+`ForwardRenderPipelineFactory`，避免展示用的色调映射或 sRGB 转换污染中间数据、重复处理已有显示变换。
 
 Transmission 使用投影后的 screen-space refraction
 ray；volume 根据折射方向修正光程，再用 Beer-Lambert attenuation 处理吸收。它是屏幕空间实现，因此：
@@ -348,12 +365,11 @@ Uber 位于所有 HDR effect 之后。
   Olives。模型许可与 SHA-256 记录在
   [`examples/models/KhronosPBR/ATTRIBUTION.md`](../examples/models/KhronosPBR/ATTRIBUTION.md)。
 
-共享 example 环境不再读取旧的 6 张低分辨率 diffuse bake 和 6 张 cloud cube face。当前
-[`studioEnvironment.ts`](../examples/shared/studioEnvironment.ts) 从连续 cube
-direction 函数生成 neutral studio、warm/cool softbox、平滑 diffuse reference 和带 mip
-chain 的 specular reference；Skybox 与 image-release 专项页面把同一环境编码为 runtime PNG data
-URL，以继续验证 loader 与 CPU image release，而不保留另一套旧图片。它是 deterministic example
-reference，不替代应用在生产中提供经过正式卷积的 HDR IBL。
+共享 example 环境通过 [`defaultEnvironment.ts`](../examples/shared/defaultEnvironment.ts)
+加载同一套 Photo Studio Loft Hall
+IBL 与模糊室内背景。漫反射、镜面反射与球谐系数使用一致的源方向和能量归一化，旧摄影棚资产与 runtime
+procedural studio 已移除。image-release 专项页面仍通过 `CubeTextureLoader`
+加载六张本地 PNG，并验证 CPU image release；仅需 IBL 的场景不加载天空背景。
 
 ## 验证要求
 

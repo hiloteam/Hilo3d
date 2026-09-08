@@ -2,7 +2,9 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = await createExampleContext();
+const { camera, stage, renderer } = await createExampleContext({
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
+});
 const diffuseTexture = new Hilo3d.LazyTexture({
     src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
 });

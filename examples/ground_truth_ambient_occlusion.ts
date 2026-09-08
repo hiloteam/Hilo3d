@@ -1,6 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { buildUrl, createExampleContext } from './shared/init';
-import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
+import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
 
 const search = new URLSearchParams(location.search);
 const testMode = search.get('test') === '1';
@@ -316,7 +316,7 @@ function createCylinderGeometry(radius: number, height: number, segments = 64): 
     });
 }
 
-const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const { diffuseEnvMap, specularEnvMap } = await loadDefaultEnvironmentMaps();
 const brdfLUT = await new Hilo3d.TextureLoader().load({
     src: new URL('./image/brdfLUT.png', import.meta.url).href,
     wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,

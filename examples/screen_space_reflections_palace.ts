@@ -1,5 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { createStudioEnvironmentMaps } from './shared/studioEnvironment';
+import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
 
 interface ReflectionPalaceEvidence {
     readonly backend: 'webgpu';
@@ -38,13 +38,14 @@ const ssrToggleLabel = requireElement('#ssrToggleLabel');
 const statusLabel = requireElement('#statusLabel');
 
 statusLabel.textContent = 'loading Khronos Car Concept';
-const { diffuseEnvMap, specularEnvMap } = createStudioEnvironmentMaps();
+const { diffuseEnvMap, specularEnvMap } = await loadDefaultEnvironmentMaps();
 const brdfLUT = await new Hilo3d.TextureLoader().load({
     src: new URL('./image/brdfLUT.png', import.meta.url).href,
     wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
     wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
 });
 const loader = new Hilo3d.GLTFLoader();
+// Keep the loft HDR windows as soft fill; local lights define this dark installation.
 const carModel = await loader.load({
     src: new URL('./models/CarConcept/CarConcept.glb', import.meta.url).href,
     ignoreTextureError: false,
@@ -52,8 +53,8 @@ const carModel = await loader.load({
         brdfLUT,
         diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
         specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
-        diffuseEnvIntensity: 0.58,
-        specularEnvIntensity: 1.02
+        diffuseEnvIntensity: 0.35,
+        specularEnvIntensity: 0.32
     }
 });
 await carModel.ready;
@@ -65,7 +66,7 @@ for (const material of carModel.materials) {
     material.normalScale = Math.min(material.normalScale, 0.04);
     material.roughness = Math.max(material.roughness, 0.36);
     material.iridescenceFactor = Math.min(material.iridescenceFactor, 0.02);
-    material.specularEnvIntensity = Math.min(material.specularEnvIntensity, 0.9);
+    material.specularEnvIntensity = Math.min(material.specularEnvIntensity, 0.28);
 }
 
 const floorGeometry = new Hilo3d.PlaneGeometry({ width: 80, height: 80 });
@@ -76,8 +77,8 @@ const floorMaterial = new Hilo3d.PBRMaterial({
     brdfLUT,
     diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
     specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
-    diffuseEnvIntensity: 0.05,
-    specularEnvIntensity: 0.12
+    diffuseEnvIntensity: 0.03,
+    specularEnvIntensity: 0.04
 });
 const verticalMirrorMaterial = new Hilo3d.PBRMaterial({
     baseColor: new Hilo3d.Color(0.025, 0.03, 0.045),
@@ -86,8 +87,8 @@ const verticalMirrorMaterial = new Hilo3d.PBRMaterial({
     brdfLUT,
     diffuseEnvMap: { texture: diffuseEnvMap, encoding: 'srgb' },
     specularEnvMap: { texture: specularEnvMap, encoding: 'srgb' },
-    diffuseEnvIntensity: 0.025,
-    specularEnvIntensity: 0.2
+    diffuseEnvIntensity: 0.015,
+    specularEnvIntensity: 0.065
 });
 const gpuEvidenceGeometry = new Hilo3d.BoxGeometry({ width: 0.16, height: 0.08, depth: 0.16 });
 const gpuEvidenceMaterial = new Hilo3d.PBRMaterial({

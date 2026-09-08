@@ -33,7 +33,10 @@ const initialState = new Hilo3d.DataTexture({
     wrapT: Hilo3d.constants.CLAMP_TO_EDGE
 });
 
-const context = await createExampleContext({ autoStart: false });
+const context = await createExampleContext({
+    autoStart: false,
+    stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
+});
 const { renderer, stage, ticker } = context;
 const createLifeTarget = (label: string): Hilo3d.RenderTarget =>
     renderer.createRenderTarget({
@@ -126,6 +129,53 @@ ticker.addTick(lifeFrame);
 ticker.targetFPS = 24;
 ticker.start();
 
+async function captureBlinker(): Promise<readonly (readonly number[])[]> {
+    if (width < 5 || height < 5)
+        throw new RangeError('Blinker capture requires at least 5×5 cells.');
+    ticker.stop();
+    try {
+        await renderer.waitForIdle();
+        const centerX = Math.floor(width / 2);
+        const centerY = Math.floor(height / 2);
+        const seed = new ImageData(width, height);
+        for (let offset = 3; offset < seed.data.length; offset += 4) seed.data[offset] = 255;
+        for (let x = centerX - 1; x <= centerX + 1; x++) {
+            const offset = (centerY * width + x) * 4;
+            seed.data.fill(255, offset, offset + 4);
+        }
+        currentTarget.getColorTexture().updateSubTexture({
+            mipLevel: 0,
+            x: 0,
+            y: 0,
+            width,
+            height,
+            image: seed
+        });
+
+        const generations: number[][] = [];
+        for (let generation = 0; generation < 2; generation++) {
+            lifePass.render(nextTarget);
+            [currentTarget, nextTarget] = [nextTarget, currentTarget];
+            const readback = await currentTarget.readColorAttachment();
+            const pixels: number[] = [];
+            for (let y = centerY - 2; y <= centerY + 2; y++) {
+                const offset = (y * width + centerX - 2) * 4;
+                pixels.push(...readback.data.subarray(offset, offset + 5 * 4));
+            }
+            generations.push(pixels);
+        }
+        copySource = currentTarget.getColorTexture();
+        copyPass.render();
+        return generations;
+    } finally {
+        ticker.start();
+    }
+}
+
+if (new URLSearchParams(location.search).get('test') === '1') {
+    window.__HILO3D_LIFE_GAME_TEST_API__ = { blinker: captureBlinker };
+}
+
 const injectedLiveCell = new ImageData(new Uint8ClampedArray([255, 0, 255, 255]), 1, 1);
 let injectionSequence = 0;
 let injectionQueue = Promise.resolve();
@@ -197,6 +247,9 @@ window.addEventListener(
 
 declare global {
     interface Window {
+        __HILO3D_LIFE_GAME_TEST_API__?: {
+            blinker(): Promise<readonly (readonly number[])[]>;
+        };
         __HILO3D_LIFE_GAME_INTERACTION_RESULT__?: {
             readonly backend: Hilo3d.RendererBackend;
             readonly sequence: number;
