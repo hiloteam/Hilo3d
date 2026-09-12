@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = await createExampleContext();
+const context = await createExampleContext();
+const { stage, ticker } = context;
 const videoElement = document.querySelector<HTMLVideoElement>('#video');
 if (!videoElement) throw new Error('Video example requires #video.');
 const video: HTMLVideoElement = videoElement;
@@ -14,15 +15,25 @@ async function loadVideoSource(): Promise<void> {
     const sourceUrl = URL.createObjectURL(await response.blob());
     video.src = sourceUrl;
     video.load();
-    window.addEventListener(
-        'pagehide',
-        () => {
-            video.removeAttribute('src');
-            video.load();
-            URL.revokeObjectURL(sourceUrl);
-        },
-        { once: true }
-    );
+    let disposed = false;
+    let wasPlaying = false;
+    window.addEventListener('pagehide', (event: PageTransitionEvent) => {
+        // Stop texture uploads before clearing the video's intrinsic dimensions.
+        ticker.stop();
+        wasPlaying = !video.paused;
+        video.pause();
+        if (event.persisted || disposed) return;
+        disposed = true;
+        context.dispose();
+        video.removeAttribute('src');
+        video.load();
+        URL.revokeObjectURL(sourceUrl);
+    });
+    window.addEventListener('pageshow', (event: PageTransitionEvent) => {
+        if (!event.persisted || disposed) return;
+        ticker.start();
+        if (wasPlaying) video.play().catch(reportAsyncError);
+    });
 }
 
 async function waitForVideo(): Promise<void> {

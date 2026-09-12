@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import type { ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
+import { captureStableFrame } from './stable-capture';
 import {
     assertStableInstrumentationHealth,
     awaitTrackedGPUQueues,
@@ -88,8 +89,9 @@ async function settle(page: Page, frames = 2): Promise<ChromaticSnapshot> {
 
 async function captureCanvas(page: Page): Promise<Buffer> {
     await settle(page, 1);
-    return page.locator('canvas').screenshot({
-        animations: 'disabled',
+    const backend = new URL(page.url()).searchParams.get('backend');
+    if (backend !== 'webgl2' && backend !== 'webgpu') throw new Error('Missing capture backend');
+    return captureStableFrame(page, backend, {
         style: canvasOnlyStyle
     });
 }
@@ -181,7 +183,7 @@ async function nativeCommandsPerFrame(page: Page, backend: ExampleBackend): Prom
 }
 
 async function openGallery(page: Page, backend: ExampleBackend): Promise<ChromaticSnapshot> {
-    await page.goto(`/examples/scriptable_pipeline.html?backend=${backend}&motion=0`, {
+    await page.goto(`/examples/scriptable_pipeline.html?backend=${backend}&motion=0&test=1`, {
         waitUntil: 'load'
     });
     await page.waitForFunction(

@@ -55,6 +55,9 @@ jobs:
       - name: Check the example/backend catalog contract
         run: npm run test:ui:contract
 
+      - name: Verify complete and disjoint UI groups
+        run: npx jiti scripts/check-ui-groups.ts
+
   coverage:
     name: Coverage (${{ matrix.shard }}/2)
     needs: preflight
@@ -245,14 +248,14 @@ jobs:
         run: npm run pack:check
 
   ui-webgl2:
-    name: WebGL2 UI (${{ matrix.shard }}/4)
+    name: WebGL2 UI (${{ matrix.group }})
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        group: [catalog, csm, physics, post-processing, chromatic]
 
     steps:
       - name: Check out repository
@@ -278,18 +281,30 @@ jobs:
 
       - name: Run WebGL2 UI shard
         run: >-
-          npm run test:ui:webgl2:ci -- --shard=${{ matrix.shard }}/4 --reporter=github,blob
+          npm run test:ui:webgl2:ci --
+          --reporter=github,blob,./scripts/playwright-timing-reporter.ts
         env:
           CI: 'true'
+          HILO3D_UI_GROUP: ${{ matrix.group }}
+          PLAYWRIGHT_BLOB_OUTPUT_FILE: blob-report/report-${{ matrix.group }}.zip
 
       - name: Upload Playwright shard
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-webgl2-${{ matrix.shard }}
+          name: playwright-webgl2-${{ matrix.group }}
           path: blob-report
           if-no-files-found: ignore
           retention-days: 1
+
+      - name: Upload UI timing diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-timings-${{ matrix.group }}
+          path: reports/ui-timings
+          if-no-files-found: error
+          retention-days: 14
 
   ui-report:
     name: WebGL2 UI report

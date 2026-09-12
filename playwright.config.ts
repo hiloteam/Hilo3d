@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import { testServerOrigin, testServerPort } from './scripts/playwright-test-server';
+import { uiGroupFilter } from './scripts/playwright-ui-groups';
 
 const isContinuousIntegration = process.env['CI'] === 'true';
 const swiftShaderArguments = [
@@ -31,9 +32,12 @@ process.env['NO_PROXY'] = noProxy;
 process.env['no_proxy'] = noProxy;
 
 export default defineConfig({
+    ...uiGroupFilter(process.env['HILO3D_UI_GROUP']),
     testDir: './test/ui',
     outputDir: 'test-results',
     timeout: isContinuousIntegration ? 60_000 : 30_000,
+    // Finish reporters before the 30-minute Actions job deadline, including slow failure paths.
+    globalTimeout: isContinuousIntegration && process.env['HILO3D_UI_GROUP'] ? 25 * 60_000 : 0,
     fullyParallel: true,
     workers: 1,
     forbidOnly: isContinuousIntegration,
@@ -56,7 +60,7 @@ export default defineConfig({
         deviceScaleFactor: 1,
         locale: 'en-US',
         screenshot: 'only-on-failure',
-        trace: 'retain-on-failure',
+        trace: { mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true },
         timezoneId: 'UTC',
         // SwiftShader rendering and full-frame video encoding contend for the same CI CPU. Failure
         // screenshots and traces retain the browser diagnostics without perturbing presentation.

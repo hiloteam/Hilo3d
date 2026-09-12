@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
+import { captureStableFrame } from './stable-capture';
 import { createExampleCatalog } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
@@ -312,7 +313,7 @@ async function assertObservableRender(
     await expect
         .poll(async () => completedRenderCommands(await readRenderHealth(page), backend), {
             message: `${examplePath} must issue a native ${backend} render command`,
-            timeout: 15_000
+            timeout: 30_000
         })
         .toBeGreaterThan(0);
 }
@@ -494,7 +495,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     }) => {
         test.slow();
         // Software WebGL2 needs time for the daylight comparisons and the complete dusk sequence.
-        test.setTimeout(backend === 'webgl2' ? 270_000 : 210_000);
+        test.setTimeout(backend === 'webgl2' ? 420_000 : 240_000);
         const pageErrors: string[] = [];
         page.on('pageerror', error => {
             recordUnique(pageErrors, error.message);
@@ -533,13 +534,11 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             'true'
         );
 
-        const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
         const captureScene = async (): Promise<PNG> => {
             await waitForStableAnimationFrames(page);
             await awaitTrackedGPUQueues(page);
             return PNG.sync.read(
-                await canvas.screenshot({
-                    animations: 'disabled',
+                await captureStableFrame(page, backend, {
                     style: '.csmOverlay { visibility: hidden !important; }'
                 })
             );
@@ -807,7 +806,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`cascaded shadow toy weather accumulates snow and preserves motion through ${backend} @${backend}`, async ({
         page
     }) => {
-        test.setTimeout(210_000);
+        test.setTimeout(backend === 'webgl2' ? 300_000 : 210_000);
         const pageErrors: string[] = [];
         page.on('pageerror', error => {
             recordUnique(pageErrors, error.message);
@@ -825,13 +824,11 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await page.locator('#trainToggle').click();
         await expect(body).toHaveAttribute('data-csm-motion', 'false');
 
-        const canvas = page.locator(`canvas[data-hilo3d-backend="${backend}"]`);
         const captureScene = async (): Promise<PNG> => {
             await waitForStableAnimationFrames(page);
             await awaitTrackedGPUQueues(page);
             return PNG.sync.read(
-                await canvas.screenshot({
-                    animations: 'disabled',
+                await captureStableFrame(page, backend, {
                     style: '.csmOverlay { visibility: hidden !important; }'
                 })
             );
@@ -956,8 +953,8 @@ test.describe('examples using the generic release gate', () => {
                 examplePath === 'particle_noise_fields.html' ||
                 examplePath === 'particle_orbital_weave.html'
             ) {
-                // HDR material/particle galleries and multi-pass GTAO require extra time for
-                // software rendering under CI SwiftShader.
+                // HDR material/particle galleries and multi-pass post-processing require extra
+                // time for software rendering under CI SwiftShader.
                 test.slow();
             }
             await installRenderHealthProbe(page);
@@ -1065,6 +1062,19 @@ test.describe('examples using the generic release gate', () => {
                 await waitForStableAnimationFrames(page);
             }
 
+            if (examplePath === 'video.html') {
+                await page.evaluate(async () => {
+                    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+                    // Keep the document alive long enough to catch uploads after source disposal.
+                    for (let frame = 0; frame < 3; frame++) {
+                        await new Promise<void>(resolve => {
+                            requestAnimationFrame(() => {
+                                resolve();
+                            });
+                        });
+                    }
+                });
+            }
             await devtools.detach();
             expect(pageErrors, `page errors in ${examplePath} on ${backend}`).toEqual([]);
             expect(consoleErrors, `console errors in ${examplePath} on ${backend}`).toEqual([]);

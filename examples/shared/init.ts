@@ -134,6 +134,21 @@ export async function createExampleContext(
 
     console.info(`Stage uses ${renderer.backend}`);
 
+    // Only automation opts into capture control. Pause preserves the scheduled RAF, allowing
+    // compositor screenshots to settle without producing more expensive scene frames.
+    const captureControl = {
+        async pause(): Promise<void> {
+            ticker.pause();
+            await renderer.waitForIdle();
+        },
+        resume(): void {
+            ticker.resume();
+        }
+    };
+    if (new URLSearchParams(location.search).get('test') === '1') {
+        window.__HILO3D_TEST_CAPTURE__ = captureControl;
+    }
+
     if (options.autoStart ?? true) ticker.start();
 
     return {
@@ -146,6 +161,9 @@ export async function createExampleContext(
         stats,
         orbitControls,
         dispose(): void {
+            if (window.__HILO3D_TEST_CAPTURE__ === captureControl) {
+                delete window.__HILO3D_TEST_CAPTURE__;
+            }
             window.removeEventListener('resize', handleResize);
             orbitControls.dispose();
             stats.stop();
@@ -153,4 +171,13 @@ export async function createExampleContext(
             stage.destroy();
         }
     };
+}
+
+declare global {
+    interface Window {
+        __HILO3D_TEST_CAPTURE__?: {
+            pause(): Promise<void>;
+            resume(): void;
+        };
+    }
 }

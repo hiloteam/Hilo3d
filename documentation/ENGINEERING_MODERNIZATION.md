@@ -40,8 +40,8 @@
   `npm run validate`（或等价别名 `npm run release:check`）执行完整双后端浏览器矩阵。npm
   tag 发布 workflow 和 npm 生命周期只执行快速、确定性的发布检查，再由 `prepack`
   构建 tarball，避免重复运行功能 CI。默认 hosted
-  CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和四个隔离的 WebGL 2
-  presentation/UI/视觉分片；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
+  CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和五个隔离的 WebGL 2
+  presentation/UI/视觉工作组；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
   benchmark smoke 则由按性能路径、定时或手动触发的独立工作流执行。
 - 旧 Gulp、Webpack、Babel、Mocha、JSDoc、手写声明、旧 `build/`、已提交的旧
   `docs/`、旧测试页、运行时 vendor 脚本和远程 CDN 依赖已经退出活跃工程。
@@ -974,7 +974,7 @@ Actions、锁文件安装、固定 npm 10.9.4 和显式 Chromium 系统依赖，
 20/22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master`
 与版本 tag 先执行 modernity、格式、声明、lint、TypeScript project
 references 和示例目录合同预检；预检成功后并行执行两个 Vitest
-coverage 分片、RHI/架构、包/API/文档，以及四个 Playwright WebGL 2 页面/交互/视觉分片。每个 GPU
+coverage 分片、RHI/架构、包/API/文档，以及五个 Playwright WebGL 2 页面/交互/视觉工作组。每个 GPU
 job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；coverage 模式因此关闭 Vitest 文件并行，同时保留跨 runner 的两个分片。coverage
 artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套 `reports/vitest` 目录只读取 blob
 report；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的 `Required CI`
@@ -986,6 +986,34 @@ shell。示例 HTML 由 Vite 统一声明空 favicon，避免浏览器自动请�
 runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
 raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
 coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
+
+### 重型浏览器测试的维护约定
+
+`HILO3D_UI_GROUP` 将同一 hosted UI 命令分成 `catalog`、`csm`、`physics`、 `post-processing` 和
+`chromatic`。默认不设该变量时仍运行完整矩阵。分组规则位于
+`scripts/playwright-ui-groups.ts`；预检执行
+`npx jiti scripts/check-ui-groups.ts`，用 Playwright 实际发现的测试 ID 验证五组的并集等于完整 WebGL2 清单，且没有重复或空组。新增测试必须进入恰好一组，新增工作组时同步修改规则、workflow
+matrix 和清单检查。Chromatic 与 SSGI
+chapel 已由双后端专项覆盖，不再重复运行通用首帧门禁；SSGI 专项继续验证启用/关闭后的像素差异、页面错误和 GPU 健康。
+
+使用 `createExampleContext()` 的示例在显式 `?test=1` 时提供共享截图控制，正常页面不暴露该控制。
+`test/ui/stable-capture.ts` 先确认真实 native draw，再暂停 ticker、等待 renderer
+submission 完成、采集 compositor 像素，并在 `finally`
+中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 共用此路径。暂停只包围截图，动作、仿真进展和渲染健康断言仍在正常运行状态下检查。Physics 测试使用 512px 阴影图，CSM 保留其等预算阴影对比规格，Chromatic 保留实际后处理链。随机种子、动画相位和分辨率按示例已有合同控制，禁止全局替换随机数或时钟以掩盖时序错误。
+
+UI 默认关闭 trace 连续画面采集，保留 DOM、操作、源码和网络记录；CI 关闭视频，保留失败截图和显式像素断言。涉及像素和 presentation 的工作组继续使用完整 Chromium；无像素要求的合同由 Node 或独立 RHI
+lane 检查。 `scripts/playwright-timing-reporter.ts` 将每例耗时、超时预算及结果写入
+`reports/ui-timings`，上传保留 14 天，并在 Actions
+summary 列出最慢 20 项。耗时达到预算 70% 时发出诊断提示；这些结果不是 GPU 性能基线。每组 Playwright 总期限为 25 分钟，早于 Actions 的 30 分钟 job 期限，给失败报告和产物上传预留时间。调整超时前应比较同 runner 的多次记录，确认耗时分布并检查 trace；禁止通过重试、跳过或更新视觉基线消除失败。
+
+修改重型示例或截图工具后，至少运行受影响的完整工作组，例如：
+
+```sh
+CI=true HILO3D_UI_GROUP=physics npm run test:ui:webgl2:ci -- --reporter=line,./scripts/playwright-timing-reporter.ts
+```
+
+共享截图工具变更需补充 WebGPU 验证；CI 编排变更需通过清单检查。运行本地多个工作组时用
+`HILO3D_PLAYWRIGHT_PORT` 分配不同端口，优先串行 GPU 检查，避免本机资源竞争污染耗时判断。
 
 WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
