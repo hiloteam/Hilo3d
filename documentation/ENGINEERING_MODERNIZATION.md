@@ -999,7 +999,15 @@ chapel 已由双后端专项覆盖，不再重复运行通用首帧门禁；SSGI
 使用 `createExampleContext()` 的示例在显式 `?test=1` 时提供共享截图控制，正常页面不暴露该控制。
 `test/ui/stable-capture.ts` 先确认真实 native draw，再暂停 ticker、等待 renderer
 submission 完成、采集 compositor 像素，并在 `finally`
-中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 共用此路径。暂停只包围截图，动作、仿真进展和渲染健康断言仍在正常运行状态下检查。Physics 测试使用 512px 阴影图，CSM 保留其等预算阴影对比规格，Chromatic 保留实际后处理链。随机种子、动画相位和分辨率按示例已有合同控制，禁止全局替换随机数或时钟以掩盖时序错误。
+中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 共用此路径。测试模式还通过
+`examples/shared/test-frame-control.ts`
+等待上一帧提交完成，再留出 50ms 输入处理窗口，避免点击、状态读取和断言期间持续提交 SwiftShader 帧。截图持有暂停状态时，后台 fence 完成不能提前恢复 ticker；页面销毁后也不能重新恢复。Physics 使用真实 elapsed
+time 推进仿真，保持现有动作和物理断言。CSM 的虚拟时钟专项显式使用 `testClock=1`，由 Playwright
+clock 控制 RAF/timer，不让真实 GPU fence 阻塞虚拟时间推进；其余 CSM 用例使用提交限流。Chromatic 的
+`test=1` 模式通过专用 `advanceFrames()`
+固定推进真实 Stage 帧并等待提交，测试断言帧数精确增长、原生 draw/pass 和像素变化，正常页面仍由 ticker 连续驱动。Physics 测试使用 512px 阴影图，CSM 保留其等预算阴影对比规格，Chromatic 保留实际后处理链。随机种子、动画相位和分辨率按示例已有合同控制，禁止全局替换随机数或时钟以掩盖时序错误。
+
+CSM 和 Physics 截图前等待两个实际 ticker 帧，不能以 RAF 回调数代替已渲染帧数；限流期间 RAF 仍可执行，但场景可能尚未更新。等待者在页面销毁时会被清理并拒绝。
 
 UI 默认关闭 trace 连续画面采集，保留 DOM、操作、源码和网络记录；CI 关闭视频，保留失败截图和显式像素断言。涉及像素和 presentation 的工作组继续使用完整 Chromium；无像素要求的合同由 Node 或独立 RHI
 lane 检查。 `scripts/playwright-timing-reporter.ts` 将每例耗时、超时预算及结果写入

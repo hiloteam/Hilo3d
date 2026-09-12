@@ -4,6 +4,7 @@ import Stats from './stats';
 import { resolveExampleBackend } from './backend';
 import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
 import { createExampleLights, createExampleRenderPipeline } from './lighting';
+import { createTestFrameControl } from './test-frame-control';
 
 export { resolveExampleBackend };
 
@@ -134,18 +135,15 @@ export async function createExampleContext(
 
     console.info(`Stage uses ${renderer.backend}`);
 
-    // Only automation opts into capture control. Pause preserves the scheduled RAF, allowing
-    // compositor screenshots to settle without producing more expensive scene frames.
-    const captureControl = {
-        async pause(): Promise<void> {
-            ticker.pause();
-            await renderer.waitForIdle();
-        },
-        resume(): void {
-            ticker.resume();
-        }
-    };
-    if (new URLSearchParams(location.search).get('test') === '1') {
+    const captureControl =
+        new URLSearchParams(location.search).get('test') === '1'
+            ? createTestFrameControl(
+                  ticker,
+                  () => renderer.waitForIdle(),
+                  new URLSearchParams(location.search).get('testClock') !== '1'
+              )
+            : undefined;
+    if (captureControl) {
         window.__HILO3D_TEST_CAPTURE__ = captureControl;
     }
 
@@ -161,6 +159,7 @@ export async function createExampleContext(
         stats,
         orbitControls,
         dispose(): void {
+            captureControl?.dispose();
             if (window.__HILO3D_TEST_CAPTURE__ === captureControl) {
                 delete window.__HILO3D_TEST_CAPTURE__;
             }
@@ -176,6 +175,7 @@ export async function createExampleContext(
 declare global {
     interface Window {
         __HILO3D_TEST_CAPTURE__?: {
+            waitForFrames(count: number): Promise<void>;
             pause(): Promise<void>;
             resume(): void;
         };

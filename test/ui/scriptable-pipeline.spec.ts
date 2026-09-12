@@ -8,8 +8,7 @@ import {
     awaitTrackedGPUQueues,
     completedRenderCommands,
     installRenderHealthProbe,
-    readRenderHealth,
-    waitForStableAnimationFrames
+    readRenderHealth
 } from './render-health';
 
 interface ChromaticSnapshot {
@@ -34,6 +33,9 @@ interface ChromaticTestAPI {
 
 type ChromaticWindow = Window & {
     readonly __HILO3D_CHROMATIC__?: ChromaticTestAPI;
+    readonly __HILO3D_CHROMATIC_TEST__?: {
+        advanceFrames(count: number): Promise<void>;
+    };
 };
 
 const backends = ['webgl2', 'webgpu'] as const;
@@ -77,14 +79,15 @@ async function snapshot(page: Page): Promise<ChromaticSnapshot> {
 
 async function settle(page: Page, frames = 2): Promise<ChromaticSnapshot> {
     const before = await snapshot(page);
-    await page.waitForFunction(
-        expected =>
-            ((window as ChromaticWindow).__HILO3D_CHROMATIC__?.snapshot().frameCount ?? 0) >=
-            expected,
-        before.frameCount + frames
-    );
+    await page.evaluate(async count => {
+        const control = (window as ChromaticWindow).__HILO3D_CHROMATIC_TEST__;
+        if (!control) throw new Error('Chromatic requires explicit test frame control');
+        await control.advanceFrames(count);
+    }, frames);
     await awaitTrackedGPUQueues(page);
-    return snapshot(page);
+    const after = await snapshot(page);
+    expect(after.frameCount).toBe(before.frameCount + frames);
+    return after;
 }
 
 async function captureCanvas(page: Page): Promise<Buffer> {
@@ -199,7 +202,9 @@ async function openGallery(page: Page, backend: ExampleBackend): Promise<Chromat
 async function assertGraphicsHealth(page: Page, backend: ExampleBackend): Promise<void> {
     expect(completedRenderCommands(await readRenderHealth(page), backend)).toBeGreaterThan(0);
     await assertStableInstrumentationHealth(backend, `Chromatic ${backend} rendering`, {
-        waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+        waitForStableAnimationFrames: async () => {
+            await settle(page, 2);
+        },
         awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
         readRenderHealth: () => readRenderHealth(page)
     });

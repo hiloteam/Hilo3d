@@ -539,6 +539,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             await awaitTrackedGPUQueues(page);
             return PNG.sync.read(
                 await captureStableFrame(page, backend, {
+                    frames: 2,
                     style: '.csmOverlay { visibility: hidden !important; }'
                 })
             );
@@ -732,7 +733,9 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         // Install before navigation so the running scene never changes clock implementations.
         await page.clock.install();
         await installRenderHealthProbe(page);
-        await page.goto(exampleRequestUrl('cascaded_shadows.html', backend), {
+        // This case already owns RAF/timer pacing through Playwright's clock. GPU completion
+        // runs in real time and must not gate callbacks advanced by the virtual clock.
+        await page.goto(`${exampleRequestUrl('cascaded_shadows.html', backend)}&testClock=1`, {
             waitUntil: 'networkidle'
         });
         const body = page.locator('body');
@@ -829,6 +832,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             await awaitTrackedGPUQueues(page);
             return PNG.sync.read(
                 await captureStableFrame(page, backend, {
+                    frames: 2,
                     style: '.csmOverlay { visibility: hidden !important; }'
                 })
             );

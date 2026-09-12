@@ -35,6 +35,7 @@ const viewDescriptions: Readonly<Record<ScriptablePipelineView, string>> = {
     contours: '从深度变化中提取雕塑与建筑轮廓'
 };
 const query = new URLSearchParams(location.search);
+const testMode = query.get('test') === '1';
 const lifetime = new AbortController();
 let stopScene: (() => void) | undefined;
 
@@ -230,7 +231,7 @@ async function run(): Promise<void> {
         'visibilitychange',
         () => {
             if (document.hidden) context.ticker.stop();
-            else context.ticker.start();
+            else if (!testMode) context.ticker.start();
         },
         { signal: lifetime.signal }
     );
@@ -284,13 +285,36 @@ async function run(): Promise<void> {
     };
     element('#controlsFieldset', HTMLFieldSetElement).disabled = false;
     element('#loadingPanel', HTMLElement).hidden = true;
-    context.ticker.start();
+    if (testMode) {
+        let advancing = false;
+        window.__HILO3D_CHROMATIC_TEST__ = {
+            async advanceFrames(count: number): Promise<void> {
+                if (!Number.isInteger(count) || count < 1 || count > 60 || advancing) {
+                    throw new Error(
+                        'Chromatic test frames require a serial count between 1 and 60'
+                    );
+                }
+                advancing = true;
+                try {
+                    for (let frame = 0; frame < count; frame++) {
+                        context.stage.tick(1000 / 60);
+                        await context.renderer.waitForIdle();
+                    }
+                } finally {
+                    advancing = false;
+                }
+            }
+        };
+    } else {
+        context.ticker.start();
+    }
 }
 
 window.addEventListener(
     'pagehide',
     () => {
         lifetime.abort();
+        delete window.__HILO3D_CHROMATIC_TEST__;
         stopScene?.();
     },
     { once: true }
@@ -307,6 +331,9 @@ void run().catch((error: unknown) => {
 
 declare global {
     interface Window {
+        __HILO3D_CHROMATIC_TEST__?: {
+            advanceFrames(count: number): Promise<void>;
+        };
         __HILO3D_SCRIPTABLE_PIPELINE_RESULT__?: {
             readonly backend: Hilo3d.RendererBackend;
             readonly drawCount: number;

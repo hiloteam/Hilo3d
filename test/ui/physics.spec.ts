@@ -55,7 +55,7 @@ async function assertExhibitPixels(
     ).toBeGreaterThan(0);
     // The canvas fills a fixed viewport. Capture its composited pixels directly without the
     // locator screenshot's scroll and consecutive-animation-frame element-stability checks.
-    const capture = await captureStableFrame(page, backend);
+    const capture = await captureStableFrame(page, backend, { frames: 2 });
     await testInfo.attach(`${name}-${backend}-canvas`, { body: capture, contentType: 'image/png' });
     const image = PNG.sync.read(capture);
     const mobile = image.width < 700;

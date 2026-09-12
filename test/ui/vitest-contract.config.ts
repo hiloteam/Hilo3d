@@ -7,6 +7,7 @@ export default mergeConfig(
         test: {
             name: 'ui-contract',
             include: [
+                'test/ui/test-frame-control.contract.test.ts',
                 'test/ui/stable-capture.contract.test.ts',
                 'test/ui/example-paths.contract.ts',
                 'test/ui/physics-scenes.contract.test.ts',
