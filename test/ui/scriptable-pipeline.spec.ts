@@ -2,13 +2,13 @@ import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import type { ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
+import { captureStableFrame } from './stable-capture';
 import {
     assertStableInstrumentationHealth,
     awaitTrackedGPUQueues,
     completedRenderCommands,
     installRenderHealthProbe,
-    readRenderHealth,
-    waitForStableAnimationFrames
+    readRenderHealth
 } from './render-health';
 
 interface ChromaticSnapshot {
@@ -33,6 +33,9 @@ interface ChromaticTestAPI {
 
 type ChromaticWindow = Window & {
     readonly __HILO3D_CHROMATIC__?: ChromaticTestAPI;
+    readonly __HILO3D_CHROMATIC_TEST__?: {
+        advanceFrames(count: number): Promise<void>;
+    };
 };
 
 const backends = ['webgl2', 'webgpu'] as const;
@@ -76,20 +79,22 @@ async function snapshot(page: Page): Promise<ChromaticSnapshot> {
 
 async function settle(page: Page, frames = 2): Promise<ChromaticSnapshot> {
     const before = await snapshot(page);
-    await page.waitForFunction(
-        expected =>
-            ((window as ChromaticWindow).__HILO3D_CHROMATIC__?.snapshot().frameCount ?? 0) >=
-            expected,
-        before.frameCount + frames
-    );
+    await page.evaluate(async count => {
+        const control = (window as ChromaticWindow).__HILO3D_CHROMATIC_TEST__;
+        if (!control) throw new Error('Chromatic requires explicit test frame control');
+        await control.advanceFrames(count);
+    }, frames);
     await awaitTrackedGPUQueues(page);
-    return snapshot(page);
+    const after = await snapshot(page);
+    expect(after.frameCount).toBe(before.frameCount + frames);
+    return after;
 }
 
 async function captureCanvas(page: Page): Promise<Buffer> {
     await settle(page, 1);
-    return page.locator('canvas').screenshot({
-        animations: 'disabled',
+    const backend = new URL(page.url()).searchParams.get('backend');
+    if (backend !== 'webgl2' && backend !== 'webgpu') throw new Error('Missing capture backend');
+    return captureStableFrame(page, backend, {
         style: canvasOnlyStyle
     });
 }
@@ -181,7 +186,7 @@ async function nativeCommandsPerFrame(page: Page, backend: ExampleBackend): Prom
 }
 
 async function openGallery(page: Page, backend: ExampleBackend): Promise<ChromaticSnapshot> {
-    await page.goto(`/examples/scriptable_pipeline.html?backend=${backend}&motion=0`, {
+    await page.goto(`/examples/scriptable_pipeline.html?backend=${backend}&motion=0&test=1`, {
         waitUntil: 'load'
     });
     await page.waitForFunction(
@@ -197,7 +202,9 @@ async function openGallery(page: Page, backend: ExampleBackend): Promise<Chromat
 async function assertGraphicsHealth(page: Page, backend: ExampleBackend): Promise<void> {
     expect(completedRenderCommands(await readRenderHealth(page), backend)).toBeGreaterThan(0);
     await assertStableInstrumentationHealth(backend, `Chromatic ${backend} rendering`, {
-        waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
+        waitForStableAnimationFrames: async () => {
+            await settle(page, 2);
+        },
         awaitTrackedGPUQueues: () => awaitTrackedGPUQueues(page),
         readRenderHealth: () => readRenderHealth(page)
     });
@@ -347,8 +354,8 @@ for (const backend of backends) {
 
             await page.setViewportSize({ width: 760, height: 540 });
             const resized = await settle(page, 5);
-            expect(resized.width).not.toBe(initial.width);
-            expect(resized.height).not.toBe(initial.height);
+            expect(resized.width).toBe(760);
+            expect(resized.height).toBe(540);
             expect(resized.passCount).toBe(initial.passCount);
             await page.locator('#resetView').click();
             await settle(page);

@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage, ticker, directionLight, orbitControls } = await createExampleContext();
+const context = await createExampleContext();
+const { stage, ticker, directionLight, orbitControls } = context;
 directionLight.amount = 0.8;
 orbitControls.setView(new Hilo3d.Vector3(4, 2.6, 5.5), new Hilo3d.Vector3(0, 0.7, 0));
 const actor = new Hilo3d.Node({ name: 'actor' }).addTo(stage);
@@ -214,10 +215,14 @@ ticker.addTick({
 // Evaluate behavior and pose before scene transform collection and rendering.
 ticker.removeTick(stage);
 ticker.addTick(stage);
-window.addEventListener(
-    'pagehide',
-    () => {
-        animation.destroy();
-    },
-    { once: true }
-);
+let disposed = false;
+window.addEventListener('pagehide', (event: PageTransitionEvent) => {
+    ticker.stop();
+    if (event.persisted || disposed) return;
+    disposed = true;
+    animation.destroy();
+    context.dispose();
+});
+window.addEventListener('pageshow', (event: PageTransitionEvent) => {
+    if (event.persisted && !disposed) ticker.start();
+});

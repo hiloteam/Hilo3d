@@ -6,6 +6,7 @@ import {
     type ExampleBackend
 } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
+import { captureStableFrame } from './stable-capture';
 import {
     assertStableInstrumentationHealth,
     awaitTrackedGPUQueues,
@@ -54,12 +55,7 @@ async function assertExhibitPixels(
     ).toBeGreaterThan(0);
     // The canvas fills a fixed viewport. Capture its composited pixels directly without the
     // locator screenshot's scroll and consecutive-animation-frame element-stability checks.
-    const capture = await page.screenshot({
-        type: 'png',
-        fullPage: false,
-        animations: 'disabled',
-        timeout: POLL_TIMEOUT
-    });
+    const capture = await captureStableFrame(page, backend, { frames: 2 });
     await testInfo.attach(`${name}-${backend}-canvas`, { body: capture, contentType: 'image/png' });
     const image = PNG.sync.read(capture);
     const mobile = image.width < 700;
@@ -625,14 +621,14 @@ for (const scene of PHYSICS_RELEASE_TEST_CASES) {
         page
     }, testInfo) => {
         test.setTimeout(180_000);
-        // Keep the desktop 16:10 composition while bounding software-raster cost. The real
-        // scene, shadows, simulation, native health and pixel thresholds remain in this lane;
+        // Keep the desktop 16:10 composition and request the bounded 512px test shadow map. The
+        // real scene, shadows, simulation, native health and pixel thresholds remain in this lane;
         // full-resolution art review is captured separately in documentation/assets/physics.
         await page.setViewportSize({ width: 960, height: 600 });
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
-            await page.goto(`${scene.path}?backend=${backend}`);
+            await page.goto(`${scene.path}?backend=${backend}&test=1`);
             await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true', {
                 timeout: POLL_TIMEOUT
             });
@@ -689,7 +685,7 @@ test('physics collection keeps mobile controls outside the playfield @webgl2', a
     await installRenderHealthProbe(page);
     const failures = await installPageFailureMonitor(page);
     try {
-        await page.goto('physics/rapier2d_marble.html?backend=webgl2');
+        await page.goto('physics/rapier2d_marble.html?backend=webgl2&test=1');
         await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true', {
             timeout: POLL_TIMEOUT
         });
@@ -718,7 +714,7 @@ for (const scene of PHYSICS_RELEASE_TEST_CASES.filter(
         await installRenderHealthProbe(page);
         const failures = await installPageFailureMonitor(page);
         try {
-            await page.goto(`${scene.path}?backend=webgl2`);
+            await page.goto(`${scene.path}?backend=webgl2&test=1`);
             await expect(page.locator('body')).toHaveAttribute('data-example-ready', 'true', {
                 timeout: POLL_TIMEOUT
             });

@@ -62,6 +62,8 @@ export interface ExhibitRuntime extends Pick<
     readonly start: () => void;
 }
 
+const isTestMode = new URLSearchParams(location.search).get('test') === '1';
+
 function requireElement(selector: string): HTMLElement {
     const element = document.querySelector<HTMLElement>(selector);
     if (!element) throw new Error(`Physics exhibit requires ${selector}`);
@@ -219,7 +221,7 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
     directionLight.direction.set(-0.5, -1, -0.6);
     directionLight.color.set(1, 0.88, 0.72, 1);
     directionLight.amount = 2.4;
-    const shadowResolution = devicePixelRatio > 1 ? 2048 : 1024;
+    const shadowResolution = isTestMode ? 512 : devicePixelRatio > 1 ? 2048 : 1024;
     // The manual frustum spans 26 m across and 60 m in depth. Bias in shadow-texel units
     // prevents broad ceramic surfaces from self-shadowing at either display density.
     const shadowTexelDepth = 26 / shadowResolution / 60;

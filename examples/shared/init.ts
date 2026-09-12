@@ -4,6 +4,7 @@ import Stats from './stats';
 import { resolveExampleBackend } from './backend';
 import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
 import { createExampleLights, createExampleRenderPipeline } from './lighting';
+import { createTestFrameControl } from './test-frame-control';
 
 export { resolveExampleBackend };
 
@@ -134,6 +135,18 @@ export async function createExampleContext(
 
     console.info(`Stage uses ${renderer.backend}`);
 
+    const captureControl =
+        new URLSearchParams(location.search).get('test') === '1'
+            ? createTestFrameControl(
+                  ticker,
+                  () => renderer.waitForIdle(),
+                  new URLSearchParams(location.search).get('testClock') !== '1'
+              )
+            : undefined;
+    if (captureControl) {
+        window.__HILO3D_TEST_CAPTURE__ = captureControl;
+    }
+
     if (options.autoStart ?? true) ticker.start();
 
     return {
@@ -146,6 +159,10 @@ export async function createExampleContext(
         stats,
         orbitControls,
         dispose(): void {
+            captureControl?.dispose();
+            if (window.__HILO3D_TEST_CAPTURE__ === captureControl) {
+                delete window.__HILO3D_TEST_CAPTURE__;
+            }
             window.removeEventListener('resize', handleResize);
             orbitControls.dispose();
             stats.stop();
@@ -153,4 +170,14 @@ export async function createExampleContext(
             stage.destroy();
         }
     };
+}
+
+declare global {
+    interface Window {
+        __HILO3D_TEST_CAPTURE__?: {
+            waitForFrames(count: number): Promise<void>;
+            pause(): Promise<void>;
+            resume(): void;
+        };
+    }
 }

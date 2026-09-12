@@ -42,6 +42,8 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
 ] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
+    'scriptable_pipeline.html',
+    'screen_space_global_illumination_chapel.html',
     'cascaded_shadows.html',
     'clustered_forward_plus_sponza.html',
     'clustered_forward_plus_lumen.html',
@@ -54,6 +56,7 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
+    'cascaded_shadows.html': { test: '1' },
     'clustered_forward_plus_lumen.html': { test: '1' },
     'compute_eclipse_shrine.html': { test: '1' },
     'particle_gpu_nebula.html': { test: '1' },

@@ -317,6 +317,8 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'scriptable_pipeline.html',
+            'screen_space_global_illumination_chapel.html',
             'cascaded_shadows.html',
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
@@ -345,7 +347,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(155);
+        expect(genericCases).toHaveLength(151);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
@@ -376,6 +378,7 @@ describe('example release matrix contract', () => {
             'resourceManagerTest.html': 'resource-diagnostics'
         });
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
+            'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
             'compute_eclipse_shrine.html': { test: '1' },
             'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' },

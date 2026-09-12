@@ -122,6 +122,22 @@ was produced and verified by the enrolled baseline protocol; never overwrite imm
 baselines to make a candidate pass. Do not restore a legacy renderer for same-commit A/B testing;
 compare verified current-RHI snapshots from different commits instead.
 
+## Browser CI stability
+
+- Heavy example changes must pass the affected complete `HILO3D_UI_GROUP` (`csm`, `physics`,
+  `post-processing`, or `chromatic`) with `CI=true npm run test:ui:webgl2:ci`; a single passing
+  example is insufficient. Shared screenshot changes also require WebGPU browser coverage.
+- Use `test/ui/stable-capture.ts` for continuously rendered showcase screenshots and open those
+  examples with `?test=1`. Keep real draws, submission waits, pixels, and post-capture interaction
+  assertions. Do not duplicate capture controls or globally replace randomness/time.
+- CI grouping changes must pass `npx jiti scripts/check-ui-groups.ts`. Keep each group's blob
+  filename unique and retain timings. Investigate traces and same-runner timing history before
+  changing budgets; do not silence failures with retries, skips, or weaker pixel thresholds.
+- See `documentation/ENGINEERING_MODERNIZATION.md` for group commands and capture contracts.
+- Example teardown must stop its ticker before destroying animation/media resources. Retain
+  resources on persisted `pagehide` and resume on persisted `pageshow`; lifecycle tests must also
+  observe errors after teardown, not only while the page is running.
+
 ## Change and review hygiene
 
 - Keep changes scoped and preserve existing behavior unless the task explicitly changes it.

@@ -22,6 +22,24 @@ for (const backend of ['webgl2', 'webgpu']) {
         await expect(page.locator('body')).toHaveAttribute('data-animation-effect-count', '1');
         await expect(page.locator('body')).toHaveAttribute('data-animation-motion', 'Locomotion');
         await expect(page.locator('body')).toHaveAttribute('data-animation-effect', 'false');
+        // A cached page must remain usable; final disposal must cancel the ticker before
+        // destroying the animation, including RAF callbacks after the pagehide event.
+        await page.evaluate(() => {
+            window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+            window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+        });
+        await page.getByRole('button', { name: 'Run', exact: true }).click();
+        await expect(page.locator('body')).toHaveAttribute('data-animation-motion', 'Run');
+        await page.evaluate(async () => {
+            window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+            for (let frame = 0; frame < 3; frame++) {
+                await new Promise<void>(resolve => {
+                    requestAnimationFrame(() => {
+                        resolve();
+                    });
+                });
+            }
+        });
         expect(errors).toEqual([]);
     });
 }
