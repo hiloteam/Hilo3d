@@ -296,6 +296,13 @@ async function run(): Promise<void> {
                 }
                 advancing = true;
                 try {
+                    // Resize events are dispatched during the browser's rendering update,
+                    // before RAF callbacks. Drain that boundary before recording scene frames.
+                    await new Promise<void>(resolve => {
+                        requestAnimationFrame(() => {
+                            resolve();
+                        });
+                    });
                     for (let frame = 0; frame < count; frame++) {
                         context.stage.tick(1000 / 60);
                         await context.renderer.waitForIdle();

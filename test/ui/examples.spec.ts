@@ -908,8 +908,14 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await page.locator('#trainToggle').click();
         await expect(body).toHaveAttribute('data-csm-motion', 'false');
         await expect(page.locator('#lightningButton')).toBeVisible();
-        await page.locator('#lightningButton').click();
-        await expect(body).toHaveAttribute('data-csm-lightning', 'true', { timeout: 3000 });
+        const lightning = page.locator('#lightningButton');
+        await lightning.click({ trial: true });
+        const flashAtTrigger = await lightning.evaluate(button => {
+            if (!(button instanceof HTMLButtonElement)) throw new Error('Missing lightning button');
+            button.click();
+            return document.body.dataset['csmLightning'];
+        });
+        expect(flashAtTrigger).toBe('true');
         await expect(body).toHaveAttribute('data-csm-lightning', 'false');
 
         const lightsReadyImmediately = await page.locator('[data-time="dusk"]').evaluate(button => {

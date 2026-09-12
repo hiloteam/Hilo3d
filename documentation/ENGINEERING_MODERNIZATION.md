@@ -1005,7 +1005,7 @@ submission 完成、采集 compositor 像素，并在 `finally`
 time 推进仿真，保持现有动作和物理断言。CSM 的虚拟时钟专项显式使用 `testClock=1`，由 Playwright
 clock 控制 RAF/timer，不让真实 GPU fence 阻塞虚拟时间推进；其余 CSM 用例使用提交限流。Chromatic 的
 `test=1` 模式通过专用 `advanceFrames()`
-固定推进真实 Stage 帧并等待提交，测试断言帧数精确增长、原生 draw/pass 和像素变化，正常页面仍由 ticker 连续驱动。Physics 测试使用 512px 阴影图，CSM 保留其等预算阴影对比规格，Chromatic 保留实际后处理链。随机种子、动画相位和分辨率按示例已有合同控制，禁止全局替换随机数或时钟以掩盖时序错误。
+先跨过浏览器 resize/RAF 事件边界，再固定推进真实 Stage 帧并等待提交，测试断言帧数精确增长、原生 draw/pass 和像素变化，正常页面仍由 ticker 连续驱动。Physics 测试使用 512px 阴影图，CSM 保留其等预算阴影对比规格，Chromatic 保留实际后处理链。随机种子、动画相位和分辨率按示例已有合同控制，禁止全局替换随机数或时钟以掩盖时序错误。
 
 CSM 和 Physics 截图前等待两个实际 ticker 帧，不能以 RAF 回调数代替已渲染帧数；限流期间 RAF 仍可执行，但场景可能尚未更新。等待者在页面销毁时会被清理并拒绝。
 

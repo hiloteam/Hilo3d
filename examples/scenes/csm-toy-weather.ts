@@ -250,7 +250,7 @@ void main() {
 }
 
 /** Three small portable draws, hidden in clear weather; no per-particle runtime allocations. */
-export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
+export function createCsmToyWeather(stage: Hilo3d.Node): CsmToyWeather {
     Hilo3d.registerUniformBlockBinding(WEATHER_BLOCK_NAME);
     const block = Hilo3d.UniformBuffer.fromSchema(
         Hilo3d.createStd140Layout({
@@ -300,6 +300,7 @@ export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
     let strikeCount = 0;
     let pulseRemaining = 0;
     let pulseDuration = 0.25;
+    let pulseEndsAt = 0;
     let flash = 0;
     let flashPeak = 1;
     const startLightning = (): void => {
@@ -307,6 +308,7 @@ export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
         lightning.x = Math.sin(strikeCount * 2.4) * 6;
         pulseDuration = reducedMotion.matches ? 0.6 : 0.25;
         pulseRemaining = pulseDuration;
+        pulseEndsAt = performance.now() + pulseDuration * 1000;
         flashPeak = reducedMotion.matches ? 0.2 : 1;
         flash = flashPeak;
         block.set('u_weatherFlash', flash);
@@ -342,7 +344,7 @@ export function createCsmToyWeather(stage: Hilo3d.Stage): CsmToyWeather {
             const seconds = Math.max(0, Math.min(dt, 50)) / 1000;
             // A manually triggered flash always decays, including while motion is paused.
             if (pulseRemaining > 0) {
-                pulseRemaining = Math.max(0, pulseRemaining - seconds);
+                pulseRemaining = Math.max(0, (pulseEndsAt - performance.now()) / 1000);
                 flash = flashPeak * Math.pow(pulseRemaining / pulseDuration, 2);
                 block.set('u_weatherFlash', flash);
                 lightning.visible = pulseRemaining > 0;

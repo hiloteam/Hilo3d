@@ -354,8 +354,8 @@ for (const backend of backends) {
 
             await page.setViewportSize({ width: 760, height: 540 });
             const resized = await settle(page, 5);
-            expect(resized.width).not.toBe(initial.width);
-            expect(resized.height).not.toBe(initial.height);
+            expect(resized.width).toBe(760);
+            expect(resized.height).toBe(540);
             expect(resized.passCount).toBe(initial.passCount);
             await page.locator('#resetView').click();
             await settle(page);

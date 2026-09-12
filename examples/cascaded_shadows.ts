@@ -494,6 +494,7 @@ for (const button of weatherButtons)
     });
 lightningButton.addEventListener('click', () => {
     weatherEffects.triggerLightning();
+    document.body.dataset['csmLightning'] = String(weatherEffects.lightningFlash > 0);
 });
 snowAmount.addEventListener('input', () => {
     snowCover.setAccumulation(snowAmount.valueAsNumber / 100);
