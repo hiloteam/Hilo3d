@@ -1,5 +1,6 @@
 import Camera from '../../camera/Camera';
 import type Mesh from '../../core/Mesh';
+import Node from '../../core/Node';
 import type { DispatchEvent } from '../../core/EventDispatcher';
 import { LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP } from '../../constants/webgl';
 import type Texture from '../../texture/Texture';
@@ -1122,9 +1123,16 @@ class SharedRendererDriver
 
     private prepareAddonRendererResources(scene: RendererScene, camera: Camera): void {
         scene.traverse(node => {
+            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
+            // Layers belong to each renderable node; a masked parent may still
+            // contain children visible to this camera. Hidden addon streams must
+            // not be rewritten after another camera recorded their first use.
+            if (((camera.visibility >>> 0) & (node.layer >>> 0)) === 0)
+                return Node.TRAVERSE_STOP_NONE;
             const extension = getRenderNodeExtension(node);
             extension?.prepareRenderer?.(this);
             extension?.prepareView?.(camera);
+            return Node.TRAVERSE_STOP_NONE;
         });
     }
 

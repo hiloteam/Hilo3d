@@ -28,6 +28,9 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 的 Mesh 与 Light；后绘制的 Camera 默认可以 load 前一 Camera 的 color，从而组合 3D 世界与
 `Camera2D`/Sprite UI。2D 系统的完整合同见 [`2D_RENDERING.md`](./2D_RENDERING.md)。
 
+相机相关的addon准备阶段遵守相同的可见性合同：`visible=false`跳过整棵子树，layer与当前Camera不相交只跳过该节点，继续检查后代。只有当前相机可见的addon调用`prepareRenderer`与
+`prepareView`，避免HUD相机重写已由世界相机录入当前submission的粒子实例流。
+
 后端选择发生在创建阶段，而不是每次渲染时：
 
 - `Stage` 与 `Renderer` 只通过异步 `Stage.create()` / `Renderer.create()` 创建。

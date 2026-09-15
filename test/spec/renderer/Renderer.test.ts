@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import type Camera from '../../../src/camera/Camera';
 import Fog from '../../../src/core/Fog';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
@@ -12,6 +13,10 @@ import type {
     RenderPipelineFactory,
     RenderPipelineRequirements
 } from '../../../src/render/pipeline/RenderPipeline';
+import {
+    RENDER_NODE_EXTENSION,
+    type RenderNodeExtension
+} from '../../../src/render/pipeline/RenderNodeExtension';
 import type * as RHIFactoryExports from '../../../src/render/rhi/RHIFactory';
 import type {
     WebGL2RHIDeviceCreateOptions,
@@ -85,6 +90,66 @@ afterEach(() => {
 });
 
 describe('Renderer public entry point', () => {
+    it.each(['surface', 'target'] as const)(
+        'prepares addon streams only for visible camera layers through %s rendering',
+        async output => {
+            const renderer = await Renderer.create({
+                backend: 'webgl2',
+                domElement: document.createElement('canvas'),
+                width: 8,
+                height: 8,
+                antialias: false
+            });
+            activeRenderers.push(renderer);
+            const scene = new Node({ layer: 1 });
+            const worldCamera = new PerspectiveCamera({ visibility: 2 });
+            const hudCamera = new PerspectiveCamera({ visibility: 4, clearColor: false });
+            const resources: string[] = [];
+            const views: string[] = [];
+            const worldStream = new Float32Array(1);
+            const addon = (node: Node, name: string, stream?: Float32Array): Node => {
+                const extension: RenderNodeExtension = {
+                    gpu: null,
+                    prepareRenderer: () => {
+                        resources.push(name);
+                    },
+                    prepareView: (camera: Camera) => {
+                        views.push(`${name}:${String(camera.visibility)}`);
+                        if (stream) stream[0] = camera.visibility;
+                    }
+                };
+                return Object.assign(node, { [RENDER_NODE_EXTENSION]: extension });
+            };
+            addon(new Node({ layer: 2 }), 'world', worldStream).addTo(scene);
+            const hudParent = addon(new Node({ layer: 4 }), 'hud').addTo(scene);
+            addon(new Node({ layer: 2 }), 'world-under-hud').addTo(hudParent);
+            addon(new Node({ layer: 2, visible: false }), 'hidden').addTo(scene);
+            const hiddenParent = new Node({ visible: false }).addTo(scene);
+            addon(new Node({ layer: 6 }), 'hidden-descendant').addTo(hiddenParent);
+            const target =
+                output === 'target' ? renderer.createRenderTarget({ width: 8, height: 8 }) : null;
+            try {
+                renderer.renderFrame(frame => {
+                    if (target) {
+                        frame.renderToTarget(target, scene, worldCamera);
+                        frame.renderToTarget(target, scene, hudCamera);
+                    } else {
+                        frame.render(scene, worldCamera);
+                        frame.render(scene, hudCamera);
+                    }
+                });
+                await renderer.waitForIdle();
+                expect(views).toEqual(['world:2', 'world-under-hud:2', 'hud:4']);
+                expect(resources).toEqual(['world', 'world-under-hud', 'hud']);
+                // A later HUD camera must not rewrite a world instance stream
+                // whose first use was recorded earlier in the same submission.
+                expect(worldStream[0]).toBe(2);
+            } finally {
+                target?.destroy();
+            }
+        }
+    );
+
     it('returns the shared RHI renderer directly behind the unified contract', async () => {
         expect(() => {
             Reflect.construct(Renderer, []);
