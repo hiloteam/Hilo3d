@@ -36,7 +36,11 @@ const mesh = new Hilo3d.Mesh({
 stage.addChild(mesh);
 
 let gIndex = 0;
-setInterval(function () {
+let elapsed = 0;
+mesh.onUpdate = deltaTime => {
+    elapsed += deltaTime;
+    if (elapsed < 500) return;
+    elapsed %= 500;
     const targetVertices = g.vertices;
     const targetIndices = g.indices;
     const targetNormals = g.normals;
@@ -61,4 +65,4 @@ setInterval(function () {
     if (gIndex >= gs.length) {
         gIndex = 0;
     }
-}, 500);
+};

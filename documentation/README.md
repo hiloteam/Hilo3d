@@ -35,6 +35,9 @@ committed.
 - [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md): original Blender sculpture, 192 local lights,
   Clustered Forward+ controls, GPU diagnostics, and browser acceptance.
 
+- [Example catalog](./EXAMPLE_CATALOG.md): reviewed purposes for all 93 examples, gallery
+  navigation, and cleanup decisions.
+
 ## Source-of-truth order
 
 When documents disagree, use this order:
