@@ -480,11 +480,13 @@ select:focus-visible {
     min-width: 0;
     min-height: 0;
     background: #05070b;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
 }
 
 .viewerToolbar {
     display: flex;
+    min-width: 0;
     min-height: 70px;
     align-items: center;
     justify-content: space-between;
@@ -492,6 +494,10 @@ select:focus-visible {
     padding: 12px 18px;
     border-bottom: 1px solid var(--gallery-border);
     background: rgba(13, 17, 26, 0.96);
+}
+
+.viewerActions {
+    flex-shrink: 0;
 }
 
 .viewerIdentity {

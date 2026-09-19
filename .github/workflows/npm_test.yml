@@ -255,7 +255,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [catalog, csm, physics, post-processing, chromatic]
+        group: [catalog, catalog-scenes, csm, physics, post-processing, chromatic]
 
     steps:
       - name: Check out repository

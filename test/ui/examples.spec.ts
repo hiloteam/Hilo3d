@@ -491,6 +491,15 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`gallery filters survive reload and backend changes @${backend}`, async ({ page }) => {
+        // This test exercises the gallery's DOM/URL state, including an opposite-backend switch.
+        // Keep that switch out of native GPU work in the hosted WebGL2 lane. Actual iframe draws
+        // and backend health remain covered by the gallery integration and page release gates.
+        await page.route('**/quickStart.html*', route =>
+            route.fulfill({
+                contentType: 'text/html',
+                body: '<!doctype html><title>Gallery navigation fixture</title>'
+            })
+        );
         await page.goto(`list.html?backend=${backend}`);
         const topics = page.locator('#categorySelect');
         const results = page.locator('.exampleButton');
@@ -532,6 +541,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await page
             .locator('#backendSelect')
             .selectOption(backend === 'webgl2' ? 'webgpu' : 'webgl2');
+        await expect(page.locator('#exampleFrame')).toHaveAttribute(
+            'src',
+            new RegExp(`[?&]backend=${backend === 'webgl2' ? 'webgpu' : 'webgl2'}(?:&|$)`, 'u')
+        );
         await expect(page.locator('#exampleSearch')).toHaveValue('texture depth');
         await expect(page.locator('#categorySelect')).toHaveValue('rendering');
         await page.locator('#clearFilters').click();
@@ -581,7 +594,18 @@ test('gallery restores history, tolerates malformed hashes and opens mobile sear
     await page.locator('#exampleSearch').fill('Geometry Primitives');
     await page.locator('[data-example-id="geometry_primitives"]').click();
     await expect(page.locator('#sidebarToggle')).toHaveAttribute('aria-expanded', 'false');
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(344);
+    // A wider fallback font reproduces Linux's min-content pressure on macOS as well.
+    await page.addStyleTag({ content: '.viewerTitle { font-family: monospace; }' });
+    for (const width of [344, 320]) {
+        await page.setViewportSize({ width, height: 740 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+        for (const selector of ['.viewerToolbar', '.viewerIdentity', '.viewerActions']) {
+            const bounds = await page.locator(selector).boundingBox();
+            if (!bounds) throw new Error(`${selector} is missing from the mobile gallery`);
+            expect(bounds.x).toBeGreaterThanOrEqual(0);
+            expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        }
+    }
     expect(errors).toEqual([]);
 });
 

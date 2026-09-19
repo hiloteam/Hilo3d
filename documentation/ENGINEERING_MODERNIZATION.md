@@ -40,7 +40,7 @@
   `npm run validate`（或等价别名 `npm run release:check`）执行完整双后端浏览器矩阵。npm
   tag 发布 workflow 和 npm 生命周期只执行快速、确定性的发布检查，再由 `prepack`
   构建 tarball，避免重复运行功能 CI。默认 hosted
-  CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和五个隔离的 WebGL 2
+  CI 把等价的 portable 门禁拆成预检、coverage、RHI、包/API/文档和六个隔离的 WebGL 2
   presentation/UI/视觉工作组；WebGPU native/offscreen RHI 保持独立进程，non-evidence portable
   benchmark smoke 则由按性能路径、定时或手动触发的独立工作流执行。
 - 旧 Gulp、Webpack、Babel、Mocha、JSDoc、手写声明、旧 `build/`、已提交的旧
@@ -982,7 +982,7 @@ Actions、锁文件安装、固定 npm 10.9.4 和显式 Chromium 系统依赖，
 20/22/24 上重复运行同一套高成本 GPU 矩阵。PR、`dev`、`master`
 与版本 tag 先执行 modernity、格式、声明、lint、TypeScript project
 references 和示例目录合同预检；预检成功后并行执行两个 Vitest
-coverage 分片、RHI/架构、包/API/文档，以及五个 Playwright WebGL 2 页面/交互/视觉工作组。每个 GPU
+coverage 分片、RHI/架构、包/API/文档，以及六个 Playwright WebGL 2 页面/交互/视觉工作组。每个 GPU
 job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；coverage 模式因此关闭 Vitest 文件并行，同时保留跨 runner 的两个分片。coverage
 artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套 `reports/vitest` 目录只读取 blob
 report；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的 `Required CI`
@@ -997,12 +997,22 @@ coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI �
 
 ### 重型浏览器测试的维护约定
 
-`HILO3D_UI_GROUP` 将同一 hosted UI 命令分成 `catalog`、`csm`、`physics`、 `post-processing` 和
+`HILO3D_UI_GROUP` 将同一 hosted UI 命令分成
+`catalog`、`catalog-scenes`、`csm`、`physics`、`post-processing` 和
 `chromatic`。默认不设该变量时仍运行完整矩阵。分组规则位于
 `scripts/playwright-ui-groups.ts`；预检执行
-`npx jiti scripts/check-ui-groups.ts`，用 Playwright 实际发现的测试 ID 验证五组的并集等于完整 WebGL2 清单，且没有重复或空组。新增测试必须进入恰好一组，新增工作组时同步修改规则、workflow
+`npx jiti scripts/check-ui-groups.ts`，用 Playwright 实际发现的测试 ID 验证六组的并集等于完整 WebGL2 清单，且没有重复或空组。新增测试必须进入恰好一组，新增工作组时同步修改规则、workflow
 matrix 和清单检查。Chromatic 与 SSGI
 chapel 已由双后端专项覆盖，不再重复运行通用首帧门禁；SSGI 专项继续验证启用/关闭后的像素差异、页面错误和 GPU 健康。
+
+`catalog-scenes` 承担自动发现的 HTML 原生绘制/像素验收；`catalog`
+承担画廊导航、2D 交互、运行时交互和基础视觉用例。拆分依据为同类 GitHub hosted
+runner 的耗时产物：dev 的 run 34704509285 中，原 catalog
+87 个用例累计 1424.9 秒，其中 72 个通用页面用例占 1146.5 秒；PR #125 的 run
+35451054903 在新增画廊用例后超过 1500 秒整组期限。两个分组继续各使用一个 GPU
+worker、独立 blob 文件和原有逐例/整组超时；清单检查保证每个用例恰好运行一次。画廊筛选/URL 状态测试使用轻量 iframe 文档，避免仅验证后端选择菜单时在 hosted
+WebGL2 通道启动真实 WebGPU
+presentation；原有双后端画廊集成和全部页面的原生绘制、像素、GPU 健康检查保留。
 
 使用 `createExampleContext()` 的示例在显式 `?test=1` 时提供共享截图控制，正常页面不暴露该控制。
 `test/ui/stable-capture.ts` 先确认真实 native draw，再暂停 ticker、等待 renderer
