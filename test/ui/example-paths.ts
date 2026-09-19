@@ -29,6 +29,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
     'bloom.html',
     'clustered_forward_plus_sponza.html',
     'clustered_forward_plus_lumen.html',
+    'dynamic_global_illumination_atelier.html',
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
     'shadow_residency_sanctum.html',
@@ -47,6 +48,7 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
     'cascaded_shadows.html',
     'clustered_forward_plus_sponza.html',
     'clustered_forward_plus_lumen.html',
+    'dynamic_global_illumination_atelier.html',
     'volumetric_neon_reliquary.html',
     'stormfront_observatory.html',
     'shadow_residency_sanctum.html',
@@ -58,6 +60,7 @@ export const EXAMPLE_QUERY_PARAMETERS: Readonly<
 > = {
     'cascaded_shadows.html': { test: '1' },
     'clustered_forward_plus_lumen.html': { test: '1' },
+    'dynamic_global_illumination_atelier.html': { test: '1' },
     'compute_eclipse_shrine.html': { test: '1' },
     'particle_gpu_nebula.html': { test: '1' },
     'ground_truth_ambient_occlusion.html': { test: '1' },

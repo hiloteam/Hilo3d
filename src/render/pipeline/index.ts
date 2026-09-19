@@ -42,3 +42,8 @@ export type {
     RenderGraphTimelineSnapshot,
     RGPassTimestampKind
 } from '../graph/RenderGraphTimeline';
+
+export type {
+    DynamicGlobalIlluminationOptions,
+    DynamicGlobalIlluminationDiagnostics
+} from '../gi/DynamicGlobalIllumination';

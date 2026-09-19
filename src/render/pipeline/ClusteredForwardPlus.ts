@@ -1,3 +1,12 @@
+import {
+    DynamicGlobalIlluminationController,
+    snapshotDynamicGlobalIlluminationOptions,
+    DDGI_GLSL_SAMPLING_SOURCE,
+    type DynamicGlobalIlluminationOptions,
+    type DynamicGlobalIlluminationSettings,
+    type DynamicGlobalIlluminationDiagnostics
+} from '../gi/DynamicGlobalIllumination';
+import { RayTracingScene } from '../gi/RayTracingScene';
 import type Camera from '../../camera/Camera';
 import PerspectiveCamera from '../../camera/PerspectiveCamera';
 import type Fog from '../../core/Fog';
@@ -20,6 +29,7 @@ import {
     type MaterialPipelineState
 } from '../../material/MaterialDefinition';
 import { resolveMaterialPassState } from '../../material/MaterialCompiler';
+import Color from '../../math/Color';
 import Matrix3 from '../../math/Matrix3';
 import Matrix4 from '../../math/Matrix4';
 import Quaternion from '../../math/Quaternion';
@@ -328,7 +338,9 @@ function clusteredTransparentShader(
     mesh: Mesh,
     material: PBRMaterial,
     fog: Fog | null,
-    withShadows: boolean
+    withShadows: boolean,
+    withDynamicGlobalIllumination = false,
+    giSurface = false
 ): StorageGraphicsShader {
     let header = Shader.getHeader(
         mesh,
@@ -339,6 +351,8 @@ function clusteredTransparentShader(
         'forward'
     );
     header += '#define HILO_CLUSTERED_FORWARD 1\n';
+    if (withDynamicGlobalIllumination) header += '#define HILO_DYNAMIC_GI 1\n';
+    if (giSurface) header += '#define HILO_DDGI_SURFACE 1\n';
     if (withShadows && mesh.receiveShadows) {
         header += '#define HILO_CLUSTERED_SHADOWS 1\n';
     }
@@ -388,10 +402,80 @@ function clusteredTransparentShader(
             minBindingSize: 4
         }
     );
+    if (withDynamicGlobalIllumination) {
+        bindings.push({
+            name: 'ddgiProbes',
+            group: 3,
+            binding: 4,
+            kind: 'read-only-storage-buffer'
+        });
+    }
+    let fragmentSource = clusteredTransparentFragmentSource(baseShader.fs);
+    if (withDynamicGlobalIllumination) {
+        for (const marker of [
+            'void main(void)',
+            'vec3 diffuseLighting = directDiffuse + indirectDiffuse;'
+        ]) {
+            const index = fragmentSource.indexOf(marker);
+            if (index < 0 || fragmentSource.includes(marker, index + marker.length)) {
+                throw new Error(
+                    `DDGI shared PBR integration requires one shader marker: ${marker}`
+                );
+            }
+        }
+        fragmentSource = fragmentSource
+            .replace(
+                'void main(void)',
+                `
+${DDGI_GLSL_SAMPLING_SOURCE}
+void main(void)`
+            )
+            .replace(
+                'vec3 diffuseLighting = directDiffuse + indirectDiffuse;',
+                `
+mat4 ddgiInverseView = inverse(mat4(clusterFrameData.values[8u], clusterFrameData.values[9u],
+    clusterFrameData.values[10u], clusterFrameData.values[11u]));
+vec4 ddgiSample = hiloDDGISample((ddgiInverseView * vec4(v_fragPos, 1.0)).xyz,
+    normalize(mat3(ddgiInverseView) * N), normalize(mat3(ddgiInverseView) * V));
+vec3 ddgiDiffuseContribution = ddgiSample.rgb * iblDiffuseColor * materialAmbientOcclusion * gtaoDiffuseVisibility;
+indirectDiffuse = indirectDiffuse * (1.0 - ddgiSample.a) + ddgiDiffuseContribution;
+vec3 diffuseLighting = directDiffuse + indirectDiffuse;`
+            );
+    }
+    if (giSurface) {
+        fragmentSource = fragmentSource
+            .replace(
+                'void main(void)',
+                'layout(location=1) out vec4 ddgiDiffuseAlbedo;\nvoid main(void)'
+            )
+            .replace(
+                'vec3 diffuseLighting = directDiffuse + indirectDiffuse;',
+                `
+    float ddgiLayerTransmission = 1.0;
+    #ifdef HILO_HAS_CLEARCOAT
+        ddgiLayerTransmission *= 1.0 - clearcoatFactor * hiloFresnelSchlickScalar(0.04, max(abs(dot(clearcoatNormal, V)), 1e-4));
+    #endif
+    #ifdef HILO_HAS_FOG
+        float ddgiFogTransmission = 1.0;
+        #ifdef HILO_FOG_LINEAR
+            ddgiFogTransmission = (u_fogInfo.y - v_dist) / (u_fogInfo.y - u_fogInfo.x);
+        #elif defined(HILO_FOG_EXP)
+            ddgiFogTransmission = exp(-abs(u_fogInfo.x * v_dist));
+        #elif defined(HILO_FOG_EXP2)
+            ddgiFogTransmission = exp(-(u_fogInfo.x * v_dist) * (u_fogInfo.x * v_dist));
+        #endif
+        ddgiLayerTransmission *= clamp(ddgiFogTransmission, 0.0, 1.0);
+    #endif
+    hilo_FragColor = vec4(ddgiDiffuseContribution * ddgiLayerTransmission, ddgiSample.a);
+    ddgiDiffuseAlbedo = vec4(iblDiffuseColor * materialAmbientOcclusion * gtaoDiffuseVisibility * ddgiLayerTransmission, 1.0);
+    return;
+    vec3 diffuseLighting = directDiffuse + indirectDiffuse;`
+            );
+    }
     const result = createStorageGraphicsShaderFromPortable({
         label: `Clustered transparent PBR (${material.definition.id})`,
         portableVertexSource: baseShader.vs,
-        portableFragmentSource: clusteredTransparentFragmentSource(baseShader.fs),
+        portableFragmentSource: fragmentSource,
         bindings
     });
     CLUSTERED_TRANSPARENT_SHADER_CACHE.set(baseShader, result);
@@ -529,6 +613,8 @@ export interface ClusteredForwardPlusPipelineOptions {
      * The GPU Scene path reuses motion and material attributes and therefore requires `temporalAA`.
      */
     readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
+    /** World-space dynamic diffuse GI with visibility-aware probes and software BVH tracing. WebGPU only; disabled by default. */
+    readonly dynamicGlobalIllumination?: Readonly<DynamicGlobalIlluminationOptions> | false;
     /**
      * Hierarchical, temporally accumulated screen-space reflections. Disabled by default.
      * Enabling this production path requires both `hiZ` and `temporalAA`.
@@ -545,6 +631,8 @@ export interface ClusteredForwardPlusPipelineOptions {
 
 /** On-demand GPU counters plus current CPU database occupancy. */
 export interface ClusteredForwardPlusDiagnostics {
+    /** Submitted probe work, scene coverage, and bounded resource use, or null when disabled. */
+    readonly dynamicGlobalIllumination: Readonly<DynamicGlobalIlluminationDiagnostics> | null;
     /** Ordinary registered meshes currently occupying stable GPU Scene slots. */
     readonly objectCount: number;
     /** Visible-layer meshes routed through the shared Forward compatibility fallback. */
@@ -645,6 +733,7 @@ interface NormalizedOptions {
     readonly temporalAA: TemporalAASettings | null;
     readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
     readonly screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationSettings | null;
+    readonly dynamicGlobalIllumination: DynamicGlobalIlluminationSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
     readonly volumetricLighting: VolumetricLightingSettings | null;
     readonly variantManifest: Readonly<{
@@ -1113,6 +1202,17 @@ function bufferRequirementPlan(
               ) * 4;
     const storageBufferLengths = [
         FRAME_RECORD_BYTES,
+        ...(options.dynamicGlobalIllumination === null
+            ? []
+            : [
+                  options.dynamicGlobalIllumination.maxTriangles * 128,
+                  options.dynamicGlobalIllumination.maxLights * 80,
+                  128,
+                  options.dynamicGlobalIllumination.maxTriangles * 64,
+                  64 +
+                      options.dynamicGlobalIllumination.probeCounts.reduce((a, b) => a * b, 1) *
+                          2080
+              ]),
         ...(options.volumetricLighting === null
             ? []
             : [144, Math.max(1, options.volumetricLighting.localVolumes.length) * 48]),
@@ -1410,6 +1510,10 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.screenSpaceGlobalIllumination === false
             ? null
             : snapshotScreenSpaceGlobalIlluminationOptions(input.screenSpaceGlobalIllumination);
+    const dynamicGlobalIllumination =
+        input.dynamicGlobalIllumination === undefined || input.dynamicGlobalIllumination === false
+            ? null
+            : snapshotDynamicGlobalIlluminationOptions(input.dynamicGlobalIllumination);
     const screenSpaceReflections =
         input.screenSpaceReflections === undefined || input.screenSpaceReflections === false
             ? null
@@ -1538,6 +1642,7 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         temporalAA,
         groundTruthAmbientOcclusion,
         screenSpaceGlobalIllumination,
+        dynamicGlobalIllumination,
         screenSpaceReflections,
         volumetricLighting,
         variantManifest: Object.freeze({
@@ -3409,6 +3514,13 @@ float hiloClusteredShadow(
 }`;
 }
 
+function finishDDGISurfaceSource(source: string, surface: boolean): string {
+    if (!surface) return source;
+    const marker = source.indexOf('// DDGI_SURFACE_END');
+    if (marker < 0) throw new Error('DDGI surface shader marker is missing');
+    return `${source.slice(0, marker)}\n}`;
+}
+
 function gpuScenePBRShader(
     variant: Readonly<PBRMaterialVariant>,
     withMaterialAttributes: boolean,
@@ -3416,9 +3528,11 @@ function gpuScenePBRShader(
     withGroundTruthAmbientOcclusion: boolean,
     withCloudShadow: boolean,
     withShadows: boolean,
-    virtualShadows: Readonly<VirtualShadowMapSettings> | null
+    virtualShadows: Readonly<VirtualShadowMapSettings> | null,
+    withDynamicGlobalIllumination: boolean,
+    giSurface = false
 ): StorageGraphicsShader {
-    const cacheKey = `${variant.key}|attributes=${withMaterialAttributes ? '1' : '0'}|reflections=${withReflectionData ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|cloud-shadow=${withCloudShadow ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}|virtual-shadows=${virtualShadows === null ? '0' : `${String(virtualShadows.virtualResolution)}:${String(virtualShadows.pageSize)}:${String(virtualShadows.physicalPageCount)}`}`;
+    const cacheKey = `${variant.key}|gi-surface=${giSurface ? '1' : '0'}|ddgi=${withDynamicGlobalIllumination ? '1' : '0'}|attributes=${withMaterialAttributes ? '1' : '0'}|reflections=${withReflectionData ? '1' : '0'}|gtao=${withGroundTruthAmbientOcclusion ? '1' : '0'}|cloud-shadow=${withCloudShadow ? '1' : '0'}|shadows=${withShadows ? '1' : '0'}|virtual-shadows=${virtualShadows === null ? '0' : `${String(virtualShadows.virtualResolution)}:${String(virtualShadows.pageSize)}:${String(virtualShadows.physicalPageCount)}`}`;
     const cached = GPU_SCENE_PBR_SHADER_CACHE.get(cacheKey);
     if (cached !== undefined) return cached;
     const textureDeclarations = variant.textures
@@ -3476,6 +3590,13 @@ function gpuScenePBRShader(
             minBindingSize: 4
         }
     ];
+    if (withDynamicGlobalIllumination)
+        bindings.push({
+            name: 'ddgiProbes',
+            group: 0,
+            binding: 8,
+            kind: 'read-only-storage-buffer'
+        });
     for (let index = 0; index < variant.textures.length; index += 1) {
         const texture = variant.textures[index];
         if (texture === undefined) continue;
@@ -3637,7 +3758,8 @@ void main() {
     ${vertexUVWrites}
     gl_Position = gpuSceneClipPosition(objectBase, a_position);
 }`,
-        fragmentSource: `#version 310 es
+        fragmentSource: finishDDGISurfaceSource(
+            `#version 310 es
 precision highp float;
 precision highp int;
 #define HILO_PI 3.141592653589793
@@ -3649,6 +3771,7 @@ layout(std430) readonly buffer MaterialDataBlock { vec4 values[]; } materials;
 layout(std430) readonly buffer LightDataBlock { vec4 values[]; } lights;
 layout(std430) readonly buffer ClusterGridBlock { uvec2 values[]; } clusterGrid;
 layout(std430) readonly buffer ClusterIndexBlock { uint values[]; } clusterIndices;
+${withDynamicGlobalIllumination ? DDGI_GLSL_SAMPLING_SOURCE : ''}
 ${textureDeclarations}
 ${withGroundTruthAmbientOcclusion ? 'uniform sampler2D u_gtaoTexture;' : ''}
 ${
@@ -3705,6 +3828,7 @@ flat in uint v_materialIndex;
 flat in uint v_objectFlags;
 flat in uint v_objectLayer;
 layout(location=0) out vec4 color;
+${giSurface ? 'layout(location=1) out vec4 ddgiDiffuseAlbedo;' : ''}
 ${withMaterialAttributes ? 'layout(location=1) out vec4 materialAttributes;' : ''}
 ${
     withReflectionData
@@ -3976,6 +4100,16 @@ void main() {
     vec3 lighting = frameData.values[31u].rgb * surface.iblDiffuseColor *
         ambientDiffuseOcclusion * HILO_INVERSE_PI;
     ${
+        withDynamicGlobalIllumination
+            ? `
+    mat4 ddgiInverseView = inverse(mat4(frameData.values[8u], frameData.values[9u], frameData.values[10u], frameData.values[11u]));
+    vec4 ddgiSample = hiloDDGISample((ddgiInverseView * vec4(v_viewPosition, 1.0)).xyz,
+        normalize(mat3(ddgiInverseView) * normal), normalize(mat3(ddgiInverseView) * viewDirection));
+    vec3 ddgiDiffuseContribution = ddgiSample.rgb * surface.iblDiffuseColor * ambientDiffuseOcclusion;
+    lighting = lighting * (1.0 - ddgiSample.a) + ddgiDiffuseContribution;`
+            : ''
+    }
+    ${
         withReflectionData
             ? `float reflectionNdotV = max(abs(dot(normal, viewDirection)), 0.0001);
     vec3 ssrReflectionResponse = hiloFresnelSchlick(
@@ -3988,6 +4122,14 @@ void main() {
     lighting += ssrFallbackSpecular;
     reflectionResponse = vec4(ssrReflectionResponse, 1.0);
     reflectionFallbackSpecular = vec4(ssrFallbackSpecular, 1.0);`
+            : ''
+    }
+    ${
+        giSurface
+            ? `
+    color = vec4(ddgiDiffuseContribution, ddgiSample.a);
+    ddgiDiffuseAlbedo = vec4(surface.iblDiffuseColor * ambientDiffuseOcclusion, 1.0);
+    // DDGI_SURFACE_END`
             : ''
     }
     float cloudShadow = 1.0;
@@ -4012,6 +4154,8 @@ void main() {
         ${variant.coverageMode === 'mask' ? '1.0' : 'coverageAlpha'}
     );
 }`,
+            giSurface
+        ),
         bindings
     });
     GPU_SCENE_PBR_SHADER_CACHE.set(cacheKey, shader);
@@ -4909,7 +5053,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #fallbackTransparentExcludedMeshes: Mesh[] = [];
     readonly #clusteredTransparentExcludedMeshes: Mesh[] = [];
     readonly #clusteredTransparentShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
-    readonly #clusteredSceneStorageBuffers: readonly MutableSceneStorageBufferBinding[] = [
+    readonly #clusteredSceneStorageBuffers: MutableSceneStorageBufferBinding[] = [
         { buffer: INVALID_BUFFER },
         { buffer: INVALID_BUFFER },
         { buffer: INVALID_BUFFER },
@@ -4977,6 +5121,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #temporalReactiveMaskDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionController | null;
     readonly #screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationController | null;
+    readonly #dynamicGlobalIllumination: DynamicGlobalIlluminationController | null;
+    readonly #rayTracingScene: RayTracingScene | null;
+    readonly #giSurfacePasses = new WeakMap<GPUDrivenRenderPass, GPUDrivenRenderPass>();
+    readonly #giSurfaceShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
+    readonly #giSurfaceBatchPass = new GPUDrivenRenderBatchPass('DDGI hybrid surface data');
+    #giSurfaceVariant: MutableClusteredSceneShaderVariant | null = null;
+    #ddgiProbeData: RenderGraphBufferHandle | null = null;
     readonly #screenSpaceReflections: ScreenSpaceReflectionsController | null;
     readonly #reflectionDataFormat: RenderPipelineTextureFormat;
     readonly #volumetricLighting: VolumetricLightingController | null;
@@ -5277,7 +5428,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             options.screenSpaceGlobalIllumination === null
                 ? null
                 : new ScreenSpaceGlobalIlluminationController(
-                      options.screenSpaceGlobalIllumination
+                      options.screenSpaceGlobalIllumination,
+                      options.dynamicGlobalIllumination !== null
                   );
         this.#reflectionDataFormat =
             context.capabilities.supportsTextureFormat('rg11b10ufloat', 'color-attachment') &&
@@ -5293,6 +5445,23 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       options.temporalAA?.renderScale ?? 1,
                       options.hiZLevelCount
                   );
+        this.#dynamicGlobalIllumination =
+            options.dynamicGlobalIllumination === null
+                ? null
+                : new DynamicGlobalIlluminationController(
+                      options.dynamicGlobalIllumination,
+                      context
+                  );
+        this.#rayTracingScene =
+            options.dynamicGlobalIllumination === null
+                ? null
+                : new RayTracingScene({
+                      maxTriangles: options.dynamicGlobalIllumination.maxTriangles,
+                      unsupported: options.dynamicGlobalIllumination.unsupported,
+                      texturePolicy: options.dynamicGlobalIllumination.texturePolicy
+                  });
+        if (this.#dynamicGlobalIllumination !== null)
+            this.#clusteredSceneStorageBuffers.push({ buffer: INVALID_BUFFER });
         this.#volumetricLighting =
             options.volumetricLighting === null
                 ? null
@@ -5619,6 +5788,14 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             if (shadowResources !== null && this.#gpuShadowMeshes.length !== 0) {
                 this.recordGPUShadows(context, shadowResources);
             }
+        }
+        this.#ddgiProbeData = null;
+        if (this.#dynamicGlobalIllumination !== null && this.#rayTracingScene !== null) {
+            const scene = this.#rayTracingScene.update(context.scene, context.camera.visibility);
+            this.#ddgiProbeData = this.#dynamicGlobalIllumination.record(context, {
+                scene,
+                lights: this.#collectedLights
+            }).probeData;
         }
         this.packLights(context, shadowResources);
         this.packShadowFrame(shadowResources);
@@ -5961,7 +6138,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 sceneScale,
                 frame.historyValid
             ) ?? null;
-        this.recordColorPasses(context, {
+        const colorResources = {
             frameBuffer,
             objects,
             visible,
@@ -5980,7 +6157,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             cloudShadow: atmospherePrerequisites?.cloudShadow ?? null,
             shadowResources,
             virtualShadowResources
-        });
+        };
+        this.recordColorPasses(context, colorResources);
         if (fallbackCulling !== null && this.#clusteredDeformedObjectCount !== 0) {
             this.recordClusteredOpaque(
                 context,
@@ -6019,6 +6197,45 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ambientOcclusion
             );
         }
+        let hybridBaseline: RenderGraphTextureHandle | undefined;
+        let hybridAlbedo: RenderGraphTextureHandle | undefined;
+        if (
+            this.#dynamicGlobalIllumination !== null &&
+            this.#screenSpaceGlobalIllumination !== null
+        ) {
+            hybridBaseline = context.graph.createTexture('DDGI outgoing diffuse baseline', {
+                format: 'rgba16float',
+                extent: { relativeTo: 'output', scale: sceneScale }
+            });
+            hybridAlbedo = context.graph.createTexture('DDGI diffuse receiver reflectance', {
+                format: 'rgba8unorm',
+                extent: { relativeTo: 'output', scale: sceneScale }
+            });
+            this.recordColorPasses(
+                context,
+                {
+                    ...colorResources,
+                    sceneColor: hybridBaseline,
+                    materialAttributes: null,
+                    reflectionResponse: null,
+                    fallbackSpecular: null
+                },
+                hybridAlbedo
+            );
+            if (fallbackCulling !== null && this.#clusteredDeformedObjectCount !== 0) {
+                this.recordClusteredOpaque(
+                    context,
+                    fallbackCulling,
+                    hybridBaseline,
+                    sceneDepth,
+                    frameBuffer,
+                    lights,
+                    clusterGrid,
+                    clusterIndices,
+                    hybridAlbedo
+                );
+            }
+        }
         let globallyIlluminatedSceneColor = sceneColor;
         if (this.#screenSpaceGlobalIllumination !== null) {
             if (temporalFrame === null || temporalMotion === null || materialAttributes === null) {
@@ -6027,6 +6244,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 );
             }
             globallyIlluminatedSceneColor = this.#screenSpaceGlobalIllumination.record(context, {
+                ...(hybridBaseline === undefined || hybridAlbedo === undefined
+                    ? {}
+                    : { hybridBaseline, hybridAlbedo }),
                 sceneColor,
                 sceneDepth,
                 materialAttributes,
@@ -6245,6 +6465,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#groundTruthAmbientOcclusion?.frameSubmitted(frameIndex);
         this.#screenSpaceGlobalIllumination?.frameSubmitted(frameIndex);
+        this.#dynamicGlobalIllumination?.frameSubmitted(frameIndex);
         this.#atmosphere?.frameSubmitted(frameIndex);
         this.#volumetricLighting?.frameSubmitted(frameIndex);
         this.#autoExposure?.frameSubmitted(frameIndex);
@@ -6274,11 +6495,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#pendingCamera = null;
         this.#groundTruthAmbientOcclusion?.frameDiscarded(frameIndex);
         this.#screenSpaceGlobalIllumination?.frameDiscarded(frameIndex);
+        this.#dynamicGlobalIllumination?.frameDiscarded(frameIndex);
         this.#atmosphere?.frameDiscarded(frameIndex);
         this.#volumetricLighting?.frameDiscarded(frameIndex);
         this.#autoExposure?.frameDiscarded(frameIndex);
         this.#temporal?.frameDiscarded(frameIndex);
         this.#virtualShadows?.frameDiscarded(frameIndex);
+    }
+
+    setDynamicGlobalIlluminationIntensity(intensity: number): void {
+        if (this.#dynamicGlobalIllumination === null)
+            throw new Error('Dynamic global illumination is disabled');
+        this.#dynamicGlobalIllumination.setIntensity(intensity);
+    }
+
+    setDynamicGlobalIlluminationEnvironment(color: Readonly<Color>): void {
+        if (this.#dynamicGlobalIllumination === null)
+            throw new Error('Dynamic global illumination is disabled');
+        this.#dynamicGlobalIllumination.setEnvironment(color);
     }
 
     async readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>> {
@@ -6320,6 +6554,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             cluster.data.byteLength / 4
         );
         return Object.freeze({
+            dynamicGlobalIllumination: this.#dynamicGlobalIllumination?.getDiagnostics() ?? null,
             objectCount: this.#objectCount,
             fallbackObjectCount: this.#fallbackObjectCount,
             clusteredTransparentObjectCount: this.#clusteredTransparentObjectCount,
@@ -6417,6 +6652,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#groundTruthAmbientOcclusion?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#dynamicGlobalIllumination?.destroy();
+            this.#rayTracingScene?.clear();
         } catch (error) {
             failures.push(error);
         }
@@ -6688,7 +6929,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 this.#options.groundTruthAmbientOcclusion !== null,
                 this.#options.atmosphere !== null && this.#options.atmosphere.clouds !== null,
                 withShadows,
-                withVirtualShadows ? this.#options.virtualShadows : null
+                withVirtualShadows ? this.#options.virtualShadows : null,
+                this.#options.dynamicGlobalIllumination !== null
             ),
             pipelineState: Object.freeze({
                 ...requireBucketPassState(logical.material, 'forward'),
@@ -6846,6 +7088,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#fallbackOpaqueExcludedMeshes.length = 0;
         this.#clusteredOpaqueExcludedMeshes.length = 0;
         this.#clusteredOpaqueShaderByMesh.clear();
+        this.#giSurfaceShaderByMesh.clear();
         this.#fallbackTransparentMeshes.length = 0;
         this.#clusteredTransparentMeshes.length = 0;
         this.#fallbackTransparentExcludedMeshes.length = 0;
@@ -7080,19 +7323,67 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         withShadows: boolean
     ): void {
+        if (
+            this.#dynamicGlobalIllumination !== null &&
+            this.#fallbackOpaqueMeshes.some(
+                mesh =>
+                    mesh.useInstanced &&
+                    mesh.material instanceof PBRMaterial &&
+                    mesh.material.lightType === 'PBR'
+            )
+        ) {
+            throw new Error(
+                'Dynamic GI instanced PBR receivers require registered GPU Scene buckets'
+            );
+        }
         // The built-in shader keeps skinning, morphing, UV transforms, and layered glTF PBR on
         // their canonical shared implementation while group three replaces the fixed light UBO
         // with the GPU Scene clustered databases. GTAO currently owns that same pass-global group,
         // so those frames retain the compatibility path until the two resources share one ABI.
+        if (
+            this.#dynamicGlobalIllumination !== null &&
+            (this.#groundTruthAmbientOcclusion !== null || this.#atmosphere !== null) &&
+            this.#fallbackOpaqueMeshes.some(mesh => clusteredOpaqueMaterial(mesh) !== null)
+        ) {
+            throw new Error(
+                'Dynamic GI with GTAO or atmosphere requires rigid opaque PBR receivers registered in GPU Scene buckets'
+            );
+        }
         if (this.#groundTruthAmbientOcclusion === null && this.#atmosphere === null) {
             const fog = context.scene.fog ?? null;
             for (const mesh of this.#fallbackOpaqueMeshes) {
                 const material = clusteredOpaqueMaterial(mesh);
                 if (material === null) continue;
-                const shader = clusteredTransparentShader(mesh, material, fog, withShadows);
-                if (!this.admitMaterialVariant(shader)) continue;
+                const shader = clusteredTransparentShader(
+                    mesh,
+                    material,
+                    fog,
+                    withShadows,
+                    this.#dynamicGlobalIllumination !== null
+                );
+                if (!this.admitMaterialVariant(shader)) {
+                    if (this.#dynamicGlobalIllumination !== null)
+                        throw new Error('Dynamic GI receiver material variant budget exhausted');
+                    continue;
+                }
                 this.#clusteredOpaqueMeshes.push(mesh);
                 this.#clusteredOpaqueShaderByMesh.set(mesh, shader);
+                if (
+                    this.#dynamicGlobalIllumination !== null &&
+                    this.#screenSpaceGlobalIllumination !== null
+                ) {
+                    const surfaceShader = clusteredTransparentShader(
+                        mesh,
+                        material,
+                        fog,
+                        withShadows,
+                        true,
+                        true
+                    );
+                    if (!this.admitMaterialVariant(surfaceShader))
+                        throw new Error('DDGI hybrid surface variant budget exhausted');
+                    this.#giSurfaceShaderByMesh.set(mesh, surfaceShader);
+                }
             }
         }
         this.#clusteredDeformedObjectCount = this.#clusteredOpaqueMeshes.length;
@@ -7110,6 +7401,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const firstShader =
             firstMesh === undefined ? undefined : this.#clusteredOpaqueShaderByMesh.get(firstMesh);
         if (firstShader === undefined) return;
+        const firstSurface =
+            firstMesh === undefined ? undefined : this.#giSurfaceShaderByMesh.get(firstMesh);
+        if (firstSurface !== undefined) {
+            this.#giSurfaceVariant = {
+                shader: firstSurface,
+                shaderByMesh: this.#giSurfaceShaderByMesh,
+                buffers: this.#clusteredSceneStorageBuffers
+            };
+        }
         if (this.#clusteredOpaqueShaderVariant === null) {
             this.#clusteredOpaqueShaderVariant = {
                 shader: firstShader,
@@ -7129,7 +7429,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         for (const mesh of this.#fallbackTransparentMeshes) {
             const material = clusteredTransparentMaterial(mesh);
             if (material === null) continue;
-            const shader = clusteredTransparentShader(mesh, material, fog, withShadows);
+            const shader = clusteredTransparentShader(
+                mesh,
+                material,
+                fog,
+                withShadows,
+                this.#dynamicGlobalIllumination !== null
+            );
             if (!this.admitMaterialVariant(shader)) continue;
             this.#clusteredTransparentMeshes.push(mesh);
             this.#clusteredTransparentShaderByMesh.set(mesh, shader);
@@ -8415,14 +8721,24 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             cloudShadow: RenderGraphTextureHandle | null;
             shadowResources: Readonly<RenderPipelineShadowResources> | null;
             virtualShadowResources: Readonly<VirtualShadowFrameResources> | null;
-        }>
+        }>,
+        giSurfaceAlbedo: RenderGraphTextureHandle | null = null
     ): void {
         const batch = context.acquirePassParameters(this.#colorBatchPool);
+        const albedoAttachment: RenderPipelineColorAttachment | null =
+            giSurfaceAlbedo === null
+                ? null
+                : {
+                      texture: giSurfaceAlbedo,
+                      loadOp: 'clear',
+                      storeOp: 'store',
+                      clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                  };
         const colorAttachment: RenderPipelineColorAttachment = {
             texture: resources.sceneColor,
             loadOp: 'clear',
             storeOp: 'store',
-            clearValue: context.clearColor
+            clearValue: albedoAttachment === null ? context.clearColor : { r: 0, g: 0, b: 0, a: 0 }
         };
         const materialAttributesAttachment: RenderPipelineColorAttachment | null =
             resources.materialAttributes === null
@@ -8469,6 +8785,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             batch.colorAttachments[reflectionAttachmentIndex] = reflectionResponseAttachment;
             batch.colorAttachments[reflectionAttachmentIndex + 1] = fallbackSpecularAttachment;
         }
+        if (albedoAttachment !== null) {
+            batch.colorAttachments.length = 2;
+            batch.colorAttachments[1] = albedoAttachment;
+        }
         batch.depthStencilAttachment = depthAttachment;
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
@@ -8481,6 +8801,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     ? currentVariant
                     : bucket.materialVariant;
             const parameters = context.acquirePassParameters(this.#colorDrawPool);
+            parameters.configureStorageBufferCount(this.#ddgiProbeData === null ? 8 : 9);
+            if (this.#ddgiProbeData !== null) parameters.setBuffer(8, this.#ddgiProbeData);
             const gtaoTextureCount = resources.ambientOcclusion === null ? 0 : 1;
             const cloudShadowTextureCount = resources.cloudShadow === null ? 0 : 1;
             const shadowTextureCount = resources.shadowResources === null ? 0 : 1;
@@ -8597,9 +8919,42 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     fallbackSpecularAttachment;
             }
             parameters.depthStencilAttachment = depthAttachment;
-            batch.add(bucket.colorPass, parameters);
+            let pass = bucket.colorPass;
+            if (albedoAttachment !== null) {
+                parameters.colorAttachments.length = 2;
+                parameters.colorAttachments[1] = albedoAttachment;
+                let surfacePass = this.#giSurfacePasses.get(bucket.colorPass);
+                if (surfacePass === undefined) {
+                    surfacePass = new GPUDrivenRenderPass({
+                        name: `DDGI diffuse surface bucket ${String(index)}`,
+                        shader: gpuScenePBRShader(
+                            variant,
+                            false,
+                            false,
+                            this.#groundTruthAmbientOcclusion !== null,
+                            resources.cloudShadow !== null,
+                            bucket.colorShadowed,
+                            bucket.colorVirtualShadowed ? this.#options.virtualShadows : null,
+                            true,
+                            true
+                        ),
+                        pipelineState: {
+                            ...requireBucketPassState(logical.material, 'forward'),
+                            depthWrite: false
+                        },
+                        vertexLayouts: gpuSceneVertexLayouts(variant),
+                        indexFormat: bucket.indexFormat
+                    });
+                    this.#giSurfacePasses.set(bucket.colorPass, surfacePass);
+                }
+                pass = surfacePass;
+            }
+            batch.add(pass, parameters);
         }
-        context.graph.addPass(this.#colorBatchPass, batch);
+        context.graph.addPass(
+            albedoAttachment === null ? this.#colorBatchPass : this.#giSurfaceBatchPass,
+            batch
+        );
     }
 
     private samplerFor(texture: Texture<unknown>): ComputeSampler {
@@ -8704,9 +9059,11 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         frameBuffer: RenderGraphBufferHandle,
         lights: RenderGraphBufferHandle,
         clusterGrid: RenderGraphBufferHandle,
-        clusterIndices: RenderGraphBufferHandle
+        clusterIndices: RenderGraphBufferHandle,
+        giSurfaceAlbedo: RenderGraphTextureHandle | null = null
     ): void {
-        const variant = this.#clusteredOpaqueShaderVariant;
+        const variant =
+            giSurfaceAlbedo === null ? this.#clusteredOpaqueShaderVariant : this.#giSurfaceVariant;
         if (variant === null) throw new Error('Clustered opaque shader variant is unavailable');
         this.bindClusteredSceneStorage(variant, frameBuffer, lights, clusterGrid, clusterIndices);
         this.#clusteredOpaqueListDescriptor.cullingResults = cullingResults;
@@ -8717,6 +9074,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (color === undefined)
             throw new Error('Clustered opaque color attachment is unavailable');
         color.texture = outputColor;
+        if (giSurfaceAlbedo !== null)
+            parameters.colorAttachments[1] = {
+                texture: giSurfaceAlbedo,
+                loadOp: 'load',
+                storeOp: 'store'
+            };
         parameters.depthStencilAttachment = {
             texture: sceneDepth,
             depthLoadOp: 'load',
@@ -8836,7 +9199,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         clusterGrid: RenderGraphBufferHandle,
         clusterIndices: RenderGraphBufferHandle
     ): void {
-        const handles = [frameBuffer, lights, clusterGrid, clusterIndices] as const;
+        const handles =
+            this.#ddgiProbeData === null
+                ? [frameBuffer, lights, clusterGrid, clusterIndices]
+                : [frameBuffer, lights, clusterGrid, clusterIndices, this.#ddgiProbeData];
         for (let index = 0; index < handles.length; index += 1) {
             const binding = variant.buffers[index];
             const handle = handles[index];
@@ -8998,9 +9364,12 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
     readonly requirements: Readonly<RenderPipelineRequirements>;
     readonly #options: Readonly<NormalizedOptions>;
     readonly #runtimes = new Set<ClusteredForwardPlusPipeline>();
+    #dynamicGIIntensity: number | null = null;
+    #dynamicGIEnvironment: Color | null = null;
 
     constructor(options: Readonly<ClusteredForwardPlusPipelineOptions>) {
         this.#options = normalizeOptions(options);
+        this.#dynamicGIIntensity = this.#options.dynamicGlobalIllumination?.intensity ?? null;
         const physicalCount = this.#options.buckets.reduce(
             (count, bucket) => count + 1 + bucket.lods.length,
             0
@@ -9008,6 +9377,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         const requirements = bufferRequirementPlan(this.#options, physicalCount);
         const hiZ = this.#options.hiZ;
         const virtualShadows = this.#options.virtualShadows !== null;
+        const dynamicGlobalIllumination = this.#options.dynamicGlobalIllumination !== null;
         const screenSpaceReflections = this.#options.screenSpaceReflections !== null;
         const screenSpaceGlobalIllumination = this.#options.screenSpaceGlobalIllumination !== null;
         const groundTruthAmbientOcclusion = this.#options.groundTruthAmbientOcclusion !== null;
@@ -9022,7 +9392,12 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
         this.requirements = snapshotRenderPipelineRequirements({
             requiredCapabilities: Object.freeze([
                 'storage-buffer' as const,
-                ...(hiZ || volumetricLighting || autoExposure || atmosphere || virtualShadows
+                ...(hiZ ||
+                volumetricLighting ||
+                autoExposure ||
+                atmosphere ||
+                virtualShadows ||
+                dynamicGlobalIllumination
                     ? (['storage-texture' as const] as const)
                     : []),
                 'compute-pass' as const,
@@ -9048,6 +9423,12 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                               format: 'rg32float' as const,
                               use: 'storage' as const
                           })
+                      ]
+                    : []),
+                ...(dynamicGlobalIllumination
+                    ? [
+                          Object.freeze({ format: 'r32float' as const, use: 'storage' as const }),
+                          Object.freeze({ format: 'r32float' as const, use: 'sampled' as const })
                       ]
                     : []),
                 ...(virtualShadows
@@ -9129,7 +9510,7 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     autoExposure ? 5 : 0,
                     atmosphere ? 8 : 0
                 ),
-                maxStorageBuffersPerShaderStage: 8,
+                maxStorageBuffersPerShaderStage: dynamicGlobalIllumination ? 9 : 8,
                 maxSampledTexturesPerShaderStage: Math.max(
                     hiZ ? this.#options.hiZLevelCount : 0,
                     PBR_TEXTURE_ROLES.length +
@@ -9150,7 +9531,12 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     3 +
                     (virtualShadows ? 2 : 0) +
                     (cloudShadows ? 1 : 0),
-                ...(hiZ || volumetricLighting || autoExposure || atmosphere || virtualShadows
+                ...(hiZ ||
+                volumetricLighting ||
+                autoExposure ||
+                atmosphere ||
+                virtualShadows ||
+                dynamicGlobalIllumination
                     ? {
                           maxStorageTexturesPerShaderStage: screenSpaceReflections
                               ? 4
@@ -9173,7 +9559,10 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                       }
                     : {}),
                 maxComputeInvocationsPerWorkgroup: PREFIX_WORKGROUP_SIZE,
-                maxComputeWorkgroupsPerDimension: requirements.maxComputeWorkgroupsPerDimension,
+                maxComputeWorkgroupsPerDimension: Math.max(
+                    requirements.maxComputeWorkgroupsPerDimension,
+                    this.#options.dynamicGlobalIllumination?.probeCount ?? 1
+                ),
                 ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 4 })
             })
         });
@@ -9188,9 +9577,38 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
             if (!(material instanceof PBRMaterial)) {
                 throw new TypeError('Material variant manifest PBR material became unavailable');
             }
-            shaders.add(clusteredTransparentShader(entry.mesh, material, null, false));
+            shaders.add(
+                clusteredTransparentShader(
+                    entry.mesh,
+                    material,
+                    null,
+                    false,
+                    this.#options.dynamicGlobalIllumination !== null
+                )
+            );
             if (entry.shadowed === true) {
-                shaders.add(clusteredTransparentShader(entry.mesh, material, null, true));
+                shaders.add(
+                    clusteredTransparentShader(
+                        entry.mesh,
+                        material,
+                        null,
+                        true,
+                        this.#options.dynamicGlobalIllumination !== null
+                    )
+                );
+            }
+            if (
+                this.#options.dynamicGlobalIllumination !== null &&
+                this.#options.screenSpaceGlobalIllumination !== null &&
+                material.forwardQueue === 'opaque'
+            ) {
+                shaders.add(
+                    clusteredTransparentShader(entry.mesh, material, null, false, true, true)
+                );
+                if (entry.shadowed === true)
+                    shaders.add(
+                        clusteredTransparentShader(entry.mesh, material, null, true, true, true)
+                    );
             }
         }
         if (shaders.size > this.#options.variantManifest.maxVariants) {
@@ -9209,8 +9627,43 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 this.#runtimes.delete(destroyed);
             }
         );
+        if (this.#dynamicGIIntensity !== null)
+            runtime.setDynamicGlobalIlluminationIntensity(this.#dynamicGIIntensity);
+        if (this.#dynamicGIEnvironment !== null)
+            runtime.setDynamicGlobalIlluminationEnvironment(this.#dynamicGIEnvironment);
         this.#runtimes.add(runtime);
         return runtime;
+    }
+
+    /** Set the diffuse GI contribution for all live runtimes without resetting probe convergence. */
+    setDynamicGlobalIlluminationIntensity(intensity: number): void {
+        if (!Number.isFinite(intensity) || intensity < 0 || intensity > 8) {
+            throw new RangeError('Dynamic global illumination intensity must be finite in [0, 8]');
+        }
+        if (this.#options.dynamicGlobalIllumination === null)
+            throw new Error('Dynamic global illumination is disabled');
+        this.#dynamicGIIntensity = intensity;
+        for (const runtime of this.#runtimes)
+            runtime.setDynamicGlobalIlluminationIntensity(intensity);
+    }
+
+    /** Set linear sky radiance for probe misses and restart bounded convergence after a lighting change. */
+    setDynamicGlobalIlluminationEnvironment(color: Readonly<Color>): void {
+        if (
+            !(color instanceof Color) ||
+            [color.r, color.g, color.b].some(
+                value => !Number.isFinite(value) || value < 0 || value > 10_000
+            )
+        ) {
+            throw new RangeError(
+                'Dynamic global illumination environment must be a finite nonnegative Color in [0, 10000]'
+            );
+        }
+        if (this.#options.dynamicGlobalIllumination === null)
+            throw new Error('Dynamic global illumination is disabled');
+        this.#dynamicGIEnvironment = new Color(color.r, color.g, color.b);
+        for (const runtime of this.#runtimes)
+            runtime.setDynamicGlobalIlluminationEnvironment(this.#dynamicGIEnvironment);
     }
 
     /** Read on-demand GPU counters when this factory is attached to exactly one live Renderer. */

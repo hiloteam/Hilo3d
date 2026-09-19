@@ -1,18 +1,21 @@
 # 示例目录整理
 
-核对日期：2026-09-19。范围：95 个 HTML 入口，其中 93 个场景示例、两个画廊入口。
+核对日期：2026-09-20。范围：96 个 HTML 入口，其中 94 个场景示例、两个画廊入口。
 
 ## 整理结果
 
 - 目录改为逐项审阅的元数据，删除文件名正则分类、自动拼标题和通用套话。新增页面仍由递归 HTML 扫描发现，缺少说明会直接报错。
-- 精选从 46 项收缩到 24 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
+- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景后现为 25 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
-- 每个示例有独立用途。所有 93 个场景保留原 URL；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
+- 每个示例有独立用途。既有场景保留原 URL，新增 Atelier 后共有 94 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
 - 静态构建删除 Blender 创作源文件的复制路径，运行时资产保留；仓库中的原始创作文件与授权说明保留。
 - 画廊提供多词搜索、中文主题关键词、主题/后端筛选、URL 状态、浏览器前进后退、手机键盘导航和加载失败重试。主题数量和筛选结果遵循当前 Highlights
   / All examples 集合，切换集合会同步更新。
+
+Atelier 归入 Lighting &
+shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景，其中 4 个精选。
 
 ## 相似示例的保留理由
 
@@ -72,6 +75,7 @@
 | [cascaded_shadows](../examples/cascaded_shadows.html)                                               | 精选 | lighting        | Explore a rounded plastic toy town with a windmill, lighthouse and miniature train. Compare single-map and four-cascade shadows at the same shadow-texel budget.                                                |
 | [clustered_forward_plus_lumen](../examples/clustered_forward_plus_lumen.html)                       | 精选 | lighting        | Illuminate rounded resin sculptures and sixteen gallery fins with up to 192 lights, four sweeping moving heads, three palettes, and GPU clustered shading.                                                      |
 | [clustered_forward_plus_sponza](../examples/clustered_forward_plus_sponza.html)                     | 保留 | lighting        | Explore Khronos Sponza under 192 animated local lights, GPU Scene culling, clustered shading, HDR bloom, and a cinematic camera tour.                                                                           |
+| [dynamic_global_illumination_atelier](../examples/dynamic_global_illumination_atelier.html)         | 精选 | lighting        | Explore a warm original room by day and lamplight, with DDGI color bounce, an opening door, wall-color changes, and a movable reading lamp.                                                                     |
 | [gltf_light](../examples/gltf_light.html)                                                           | 保留 | lighting        | Load KHR_lights_punctual lighting alongside a procedural PBR comparison scene.                                                                                                                                  |
 | [pointLight](../examples/pointLight.html)                                                           | 保留 | lighting        | Orbit three colored point lights around a reflective sculpture with dynamic shadows.                                                                                                                            |
 | [shadow](../examples/shadow.html)                                                                   | 保留 | lighting        | Compare shadow-casting objects under directional and spot lights.                                                                                                                                               |

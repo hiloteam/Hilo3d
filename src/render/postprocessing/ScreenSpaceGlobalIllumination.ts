@@ -257,7 +257,10 @@ float ssgiLuminance(vec3 color) {
 }
 `;
 
-function traceFragment(settings: Readonly<ScreenSpaceGlobalIlluminationSettings>): string {
+function traceFragment(
+    settings: Readonly<ScreenSpaceGlobalIlluminationSettings>,
+    hybrid: boolean
+): string {
     return `#version 300 es
 precision highp float;
 precision highp int;
@@ -265,6 +268,7 @@ in vec2 v_uv;
 uniform sampler2D u_sceneColor;
 uniform sampler2D u_sceneDepth;
 uniform sampler2D u_materialAttributes;
+${hybrid ? 'uniform sampler2D u_hybridBaseline;\nuniform sampler2D u_hybridAlbedo;' : ''}
 ${SSGI_BLOCK}
 layout(location = 0) out vec4 ssgiResult;
 const float PI = 3.141592653589793;
@@ -278,6 +282,18 @@ void main() {
         ssgiResult = vec4(0.0, 0.0, 0.0, -1.0);
         return;
     }
+    ${
+        hybrid
+            ? `// The receiver reflectance also exists outside the probe volume. A zero probe baseline
+    // becomes ordinary screen-space transport; alpha in history remains logarithmic view depth.
+    vec4 baseline = textureLod(u_hybridBaseline, v_uv, 0.0);
+    vec4 receiverAlbedo = textureLod(u_hybridAlbedo, v_uv, 0.0);
+    if (receiverAlbedo.a < 0.5) {
+        ssgiResult = vec4(0.0, 0.0, 0.0, -1.0);
+        return;
+    }`
+            : ''
+    }
     vec3 center = ssgiReconstructViewPosition(v_uv, centerDepth);
     vec3 normal = ssgiDecodeNormal(textureLod(u_materialAttributes, v_uv, 0.0).xy);
     vec3 helper = abs(normal.z) < 0.92 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
@@ -289,7 +305,7 @@ void main() {
     for (int rayIndex = 0; rayIndex < ${String(settings.rayCount)}; rayIndex++) {
         float sequence = (float(rayIndex) + noise) / float(${String(settings.rayCount)});
         float angle = sequence * PI * 2.0 + u_ssgiProjectionInfo.w * 2.39996323;
-        float elevation = mix(0.28, 0.82, fract(sequence * 3.75487766 + noise));
+        float elevation = ${hybrid ? 'sqrt(max(1.0 - fract(sequence * 3.75487766 + noise), 1e-4))' : 'mix(0.28, 0.82, fract(sequence * 3.75487766 + noise))'};
         vec3 rayDirection = normalize(
             tangent * cos(angle) * sqrt(1.0 - elevation * elevation) +
             bitangent * sin(angle) * sqrt(1.0 - elevation * elevation) +
@@ -318,7 +334,7 @@ void main() {
             }
             vec3 hitNormal = ssgiDecodeNormal(textureLod(u_materialAttributes, sampleUV, 0.0).xy);
             float receiver = nDotRay;
-            float emitter = max(dot(hitNormal, -normalize(toSurface)), 0.05);
+            float emitter = max(dot(hitNormal, -normalize(toSurface)), ${hybrid ? '0.0' : '0.05'});
             float fade = 1.0 - smoothstep(
                 u_ssgiTrace.x * u_ssgiTrace.z,
                 u_ssgiTrace.x,
@@ -334,8 +350,15 @@ void main() {
                 sampleRadiance,
                 u_ssgiTemporal.w
             );
-            float weight = receiver * emitter * fade * edgeFade /
-                (1.0 + surfaceDistance * surfaceDistance * 0.18);
+            ${
+                hybrid
+                    ? `// Cosine sampling already accounts for the receiver cosine and the diffuse /PI.
+            // Hit quality is a bounded replacement probability, not another transport cosine.
+            float weight = smoothstep(0.0, 0.2, emitter) * fade * edgeFade /
+                (1.0 + surfaceDistance * surfaceDistance * 0.18);`
+                    : `float weight = receiver * emitter * fade * edgeFade /
+                (1.0 + surfaceDistance * surfaceDistance * 0.18);`
+            }
             radiance += sampleRadiance * weight;
             confidence += weight;
             found = true;
@@ -343,7 +366,15 @@ void main() {
         }
         if (!found) radiance += vec3(0.0);
     }
-    radiance *= PI / float(${String(settings.rayCount)});
+    ${
+        hybrid
+            ? `// Replace exactly the screen-covered fraction of the existing diffuse estimate.
+    // A missed ray contributes zero correction and therefore retains offscreen DDGI.
+    float overlap = clamp(confidence / float(${String(settings.rayCount)}), 0.0, 1.0);
+    radiance = radiance * clamp(receiverAlbedo.rgb, vec3(0.0), vec3(1.0)) /
+        float(${String(settings.rayCount)}) - max(baseline.rgb, vec3(0.0)) * overlap;`
+            : `radiance *= PI / float(${String(settings.rayCount)});`
+    }
     ssgiResult = vec4(radiance, log2(1.0 + max(-center.z, 0.0)));
 }`;
 }
@@ -355,7 +386,8 @@ uniform sampler2D u_current;
 layout(location = 0) out vec4 historyOutput;
 void main() { historyOutput = textureLod(u_current, v_uv, 0.0); }`;
 
-const TEMPORAL_RESOLVE_FRAGMENT = `#version 300 es
+function temporalResolveFragment(hybrid: boolean): string {
+    return `#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_current;
@@ -406,7 +438,7 @@ void main() {
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 coordinate = clamp(pixel + ivec2(x, y), ivec2(0), currentSize - ivec2(1));
-            vec3 value = rgbToYCoCg(max(texelFetch(u_current, coordinate, 0).rgb, vec3(0.0)));
+            vec3 value = rgbToYCoCg(${hybrid ? 'texelFetch(u_current, coordinate, 0).rgb' : 'max(texelFetch(u_current, coordinate, 0).rgb, vec3(0.0))'});
             minimumValue = min(minimumValue, value);
             maximumValue = max(maximumValue, value);
             averageValue += value;
@@ -415,7 +447,7 @@ void main() {
     averageValue /= 9.0;
     vec3 extent = max((maximumValue - minimumValue) * 0.55, vec3(0.015));
     vec3 previousYCoCg = clamp(rgbToYCoCg(previous.rgb), averageValue - extent, averageValue + extent);
-    previous.rgb = max(yCoCgToRGB(previousYCoCg), vec3(0.0));
+    previous.rgb = ${hybrid ? 'yCoCgToRGB(previousYCoCg)' : 'max(yCoCgToRGB(previousYCoCg), vec3(0.0))'};
     vec3 currentNormal = ssgiDecodeNormal(textureLod(u_materialAttributes, v_uv, 0.0).xy);
     vec3 reprojectedNormal = ssgiDecodeNormal(textureLod(
         u_materialAttributes,
@@ -427,7 +459,7 @@ void main() {
         dot(currentNormal, reprojectedNormal) >= u_ssgiTemporal.z;
     float velocityPixels = length(motion.xy * vec2(textureSize(u_motionDepth, 0)));
     float luminanceDelta = abs(ssgiLuminance(current.rgb) - ssgiLuminance(previous.rgb)) /
-        max(max(ssgiLuminance(current.rgb), ssgiLuminance(previous.rgb)), 0.08);
+        max(max(${hybrid ? 'abs(ssgiLuminance(current.rgb)), abs(ssgiLuminance(previous.rgb))' : 'ssgiLuminance(current.rgb), ssgiLuminance(previous.rgb)'}), 0.08);
     float reactive = clamp(luminanceDelta * 0.8, 0.0, 1.0);
     float weight = accepted
         ? min(u_ssgiTemporal.x, mix(u_ssgiTemporal.x, 0.35, reactive)) *
@@ -435,8 +467,9 @@ void main() {
         : 0.0;
     historyOutput = vec4(mix(current.rgb, previous.rgb, weight), current.a);
 }`;
+}
 
-function denoiseFragment(step: number): string {
+function denoiseFragment(step: number, hybrid: boolean): string {
     return `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -474,7 +507,7 @@ void main() {
         float depthWeight = exp(-abs(sampleValue.a - centerDepth) * 38.0);
         float luminanceWeight = exp(
             -abs(ssgiLuminance(sampleValue.rgb) - centerLuminance) /
-            max(0.18 + centerLuminance * 0.35, 1e-3)
+            max(0.18 + ${hybrid ? 'abs(centerLuminance)' : 'centerLuminance'} * 0.35, 1e-3)
         );
         float kernelWeight = index < 4 ? 0.075 : (index < 8 ? 0.046875 : 0.0234375);
         float weight = normalWeight * depthWeight * luminanceWeight * kernelWeight;
@@ -524,22 +557,34 @@ void main() {
     fullResolutionGI.a = centerDepth;
 }`;
 
-const COMPOSITE_FRAGMENT = `#version 300 es
+function compositeFragment(hybrid: boolean): string {
+    return `#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_sceneColor;
 uniform sampler2D u_globalIllumination;
+${hybrid ? 'uniform sampler2D u_hybridBaseline;' : ''}
 ${SSGI_BLOCK}
 layout(location = 0) out vec4 composedColor;
 void main() {
     vec4 scene = textureLod(u_sceneColor, v_uv, 0.0);
     vec4 indirect = textureLod(u_globalIllumination, v_uv, 0.0);
     float valid = step(0.0, indirect.a);
-    composedColor = vec4(
+    ${
+        hybrid
+            ? `vec4 baseline = textureLod(u_hybridBaseline, v_uv, 0.0);
+    // Filtering and reprojection can carry yesterday's larger subtraction. Never subtract
+    // more than today's DDGI contribution or amplify the convex replacement above one.
+    vec3 correction = max(indirect.rgb, -max(baseline.rgb, vec3(0.0)));
+    composedColor = vec4(max(scene.rgb + correction * min(u_ssgiComposite.x, 1.0) * valid,
+        vec3(0.0)), scene.a);`
+            : `composedColor = vec4(
         max(scene.rgb, vec3(0.0)) + max(indirect.rgb, vec3(0.0)) * u_ssgiComposite.x * valid,
         scene.a
-    );
+    );`
+    }
 }`;
+}
 
 function fullscreenPass(
     name: string,
@@ -606,11 +651,16 @@ export interface ScreenSpaceGlobalIlluminationResources {
     readonly sceneScale: number;
     /** Additional producer-specific temporal validity, such as a GPU Scene camera cut. */
     readonly historyValid?: boolean;
+    /** Existing outgoing DDGI diffuse radiance, with alpha 1 for valid receivers. */
+    readonly hybridBaseline?: RenderGraphTextureHandle;
+    /** Linear receiver diffuse reflectance, with alpha 1 for valid receivers. */
+    readonly hybridAlbedo?: RenderGraphTextureHandle;
 }
 
 /** @internal Portable raster SSGI tracing, temporal accumulation, denoise, and composition. */
 export class ScreenSpaceGlobalIlluminationController {
     readonly #settings: Readonly<ScreenSpaceGlobalIlluminationSettings>;
+    readonly #hybrid: boolean;
     readonly #block: UniformBuffer<typeof ssgiLayout.schema>;
     readonly #inverseProjection = new Matrix4();
     readonly #tracePass: FullscreenRenderPass;
@@ -652,8 +702,9 @@ export class ScreenSpaceGlobalIlluminationController {
     #submissionIndex = 0;
     #destroyed = false;
 
-    constructor(settings: Readonly<ScreenSpaceGlobalIlluminationSettings>) {
+    constructor(settings: Readonly<ScreenSpaceGlobalIlluminationSettings>, hybrid = false) {
         this.#settings = settings;
+        this.#hybrid = hybrid;
         this.#block = UniformBuffer.fromSchema(ssgiLayout, {
             u_ssgiProjection: new Matrix4().elements,
             u_ssgiInverseProjection: this.#inverseProjection.elements,
@@ -674,19 +725,19 @@ export class ScreenSpaceGlobalIlluminationController {
         });
         this.#tracePass = fullscreenPass(
             'SSGI stochastic diffuse ray trace',
-            traceFragment(settings),
+            traceFragment(settings, hybrid),
             [this.#block]
         );
         this.#resolvePass = fullscreenPass(
             'SSGI variance-clipped temporal resolve',
-            TEMPORAL_RESOLVE_FRAGMENT,
+            temporalResolveFragment(hybrid),
             [this.#block]
         );
         this.#denoisePasses = Object.freeze(
             Array.from({ length: settings.denoisePasses }, (_, index) =>
                 fullscreenPass(
                     `SSGI edge-aware a-trous denoise ${String(index + 1)}`,
-                    denoiseFragment(2 ** index),
+                    denoiseFragment(2 ** index, hybrid),
                     [this.#block]
                 )
             )
@@ -698,7 +749,7 @@ export class ScreenSpaceGlobalIlluminationController {
         );
         this.#compositePass = fullscreenPass(
             'SSGI linear HDR diffuse composite',
-            COMPOSITE_FRAGMENT,
+            compositeFragment(hybrid),
             [this.#block]
         );
     }
@@ -709,6 +760,12 @@ export class ScreenSpaceGlobalIlluminationController {
     ): RenderGraphTextureHandle {
         if (this.#destroyed)
             throw new Error('ScreenSpaceGlobalIllumination controller is destroyed');
+        if (
+            this.#hybrid &&
+            (resources.hybridBaseline === undefined || resources.hybridAlbedo === undefined)
+        ) {
+            throw new Error('Hybrid SSGI requires DDGI baseline and diffuse albedo textures');
+        }
         const [x, y, viewportWidth, viewportHeight] = context.viewport;
         if (
             x !== 0 ||
@@ -763,7 +820,17 @@ export class ScreenSpaceGlobalIlluminationController {
         this.addFullscreen(
             context,
             this.#tracePass,
-            [resources.sceneColor, resources.sceneDepth, resources.materialAttributes],
+            this.#hybrid &&
+                resources.hybridBaseline !== undefined &&
+                resources.hybridAlbedo !== undefined
+                ? [
+                      resources.sceneColor,
+                      resources.sceneDepth,
+                      resources.materialAttributes,
+                      resources.hybridBaseline,
+                      resources.hybridAlbedo
+                  ]
+                : [resources.sceneColor, resources.sceneDepth, resources.materialAttributes],
             current
         );
 
@@ -816,7 +883,9 @@ export class ScreenSpaceGlobalIlluminationController {
         this.addFullscreen(
             context,
             this.#compositePass,
-            [resources.sceneColor, fullResolution],
+            this.#hybrid && resources.hybridBaseline !== undefined
+                ? [resources.sceneColor, fullResolution, resources.hybridBaseline]
+                : [resources.sceneColor, fullResolution],
             composed
         );
         return composed;

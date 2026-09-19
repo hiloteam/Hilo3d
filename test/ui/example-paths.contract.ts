@@ -79,11 +79,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(95);
+        expect(examplePaths).toHaveLength(96);
     });
 
-    it('expands 95 pages into the complete 176-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(176);
+    it('expands 96 pages into the complete 177-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(177);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -94,6 +94,7 @@ describe('example release matrix contract', () => {
                     : path === 'bloom.html' ||
                         path === 'clustered_forward_plus_sponza.html' ||
                         path === 'clustered_forward_plus_lumen.html' ||
+                        path === 'dynamic_global_illumination_atelier.html' ||
                         path === 'volumetric_neon_reliquary.html' ||
                         path === 'stormfront_observatory.html' ||
                         path === 'shadow_residency_sanctum.html' ||
@@ -116,7 +117,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(93);
+        expect(catalog).toHaveLength(94);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -126,7 +127,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(80);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(92);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(93);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -195,14 +196,23 @@ describe('example release matrix contract', () => {
             'Duplicate example paths'
         );
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog.filter(entry => entry.featured)).toHaveLength(24);
+        expect(catalog.filter(entry => entry.featured)).toHaveLength(25);
         expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
+        expect(
+            catalog.find(entry => entry.path === 'dynamic_global_illumination_atelier.html')
+        ).toMatchObject({
+            title: 'Atelier — Dynamic Global Illumination, Day & Night',
+            category: 'lighting',
+            featured: true,
+            supportedBackends: ['webgpu']
+        });
         const categories: Readonly<Record<string, string>> = {
             'depthTexture.html': 'rendering',
             'normal_map.html': 'materials',
             'cameraHelper.html': 'interaction',
             'compute_raytracing.html': 'compute',
             'stormfront_observatory.html': 'lighting',
+            'dynamic_global_illumination_atelier.html': 'lighting',
             'gtao_acceptance_lab.html': 'advanced'
         };
         for (const [path, category] of Object.entries(categories)) {
@@ -341,6 +351,7 @@ describe('example release matrix contract', () => {
             'bloom.html',
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
+            'dynamic_global_illumination_atelier.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -359,6 +370,7 @@ describe('example release matrix contract', () => {
             'cascaded_shadows.html',
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
+            'dynamic_global_illumination_atelier.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -417,6 +429,7 @@ describe('example release matrix contract', () => {
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
             'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
+            'dynamic_global_illumination_atelier.html': { test: '1' },
             'compute_eclipse_shrine.html': { test: '1' },
             'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' },
             'ground_truth_ambient_occlusion.html': { test: '1' },

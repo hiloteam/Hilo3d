@@ -262,6 +262,14 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
             'Write several fragment outputs in one pass and inspect each color attachment.',
         category: 'rendering'
     },
+    'dynamic_global_illumination_atelier.html': {
+        title: 'Atelier — Dynamic Global Illumination, Day & Night',
+        description:
+            'Explore a warm original room by day and lamplight, with DDGI color bounce, an opening door, wall-color changes, and a movable reading lamp.',
+        category: 'lighting',
+        featured: true,
+        backend: 'webgpu'
+    },
     'fog.html': {
         title: 'Distance Fog',
         description: 'Observe distance-based fog blending across textured objects.',

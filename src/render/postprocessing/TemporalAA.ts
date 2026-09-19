@@ -2,6 +2,7 @@ import type Camera from '../../camera/Camera';
 import { getTransformHistoryRevision } from '../../core/TransformHistory';
 import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
 import Shader from '../../shader/Shader';
+import portableCoordinates from '../../shader/method/portableCoordinates.glsl';
 import UniformBuffer from '../UniformBuffer';
 import { renderTargetFormatHasStencil, type RenderTargetDepthStencilFormat } from '../RenderTarget';
 import { depthClearValue } from '../renderer/DepthConvention';
@@ -39,7 +40,41 @@ const TEMPORAL_AA_BLOCK = `layout(std140) uniform TemporalAABlock {
     float u_depthThreshold;
     float u_varianceGamma;
     float u_sharpness;
-};`;
+    vec4 u_jitterDelta;
+};
+// Motion is measured in native render-target UVs and includes raster projection jitter.
+// Resolved history is on a fixed output grid, so only physical camera/object motion reprojects it.
+${portableCoordinates}
+vec2 temporalPhysicalMotion(vec2 rasterMotion) {
+    // This is the only normalization boundary for the logical jitter vector, not a texture UV.
+    vec2 jitterDelta = hiloRenderTargetUV(u_jitterDelta.xy) - hiloRenderTargetUV(vec2(0.0));
+    return rasterMotion - jitterDelta;
+}
+float temporalLuminanceDelta(float previous, float current, float minimumValue, float maximumValue) {
+    // A stable anti-aliased edge legitimately differs from today's stochastic point sample.
+    // Only radiance outside the current neighborhood is evidence of changed shading.
+    float bounded = clamp(previous, minimumValue, maximumValue);
+    return abs(previous - bounded) / max(max(abs(previous), abs(current)), 0.1);
+}
+vec4 temporalMotionAt(ivec2 pixel, ivec2 dimensions) {
+    vec4 center = texelFetch(u_velocity, pixel, 0);
+    // Geometry with invalid history (newly visible, cut, or deformed) must remain rejected.
+    // Only uncovered background in the one-pixel reconstruction footprint borrows motion.
+    if (center.z >= 0.0 || center.w > 0.0) return center;
+    vec4 closest = center;
+    float closestDepth = 1e20;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 coordinate = clamp(pixel + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
+            vec4 candidate = texelFetch(u_velocity, coordinate, 0);
+            if (candidate.z >= 0.0 && candidate.w > 0.0 && candidate.w < closestDepth) {
+                closest = candidate;
+                closestDepth = candidate.w;
+            }
+        }
+    }
+    return closest;
+}`;
 
 const INITIALIZE_FRAGMENT = `#version 300 es
 precision highp float;
@@ -120,8 +155,9 @@ void main() {
     ivec2 dimensions = textureSize(u_scene, 0);
     ivec2 pixel = clamp(ivec2(v_uv * vec2(dimensions)), ivec2(0), dimensions - ivec2(1));
     vec4 current = texelFetch(u_scene, pixel, 0);
-    vec4 motion = texelFetch(u_velocity, pixel, 0);
-    vec2 historyUV = v_uv - motion.xy;
+    vec4 motion = temporalMotionAt(pixel, dimensions);
+    vec2 physicalMotion = temporalPhysicalMotion(motion.xy);
+    vec2 historyUV = v_uv - physicalMotion;
     vec2 halfTexel = 0.5 / vec2(dimensions);
     bool inside = all(greaterThanEqual(historyUV, halfTexel)) &&
         all(lessThanEqual(historyUV, vec2(1.0) - halfTexel));
@@ -159,11 +195,12 @@ void main() {
         ? minimumHistoryDepthError(historyUV, motion.z)
         : 1e20;
     float accepted = velocityValid && inside && depthError <= u_depthThreshold ? 1.0 : 0.0;
-    float velocityPixels = length(motion.xy * vec2(dimensions));
+    float velocityPixels = length(physicalMotion * vec2(dimensions));
     float motionResponse = clamp(velocityPixels / 32.0, 0.0, 1.0);
     float temporalWeight = mix(u_historyWeight, min(u_historyWeight, 0.6), motionResponse);
-    float luminanceDelta = abs(previousWorking.x - currentWorking.x) /
-        max(max(abs(previousWorking.x), abs(currentWorking.x)), 0.1);
+    float luminanceDelta = temporalLuminanceDelta(
+        rgbToYCoCg(previous.rgb).x, currentWorking.x, neighborhoodMin.x, neighborhoodMax.x
+    );
     float reactive = clamp(luminanceDelta * 1.5, 0.0, 1.0);
     float authoredReactive = dilatedReactiveMask(pixel, dimensions);
     temporalWeight *= 1.0 - max(reactive * 0.8, authoredReactive);
@@ -302,8 +339,9 @@ void main() {
     ivec2 historyDimensions = textureSize(u_history, 0);
     ivec2 pixel = currentPixel(v_uv);
     vec4 current = sampleReconstructedScene(v_uv);
-    vec4 motion = texelFetch(u_velocity, pixel, 0);
-    vec2 historyUV = v_uv - motion.xy;
+    vec4 motion = temporalMotionAt(pixel, currentDimensions);
+    vec2 physicalMotion = temporalPhysicalMotion(motion.xy);
+    vec2 historyUV = v_uv - physicalMotion;
     vec2 halfHistoryTexel = 0.5 / vec2(historyDimensions);
     bool inside = all(greaterThanEqual(historyUV, halfHistoryTexel)) &&
         all(lessThanEqual(historyUV, vec2(1.0) - halfHistoryTexel));
@@ -349,11 +387,12 @@ void main() {
         ? minimumHistoryDepthError(historyUV, motion.z)
         : 1e20;
     float accepted = velocityValid && inside && depthError <= u_depthThreshold ? 1.0 : 0.0;
-    float velocityPixels = length(motion.xy * vec2(historyDimensions));
+    float velocityPixels = length(physicalMotion * vec2(historyDimensions));
     float motionResponse = clamp(velocityPixels / 32.0, 0.0, 1.0);
     float temporalWeight = mix(u_historyWeight, min(u_historyWeight, 0.6), motionResponse);
-    float luminanceDelta = abs(previousWorking.x - currentWorking.x) /
-        max(max(abs(previousWorking.x), abs(currentWorking.x)), 0.1);
+    float luminanceDelta = temporalLuminanceDelta(
+        rgbToYCoCg(previous.rgb).x, currentWorking.x, neighborhoodMin.x, neighborhoodMax.x
+    );
     float reactive = clamp(luminanceDelta * 1.5, 0.0, 1.0);
     float authoredReactive = dilatedReactiveMask(pixel, currentDimensions);
     temporalWeight *= 1.0 - max(reactive * 0.8, authoredReactive);
@@ -376,7 +415,8 @@ const temporalAALayout = createStd140Layout({
     u_historyWeight: 'float',
     u_depthThreshold: 'float',
     u_varianceGamma: 'float',
-    u_sharpness: 'float'
+    u_sharpness: 'float',
+    u_jitterDelta: 'vec4'
 });
 
 const OUTPUT_EXTENT: RenderPipelineExtent = Object.freeze({
@@ -445,7 +485,17 @@ const JITTER_SEQUENCE: readonly Readonly<{ x: number; y: number }>[] = Object.fr
     Object.freeze({ x: -7 / 16, y: 7 / 18 })
 ]);
 
+interface TemporalResolveBindings {
+    readonly block: UniformBuffer<typeof temporalAALayout.schema>;
+    readonly resolve: FullscreenRenderPass;
+    readonly upscale: FullscreenRenderPass;
+    readonly jitterDelta: Float32Array;
+}
+
 interface CameraTemporalState {
+    readonly bindings: TemporalResolveBindings;
+    readonly committedJitterUV: Float32Array;
+    readonly pendingJitterUV: Float32Array;
     readonly camera: Camera;
     readonly colorHistoryKey: object;
     readonly depthHistoryKey: object;
@@ -893,7 +943,8 @@ function projectionCut(previous: ArrayLike<number>, current: ArrayLike<number>):
  * @internal Submission-aware temporal history and resolve controller shared by rendering paths.
  */
 export class TemporalResolveController {
-    readonly #block: UniformBuffer<typeof temporalAALayout.schema>;
+    readonly #settings: TemporalAASettings;
+    readonly #availableBindings: TemporalResolveBindings[] = [];
     readonly #initializePass: FullscreenRenderPass;
     readonly #resolvePass: FullscreenRenderPass;
     readonly #upscaleInitializePass: FullscreenRenderPass;
@@ -928,12 +979,7 @@ export class TemporalResolveController {
             settings.dynamicResolution === null
                 ? null
                 : new DynamicResolutionController(settings.dynamicResolution);
-        this.#block = UniformBuffer.fromSchema(temporalAALayout, {
-            u_historyWeight: settings.historyWeight,
-            u_depthThreshold: settings.depthThreshold,
-            u_varianceGamma: settings.varianceGamma,
-            u_sharpness: settings.sharpness
-        });
+        this.#settings = settings;
         const pass = (
             name: string,
             fs: string,
@@ -952,7 +998,7 @@ export class TemporalResolveController {
                 uniformBuffers
             });
         this.#initializePass = pass('TemporalAA initialize history', INITIALIZE_FRAGMENT, []);
-        this.#resolvePass = pass('TemporalAA production resolve', RESOLVE_FRAGMENT, [this.#block]);
+        this.#resolvePass = pass('TemporalAA production resolve', RESOLVE_FRAGMENT, []);
         this.#upscaleInitializePass = pass(
             'TemporalAA upscale initialize history',
             TAAU_INITIALIZE_FRAGMENT,
@@ -962,7 +1008,7 @@ export class TemporalResolveController {
         this.#upscaleResolvePass = pass(
             'TemporalAA temporal upscale',
             TAAU_RESOLVE_FRAGMENT,
-            [this.#block],
+            [],
             true
         );
     }
@@ -1057,6 +1103,12 @@ export class TemporalResolveController {
                   this.#resolvedDepthDescriptor
               )
             : null;
+        const bindings = frame.state.bindings;
+        bindings.jitterDelta[0] =
+            (frame.state.pendingJitterUV[0] ?? 0) - (frame.state.committedJitterUV[0] ?? 0);
+        bindings.jitterDelta[1] =
+            (frame.state.pendingJitterUV[1] ?? 0) - (frame.state.committedJitterUV[1] ?? 0);
+        bindings.block.set('u_jitterDelta', bindings.jitterDelta);
         const parameters = context.acquirePassParameters(this.#resolveParameters);
         parameters.configure(
             frame.historyValid
@@ -1087,10 +1139,10 @@ export class TemporalResolveController {
         context.graph.addPass(
             upscales
                 ? frame.historyValid
-                    ? this.#upscaleResolvePass
+                    ? bindings.upscale
                     : this.#upscaleInitializePass
                 : frame.historyValid
-                  ? this.#resolvePass
+                  ? bindings.resolve
                   : this.#initializePass,
             parameters
         );
@@ -1102,6 +1154,7 @@ export class TemporalResolveController {
         for (const state of this.#stagedStates) {
             if (state.pendingFrame !== frameIndex) continue;
             state.committedTransformRevision = state.pendingTransformRevision;
+            state.committedJitterUV.set(state.pendingJitterUV);
             state.committedJitterIndex = (state.pendingJitterIndex + 1) % JITTER_SEQUENCE.length;
             state.committedProjection.set(state.pendingProjection);
             state.committedRenderScale = state.pendingRenderScale;
@@ -1112,6 +1165,7 @@ export class TemporalResolveController {
         for (const state of this.#pendingEvictions) {
             this.#states.delete(state.camera);
             this.#ownedStates.delete(state);
+            this.#availableBindings.push(state.bindings);
             state.camera.clearProjectionJitter();
         }
         this.#stagedStates.length = 0;
@@ -1136,6 +1190,7 @@ export class TemporalResolveController {
         this.#stagedStates.length = 0;
         this.#pendingEvictions.length = 0;
         this.#dynamicResolution?.destroy();
+        this.#availableBindings.length = 0;
         this.#destroyed = true;
     }
 
@@ -1150,6 +1205,9 @@ export class TemporalResolveController {
         if (state === undefined) {
             state = {
                 camera,
+                bindings: this.acquireResolveBindings(),
+                committedJitterUV: new Float32Array(2),
+                pendingJitterUV: new Float32Array(2),
                 colorHistoryKey: Object.freeze({}),
                 depthHistoryKey: Object.freeze({}),
                 committedProjection: new Float32Array(16),
@@ -1182,7 +1240,35 @@ export class TemporalResolveController {
         const jitter = JITTER_SEQUENCE[state.pendingJitterIndex];
         if (jitter === undefined) throw new Error('TemporalAA jitter sequence is incomplete');
         camera.setProjectionJitter((jitter.x * 2) / width, (jitter.y * 2) / height);
+        state.pendingJitterUV[0] = camera.projectionJitterX * 0.5;
+        state.pendingJitterUV[1] = camera.projectionJitterY * 0.5;
         return state;
+    }
+
+    private acquireResolveBindings(): TemporalResolveBindings {
+        const recycled = this.#availableBindings.pop();
+        if (recycled !== undefined) return recycled;
+        const settings = this.#settings;
+        const block = UniformBuffer.fromSchema(temporalAALayout, {
+            u_historyWeight: settings.historyWeight,
+            u_depthThreshold: settings.depthThreshold,
+            u_varianceGamma: settings.varianceGamma,
+            u_sharpness: settings.sharpness,
+            u_jitterDelta: [0, 0, 0, 0]
+        });
+        const bind = (template: FullscreenRenderPass): FullscreenRenderPass =>
+            new FullscreenRenderPass({
+                name: template.name,
+                shader: template.shader,
+                pipelineState: template.pipelineState,
+                uniformBuffers: [block]
+            });
+        return {
+            block,
+            resolve: bind(this.#resolvePass),
+            upscale: bind(this.#upscaleResolvePass),
+            jitterDelta: new Float32Array(4)
+        };
     }
 
     private sweepInactiveStates(context: RenderPipelineContext, activeCamera: Camera): void {

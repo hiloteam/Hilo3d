@@ -37,6 +37,16 @@ describe('shader source modernity guardrails', () => {
         ).toEqual([]);
     });
 
+    it('checks the DDGI raster chunk retains the constrained readonly ABI', () => {
+        const path = 'src/shader/chunk/dynamicGlobalIllumination.frag';
+        expect(
+            labels(path, 'layout(std430) readonly buffer DDGI { vec4 values[]; } probes;')
+        ).toEqual([]);
+        expect(labels(path, 'layout(std430) buffer DDGI { vec4 values[]; } probes;')).toContain(
+            'StorageGraphicsShader storage block is not readonly std430'
+        );
+    });
+
     it('allows readonly std430 GLSL ES 3.10 only through StorageGraphicsShader', () => {
         expect(
             labels(

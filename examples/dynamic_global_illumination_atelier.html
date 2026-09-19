@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#e5ddcc" />
+        <meta
+            name="description"
+            content="午后书房：推开一扇门，挪动一盏灯，看阳光在橡木、亚麻与陶器间慢慢流动。Hilo3D 动态全局光照室内作品。"
+        />
+        <title>AFTERNOON · 午后书房 — Hilo3D</title>
+        <link rel="stylesheet" href="./dynamic_global_illumination_atelier.css" />
+    </head>
+    <body data-time="night">
+        <main class="atelier" aria-label="午后书房交互体验">
+            <div id="container"></div>
+            <div class="paper-light" aria-hidden="true"></div>
+            <header class="masthead">
+                <a href="./index.html" class="wordmark" aria-label="返回 Hilo3D 案例"
+                    ><span class="sun-symbol" aria-hidden="true">✳</span> HILO3D
+                    <span class="wordmark-divider">/</span> LIGHT STUDIES</a
+                >
+                <span class="edition">A ROOM TO SLOW DOWN <i>№ 002</i></span>
+            </header>
+            <section class="introduction" aria-labelledby="atelierTitle">
+                <p class="eyebrow">THE QUIET HOURS</p>
+                <h1 id="atelierTitle">
+                    <span id="sceneWord">Evening</span><span class="title-period">.</span>
+                </h1>
+                <p id="roomTitle" class="chinese-title">灯下书房</p>
+                <p id="roomCopy" class="introduction-copy">夜色渐深，留一盏温暖的灯。</p>
+            </section>
+            <aside class="scene-label" aria-label="场景状态">
+                <div class="time-options" role="group" aria-label="房间时间">
+                    <button type="button" data-time="night" aria-pressed="true">
+                        <span aria-hidden="true">☾</span> 夜晚
+                    </button>
+                    <button type="button" data-time="day" aria-pressed="false">
+                        <span aria-hidden="true">☀</span> 午后
+                    </button>
+                </div>
+            </aside>
+            <section class="control-area" aria-label="探索房间里的光">
+                <div class="control-heading">
+                    <span>MAKE YOURSELF AT HOME</span>
+                    <p id="sceneNote">光落在墙上，也落在墙外的世界。</p>
+                </div>
+                <fieldset id="controlsFieldset" class="control-dock" disabled>
+                    <legend class="visually-hidden">灯光、门与墙面控制</legend>
+                    <div class="control-group gi-group">
+                        <span class="control-label">房间里的光 <span>LIGHT</span></span>
+                        <button id="giToggle" class="gi-toggle" type="button" aria-pressed="true">
+                            <span class="toggle-track" aria-hidden="true"><i></i></span
+                            ><span id="giLabel">间接光已开启</span>
+                        </button>
+                    </div>
+                    <div class="control-group wall-group">
+                        <span class="control-label">墙面颜色 <span>WALL</span></span>
+                        <div class="wall-options" role="group" aria-label="墙面颜色">
+                            <button type="button" data-wall="sage" aria-pressed="false">
+                                <i class="swatch sage" aria-hidden="true"></i>鼠尾草
+                            </button>
+                            <button type="button" data-wall="clay" aria-pressed="false">
+                                <i class="swatch clay" aria-hidden="true"></i>陶土
+                            </button>
+                            <button type="button" data-wall="chalk" aria-pressed="true">
+                                <i class="swatch chalk" aria-hidden="true"></i>暖白
+                            </button>
+                        </div>
+                    </div>
+                    <div class="control-group slider-group">
+                        <label class="control-label" for="doorControl"
+                            >木门与走廊 <output id="doorOutput" for="doorControl">0°</output></label
+                        >
+                        <button
+                            id="doorButton"
+                            class="door-button"
+                            type="button"
+                            aria-pressed="false"
+                        >
+                            打开木门 <span aria-hidden="true">↗</span>
+                        </button>
+                        <input id="doorControl" type="range" min="0" max="105" step="1" value="0" />
+                        <div class="range-endpoints" aria-hidden="true">
+                            <span>暖光书房</span><span>蓝色廊灯</span>
+                        </div>
+                    </div>
+                    <div class="control-group slider-group">
+                        <label class="control-label" for="lampControl"
+                            >挪一挪灯 <output id="lampOutput" for="lampControl">窗边</output></label
+                        >
+                        <div class="lamp-presets" role="group" aria-label="灯的位置">
+                            <button type="button" data-lamp="0" aria-pressed="true">窗边</button>
+                            <button type="button" data-lamp="50" aria-pressed="false">
+                                茶几旁
+                            </button>
+                            <button type="button" data-lamp="100" aria-pressed="false">椅旁</button>
+                        </div>
+                        <input id="lampControl" type="range" min="0" max="100" step="1" value="0" />
+                        <div class="range-endpoints" aria-hidden="true">
+                            <span>暖色光斑随灯移动</span>
+                        </div>
+                    </div>
+                    <button
+                        id="viewButton"
+                        class="view-button"
+                        type="button"
+                        title="切换室内、全景与阅读视角"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+                            <circle cx="12" cy="12" r="3" /></svg
+                        ><span>换个角度</span>
+                    </button>
+                </fieldset>
+            </section>
+            <footer class="atelier-footer">
+                <p><span>02</span> OAK · LINEN · AFTERNOON LIGHT</p>
+                <p class="interaction-hint">拖动环顾 <i>·</i> 滚轮靠近</p>
+                <a href="./index.html">更多光的故事 <span aria-hidden="true">↗</span></a>
+            </footer>
+            <div id="loadingPanel" class="loading-panel" role="status" aria-live="polite">
+                <span class="loading-sun" aria-hidden="true">✳</span>
+                <p class="eyebrow">AFTERNOON / 午后书房</p>
+                <h2 id="loadingTitle">为你留一盏灯</h2>
+                <p id="loadingDetail">正在准备房间里的光与物件…</p>
+                <span class="loading-line" aria-hidden="true"></span>
+            </div>
+        </main>
+        <script type="module" src="./dynamic_global_illumination_atelier.ts"></script>
+    </body>
+</html>

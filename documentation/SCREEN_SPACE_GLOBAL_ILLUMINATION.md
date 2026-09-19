@@ -109,8 +109,9 @@ Uber 继续消费合成后的 HDR 颜色。当前明确边界：
 - 只追踪 opaque/masked surface；透明、折射和体积介质不是几何命中源；
 - 屏幕外、被前景遮挡和 depth buffer 中不存在的几何不会贡献，这是 screen-space GI 的确定限制；
 - `material-attributes` 当前不包含独立 diffuse albedo，transport 使用可见 scene
-  radiance 做保守的加法漫反射近似；多次反弹、离屏 probes 和材质精确 BRDF
-  transport 属于未来独立合同；
+  radiance 做保守的加法漫反射近似；独立 Forward 路径仍采用该近似。WebGPU
+  Clustered 的离屏 probes、bounded feedback 和 signed hybrid correction 见
+  [`DYNAMIC_GLOBAL_ILLUMINATION.md`](./DYNAMIC_GLOBAL_ILLUMINATION.md)；
 - 当前要求 full-output viewport；split viewport/multi-camera atlas 需要独立 history region 合同；
 - 强烈的薄表面漏光应通过更小 `thickness`、更短 `maxRayDistance`
   或更高 resolutionScale 调整，不能用无限 thickness 掩盖；

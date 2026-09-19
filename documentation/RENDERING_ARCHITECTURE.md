@@ -14,6 +14,15 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 
 ![Hilo3d 当前渲染流程](./assets/hilo3d-rendering-pipeline.png)
 
+动态漫反射 GI 作为 `ClusteredForwardPlusPipelineFactory.dynamicGlobalIllumination` 的 opt-in
+feature 接入同一生产链路。共享 CPU ray scene 构建相机视锥之外的刚体三角形 BVH；WebGPU
+compute 在固定预算内更新方向性辐照度/距离矩探针，indirect bucket 与 clustered direct
+PBR 通过 GLSL→Naga storage raster ABI 消费同一双缓冲结果。与 SSGI 同时开启时，独立双 MRT surface
+pass 输出 probe diffuse baseline 与 diffuse reflectance，以 signed
+correction 替换重叠贡献。上传 revision、探针索引和更新游标只随有效 submission 提交，设备恢复由 graph
+history marker 失效。能力范围、材质排除和完整生命周期见
+[`DYNAMIC_GLOBAL_ILLUMINATION.md`](./DYNAMIC_GLOBAL_ILLUMINATION.md)。
+
 ## 1. 一帧是怎样完成的
 
 ### 1.1 Stage：应用与渲染器之间的入口
