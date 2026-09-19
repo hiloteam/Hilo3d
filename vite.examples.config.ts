@@ -22,8 +22,26 @@ const htmlInputs = Object.fromEntries(
 function copyExampleAssets(): Plugin {
     return {
         name: 'hilo3d-example-assets',
-        transformIndexHtml() {
-            return [{ tag: 'link', attrs: { rel: 'icon', href: 'data:,' }, injectTo: 'head' }];
+        transformIndexHtml: {
+            order: 'pre',
+            handler(_html, context) {
+                const isGallery = /\/examples\/(?:index|list)\.html$/u.test(context.filename);
+                return [
+                    { tag: 'link', attrs: { rel: 'icon', href: 'data:,' }, injectTo: 'head' },
+                    ...(isGallery
+                        ? []
+                        : [
+                              {
+                                  tag: 'script',
+                                  attrs: {
+                                      type: 'module',
+                                      src: '/examples/shared/gallery-status.ts'
+                                  },
+                                  injectTo: 'head-prepend' as const
+                              }
+                          ])
+                ];
+            }
         },
         closeBundle() {
             const copyDirectory = (directory: string): void => {
@@ -35,7 +53,7 @@ function copyExampleAssets(): Plugin {
                     }
                     if (
                         entry.name === '.DS_Store' ||
-                        ['.html', '.ts', '.css'].includes(extname(source))
+                        ['.html', '.ts', '.css', '.blend'].includes(extname(source))
                     ) {
                         continue;
                     }

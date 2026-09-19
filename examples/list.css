@@ -33,6 +33,7 @@ body {
 
 body {
     overflow: hidden;
+    height: 100dvh;
     background:
         radial-gradient(circle at 10% 0%, rgba(65, 109, 255, 0.16), transparent 35%), #080b12;
 }
@@ -142,7 +143,8 @@ select:focus-visible {
 }
 
 .backendControl select,
-.searchInput {
+.searchInput,
+.categorySelect {
     border: 1px solid var(--gallery-border);
     border-radius: 9px;
     background: rgba(255, 255, 255, 0.055);
@@ -272,6 +274,49 @@ select:focus-visible {
     color: #667085;
 }
 
+.filterLabel {
+    margin-top: 14px;
+}
+
+.categorySelect {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 12px;
+}
+
+.filterActions,
+.compatibleControl {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filterActions {
+    justify-content: space-between;
+    margin-top: 10px;
+    color: var(--gallery-muted);
+    font-size: 11px;
+}
+
+.compatibleControl input {
+    margin: 0;
+    accent-color: var(--gallery-accent);
+}
+
+#clearFilters {
+    min-height: 28px;
+    border: 0;
+    background: transparent;
+    color: var(--gallery-accent);
+    cursor: pointer;
+}
+
+#clearFilters:disabled {
+    color: #778297;
+    cursor: default;
+}
+
 .searchMeta {
     display: flex;
     align-items: center;
@@ -349,12 +394,14 @@ select:focus-visible {
 }
 
 .exampleButtonTitle {
+    display: -webkit-box;
     min-width: 0;
     overflow: hidden;
     font-size: 12px;
     font-weight: 690;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .exampleButtonHeading {
@@ -391,14 +438,10 @@ select:focus-visible {
     color: #ffc681;
 }
 
-.exampleButton[data-backend-compatible='false'] .exampleButtonDescription {
-    color: #6e788a;
-}
-
 .exampleButtonDescription {
     display: -webkit-box;
     overflow: hidden;
-    color: #778297;
+    color: #98a2b3;
     font-size: 10px;
     line-height: 1.35;
     -webkit-box-orient: vertical;
@@ -527,6 +570,11 @@ select:focus-visible {
     inset: 0;
     display: grid;
     place-items: center;
+    align-content: center;
+    gap: 16px;
+    padding: 24px;
+    text-align: center;
+    overflow-wrap: anywhere;
     background: rgba(5, 7, 11, 0.92);
     color: var(--gallery-muted);
     font-size: 13px;
@@ -540,6 +588,15 @@ select:focus-visible {
 
 .frameStatus[data-state='error'] {
     color: #ffb4ab;
+}
+
+.retryExample {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.retryExample[hidden] {
+    display: none;
 }
 
 .loadingIndicator {
@@ -661,13 +718,16 @@ select:focus-visible {
     }
 
     .viewerDescription,
-    .viewerCategory,
-    .viewerActionSource {
+    .viewerCategory {
         display: none;
     }
 
     .viewerActions {
         gap: 6px;
+    }
+
+    .brandMark {
+        display: none;
     }
 
     .viewerAction {

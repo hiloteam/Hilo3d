@@ -84,8 +84,19 @@
                             autocomplete="off"
                         />
                         <div class="searchMeta">
-                            <span id="exampleCount"></span>
+                            <span id="exampleCount" role="status" aria-live="polite"></span>
                             <span><kbd>/</kbd> to search</span>
+                        </div>
+                        <label class="searchLabel filterLabel" for="categorySelect">Topic</label>
+                        <select class="categorySelect" id="categorySelect">
+                            <option value="all">All topics</option>
+                        </select>
+                        <div class="filterActions">
+                            <label class="compatibleControl">
+                                <input id="compatibleOnly" type="checkbox" />
+                                Selected backend only
+                            </label>
+                            <button id="clearFilters" type="button">Reset</button>
                         </div>
                     </div>
                     <nav
@@ -126,6 +137,7 @@
                         id="exampleFrame"
                         name="exampleFrame"
                         title="Hilo3D example"
+                        allow="fullscreen; xr-spatial-tracking"
                     ></iframe>
                     <div
                         class="frameStatus"
@@ -134,6 +146,9 @@
                         aria-live="polite"
                     >
                         <span class="loadingIndicator" id="frameStatusText">Loading example…</span>
+                        <button class="viewerAction retryExample" id="retryExample" type="button">
+                            Retry
+                        </button>
                     </div>
                 </div>
             </section>

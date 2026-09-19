@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import {
     createExampleCatalog,
     EXAMPLE_CATEGORIES,
-    examplesForBackend
+    examplesForBackend,
+    matchesExampleSearch
 } from '../../examples/shared/catalog';
 import {
     DEDICATED_RELEASE_TEST_EXAMPLE_PATHS,
@@ -180,6 +181,42 @@ describe('example release matrix contract', () => {
                 existsSync(join(examplesDirectory, entry.sourcePath)),
                 `${entry.path} source ${entry.sourcePath}`
             ).toBe(true);
+        }
+    });
+
+    it('requires reviewed metadata and preserves distinct teaching examples', () => {
+        expect(() => createExampleCatalog([...examplePaths, 'unreviewed.html'])).toThrow(
+            'Missing example catalog metadata'
+        );
+        expect(() =>
+            createExampleCatalog(examplePaths.filter(path => path !== 'quickStart.html'))
+        ).toThrow('Catalog references missing example');
+        expect(() => createExampleCatalog([...examplePaths, 'quickStart.html'])).toThrow(
+            'Duplicate example paths'
+        );
+        const catalog = createExampleCatalog(examplePaths);
+        expect(catalog.filter(entry => entry.featured)).toHaveLength(24);
+        expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
+        const categories: Readonly<Record<string, string>> = {
+            'depthTexture.html': 'rendering',
+            'normal_map.html': 'materials',
+            'cameraHelper.html': 'interaction',
+            'compute_raytracing.html': 'compute',
+            'stormfront_observatory.html': 'lighting',
+            'gtao_acceptance_lab.html': 'advanced'
+        };
+        for (const [path, category] of Object.entries(categories)) {
+            expect(catalog.find(entry => entry.path === path)?.category, path).toBe(category);
+        }
+        const dynamic = catalog.find(entry => entry.path === 'geometry_dynamic2.html');
+        if (!dynamic) throw new Error('Missing dynamic buffer example');
+        expect(matchesExampleSearch(dynamic, '  BUFFER   dynamic ')).toBe(true);
+        expect(matchesExampleSearch(dynamic, '几何')).toBe(true);
+        expect(matchesExampleSearch(dynamic, 'buffer video')).toBe(false);
+        for (const entry of catalog) {
+            expect(entry.supportedBackends, entry.path).toEqual(backendsForExample(entry.path));
+            const html = readFileSync(join(examplesDirectory, entry.path), 'utf8');
+            expect(html, entry.path).not.toMatch(/user-scalable=no|maximum-scale=1(?:\.0)?[,"]/u);
         }
     });
 

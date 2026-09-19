@@ -490,6 +490,128 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
 }
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`gallery filters survive reload and backend changes @${backend}`, async ({ page }) => {
+        await page.goto(`list.html?backend=${backend}`);
+        const topics = page.locator('#categorySelect');
+        const results = page.locator('.exampleButton');
+        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (3)');
+        await expect(page.locator('#exampleCount')).toHaveText('24 of 24 highlights');
+        await topics.selectOption('2d');
+        await expect(results).toHaveCount(3);
+        await page.locator('#exampleSearch').fill('Sprite Batching');
+        await expect(results).toHaveCount(0);
+        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (0)');
+        await page.locator('#allMode').click();
+        await expect(results).toHaveCount(1);
+        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (1)');
+        await page.locator('#exampleSearch').fill('');
+        await expect(results).toHaveCount(6);
+        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (6)');
+        await page.locator('#featuredMode').click();
+        await expect(results).toHaveCount(3);
+        await expect(page.locator('#exampleCount')).toHaveText('3 of 24 highlights');
+        await page.locator('#allMode').click();
+        await page.locator('#categorySelect').selectOption('rendering');
+        await page.locator('#exampleSearch').fill('texture depth');
+        await expect(page.locator('.exampleButton')).toHaveCount(1);
+        await expect(page.locator('.exampleButton')).toHaveAttribute(
+            'data-example-id',
+            'depthTexture'
+        );
+        await page.locator('#compatibleOnly').check();
+        await page.reload();
+        await expect(page.locator('#exampleSearch')).toHaveValue('texture depth');
+        await expect(page.locator('#categorySelect')).toHaveValue('rendering');
+        await expect(page.locator('#compatibleOnly')).toBeChecked();
+        await expect(page.locator('.exampleButton')).toHaveCount(1);
+        const source = await page.locator('#exampleFrame').getAttribute('src');
+        if (!source) throw new Error('Missing example frame');
+        const query = new URL(source).searchParams;
+        for (const key of ['q', 'category', 'collection', 'compatible'])
+            expect(query.has(key)).toBe(false);
+        await page
+            .locator('#backendSelect')
+            .selectOption(backend === 'webgl2' ? 'webgpu' : 'webgl2');
+        await expect(page.locator('#exampleSearch')).toHaveValue('texture depth');
+        await expect(page.locator('#categorySelect')).toHaveValue('rendering');
+        await page.locator('#clearFilters').click();
+        await page.locator('#allMode').click();
+        await page.locator('#compatibleOnly').check();
+        await expect(page.locator('.exampleButton[data-backend-compatible="false"]')).toHaveCount(
+            0
+        );
+        await page.locator('#exampleSearch').fill('没有这样的示例');
+        await expect(page.locator('.emptyState')).toBeVisible();
+        await page.locator('#clearFilters').click();
+        await page.locator('#exampleSearch').fill('几何');
+        await expect(page.locator('.exampleButton')).toHaveCount(
+            createExampleCatalog(examplePaths).filter(entry => entry.category === 'geometry').length
+        );
+    });
+}
+
+test('gallery restores history, tolerates malformed hashes and opens mobile search @webgl2', async ({
+    page
+}) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('list.html?backend=webgl2#%invalid');
+    await expect(page.locator('#currentTitle')).toHaveText('Quick Start');
+    await page.locator('#allMode').click();
+    await page.locator('[data-example-id="geometry_primitives"]').click();
+    await expect(page.locator('#currentTitle')).toHaveText('Geometry Primitives');
+    await page.goBack();
+    await expect(page.locator('#currentTitle')).toHaveText('Quick Start');
+    await page.goForward();
+    await expect(page.locator('[data-example-id="geometry_primitives"]')).toHaveAttribute(
+        'aria-current',
+        'page'
+    );
+    await page.setViewportSize({ width: 344, height: 740 });
+    await expect(page.locator('#gallerySidebar')).toHaveJSProperty('inert', true);
+    await page.locator('#backendSelect').blur();
+    await page.keyboard.press('/');
+    await expect(page.locator('#exampleSearch')).toBeFocused();
+    await expect(page.locator('#sidebarToggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.viewer')).toHaveJSProperty('inert', true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#sidebarToggle')).toBeFocused();
+    await expect(page.locator('#gallerySidebar')).toHaveJSProperty('inert', true);
+    await page.locator('#sidebarToggle').click();
+    await page.locator('#exampleSearch').fill('Geometry Primitives');
+    await page.locator('[data-example-id="geometry_primitives"]').click();
+    await expect(page.locator('#sidebarToggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(344);
+    expect(errors).toEqual([]);
+});
+
+test('gallery reports initialization failures and retries the same example @webgl2', async ({
+    page
+}) => {
+    await page.route('**/geometry_dynamic2.html*', route =>
+        route.fulfill({
+            contentType: 'text/html',
+            body: `<!doctype html><script type="module">
+            import '/examples/shared/gallery-status.ts';
+            throw new Error('Gallery failure fixture');
+        </script>`
+        })
+    );
+    await page.goto('list.html?backend=webgl2&collection=featured#geometry_dynamic2');
+    await expect(page.locator('#featuredMode')).toHaveAttribute('aria-pressed', 'true');
+    await page.reload();
+    await expect(page.locator('#featuredMode')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#frameStatus')).toHaveAttribute('data-state', 'error');
+    await expect(page.locator('#frameStatusText')).toContainText('Gallery failure fixture');
+    await page.unroute('**/geometry_dynamic2.html*');
+    await page.locator('#retryExample').click();
+    await expect(page.locator('#frameStatus')).toHaveAttribute('data-state', 'ready');
+    await expect(page.frameLocator('#exampleFrame').locator('.hilo3dStats')).toContainText(
+        'renderBackend: WebGL 2'
+    );
+});
+
+for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`cascaded shadow toy diorama demonstrates detail and live controls through ${backend} @${backend}`, async ({
         page
     }) => {
