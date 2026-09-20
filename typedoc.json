@@ -7,7 +7,7 @@
   "includeVersion": true,
   "hostedBaseUrl": "https://hilo3d.js.org/docs/",
   "projectDocuments": [
-    "documentation/ENGINEERING_MODERNIZATION.md",
+    "documentation/ENGINEERING.md",
     "README_ZH.md",
     "CHANGELOG.md",
     ".github/CONTRIBUTING.md"
@@ -18,7 +18,8 @@
   "navigationLinks": {
     "Home": "https://hilo3d.js.org/",
     "Examples": "https://hilo3d.js.org/examples/list.html",
-    "Repository": "https://github.com/hiloteam/Hilo3d"
+    "Repository": "https://github.com/hiloteam/Hilo3d",
+    "AI docs": "https://hilo3d.js.org/llms.txt"
   },
   "treatWarningsAsErrors": true,
   "validation": {

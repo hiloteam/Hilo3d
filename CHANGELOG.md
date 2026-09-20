@@ -13,6 +13,13 @@
   lamp/door/wall controls, live night/day environment changes, public OrbitControls, stable captures
   and lifecycle-safe teardown.
 
+### Documentation
+
+- Separate current engineering/rendering contracts and the roadmap from archived implementation
+  plans. Correct prerelease installation, exposure, temporal, material ABI and SRP guidance.
+- Publish a concise llms.txt and source Markdown with build provenance; add source/anchor/command
+  checks and synchronized public-API recipes verified against packed core/addon packages.
+
 ### Fixes
 
 - Stabilize static DDGI with fixed per-probe quadrature, geometry-stable relocation and exact

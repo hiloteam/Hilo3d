@@ -513,6 +513,8 @@ vertical composition on narrow portrait displays. Fine particles use a bounded 1
 presentation, which is a visual-quality choice rather than a performance benchmark configuration. No
 additional raster shaders or external model dependencies are introduced.
 
-The existing [`compute_particles.ts`](../examples/compute_particles.ts) showcase intentionally keeps
-its specialized implementation for now. It will be migrated only after the remaining particle
-feature phases are complete, so P0-P5 do not reduce or reshape that fixture prematurely.
+The existing [`compute_particles.ts`](../examples/compute_particles.ts) remains a specialized
+compute simulation/raster showcase. It deliberately complements the authored addon examples and is
+not waiting for a numbered particle phase to finish. Any future migration needs a concrete
+feature-parity and visual acceptance proposal; remaining runtime/editor work is tracked in
+[the roadmap](./ROADMAP.md).

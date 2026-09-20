@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["./package.test.ts"]
+  "include": ["./package.test.ts", "./recipes/**/*.ts"]
 }

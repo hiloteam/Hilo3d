@@ -1,5 +1,6 @@
 import { access, cp, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { publishDocumentation } from './publish-documentation';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const siteDirectory = resolve(projectRoot, 'site');
@@ -15,7 +16,11 @@ await cp(resolve(projectRoot, 'dist-examples/assets'), resolve(siteDirectory, 'a
 });
 await cp(resolve(projectRoot, 'CNAME'), resolve(siteDirectory, 'CNAME'));
 
+await publishDocumentation(projectRoot, siteDirectory);
+
 await Promise.all([
+    access(resolve(siteDirectory, 'llms.txt')),
+    access(resolve(siteDirectory, 'documentation/build.json')),
     access(resolve(siteDirectory, 'docs/index.html')),
     access(resolve(siteDirectory, 'examples/list.html')),
     access(resolve(siteDirectory, 'assets')),

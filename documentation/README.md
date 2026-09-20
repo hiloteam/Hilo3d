@@ -1,60 +1,63 @@
-# Hilo3D engineering documentation
+# Hilo3D documentation
 
-This directory contains the repository's hand-written engineering and architecture documents.
-Generated API documentation is written to the root `docs/` directory and must not be edited or
-committed.
+Hand-written documentation lives here. Generated TypeDoc output in `docs/` and the assembled `site/`
+are build artifacts; do not edit or commit them. These documents describe the current source
+checkout. Start with [version boundaries](./VERSIONS.md) when using an installed npm package.
 
-## Start here
+## Use the engine
 
-| Document                                                                        | Purpose                                                                                                                             |
-| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [Rendering architecture](./RENDERING_ARCHITECTURE.md)                           | Current production rendering path: shared renderer, Render Graph, portable RHI, and WebGPU/WebGL2 backends                          |
-| [PBR, HDR, and post-processing](./PBR_AND_POST_PROCESSING.md)                   | Layered glTF materials, modern PBR lighting, opaque scene texture, Bloom, Color Uber, and linear color contracts                    |
-| [Material system modernization](./MATERIAL_SYSTEM_MODERNIZATION.md)             | Current Definition/Instance architecture, semantic passes, typed bindings, texture-slot ABI, breaking changes, and roadmap          |
-| [Modern WebGPU rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md)         | Current rendering gaps and an actionable GPU Scene, temporal, lighting, virtualization, and high-end WebGPU roadmap                 |
-| [Temporal rendering remediation](./TEMPORAL_RENDERING_REMEDIATION.md)           | Production Motion Vector/TAA ABI, history validity, Clustered integration, performance contract, and release evidence               |
-| [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                       | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence          |
-| [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Analytic horizon GTAO, bent/multi-bounce PBR integration, log-depth temporal lifecycle, acceptance fixture, and release boundaries  |
-| [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)       | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries             |
-| [Dynamic global illumination](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | WebGPU world-space DDGI, offscreen BVH transport, visibility-aware probes, SSGI fusion and the original indoor atelier              |
-| [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers           |
-| [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |
-| [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks                        |
-| [Physics architecture](./PHYSICS_ARCHITECTURE.md)                               | Optional Stage System ABI, backend-neutral 2D/3D ownership, fixed-step simulation, Rapier adapters, synchronization, and lifecycle  |
-| [CSM toy showcase](./CSM_TOY_SHOWCASE.md)                                       | Toy diorama, equal-budget shadow comparison, dusk lighting, weather, snow accumulation, and reviewed screenshots                    |
-| [Physics examples](./PHYSICS_EXAMPLES.md)                                       | Six interactive physics exhibits, controls, character motion, suspension loads, art/physics boundaries, and validation scope        |
-| [Physics implementation plan](./PHYSICS_IMPLEMENTATION_PLAN.md)                 | Delivered physics slices, packaging and Cannon migration, advanced queries/character motion, acceptance and remaining release gates |
-| [Particle system](./PARTICLE_SYSTEM.md)                                         | Optional addon package, Stage System lifecycle, P0-P5 runtime, P6 authoring, deterministic checkpoints and baking contracts         |
-| [Particle system implementation plan](./PARTICLE_SYSTEM_IMPLEMENTATION_PLAN.md) | Unity 6.5/UE 5.8.1 feature analysis and a phased portable CPU, WebGPU stateful, and stateless particle architecture                 |
-| [Compute/storage implementation](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)      | Implemented Direct WGSL compute, storage resources, GPU-driven raster contract, first-release boundaries, and evidence              |
-| [Scriptable Render Pipeline design](./SCRIPTABLE_RENDER_PIPELINE_PLAN.md)       | SRP API, implemented architecture, migration record, release performance gates, and compute/storage integration                     |
-| [Engineering modernization](./ENGINEERING_MODERNIZATION.md)                     | TypeScript, ESM, tooling, packaging, examples, testing, API documentation, and release baseline                                     |
-| [RHI refactor plan](./RHI_REFACTOR_PLAN.md)                                     | RHI design goals, invariants, migration phases, and acceptance criteria                                                             |
+- [Getting started](./GETTING_STARTED.md): install the 2.0 prerelease and run a scene.
+- [Checked recipes](./RECIPES.md): 2D/3D, OrbitControls, GLB, post-processing, physics and
+  particles.
+- [2D and multi-camera](./2D_RENDERING.md), [animation](./ANIMATION_SYSTEM.md),
+  [PBR/post-processing](./PBR_AND_POST_PROCESSING.md).
+- [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md).
+- [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
+- [AI documentation entry](../llms.txt): a short index; [maintenance](./AI_DOCUMENTATION.md).
 
-- [Character animation and behavior composition](./ANIMATION_SYSTEM.md): pose mixer, locomotion,
-  layers, events and migration.
-- [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md): original Blender sculpture, 192 local lights,
-  Clustered Forward+ controls, GPU diagnostics, and browser acceptance.
+## Current technical contracts
 
-- [Example catalog](./EXAMPLE_CATALOG.md): reviewed purposes for all 94 examples, gallery
-  navigation, and cleanup decisions.
+| Document                                                       | Responsibility                                                            |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [Rendering architecture](./RENDERING_ARCHITECTURE.md)          | Shared frontend, Render Graph, RHI, shader and resource lifecycle.        |
+| [Scriptable Render Pipeline](./SCRIPTABLE_RENDER_PIPELINE.md)  | Factories, contexts, scene lists, features, passes and transactions.      |
+| [Compute and storage](./COMPUTE_AND_STORAGE.md)                | Direct WGSL compute, readonly storage raster, graph hazards and recovery. |
+| [Material system](./MATERIAL_SYSTEM.md)                        | Definition/Instance, semantic roles, texture slots, UBO/storage layouts.  |
+| [Temporal rendering](./TEMPORAL_RENDERING.md)                  | Motion ABI, TAA/TAAU, reactive and transparent/particle histories.        |
+| [GTAO](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)                    | Horizon AO, bent normals, integration and quality boundaries.             |
+| [SSR](./SCREEN_SPACE_REFLECTIONS.md)                           | Hi-Z reflection tracing, material response, rejection and fallback.       |
+| [SSGI](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)                  | Portable diffuse trace, temporal denoise and composition.                 |
+| [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Unreleased DDGI/software-BVH and SSGI hybrid, with evidence boundaries.   |
+| [Volumetric lighting](./VOLUMETRIC_LIGHTING.md)                | Froxels, fog, lighting, integration and history.                          |
+| [Atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) | Atmosphere LUTs, clouds/shadows, exposure and display.                    |
+| [Physics](./PHYSICS_ARCHITECTURE.md)                           | Optional Stage Systems, portable worlds, Rapier and lifetime.             |
+| [Particles](./PARTICLE_SYSTEM.md)                              | Optional addon, CPU/GPU/stateless execution and P6 authoring.             |
 
-## Source-of-truth order
+## Contribute and plan
 
-When documents disagree, use this order:
+- [AGENTS](../AGENTS.md) and [contributing](../.github/CONTRIBUTING.md): repository rules.
+- [Engineering](./ENGINEERING.md): toolchain, packages, testing, CI and release workflow.
+- [Roadmap](./ROADMAP.md): implemented slices, evidence gates, extensions and unstarted work.
+- [Rendering roadmap](./MODERN_WEBGPU_RENDERING_ROADMAP.md): A0/M0 and remaining rendering work.
+- [Physics rollout](./PHYSICS_IMPLEMENTATION_PLAN.md): delivered P0–P4 and planned P5.
+- [Archive](./archive/README.md): historical designs and dated validation; not current instructions.
 
-1. Current source code and executable tests.
-2. `RENDERING_ARCHITECTURE.md` for the production rendering path.
-3. `MATERIAL_SYSTEM_MODERNIZATION.md` for current material ownership, semantic-pass, variant,
-   texture-slot and GPU-data contracts plus the remaining long-term roadmap.
-4. `PHYSICS_ARCHITECTURE.md` for the optional Stage System and portable physics contracts.
-5. `ENGINEERING_MODERNIZATION.md` for the maintained engineering baseline.
-6. `COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md` for the implemented compute/storage and GPU-driven
-   rendering contract, first-release boundaries, acceptance fixtures, and validation record.
-7. `RHI_REFACTOR_PLAN.md` for design intent and acceptance criteria not superseded above.
-8. `SCRIPTABLE_RENDER_PIPELINE_PLAN.md` for the implemented SRP design rationale, rollout record,
-   acceptance checklist, and the integration points now used by compute/storage.
+## Showcase notes
 
-Update the relevant document whenever a change alters an architectural invariant, public workflow,
-backend policy, or validation requirement. Keep diagrams in [`assets/`](./assets/) and reference
-them with relative links.
+[CSM toy town](./CSM_TOY_SHOWCASE.md), [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md),
+[physics exhibits](./PHYSICS_EXAMPLES.md) and [example catalog](./EXAMPLE_CATALOG.md) preserve art
+direction, interaction and reviewed evidence. Asset licenses and immutable benchmark baselines
+remain source artifacts; their age alone is not a reason to remove them.
+
+## Sources and maintenance
+
+For a consumer, the installed package's declarations and matching release docs define available API.
+For engine work, current source and executable tests take precedence, followed by rendering
+architecture, the relevant current topic and engineering workflow. Roadmaps describe future work;
+archives are historical context and never override current contracts.
+
+Update the relevant contract when architecture, lifecycle, backend policy or workflow changes. Keep
+exact API signatures in TypeDoc/declarations and use checked recipe source for runnable snippets.
+Link to existing topic owners rather than duplicating ABI tables or completion lists. Record dated
+validation separately from implementation status. Run `npm run docs:check` for source links,
+commands, recipe synchronization and TypeDoc; publishing also runs site link validation.

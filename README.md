@@ -24,7 +24,9 @@
 </div>
 
 > Hilo3D 2.0 is currently in alpha. Existing projects should review the
-> [breaking changes](./CHANGELOG.md#breaking-changes) before upgrading.
+> [breaking changes](./CHANGELOG.md#breaking-changes) before upgrading. Repository and website
+> documentation may include Unreleased APIs; match [version boundaries](./documentation/VERSIONS.md)
+> to the installed package.
 
 ## Why Hilo3D
 
@@ -50,8 +52,13 @@ WebGPU path or a production WebGL 2 compatibility path.
 ## Install
 
 ```sh
-npm install hilo3d
+npm install --save-exact hilo3d@next
 ```
+
+`next` selects the 2.0 prerelease; `--save-exact` pins the resolved version. The unqualified
+`latest` channel may still select 1.x. Match optional addon versions to the installed core. See
+[version boundaries](./documentation/VERSIONS.md) and the
+[complete quickstart](./documentation/GETTING_STARTED.md).
 
 Hilo3D is ESM-only. It targets modern browsers with WebGPU or WebGL 2; WebGL 1 and legacy global
 builds are outside the 2.0 contract.
@@ -85,11 +92,19 @@ const stage = await Hilo3d.Stage.create({
 new Hilo3d.Mesh({
     geometry: new Hilo3d.BoxGeometry(),
     material: new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.83, 0.12, 0.09)
+        baseColor: new Hilo3d.Color(0.83, 0.12, 0.09),
+        metallic: 0.1,
+        roughness: 0.6
     })
 }).addTo(stage);
 
 stage.addChild(new Hilo3d.AmbientLight({ amount: 1 }));
+stage.addChild(
+    new Hilo3d.DirectionalLight({
+        amount: 3,
+        direction: new Hilo3d.Vector3(-1, -1, -1)
+    })
+);
 
 const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);
@@ -188,6 +203,11 @@ resource, shader, and recovery contracts.
 
 ## Documentation
 
+- [Getting started](./documentation/GETTING_STARTED.md) and
+  [checked recipes](./documentation/RECIPES.md)
+- [AI documentation index](./llms.txt) and [version policy](./documentation/VERSIONS.md)
+- [Roadmap](./documentation/ROADMAP.md)
+
 - [Getting started and API documentation](https://hilo3d.js.org/docs/)
 - [Example gallery](https://hilo3d.js.org/examples/list.html)
 - [`hilo3d-game` Agent Skill](https://github.com/hiloteam/Hilo3d/tree/dev/skills/hilo3d-game)
@@ -195,13 +215,13 @@ resource, shader, and recovery contracts.
 - [Rendering architecture](./documentation/RENDERING_ARCHITECTURE.md)
 - [PBR, HDR, and post-processing](./documentation/PBR_AND_POST_PROCESSING.md)
 - [Modern WebGPU rendering roadmap](./documentation/MODERN_WEBGPU_RENDERING_ROADMAP.md)
-- [Material system modernization](./documentation/MATERIAL_SYSTEM_MODERNIZATION.md)
-- [Temporal rendering](./documentation/TEMPORAL_RENDERING_REMEDIATION.md)
+- [Material system](./documentation/MATERIAL_SYSTEM.md)
+- [Temporal rendering](./documentation/TEMPORAL_RENDERING.md)
 - [Screen-space global illumination](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md)
 - [Froxel volumetric lighting](./documentation/VOLUMETRIC_LIGHTING.md)
 - [Physical atmosphere and weather](./documentation/PHYSICAL_ATMOSPHERE_AND_WEATHER.md)
 - [2D rendering and multi-camera composition](./documentation/2D_RENDERING.md)
-- [Scriptable render pipeline](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md)
+- [Scriptable render pipeline](./documentation/SCRIPTABLE_RENDER_PIPELINE.md)
 - [Breaking changes](./CHANGELOG.md#breaking-changes)
 
 ## Develop locally

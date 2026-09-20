@@ -194,8 +194,7 @@ portable material UBO 分为 448-byte `MaterialBlock` 与 1,920-byte
 0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
 registry。attribute、uniform、texture 和 built-in
 slot 使用公开的类型化 semantic 常量，不以任意字符串作为公共绑定合同。完整设计、breaking
-changes 与 GPU material database 路线见
-[`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
+changes 与 GPU material database 路线见 [`MATERIAL_SYSTEM.md`](./MATERIAL_SYSTEM.md)。
 
 WebGPU high-end 路径复用 renderer-local `SharedMaterialRecordDatabase`。数据库按 material
 identity 去重，保留公共 `materialId` 并分配按 family/layout 分类的 dense
@@ -203,9 +202,11 @@ handle；`MaterialInstance.revision` 驱动 record 重打包，相邻 dirty reco
 revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败帧重试；renderer-owned
 `cpu-shadow` buffer 在 device recovery 后重建而不替换材质或 handle identity。首个
 `builtin-pbr-storage-v4` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
-scalar 外，它为每个内置 PBR texture slot 保存独立 UV matrix、UV set、encoding、presence 与 channel
-mapping，并在 surface record 的保留分量保存 authored reactive factor。logical geometry
-bucket 与 material handle 在对象 record 中保持为两个独立字段。
+scalar 外，它为 compact record 支持的 8 个基础 PBR texture slot 保存独立 UV matrix、UV
+set、encoding、presence 与 channel mapping，并在 surface record 的保留分量保存 authored reactive
+factor。该布局不是 portable UBO 的全部 24 槽；精确集合与 704-byte 大小见
+[材质合同](./MATERIAL_SYSTEM.md)。logical geometry bucket 与 material
+handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
 
@@ -478,7 +479,7 @@ validator/writer；原始 f16 源码仍是 WebGPU artifact，并在 RHI 检查�
 WebGL 2 对 compute pipeline、storage binding 和 indirect draw 提供的是明确的 negative
 implementation：在任何 native GL compute/storage 模拟之前失败，不使用 texture-backed SSBO、transform
 feedback、fragment compute 或 CPU fallback。完整公共合同、目标场景组合方式与首发边界见
-[`COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md`](./COMPUTE_STORAGE_IMPLEMENTATION_PLAN.md)。
+[`COMPUTE_AND_STORAGE.md`](./COMPUTE_AND_STORAGE.md)。
 
 公共粒子系统复用同一条生产路径。CPU plan 把 liveness 编译后的 dense SoA 写入一个显式 per-instance
 vertex stream，并由普通 `MeshDrawProcessor` 发出单次 direct instanced draw；WebGPU stateful

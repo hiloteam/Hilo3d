@@ -9,8 +9,13 @@ with one shared rendering frontend, a Render Graph, a portable RHI, and WebGPU/W
 - For rendering work, read
   [`documentation/RENDERING_ARCHITECTURE.md`](./documentation/RENDERING_ARCHITECTURE.md).
 - For engineering, packaging, or migration work, read
-  [`documentation/ENGINEERING_MODERNIZATION.md`](./documentation/ENGINEERING_MODERNIZATION.md).
+  [`documentation/ENGINEERING.md`](./documentation/ENGINEERING.md).
 - Check `git status` first and preserve unrelated user changes.
+- Current contracts are indexed in `documentation/README.md`; `documentation/archive/` and
+  moved-page stubs preserve history, not instructions. Keep remaining work in
+  `documentation/ROADMAP.md`.
+- Consumer documentation uses `llms.txt` and checked recipes. Follow
+  `documentation/AI_DOCUMENTATION.md` when changing their source, version boundaries or publication.
 
 ## Toolchain and generated files
 
@@ -133,7 +138,7 @@ compare verified current-RHI snapshots from different commits instead.
 - CI grouping changes must pass `npx jiti scripts/check-ui-groups.ts`. Keep each group's blob
   filename unique and retain timings. Investigate traces and same-runner timing history before
   changing budgets; do not silence failures with retries, skips, or weaker pixel thresholds.
-- See `documentation/ENGINEERING_MODERNIZATION.md` for group commands and capture contracts.
+- See `documentation/ENGINEERING.md` for group commands and capture contracts.
 - Example teardown must stop its ticker before destroying animation/media resources. Retain
   resources on persisted `pagehide` and resume on persisted `pageshow`; lifecycle tests must also
   observe errors after teardown, not only while the page is running.

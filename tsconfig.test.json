@@ -25,7 +25,8 @@
     "scripts/release-git-tag-core.ts",
     "scripts/site-link-references.ts",
     "scripts/shader-modernity.ts",
-    "scripts/performance/**/*.ts"
+    "scripts/performance/**/*.ts",
+    "scripts/documentation-content.ts"
   ],
   "exclude": ["test/types/**"],
   "references": [

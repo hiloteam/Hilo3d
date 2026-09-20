@@ -30,13 +30,18 @@ when testing the WebGL 2 lane.
 - `npm run test:coverage` runs browser unit tests and enforces coverage thresholds.
 - `npm run test:browser` runs the full portable Playwright UI, WebGPU, and visual rendering suites
   locally and for release validation. Hosted PR CI runs the stable WebGL 2 presentation matrix in
-  four isolated shards and keeps WebGPU presentation in the local/physical-GPU lanes.
+  six isolated work groups and keeps WebGPU presentation in the local/physical-GPU lanes.
 - `npm run test:webgpu` runs the real Chromium WebGPU/Naga render path; it must not be replaced by a
   mocked-device smoke test.
 - `npm run test:webgpu:native` is an optional physical-GPU check. It must run only on a machine with
   a real GPU/driver, rejects fallback and known software adapters, and is deliberately excluded from
   portable `validate`. The manual self-hosted workflow uses the `linux` and `gpu` runner labels.
-- `npm run docs:check` validates the TypeDoc API documentation.
+- `npm run docs:check` validates source Markdown links/anchors, current npm commands, generated
+  recipe/catalog snippets and TypeDoc. Update recipe TypeScript or catalog metadata first, then run
+  `npm run docs:sync`. `test:types` and `test:package` check recipe consumption.
+- `npm run site:build` publishes TypeDoc, Markdown, llms.txt and build provenance, then validates
+  site links. Keep release/source version boundaries explicit; see
+  [AI documentation maintenance](../documentation/AI_DOCUMENTATION.md).
 - `npm run api:check` rejects unreviewed changes to the generated public declaration report.
 - `npm run test:package` builds and tests the actual npm package contract.
 - `npm run validate` is the complete local and release gate, including the full browser GPU matrix.
@@ -74,19 +79,24 @@ be committed when a rendering change is intentional.
 - Public rendering backends are exactly `webgl2` and `webgpu`. Never add WebGL 1 context fallback,
   GLSL 1.00 compatibility macros, or extension wrappers for WebGL 2 core features. Explicit WebGPU
   selection must reject unsupported capabilities instead of silently falling back to WebGL 2.
-- Engine and example shaders have one GLSL ES 3.00 source of truth and must use `in`/`out`,
+- Portable raster shaders have one GLSL ES 3.00 source of truth and must use `in`/`out`,
   `texture()`, explicit fragment outputs, and std140 blocks. `attribute`, `varying`, `texture2D`,
   `textureCube`, `gl_FragColor`, `gl_FragData`, and WebGL 1 shader extensions are rejected.
-- WebGPU shaders must follow the fixed pipeline: resolve the active engine variant, prepare Vulkan
-  GLSL 4.50 interfaces and bindings, then translate through Naga WASM to WGSL. Do not add a parallel
-  hand-authored WGSL tree or skip engine preprocessing before Naga.
-- Non-sampler shader data belongs in a std140 uniform block. GLSL samplers are the only declarations
-  outside blocks: WebGL 2 maps them to texture units and WebGPU maps them to separate
+- Portable WebGPU raster shaders must follow the fixed pipeline: resolve the active engine variant,
+  prepare Vulkan GLSL 4.50 interfaces and bindings, then translate through Naga WASM to WGSL. Do not
+  add a parallel hand-authored WGSL tree or skip engine preprocessing before Naga.
+- WebGPU-only compute uses Direct WGSL through `ComputeShader`, with explicit binding/workgroup
+  contracts and Naga validation. Storage raster uses the constrained readonly std430 GLSL ES 3.10
+  `StorageGraphicsShader` contract and the same preprocessing/Naga chain. See
+  [Compute and storage](../documentation/COMPUTE_AND_STORAGE.md).
+- Portable non-sampler shader data belongs in a std140 uniform block. GLSL samplers are the only
+  declarations outside blocks: WebGL 2 maps them to texture units and WebGPU maps them to separate
   texture/sampler binding pairs. Both backends reject classic numeric uniforms.
-- WebGL 2 reserves flat bindings 0–8 for `FrameBlock`, `CameraBlock`, `SceneBlock`, `LightBlock`,
-  `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, and `MorphBlock`. WebGPU maps
-  global/pass blocks to group 0, material resources to group 1, object/geometry/pose blocks to group
-  2, and custom blocks to group 3; `InstanceBlock` is group 2 binding 4.
+- WebGL 2 reserves flat bindings 0–9 for `FrameBlock`, `CameraBlock`, `SceneBlock`, `LightBlock`,
+  `MaterialBlock`, `ModelBlock`, `GeometryBlock`, `SkinningBlock`, `MorphBlock`, and
+  `MaterialTextureBlock`. Custom flat bindings start at 10. WebGPU maps global/pass blocks to group
+  0, material resources to group 1, object/geometry/pose blocks to group 2, and custom blocks to
+  group 3; `InstanceBlock` is group 2 binding 4.
 - Register a custom block with `registerUniformBlockBinding` before first use. Every new block must
   document its owner and update frequency and include std140 offset, size, dirty-update, WebGPU
   binding, and Naga corpus tests.

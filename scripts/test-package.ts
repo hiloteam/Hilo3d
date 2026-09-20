@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
 
 const projectRoot = resolve(import.meta.dirname, '..');
@@ -50,6 +51,44 @@ try {
         ],
         { cwd: consumerDirectory, stdio: 'inherit' }
     );
+
+    // Compile and bundle the documented modules against installed tarballs, without source aliases.
+    const recipeDirectory = join(consumerDirectory, 'recipes');
+    await cp(resolve(projectRoot, 'test/types/recipes'), recipeDirectory, { recursive: true });
+    const recipeFiles = (await readdir(recipeDirectory)).filter(name => name.endsWith('.ts'));
+    execFileSync(
+        process.execPath,
+        [
+            resolve(projectRoot, 'node_modules/typescript/bin/tsc'),
+            '--strict',
+            '--noEmit',
+            '--target',
+            'ES2022',
+            '--module',
+            'NodeNext',
+            '--moduleResolution',
+            'NodeNext',
+            '--lib',
+            'ES2022,ESNext.Disposable,DOM,DOM.Iterable',
+            ...recipeFiles.map(name => join(recipeDirectory, name))
+        ],
+        { cwd: consumerDirectory, stdio: 'inherit' }
+    );
+    await buildVite({
+        configFile: false,
+        root: consumerDirectory,
+        logLevel: 'warn',
+        build: {
+            outDir: join(consumerDirectory, 'recipe-build'),
+            lib: {
+                entry: Object.fromEntries(
+                    recipeFiles.map(name => [name.slice(0, -3), join(recipeDirectory, name)])
+                ),
+                formats: ['es']
+            },
+            minify: false
+        }
+    });
 
     await writeFile(
         join(consumerDirectory, 'esm-consumer.mjs'),

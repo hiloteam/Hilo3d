@@ -1,7 +1,9 @@
+import { markdownReferences, withoutFencedCode } from './documentation-content';
+
 const htmlReferencePattern = /\b(?:href|src|poster)=["']([^"']+)["']/g;
 const cssReferencePattern = /url\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^"')]+))\s*\)/g;
 
-export type SiteFileType = 'css' | 'gltf' | 'html';
+export type SiteFileType = 'css' | 'gltf' | 'html' | 'markdown';
 
 function collectGltfUris(value: unknown, references: string[]): void {
     if (Array.isArray(value)) {
@@ -18,6 +20,12 @@ function collectGltfUris(value: unknown, references: string[]): void {
 
 /** Extract link-like references without interpreting nested syntax inside quoted CSS URLs. */
 export function extractSiteReferences(fileType: SiteFileType, contents: string): string[] {
+    if (fileType === 'markdown') {
+        return [
+            ...markdownReferences(contents).map(reference => reference.url),
+            ...extractSiteReferences('html', withoutFencedCode(contents))
+        ];
+    }
     if (fileType === 'gltf') {
         const references: string[] = [];
         collectGltfUris(JSON.parse(contents) as unknown, references);
