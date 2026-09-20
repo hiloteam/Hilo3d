@@ -1,5 +1,9 @@
 # Hilo3D 现代 WebGPU 渲染缺口与落地路线
 
+> 2026-09-19 增量：GI0 首版 WebGPU DDGI + 软件 BVH + SSGI
+> hybrid 与原生室内案例已实现；范围与待登记性能证据见
+> [`DYNAMIC_GLOBAL_ILLUMINATION.md`](./DYNAMIC_GLOBAL_ILLUMINATION.md)。
+>
 > 代码审计基线：`c2092d9`（`dev`，2026-08-13）；路线状态复核：2026-08-29。F0、F1、D0、MAT0、G0/L0、T0、E0、Q0、V0/物理大气天气，以及 S0
 > stable-atlas 内容缓存首版均已有生产代码和自动化证据；未登记的物理 GPU 跨提交性能基线仍不视为完成。本文只讨论面向现代 WebGPU 图形架构的增量，不把恢复旧图形 API、补传统效果清单或维持 WebGL
 > 2 功能对等作为路线目标。
@@ -37,8 +41,8 @@ Draw、HDR/PBR、设备丢失恢复、严格帧事务、TAA/TAAU、GTAO、SSR、
    clipmap。
 6. **现代资源与几何虚拟化**：GPU Scene 已有 projected-radius bucket LOD，但仍没有 meshlet/cluster
    geometry streaming、KTX 2/Basis、mip
-   residency 或虚拟纹理；SSGI 已覆盖屏幕内漫反射传输，off-screen probe/software-BVH
-   fallback 仍属于 GI0。
+   residency 或虚拟纹理；SSGI 已覆盖屏幕内漫反射传输，off-screen
+   DDGI/software-BVH 首版已接入 GI0，资产流送与更广材质覆盖仍是独立后续层。
 
 最值得先做的不是直接复刻 Nanite 或 Lumen，而是在已经完成的 P0/S0 功能闭环上登记物理 GPU 性能证据，再进入 A0：
 
@@ -126,7 +130,7 @@ Forward+ 时才值得作为特定 profile 考虑，而不是现代化的默认�
 | Forward+                             | high-end P0 完成  | 3D cluster、有界预算、storage GGX PBR、共享 shadow/LTC、透明/变形/layered consumer、analytic cookie/IES 与 uint32 light-layer ABI 已闭环                                                                                                    |
 | Temporal rendering                   | high-end P0 完成  | opaque TAAU、GPU-time dynamic resolution、authored reactive，以及透明/transmission/GPU-particle 独立 short history 与 resurrection 已完成                                                                                                   |
 | Exposure / display transform         | WebGPU 生产切片   | 独立 Forward `AutoExposure` 与 Clustered 集成都具备 GPU histogram、asymmetric eye adaptation、submission-aware history；`ColorUber` 有参数化 filmic，Clustered 有 compact filmic                                                            |
-| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；SSR miss 保留 forward environment/probe baseline，透明/离屏几何不参与 trace，BVH/SDF fallback 待 GI0                                                             |
+| Screen-space lighting                | Q0 生产切片完成   | portable Forward/Clustered GTAO 与 SSGI、WebGPU Clustered Hi-Z SSR 已完成；SSR miss 保留 forward environment/probe baseline，透明/离屏几何不参与 trace，漫反射 DDGI/BVH 已由 GI0 首版提供，镜面 BVH/SDF fallback 仍待扩展                   |
 | Volumetrics / atmosphere             | high-end 生产切片 | WebGPU Clustered froxel、height/local fog、screen-space caster visibility、physical atmosphere LUT、aerial perspective、temporal clouds，以及 surface/froxel cloud shadow 已落地                                                            |
 | Geometry / texture streaming         | 仅 bucket LOD     | GPU Scene 已有 projected-radius geometry bucket LOD；没有 meshlet/cluster streaming、KTX 2/Basis 或 mip residency，KTX loader 仅支持 KTX 1.1 单面 2D 容器                                                                                   |
 | GPU profiling / graph debugging      | 生产基线          | opt-in CPU/GPU Graph timeline、query ring、debug marker、资源 lifetime；关闭 diagnostics 且无内部 timing consumer 时不创建 query                                                                                                            |
@@ -239,7 +243,7 @@ indirect 建立相同类别的数据驱动系统，并给出 WebGPU 自身的性
 | V0   | Froxel volumetric fog/lighting/cloud foundation                          | P1     | 生产切片完成；atlas shadow/透明体积后续                                                           | XL     | L0、F0；T0 可稳定最终边缘但非创建前置         |
 | A0   | KTX 2/Basis、mip residency、texture/geometry streaming budget            | P1     | 未开始                                                                                            | XL     | F0、diagnostics                               |
 | M0   | Offline meshlet build、cluster LOD、GPU material bin、geometry streaming | P2     | 未开始；已有 bucket-level LOD 可复用                                                              | XXL    | MAT0、G0、A0                                  |
-| GI0  | Screen/probe/software-BVH hybrid GI                                      | P2     | 屏幕内 SSGI 已完成；off-screen 层未开始                                                           | XXL    | T0、Q0、G0、A0                                |
+| GI0  | Screen/probe/software-BVH hybrid GI                                      | P2     | 屏幕内 SSGI、DDGI/software-BVH 与 hybrid 首版已完成；登记性能证据待补                             | XXL    | T0、Q0、G0、A0                                |
 
 `P0` 是“现代 WebGPU renderer”定义所需能力；`P1` 是高画质生产 profile；`P2`
 是依赖场景规模、内容管线和长期性能投入的虚拟化能力。
@@ -253,7 +257,7 @@ PBR、analytic cookie/IES、light-layer、variant
 warmup 和透明/粒子时域策略已收口；尚需在登记物理 GPU 上建立不可覆盖的跨提交性能基线。S0 已完成 stable-atlas
 cache、GPU caster cull、receiver budget/cadence、固定物理页 residency，以及 opt-in GPU
 request/page-table/remap/directional clipmap；后续是物理 GPU 压力证据和扩展非 rigid caster
-coverage。A0、M0 和 GI0 的 off-screen 层也尚未开始。详见
+coverage。A0、M0 尚未开始；GI0 off-screen 首版见动态 GI 文档。详见
 [`MATERIAL_SYSTEM_MODERNIZATION.md`](./MATERIAL_SYSTEM_MODERNIZATION.md)。
 
 ## 6. 可落地工作包
@@ -735,7 +739,7 @@ visibility 冒充。
 这是一条 “Nanite-class problem” 的 WebGPU 解法，但不是 Nanite 等价实现。必须用真实内容、GPU
 timestamp、streaming bytes、cluster rejection 和 shading cost 证明收益。
 
-#### GI0：WebGPU 可落地的混合 GI（仅屏幕内 SSGI 已完成）
+#### GI0：WebGPU 可落地的混合 GI（SSGI + DDGI/software-BVH 首版已实现）
 
 ![GI0：屏幕空间、Probe、Software BVH 与时域降噪的混合 GI](./images/modern-webgpu-roadmap/hybrid-gi.jpg)
 
@@ -743,11 +747,17 @@ timestamp、streaming bytes、cluster rejection 和 shading cost 证明收益。
 | ------------------------------------- | ------------------------------------------------------- | -------------------------------------------- | ------------------------------------- |
 | depth/normal/history、probe、软件 BVH | screen trace、probe fallback、少量 compute ray、denoise | 稳定 diffuse indirect 与 off-screen fallback | 动态光/几何可更新，不宣称硬件 RT 能力 |
 
-建议组合顺序：
+DDGI/software-BVH 首版已提供刚体 opaque PBR 离屏查询、方向性 visibility moments、probe
+relocation、动态 point/spot/directional lighting 和 submission-aware history。SSGI 用 signed
+correction 融合，保留离屏 probe baseline；不覆盖 hardware
+RT、镜面离屏反射、skin/morph/透明几何或纹理精确 ray-hit 材质。完整合同见
+[`DYNAMIC_GLOBAL_ILLUMINATION.md`](./DYNAMIC_GLOBAL_ILLUMINATION.md)。
+
+原组合顺序及后续扩展：
 
 1. ~~Hi-Z SSR + temporal SSGI，先覆盖屏幕内高频信息；~~ 已由 Q0 完成；
-2. 动态 probe grid/DDGI，保存低频 diffuse irradiance 与 visibility；
-3. 只有在内容需要且基准可接受时，再加入 software BVH 或 SDF clipmap trace；
+2. ~~动态 probe grid/DDGI，保存低频 diffuse irradiance 与 visibility；~~ 首版已实现；
+3. software BVH 刚体首版已实现；SDF clipmap 和更广几何覆盖仍由内容与基准决定；
 4. probe/software trace 作为 off-screen fallback，不能冒充硬件 ray tracing。
 
 SDF 不单独前移为近期 milestone。只有同时满足以下准入门槛，才在 GI0 下启动 `SDF0`
@@ -820,7 +830,7 @@ flowchart TD
 | Render Graph      | `src/render/graph/`、`src/render/pipeline/ScriptableRenderGraph.ts`       | multi-subresource history validity、compiled graph reuse、证据充分后的同帧 alias    |
 | Shader compiler   | `src/render/shader/`、`src/render/compute/`                               | 新 surface family、meshlet/streaming kernel；继续遵守 GLSL/Naga 与 Direct WGSL 边界 |
 | Shared renderer   | `src/render/renderer/`、`src/render/pipeline/ClusteredForwardPlus.ts`     | shadow residency、GPU caster cull 与未来 meshlet/streaming consumer                 |
-| Pipeline features | `src/render/pipeline/`、`src/render/postprocessing/`                      | volumetric atlas shadow、未来 probe/off-screen GI                                   |
+| Pipeline features | `src/render/pipeline/`、`src/render/postprocessing/`                      | volumetric atlas shadow、DDGI 后续材质/几何覆盖与镜面 off-screen GI                 |
 | Camera/frame ABI  | `src/camera/`、`src/render/ubo/BuiltInUniformBlocks.ts`                   | 当前 D0 已完成；新增空间表示必须复用现有 current/previous/origin transaction        |
 | Assets            | `src/loader/`、`src/texture/`、`src/geometry/`                            | KTX 2/Basis、meshopt/meshlet metadata、residency 与 streaming budget                |
 | Diagnostics       | `RendererDiagnostics`、RHI diagnostics、`ClusteredForwardPlusDiagnostics` | resident/in-flight/evicted bytes、shadow page、warmup queue 与登记物理 GPU baseline |
@@ -854,8 +864,9 @@ report、类型消费和 package 验证必须同版本完成。
   health；option/历史测试覆盖 EV 上下限和 camera continuity。任意 authored metering
   mask 只有在新增 API 时才需要新 fixture；
 - **Q0 已有**：Silent Dragon GTAO、Afterimage SSR、Prismatic Vespers
-  SSGI 的 on/off 像素、时域与双后端/ WebGPU 边界。**仍缺**：GI0 的 off-screen probe/BVH
-  fallback，不属于 Q0 回补；
+  SSGI 的 on/off 像素、时域与双后端/
+  WebGPU 边界。**GI0 已增量提供**：DDGI/software-BVH 漫反射离屏贡献与 signed SSGI
+  hybrid；更多材质/几何、镜面 fallback 与独立性能基线继续单独验收；
 - **V0 已有**：Neon Reliquary froxel 与 Stormfront
   atmosphere/cloud/cloud-shadow 场景。**仍缺**：shared shadow-atlas volumetric
   sampling、透明介质参与和对应性能证据；
@@ -898,8 +909,9 @@ time、确定的资源预算和失败时的可观察行为。
    residency、上传/内存/in-flight budget；随后再增加 geometry page/meshopt；
 4. **M0 meshlet/cluster geometry**：复用 GPU Scene、bucket LOD 与 A0 residency，先限定 static rigid
    mesh，以真实内容证明 cull/带宽收益；
-5. **GI0 off-screen 层**：在已完成 SSGI 基线上按产品需要评估 probe grid，再决定 software BVH/SDF
-   clipmap；virtual texture 和完整 virtual shadow 同样以真实内容/预算决定，不预先公开空 provider。
+5. **GI0 后续层**：DDGI/software-BVH 与 SSGI
+   hybrid 首版完成后，登记物理 GPU 性能证据，按产品需要评估更多材质/几何与 SDF clipmap；virtual
+   texture 和完整 virtual shadow 同样以真实内容/预算决定，不预先公开空 provider。
 
 ```mermaid
 flowchart LR

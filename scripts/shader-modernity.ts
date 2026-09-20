@@ -15,7 +15,8 @@ const shaderGuardFixturePath = 'test/spec/shader/ShaderModernityGuardrails.test.
 const shaderGuardImplementationPath = 'scripts/shader-modernity.ts';
 const storageGraphicsBoundaryImplementationPath = 'src/render/compute/StorageGraphicsShader.ts';
 const controlledStorageGraphicsChunkPaths: ReadonlySet<string> = new Set([
-    'src/shader/chunk/clusteredForward.frag'
+    'src/shader/chunk/clusteredForward.frag',
+    'src/shader/chunk/dynamicGlobalIllumination.frag'
 ]);
 const controlledComputeFixturePaths: ReadonlySet<string> = new Set([
     'test/spec/renderer/ComputeKernel.test.ts',

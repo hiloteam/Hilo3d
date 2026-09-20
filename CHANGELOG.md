@@ -1,6 +1,24 @@
 # Unreleased
 
+### Features
+
+- Add opt-in WebGPU dynamic diffuse global illumination to Clustered Forward+: camera-independent
+  rigid PBR BVH tracing, budgeted visibility-aware irradiance probes, dynamic lighting, bounded
+  bounce feedback, relocation, transactional history and device recovery. Both indirect and direct
+  clustered PBR sample the same field; hybrid SSGI replaces overlapping transport with a signed
+  correction. Add validated options, contribution control and submitted resource/coverage
+  diagnostics.
+- Add the original Blender-authored Afternoon Atelier, with warm oak and linen furniture, an
+  integrated up/down linen floor lamp, visible wall-color reflection across sofa and rug, dynamic
+  lamp/door/wall controls, live night/day environment changes, public OrbitControls, stable captures
+  and lifecycle-safe teardown.
+
 ### Fixes
+
+- Stabilize static DDGI with fixed per-probe quadrature, geometry-stable relocation and exact
+  submission-aware light revisions. Correct TAA/TAAU jitter-free history reprojection, neighborhood
+  shading-change detection and depth-checked one-pixel silhouette motion coverage, preventing
+  repeating edge shimmer while retaining camera-cut and moving-object rejection.
 
 - Reject unsupported or rapidly moving SSR missed-hit history, fade confidence-premultiplied
   radiance together with confidence, and honor zero history weight on every resolve path. This

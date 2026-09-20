@@ -16,6 +16,7 @@ committed.
 | [Screen-space reflections](./SCREEN_SPACE_REFLECTIONS.md)                       | Production WebGPU Hi-Z SSR, material attribute ABI, temporal rejection, lifecycle rules, limitations, and release evidence          |
 | [Ground-truth ambient occlusion](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)           | Analytic horizon GTAO, bent/multi-bounce PBR integration, log-depth temporal lifecycle, acceptance fixture, and release boundaries  |
 | [Screen-space global illumination](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)       | Portable Forward/Clustered SSGI, radiance tracing, temporal denoise, lifecycle, quality budgets, and release boundaries             |
+| [Dynamic global illumination](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | WebGPU world-space DDGI, offscreen BVH transport, visibility-aware probes, SSGI fusion and the original indoor atelier              |
 | [Froxel volumetric lighting](./VOLUMETRIC_LIGHTING.md)                          | WebGPU Clustered froxels, height/local fog, light injection, radiative integration, temporal lifecycle, and quality tiers           |
 | [Physical atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md)         | GPU histogram exposure, filmic display, atmosphere LUTs, temporal volumetric clouds, cloud shadows, and integration order           |
 | [2D rendering and multi-camera composition](./2D_RENDERING.md)                  | Sprite batching, frame animation, Canvas text, pointer input, camera priority, clear policy, and layer masks                        |
@@ -35,7 +36,7 @@ committed.
 - [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md): original Blender sculpture, 192 local lights,
   Clustered Forward+ controls, GPU diagnostics, and browser acceptance.
 
-- [Example catalog](./EXAMPLE_CATALOG.md): reviewed purposes for all 93 examples, gallery
+- [Example catalog](./EXAMPLE_CATALOG.md): reviewed purposes for all 94 examples, gallery
   navigation, and cleanup decisions.
 
 ## Source-of-truth order

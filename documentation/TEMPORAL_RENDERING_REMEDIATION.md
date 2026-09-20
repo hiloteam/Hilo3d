@@ -35,17 +35,31 @@ fallback 的专项审查。目标不是增加一个仅在 demo 中可用的滤�
 
 内置 Basic/PBR/Geometry 和 Clustered storage raster 使用同一 single-sample `rgba16float` 合同：
 
-| 通道 | 含义                                              | 单位与方向                                                      | 无效值           |
-| ---- | ------------------------------------------------- | --------------------------------------------------------------- | ---------------- |
-| X/Y  | current-to-previous motion                        | render-target UV；resolve 使用 `historyUV = currentUV - motion` | `0, 0`           |
-| Z    | 当前 surface 在 previous view 中的 expected depth | `log2(1 + abs(previousViewZ))`                                  | `-1`             |
-| W    | 当前 surface 的 depth                             | `log2(1 + abs(currentViewZ))`                                   | 仍写当前有效深度 |
+| 通道 | 含义                                              | 单位与方向                                            | 无效值           |
+| ---- | ------------------------------------------------- | ----------------------------------------------------- | ---------------- |
+| X/Y  | current-to-previous motion                        | render-target UV，包含 current/previous raster jitter | `0, 0`           |
+| Z    | 当前 surface 在 previous view 中的 expected depth | `log2(1 + abs(previousViewZ))`                        | `-1`             |
+| W    | 当前 surface 的 depth                             | `log2(1 + abs(currentViewZ))`                         | 仍写当前有效深度 |
 
 Z/W 不保存 device depth。这样同一判定不依赖 standard/reversed
 depth、near/far 的非线性分布或 log-depth framebuffer 写法。previous clip `w <= 0`、history
 revision 不连续或上一提交未参与 motion pass 时，Z 必须写 `-1`，resolve 不得猜测可用 history。
 
-authored reactivity 使用同一 render pass 的 single-sample `r8unorm` location 1：`0` 保留正常history
+TAA/TAAU 的 history 位于固定 output pixel grid，所以 resolve 使用
+`physicalMotion = motion - (currentJitterUV - previousJitterUV)`，再以
+`historyUV = currentUV - physicalMotion` 重投影。SSR、GTAO、SSGI 的原始 motion ABI 不变。Jitter
+UV 从 camera 的实际 NDC projection offset 乘 0.5 获得，通过
+`hiloRenderTargetUV(delta) - hiloRenderTargetUV(vec2(0))`
+做一次 backend-native 向量归一。每个 camera 独立保存 pending/committed
+jitter；只有有效 submission 才提交，失败不消费相位。 `TemporalAABlock` 保留前四个 scalar 的 0–15
+byte 布局，新增 offset 16 的 `vec4 u_jitterDelta`，总长 32
+bytes；camera 绑定独立并复用失活绑定，避免同一 application frame 多 camera 串用数据。
+
+未经几何覆盖的 clear-background 像素（Z=-1、W=0）只允许在 3×3 reconstruction
+footprint 借用最近、previous-history 有效的 geometry
+motion，并继续经过相同 history-depth 阈值检查。已有 geometry 但 history 无效的像素（W>0）不会借用邻居；远离轮廓的背景也不会接受旧颜色。
+
+Authored reactivity 使用同一 render pass 的 single-sample `r8unorm` location 1：`0` 保留正常history
 policy，`1` 完全拒绝 history，中间值线性抑制。ordinary built-in motion shader 从
 `MaterialBlock.u_temporalReactiveFactor` 读取；Clustered fused prepass 从 `builtin-pbr-storage-v4`
 surface record 的第三个 vec4 W 分量读取。目标先清零，因此不声明第二输出的 custom motion
@@ -100,8 +114,9 @@ index 和 previous transform 都保持最后成功状态。
   mismatch，同时不允许跨越相对深度阈值。
 - clamp 在 YCoCg 中使用 3×3 mean/variance 与真实 neighborhood extent 的交集，避免单纯 RGB
   box 对亮度和色度同时过宽。
-- 大 motion 最多只保留 60% history；当前/上一亮度差进一步降低 weight。材质 authored mask 做 3×3
-  dilation 后与该 heuristic 取最大抑制量，`1` 会完全拒绝 history。
+- 大 physical motion 最多只保留 60%
+  history；原 history 亮度偏离当前真实 neighborhood 范围时进一步降低 weight。合法抗锯齿混合色和本帧单点样本的差异不再被误判为 shading 变化。材质 authored
+  mask 仍做 3×3 dilation 后与该 heuristic 取最大抑制量，`1` 完全拒绝 history。
 - transparent、transmission 与 particle 不写 opaque
   history。它们在 TAAU 后以 output-resolution 独立 history resolve：透明使用 motion/reactive/depth
   agreement 和衰减 resurrection；particle 使用隔离 overlay/mask/depth
@@ -162,3 +177,12 @@ cut 和 motion pause；测试模式固定 output 640×360，并以 `renderScale=
 - memory-constrained quality tier 与 history format packing。
 
 这些是功能路线，不是当前实现的隐藏缺陷；在各自 ABI、质量和性能证据完成前不得以无测试开关并入当前生产路径。
+
+## 静态 jitter 回归
+
+`test/spec/renderer/TemporalJitterStability.test.ts`
+使用斜向不规则不透明白条与 clear 黑背景，保持 TAA、相同 history weight、variance clipping 和 jitter
+sequence 全部启用。控制组只恢复旧的 jitter 重投影、单点亮度 reactive 与无轮廓 motion
+reconstruction 三处表达式；候选必须让八相位收敛后的邻帧像素差降至控制组的 20% 以下，并保持 submission
+phase 连续。该测试同时覆盖 WebGL 2、WebGPU、反向 Z 与 TAAU，并验证 std140
+offset/size。它是画质回归，不是 GPU 性能证据。

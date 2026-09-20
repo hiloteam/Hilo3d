@@ -839,6 +839,7 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly clusterLightIndexCount: number;
     readonly clusterOverflowCount: number;
     readonly droppedLightCount: number;
+    readonly dynamicGlobalIllumination: Readonly<DynamicGlobalIlluminationDiagnostics> | null;
     readonly fallbackObjectCount: number;
     readonly hiZValid: boolean;
     readonly lightCount: number;
@@ -872,6 +873,8 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
     readonly name = "GPU Scene + Clustered Forward+";
     readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>>;
     readonly requirements: Readonly<RenderPipelineRequirements>;
+    setDynamicGlobalIlluminationEnvironment(color: Readonly<Color>): void;
+    setDynamicGlobalIlluminationIntensity(intensity: number): void;
 }
 
 // @public
@@ -880,6 +883,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly autoExposure?: Readonly<AutoExposureOptions> | false;
     readonly bloomStrength?: number;
     readonly buckets: readonly GPUSceneBucket[];
+    readonly dynamicGlobalIllumination?: Readonly<DynamicGlobalIlluminationOptions> | false;
     readonly exposure?: number;
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     readonly hiZ?: boolean;
@@ -1974,6 +1978,48 @@ const DISTANCE = "DISTANCE";
 //
 // @public (undocumented)
 type DOMViewport = ReturnType<typeof getElementRect>;
+
+// @public
+export interface DynamicGlobalIlluminationDiagnostics {
+    readonly changedMeshCount: number;
+    readonly excludedLightCount: number;
+    readonly excludedMeshCount: number;
+    readonly lightCount: number;
+    readonly probeCount: number;
+    readonly residentBytes: number;
+    readonly sceneNodeCount: number;
+    readonly sceneTriangleCount: number;
+    readonly sceneUpdate: 'rebuild' | 'refit' | 'material';
+    readonly sceneUploadedBytes: number;
+    readonly submittedFrameCount: number;
+    readonly texturedMeshCount: number;
+    readonly tracedRayCount: number;
+    readonly updateCycleFrames: number;
+    readonly updatedProbeCount: number;
+    readonly uploadedBytes: number;
+}
+
+// @public
+export interface DynamicGlobalIlluminationOptions {
+    readonly bounceStrength?: number;
+    readonly environment?: Readonly<Color>;
+    readonly hysteresis?: number;
+    readonly intensity?: number;
+    readonly maxLights?: number;
+    readonly maxProbesPerFrame?: number;
+    readonly maxRayDistance?: number;
+    readonly maxRayRadiance?: number;
+    readonly maxTriangles?: number;
+    readonly normalBias?: number;
+    readonly origin?: Readonly<Vector3>;
+    readonly probeCounts?: readonly [number, number, number];
+    readonly raysPerProbe?: 64 | 128 | 256;
+    readonly relocation?: boolean;
+    readonly spacing?: Readonly<Vector3>;
+    readonly texturePolicy?: 'error' | 'exclude' | 'material-factor';
+    readonly unsupported?: 'error' | 'exclude';
+    readonly viewBias?: number;
+}
 
 // @public
 export interface DynamicResolutionDiagnostics {

@@ -14,7 +14,7 @@
       "hilo3d": ["./src/Hilo3d.ts"]
     }
   },
-  "include": ["examples/**/*.ts"],
+  "include": ["examples/**/*.ts", "benchmarks/ddgi/fixture-contract.ts"],
   "references": [
     { "path": "./tsconfig.lib.json" },
     { "path": "./addon-particle/tsconfig.json" },

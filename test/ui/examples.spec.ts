@@ -504,7 +504,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         const topics = page.locator('#categorySelect');
         const results = page.locator('.exampleButton');
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (3)');
-        await expect(page.locator('#exampleCount')).toHaveText('24 of 24 highlights');
+        await expect(page.locator('#exampleCount')).toHaveText('25 of 25 highlights');
         await topics.selectOption('2d');
         await expect(results).toHaveCount(3);
         await page.locator('#exampleSearch').fill('Sprite Batching');
@@ -518,7 +518,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (6)');
         await page.locator('#featuredMode').click();
         await expect(results).toHaveCount(3);
-        await expect(page.locator('#exampleCount')).toHaveText('3 of 24 highlights');
+        await expect(page.locator('#exampleCount')).toHaveText('3 of 25 highlights');
         await page.locator('#allMode').click();
         await page.locator('#categorySelect').selectOption('rendering');
         await page.locator('#exampleSearch').fill('texture depth');

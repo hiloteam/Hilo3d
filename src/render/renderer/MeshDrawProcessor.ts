@@ -1817,14 +1817,23 @@ export class MeshDrawProcessor {
             outputs[0]?.location === 0 &&
             outputs[1]?.location === 1 &&
             outputs[2]?.location === 2;
+        const builtInDiffuseGIOutputs =
+            target.colorFormats.length === 2 &&
+            target.colorFormats[0] === 'rgba16float' &&
+            target.colorFormats[1] === 'rgba8unorm' &&
+            outputs.length === 2 &&
+            outputs[0]?.location === 0 &&
+            outputs[1]?.location === 1 &&
+            outputs[1].name === 'ddgiDiffuseAlbedo';
         if (
             !customMaterial &&
+            !builtInDiffuseGIOutputs &&
             !builtInReactiveOutputs &&
             !builtInMaterialReflectionOutputs &&
             (outputs.length !== 1 || outputs[0]?.location !== 0)
         ) {
             throw new TypeError(
-                'Built-in mesh shaders require location zero and may write temporal or reflection data to declared MRTs'
+                'Built-in mesh shaders require location zero and may write temporal, reflection, or diffuse GI data to declared MRTs'
             );
         }
         for (let index = 0; index < outputs.length; index += 1) {
