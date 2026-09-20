@@ -538,12 +538,12 @@ input[type='range']::-moz-range-thumb {
         letter-spacing: 1.9px;
     }
     h1 {
-        font-size: 57px;
+        font-size: 48px;
         letter-spacing: -3px;
     }
     .chinese-title {
-        margin-top: 13px;
-        font-size: 18px;
+        margin-top: 10px;
+        font-size: 16px;
         letter-spacing: 5px;
     }
     .introduction-copy {
@@ -568,7 +568,7 @@ input[type='range']::-moz-range-thumb {
         bottom: max(63px, calc(env(safe-area-inset-bottom) + 51px));
     }
     .control-heading {
-        margin-bottom: 10px;
+        margin-bottom: 7px;
     }
     .control-heading > span {
         font-size: 6px;
@@ -580,8 +580,8 @@ input[type='range']::-moz-range-thumb {
     }
     .control-dock {
         grid-template-columns: 1fr 1fr 38px;
-        gap: 13px 16px;
-        padding: 16px;
+        gap: 8px 12px;
+        padding: 10px 12px;
     }
     .gi-group {
         grid-column: 1;
@@ -621,6 +621,9 @@ input[type='range']::-moz-range-thumb {
     }
     input[type='range'] {
         height: 34px;
+    }
+    .range-endpoints[aria-hidden='true'] {
+        display: none;
     }
     input[type='range']::-webkit-slider-thumb {
         width: 11px;

@@ -146,7 +146,7 @@ try:
     wall_secondary = material("WallSecondaryPigment", (0.74, 0.69, 0.57), 0.93)
     oak = material("HoneyOak", (0.39, 0.205, 0.085), 0.54)
     dark_oak = material("OakEndGrain", (0.24, 0.105, 0.034), 0.6)
-    linen = material("OatLinen", (0.81, 0.735, 0.61), 0.95)
+    linen = material("OatLinen", (0.82, 0.80, 0.75), 0.95)
     cream = material("CreamWool", (0.66, 0.56, 0.405), 0.98)
     terracotta = material("Terracotta", (0.57, 0.195, 0.092), 0.85)
     sage = material("SageVelvet", (0.22, 0.31, 0.18), 0.92)
@@ -156,7 +156,7 @@ try:
     leaves = material("OliveLeaves", (0.12, 0.205, 0.065), 0.87)
     glow = material("WarmDiffuser", (1.0, 0.65, 0.30), 0.88, emission=1.8)
     lamp_linen = material("LinenLampshade", (0.82, 0.66, 0.42), 0.91, emission=0.32)
-    wall_lens = material("WallWashLens", (1.0, 0.92, 0.75), 0.32, emission=0.8)
+    wall_lens = material("WallWashLens", (1.0, 0.92, 0.75), 0.45, emission=0.18)
     canvas = material("ArtworkPaper", (0.86, 0.78, 0.59), 0.97)
     sky = material("WindowDaylight", (0.7, 0.78, 0.80), 0.98, emission=0.25)
     floor_palette = [material("OakBoard%02d" % i, (0.37 + i * 0.015, 0.20 + i * 0.010, 0.088 + i * 0.006), 0.65) for i in range(5)]
@@ -175,20 +175,21 @@ try:
     box("Door lintel", (2.3, 2.65, 2.9), (1.30, 0.16, 0.6), wall_secondary)
     box("Window wall bottom", (-3.46, 0, 0.40), (0.16, 5.4, 0.80), wall_secondary)
     box("Window wall top", (-3.46, 0, 2.97), (0.16, 5.4, 0.46), wall_secondary)
-    box("Window front pier", (-3.46, -2.42, 1.74), (0.16, 0.70, 2.04), wall_secondary)
-    # A broad full-height return beside the sofa receives the practical's wall
-    # wash and reflects actual painted-wall radiance onto the pale upholstery.
-    box("Reading alcove painted wall", (-3.46, 1.59, 1.74), (0.16, 2.18, 2.04), wall_secondary)
-    box("Deep oak window sill", (-3.35, -0.825, 0.85), (0.38, 2.64, 0.11), oak)
-    box("Window frame top", (-3.37, -0.825, 2.74), (0.13, 2.64, 0.12), oak)
-    for y in (-2.08, -0.83, 0.43):
+    box("Window front pier", (-3.46, -2.50, 1.74), (0.16, 0.45, 2.04), wall_secondary)
+    # Put the tall casement near the open front. The broad painted return now
+    # extends IN FRONT of the sofa's +Z-facing upholstery after glTF conversion,
+    # so the front cushions and arms can receive real colored diffuse reflection.
+    box("Reading alcove painted wall", (-3.46, .80, 1.74), (0.16, 3.76, 2.04), wall_secondary)
+    box("Deep oak window sill", (-3.35, -1.675, 0.85), (0.38, 1.33, 0.11), oak)
+    box("Window frame top", (-3.37, -1.675, 2.74), (0.13, 1.29, 0.12), oak)
+    for y in (-2.25, -1.10):
         box("Window mullion", (-3.37, y, 1.79), (0.12, 0.07, 1.95), oak, 0.007)
-    box("Window crossbar", (-3.37, -0.825, 1.8), (0.12, 2.57, 0.045), oak, 0.006)
+    box("Window crossbar", (-3.37, -1.675, 1.8), (0.12, 1.15, 0.045), oak, 0.006)
     # Sky is outside the room and visibly behind the empty glazed opening.
-    box("Distant window sky", (-3.62, -0.825, 1.81), (0.02, 2.60, 1.80), sky, 0)
+    box("Distant window sky", (-3.62, -1.675, 1.81), (0.02, 1.17, 1.80), sky, 0)
     # The curtain parks at the front reveal, leaving the painted reading alcove
     # clear for the real wall washer rather than reflecting from white linen.
-    for y in (-2.2,):
+    for y in (-2.57,):
         for pleat in range(5):
             cylinder("Linen curtain fold", (-3.12 + (pleat % 2) * 0.025, y + pleat * 0.07, 1.80),
                      0.062, 1.78, linen, vertices=10)
@@ -277,32 +278,29 @@ try:
 
     # Movable floor lamp: child pieces share a stable hinge-independent root.
     lamp_location = (-2.75, -.45, 0)
-    cylinder("Lamp foot", (-2.75,-.45,.07), .25,.095, brass, group="Lamp")
+    lathe("Turned brass lamp foot", (-2.75,-.45,.022),
+          [(0,0),(.20,0),(.235,.015),(.245,.035),(.245,.06),(.232,.082),(.21,.09),(0,.09)],
+          brass,segments=32,group="Lamp")
     cylinder("Lamp upright", (-2.75,-.45,.91), .025,1.72, brass,vertices=16,group="Lamp")
-    lathe("Pleated linen shade", (-2.75,-.45,1.63), [(0.39,0),(.40,.02),(.235,.50),(.22,.52),(.213,.49),(.375,.018)], lamp_linen,segments=32,group="Lamp")
-    cylinder("Lamp warm diffuser", (-2.75,-.45,1.645), .35,.016, glow,vertices=32,group="Lamp")
-    cylinder("Shade finial", (-2.75,-.45,2.16), .03,.06, brass,vertices=12,group="Lamp")
+    cylinder("Lamp mast collar", (-2.75,-.45,.145), .044,.055,brass,vertices=20,group="Lamp")
 
-    # A separate, visible adjustable brass head supplies the upward wall wash.
-    # Its open tube and lens face local +Z in Blender (+Y after glTF export).
-    # The runtime light is attached to the exported emitter directly in front
-    # of that lens, so geometry and the SpotLight cannot point independently.
-    wall_head_center = Vector((-2.40, -0.34, 1.25))
-    wall_head_target = Vector((-3.38, 2.0, 2.15))
-    wall_head_direction = (wall_head_target - wall_head_center).normalized()
-    wall_head_rotation = wall_head_direction.to_track_quat("Z", "Y").to_euler()
-    head = lathe("Adjustable brass wall washer", wall_head_center,
-                 [(0,-.12),(.074,-.12),(.085,-.10),(.095,.10),(.095,.12),
-                  (.081,.12),(.071,-.075),(0,-.075)], brass,segments=24,group="Lamp")
-    head.rotation_euler = wall_head_rotation
-    lens = cylinder("Wall washer luminous lens", wall_head_center + wall_head_direction * .092,
-                    .078,.012,wall_lens,vertices=24,group="Lamp")
-    lens.rotation_euler = wall_head_rotation
-    bracket_end = wall_head_center - wall_head_direction * .10
-    rod("Wall washer bracket",(-2.75,-.45,1.16),(-2.48,-.45,1.16),.018,brass,group="Lamp")
-    rod("Wall washer tilt mount",(-2.48,-.45,1.16),bracket_end,.018,brass,group="Lamp")
-    ellipsoid("Wall washer hinge",bracket_end,(.037,.037,.037),brass,group="Lamp")
-    wall_emitter_position = wall_head_center + wall_head_direction * .15
+    # One coherent open linen drum emits through its upper and lower apertures.
+    # Fine rolled brass bindings replace the protruding projector and bracket.
+    # No finial or other solid geometry lies above the central uplight emitter.
+    lathe("Open linen drum", (-2.75,-.45,1.60),
+          [(.365,0),(.385,.022),(.388,.40),(.374,.445),(.360,.445),
+           (.370,.407),(.370,.027),(.350,.020)], lamp_linen,segments=40,group="Lamp")
+    rim_profile = [(.372,0),(.379,.003),(.379,.016),(.372,.020),
+                   (.362,.016),(.362,.003),(.372,0)]
+    lathe("Upper rolled brass binding",(-2.75,-.45,2.039),rim_profile,brass,segments=40,group="Lamp")
+    lathe("Lower rolled brass binding",(-2.75,-.45,1.596),rim_profile,brass,segments=40,group="Lamp")
+    # The lower diffuser is annular: its central opening clears the brass mast.
+    lathe("Lower frosted diffuser",(-2.75,-.45,1.606),
+          [(.042,0),(.340,0),(.340,.012),(.042,.012),(.042,0)],
+          glow,segments=32,group="Lamp")
+    cylinder("Inset upper frosted diffuser",(-2.75,-.45,2.025),.338,.012,
+             wall_lens,vertices=40,group="Lamp")
+    wall_emitter_position = Vector((-2.75,-.45,2.082))
 
     # The opening looks into a small warm vestibule; the door is a real rigid occluder.
     door_location = (1.68, 2.50, 0)
@@ -350,7 +348,7 @@ try:
     emitters = []
     for name, position, rotation in (
         ("ReadingEmitter",Vector((-2.665,-.415,1.57)),None),
-        ("WallWashEmitter",wall_emitter_position,wall_head_rotation),
+        ("WallWashEmitter",wall_emitter_position,None),
     ):
         emitter = bpy.data.objects.new(name,None)
         collection.objects.link(emitter)

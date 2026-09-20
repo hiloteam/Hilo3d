@@ -108,6 +108,7 @@ async function run(): Promise<void> {
     );
     const shade = model.materials.find(material => material.name === 'LinenLampshade');
     const diffuser = model.materials.find(material => material.name === 'WarmDiffuser');
+    const upperDiffuser = model.materials.find(material => material.name === 'WallWashLens');
     const buckets: Hilo3d.GPUSceneBucket[] = [];
     let triangleCount = 0;
     for (const mesh of model.meshes) {
@@ -140,8 +141,10 @@ async function run(): Promise<void> {
         dynamicGlobalIllumination: !pipelineGIEnabled
             ? false
             : {
-                  origin: new Hilo3d.Vector3(-3.15, 0.25, -2.25),
-                  spacing: new Hilo3d.Vector3(0.78, 0.67, 0.75),
+                  // Keep the floor near full weight and the rug inside the field's full-weight bounds.
+                  // Relocation lifts the bottom probes clear of the floor geometry.
+                  origin: new Hilo3d.Vector3(-3.15, 0.05, -2.25),
+                  spacing: new Hilo3d.Vector3(0.78, 0.72, 0.75),
                   probeCounts: [9, 5, 7],
                   raysPerProbe: 128,
                   maxProbesPerFrame: 48,
@@ -208,13 +211,13 @@ async function run(): Promise<void> {
         }
     }).addTo(stage);
     const readingLight = new Hilo3d.PointLight({
-        color: new Hilo3d.Color(1, 0.59, 0.25),
+        color: new Hilo3d.Color(1, 0.88, 0.7),
         amount: 4.8,
         range: 5,
         shadow: { width: 512, height: 512, minBias: 0.001, maxBias: 0.004 }
     }).addTo(readingEmitter);
     const readingPool = new Hilo3d.SpotLight({
-        color: new Hilo3d.Color(1, 0.62, 0.29),
+        color: new Hilo3d.Color(1, 0.88, 0.7),
         amount: 24,
         range: 7,
         direction: new Hilo3d.Vector3(0, -1, 0),
@@ -223,12 +226,12 @@ async function run(): Promise<void> {
         shadow: { width: 1024, height: 1024, minBias: 0.0007, maxBias: 0.002 }
     }).addTo(readingEmitter);
     const wallWash = new Hilo3d.SpotLight({
-        color: new Hilo3d.Color(1, 0.92, 0.75),
+        color: new Hilo3d.Color(1, 0.95, 0.84),
         amount: 32,
         range: 7,
         direction: new Hilo3d.Vector3(0, 1, 0),
-        cutoff: 16,
-        outerCutoff: 24,
+        cutoff: 45,
+        outerCutoff: 78,
         shadow: { width: 1024, height: 1024, minBias: 0.0007, maxBias: 0.002 }
     }).addTo(wallWashEmitter);
     const hallLight = new Hilo3d.PointLight({
@@ -252,7 +255,7 @@ async function run(): Promise<void> {
         enablePan: true
     });
     const views = [
-        { position: [7, 5.2, 9.7], target: [-0.75, 0.42, -0.15] },
+        { position: [4.9, 3.7, 8.3], target: [-0.85, 0.65, -0.25] },
         { position: [6.8, 6.1, 8.3], target: [0, 1.05, -0.15] },
         { position: [0.6, 1.8, 3.0], target: [-1.65, 1.0, -1.0] }
     ] as const;
@@ -268,7 +271,7 @@ async function run(): Promise<void> {
         const next = views[view];
         if (next === undefined) throw new Error('Atelier view is unavailable.');
         const target = new Hilo3d.Vector3(...next.target);
-        const portraitScale = Math.max(1, Math.min(2.8, 1.05 / camera.aspect));
+        const portraitScale = Math.max(1, Math.min(2.8, 0.94 / camera.aspect));
         const framingTarget =
             camera.aspect < 0.85 ? new Hilo3d.Vector3(0, target.y + 0.2, target.z) : target;
         const position = new Hilo3d.Vector3(...next.position)
@@ -291,7 +294,7 @@ async function run(): Promise<void> {
         element('#giLabel', HTMLElement).textContent = enabled ? '间接光已开启' : '仅直接照明';
         element('#sceneNote', HTMLElement).textContent = enabled
             ? timeOfDay === 'night'
-                ? '换墙色，看白座垫的反光；挪灯，看两个光斑移动。'
+                ? '换墙色，看看沙发与地毯接住的反光。'
                 : '换一种墙色，看看反射到沙发上的光。'
             : '开启间接光，看看阴影里的温度。';
         document.body.dataset['giEnabled'] = String(enabled);
@@ -354,15 +357,15 @@ async function run(): Promise<void> {
     function setTimeOfDay(value: TimeOfDay): void {
         timeOfDay = value;
         const night = value === 'night';
-        sunlight.amount = night ? 0.055 : 2;
+        sunlight.amount = night ? 0.025 : 2;
         setColor(sunlight.color, night ? [0.35, 0.48, 0.85] : [1, 0.83, 0.59]);
-        readingLight.amount = night ? 3 : 4.8;
-        readingPool.amount = night ? 8 : 6;
-        wallWash.amount = night ? 80 : 5;
+        readingLight.amount = night ? 0.35 : 0.8;
+        readingPool.amount = night ? 5 : 3;
+        wallWash.amount = night ? 75 : 8;
         hallLight.amount = night ? 14 : 6;
         setColor(hallLight.color, night ? [0.23, 0.48, 1] : [0.5, 0.69, 1]);
         const environment = night
-            ? new Hilo3d.Color(0.018, 0.024, 0.043)
+            ? new Hilo3d.Color(0.008, 0.01, 0.016)
             : new Hilo3d.Color(0.48, 0.44, 0.35);
         if (pipelineGIEnabled) factory.setDynamicGlobalIlluminationEnvironment(environment);
         stage.renderer.clearColor = night
@@ -375,6 +378,10 @@ async function run(): Promise<void> {
         if (diffuser instanceof Hilo3d.PBRMaterial) {
             setColor(diffuser.emissionFactor, night ? [0.6, 0.38, 0.15] : [1.8, 1.17, 0.54]);
             diffuser.invalidateData();
+        }
+        if (upperDiffuser instanceof Hilo3d.PBRMaterial) {
+            setColor(upperDiffuser.emissionFactor, night ? [1.2, 0.98, 0.65] : [0.35, 0.3, 0.21]);
+            upperDiffuser.invalidateData();
         }
         document.body.dataset['time'] = value;
         document.title = night ? 'EVENING · 灯下书房 — Hilo3D' : 'AFTERNOON · 午后书房 — Hilo3D';

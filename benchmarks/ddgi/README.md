@@ -41,7 +41,7 @@ external model/service requests are part of the workload.
 Each mode runs in three independent Chromium processes, with 64 warmup frames followed by 120
 measured frames at 960 × 600, device scale 1. Mode order alternates between rounds. The scene and
 camera stay fixed in the night preset. The `enabled` mode retains the 315-probe volume, 48 updates
-and 6,144 primary rays per frame (128 rays per probe). The active ray scene has 27,312 triangles.
+and 6,144 primary rays per frame (128 rays per probe). The active ray scene has 28,476 triangles.
 The `disabled` mode constructs the pipeline without DDGI; it must have no probe runtime or DDGI
 passes. The normal interactive intensity toggle is deliberately not used for cost comparison.
 

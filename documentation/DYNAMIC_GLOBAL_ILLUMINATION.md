@@ -141,20 +141,33 @@ night; the afternoon preset changes direct lights, emissive surfaces and probe e
 together. The [asset recipe and provenance](../examples/models/Atelier/README.md) reproduce the
 model.
 
-The stand has two modeled heads. The fabric shade opens downward; a visible brass projector lights
-the painted reading alcove. Their light objects are children of the exported `ReadingEmitter` (local
-−Y) and `WallWashEmitter` (local +Y), keeping source position, model axis and beam direction
-consistent when the lamp moves. Emitters sit outside the solid stem and aperture geometry. The
-larger painted wall is above the white seat so it can contribute actual colored diffuse reflection.
-No wall-dependent tinted fill or receiver recoloring is used. The showcase uses 128 rays and at most
-48 updated probes per frame.
+The floor lamp has one open linen drum, fine brass rims and recessed upper/lower diffusers. There is
+no projecting auxiliary head. Its light objects are children of the exported `ReadingEmitter` (local
+−Y) and `WallWashEmitter` (local +Y), keeping source position, aperture axis and beam direction
+consistent when the lamp moves. The upper emitter sits above the open rim and supplies a broad
+upward wash; the lower emitter sits below the shade and supplies the floor pool.
 
-Matched native captures measure 15–17 RGB levels of mean pigment-induced change inside the unpainted
-seat with GI enabled, versus 0.1–0.2 with GI disabled. The measured rectangle excludes the wall and
-interface. The final static night scene measures 0.244 RGB levels of mean adjacent-frame difference.
-The earlier 1.246 capture used a different asset revision and 64 rather than 128 rays, so it does
-not isolate the DDGI/TAA repairs. These are image-stability observations, not performance
-measurements.
+A tall, narrow window leaves a painted return in front of the sofa, where the lit wall is visible to
+the front-facing cushions. Near-neutral linen and restrained direct fill let the actual colored
+diffuse reflection remain visible. The probe volume starts at Y = 0.05 with 0.72 vertical spacing:
+the rug is inside its full-weight bounds and the floor receives about 93% boundary weight, rather
+than the previous 33%. Probe count, per-frame ray budget, exposure and GI intensity are unchanged.
+No wall-dependent tinted fill or receiver recoloring is used. The showcase uses 315 probes, 128 rays
+per probe and at most 48 updated probes per frame.
+
+Receiver comparisons cover multiple sofa surfaces and the rug at landscape and compact portrait
+sizes. Each wall palette is captured with GI enabled and disabled, keeping camera, direct lights and
+receiver materials fixed. The measured masks exclude the painted wall and interface. Static frame
+and interaction checks use the same rendered scene; these are functional pixel observations, not
+performance measurements.
+
+Native production captures sample 17,508 receiver pixels at 1440×960 and 9,231 at 716×860. Changing
+chalk to sage or terracotta changes the combined sofa/rug mask by 14–17 mean RGB levels, with about
+85–88% of its pixels changing by more than six levels in at least one channel. With the GI
+contribution disabled, the corresponding mean changes stay below 0.08. The browser tests use
+separately reviewed landscape/portrait masks and require a broad response, the expected green/red
+channel direction and a near-zero disabled control. Their reduced `?test=1` backing resolution is
+kept separate from these production-resolution captures.
 
 Lamp-position presets, door and wall controls exercise real light, transform and material updates.
 `?test=1` uses the shared stable capture contract. The ticker stops before resource teardown and

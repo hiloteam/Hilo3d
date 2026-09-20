@@ -148,7 +148,7 @@ export function validateDDGIEvidenceFrame(frame: DDGIEvidenceFrame, mode: DDGIEv
         gi?.probeCount !== 315 ||
         gi.updatedProbeCount !== 48 ||
         gi.tracedRayCount !== 6144 ||
-        gi.sceneTriangleCount !== 27312 ||
+        gi.sceneTriangleCount !== 28476 ||
         gi.excludedMeshCount !== 0 ||
         gi.excludedLightCount !== 0 ||
         gi.texturedMeshCount !== 0 ||
