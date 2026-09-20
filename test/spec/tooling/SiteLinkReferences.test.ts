@@ -34,6 +34,15 @@ describe('extractSiteReferences', () => {
         ).toEqual(['./guide.html?lang=en&mode=full', './cover.png']);
     });
 
+    it('checks Markdown and embedded HTML without parsing fenced examples', () => {
+        expect(
+            extractSiteReferences(
+                'markdown',
+                '[Guide](guide.md#start)\n<img src="cover.png">\n```html\n<a href="example-only.html">\n```'
+            )
+        ).toEqual(['guide.md#start', 'cover.png']);
+    });
+
     it('extracts external glTF buffers, images, and extension URIs', () => {
         expect(
             extractSiteReferences(

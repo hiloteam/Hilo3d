@@ -1,9 +1,12 @@
 import { opendir, readFile, stat } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { collectMarkdownFiles } from './documentation-manifest';
+import { markdownAnchors } from './documentation-content';
 import { extractSiteReferences, type SiteFileType } from './site-link-references';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const siteDirectory = resolve(projectRoot, 'site');
+const maintainedMarkdown = new Set(await collectMarkdownFiles(projectRoot));
 const externalReferencePattern = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
 
 interface SiteFile {
@@ -14,7 +17,7 @@ interface SiteFile {
 interface LinkIssue {
     reference: string;
     source: string;
-    type: 'absolute' | 'escape' | 'invalid' | 'missing';
+    type: 'absolute' | 'escape' | 'invalid' | 'missing' | 'anchor';
 }
 
 async function collectSiteFiles(directory: string): Promise<SiteFile[]> {
@@ -25,6 +28,13 @@ async function collectSiteFiles(directory: string): Promise<SiteFile[]> {
         const path = resolve(directory, entry.name);
         if (entry.isDirectory()) {
             files.push(...(await collectSiteFiles(path)));
+        } else if (
+            entry.isFile() &&
+            (entry.name.endsWith('.md') || entry.name === 'llms.txt') &&
+            (maintainedMarkdown.has(relative(siteDirectory, path).split(sep).join('/')) ||
+                relative(siteDirectory, path).split(sep).join('/').startsWith('docs/media/'))
+        ) {
+            files.push({ path, type: 'markdown' });
         } else if (entry.isFile() && entry.name.endsWith('.html')) {
             files.push({ path, type: 'html' });
         } else if (entry.isFile() && entry.name.endsWith('.css')) {
@@ -60,7 +70,11 @@ let checkedReferences = 0;
 for (const file of siteFiles) {
     const contents = await readFile(file.path, 'utf8');
     for (const reference of extractSiteReferences(file.type, contents)) {
-        if (!reference || reference.startsWith('#') || externalReferencePattern.test(reference)) {
+        if (
+            !reference ||
+            (reference.startsWith('#') && file.type !== 'markdown') ||
+            externalReferencePattern.test(reference)
+        ) {
             continue;
         }
 
@@ -73,7 +87,9 @@ for (const file of siteFiles) {
 
         let target: string;
         try {
-            target = await resolveTarget(reference, file.path);
+            target = reference.startsWith('#')
+                ? file.path
+                : await resolveTarget(reference, file.path);
         } catch {
             issues.push({ reference, source, type: 'invalid' });
             continue;
@@ -87,6 +103,14 @@ for (const file of siteFiles) {
         const targetStats = await stat(target).catch(() => null);
         if (!targetStats?.isFile()) {
             issues.push({ reference, source, type: 'missing' });
+        } else if (file.type === 'markdown' && /\.(?:md|txt)$/u.test(target)) {
+            const fragment = reference.split('#')[1];
+            if (
+                fragment &&
+                !markdownAnchors(await readFile(target, 'utf8')).has(decodeURIComponent(fragment))
+            ) {
+                issues.push({ reference, source, type: 'anchor' });
+            }
         }
     }
 }
@@ -101,5 +125,5 @@ if (issues.length > 0) {
 }
 
 console.log(
-    `Validated ${String(checkedReferences)} internal references across ${String(siteFiles.length)} HTML/CSS/glTF files.`
+    `Validated ${String(checkedReferences)} internal references across ${String(siteFiles.length)} HTML/CSS/glTF/Markdown files.`
 );

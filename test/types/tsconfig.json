@@ -10,5 +10,5 @@
       "@hilo/addon-particle": ["../../addon-particle/src/index.ts"]
     }
   },
-  "include": ["./package.test.ts"]
+  "include": ["./package.test.ts", "./recipes/**/*.ts"]
 }

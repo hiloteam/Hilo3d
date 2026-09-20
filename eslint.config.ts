@@ -13,6 +13,7 @@ export default defineConfig(
         'addon-physics/dist/**',
         'dist-examples/**',
         'docs/**',
+        'site/**',
         'node_modules/**',
         'playwright-report/**',
         'reports/**',

@@ -13,7 +13,15 @@
   "overrides": [
     {
       "files": "*.{json,jsonc,yaml,yml}",
-      "options": { "tabWidth": 2 }
+      "options": {
+        "tabWidth": 2
+      }
+    },
+    {
+      "files": "llms.txt",
+      "options": {
+        "parser": "markdown"
+      }
     }
   ]
 }

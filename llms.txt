@@ -1,0 +1,76 @@
+# Hilo3D
+
+> Hilo3D is a strict TypeScript, ESM-only graphics engine for 2D and 3D browser applications. One
+> shared renderer uses a Render Graph, portable RHI and WebGPU/WebGL2 backends.
+
+This index describes the current source documentation, which may include Unreleased features. For
+the 2.0 alpha install `hilo3d@next`, resolve an exact version, and use that package's declarations.
+The unqualified `latest` channel may select 1.x. Optional particle/physics addons must match the
+core. DDGI currently belongs to Unreleased development; do not infer availability from package.json
+alone.
+
+<!-- build-provenance -->
+
+Create Stage and Renderer asynchronously. `auto` prefers compatible WebGPU; explicit WebGPU and
+WebGPU-only feature requirements fail clearly on unsupported devices. Ordinary rendering follows the
+shared graph/RHI path. Portable raster uses GLSL ES 3.00; compute uses validated Direct WGSL;
+readonly storage raster uses constrained GLSL ES 3.10 and the common Naga translation chain.
+
+## Start here
+
+- [Versions](./documentation/VERSIONS.md): Release channels, installed API and development-build
+  boundaries.
+- [Getting started](./documentation/GETTING_STARTED.md): Install, 3D scene, OrbitControls, resize
+  and teardown.
+- [Checked recipes](./documentation/RECIPES.md): Public package examples for 2D/3D, assets, effects
+  and addons.
+- [Documentation index](./documentation/README.md): Current contracts and task-oriented navigation.
+- [API reference](https://hilo3d.js.org/docs/modules/Hilo3d.html): Hosted development API; match its
+  build to your package.
+
+## Application features
+
+- [2D rendering](./documentation/2D_RENDERING.md): Top-left camera, centered default anchors,
+  sprites, text and composition.
+- [Animation](./documentation/ANIMATION_SYSTEM.md): Clip/layer mixing, events and time units.
+- [PBR and effects](./documentation/PBR_AND_POST_PROCESSING.md): Materials, linear HDR, Bloom,
+  filmic and WebGPU auto exposure.
+- [Particles](./documentation/PARTICLE_SYSTEM.md): Optional addon, CPU/GPU/stateless plans and
+  authoring contracts.
+- [Physics](./documentation/PHYSICS_ARCHITECTURE.md): Optional Stage Systems and independent Rapier
+  2D/3D adapters.
+- [Example catalog](./documentation/EXAMPLE_CATALOG.md): Focused examples and backend requirements.
+- [Game skill](./skills/hilo3d-game/SKILL.md): Independent game scaffolding and implementation
+  workflow.
+
+## Rendering contracts
+
+- [Architecture](./documentation/RENDERING_ARCHITECTURE.md): Frame, graph/RHI, resources and
+  recovery.
+- [SRP](./documentation/SCRIPTABLE_RENDER_PIPELINE.md): Pipeline factories, features and synchronous
+  pass phases.
+- [Compute and storage](./documentation/COMPUTE_AND_STORAGE.md): WebGPU requirements, shaders,
+  indirect work and lifetime.
+- [Materials](./documentation/MATERIAL_SYSTEM.md): Definition/Instance, semantic passes and GPU data
+  ABI.
+- [Temporal rendering](./documentation/TEMPORAL_RENDERING.md): Motion, TAA/TAAU and isolated
+  transparent histories.
+- [GTAO](./documentation/GROUND_TRUTH_AMBIENT_OCCLUSION.md): Portable ambient visibility.
+- [SSR](./documentation/SCREEN_SPACE_REFLECTIONS.md): WebGPU Clustered reflections and miss
+  fallback.
+- [SSGI](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md): Portable screen-space diffuse
+  lighting.
+- [DDGI](./documentation/DYNAMIC_GLOBAL_ILLUMINATION.md): Unreleased WebGPU world-space diffuse GI
+  and hybrid SSGI.
+- [Volumetrics](./documentation/VOLUMETRIC_LIGHTING.md): WebGPU Clustered fog and froxels.
+- [Atmosphere](./documentation/PHYSICAL_ATMOSPHERE_AND_WEATHER.md): LUTs, clouds, shadows and
+  exposure.
+
+## Optional
+
+- [Contributor instructions](./AGENTS.md): Rules for changing the engine repository, not consumer
+  applications.
+- [Engineering](./documentation/ENGINEERING.md): Toolchain, testing, packaging and CI.
+- [Roadmap](./documentation/ROADMAP.md): Implemented slices, pending evidence and future work; not
+  available API.
+- [Changelog](./CHANGELOG.md): Unreleased changes and published version history.

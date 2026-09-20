@@ -298,11 +298,28 @@ transfer。手动呈现 RenderTarget 时同样默认输入为线性；自定义 
 sRGB，必须在 `present()` 或 `setRenderTarget()` 的 presentation options 中声明
 `colorEncoding: 'srgb'`，从而使用无二次转换的 passthrough。
 
-当前 `exposure` 是固定的手动 EV compensation；运行时尚未提供 scene luminance histogram、eye
-adaptation、GPU exposure
-history 或可调 slope/toe/shoulder 的 filmic 曲线。相关增量与时域、Bloom 和设备恢复的组合要求记录在
-[`MODERN_WEBGPU_RENDERING_ROADMAP.md`](./MODERN_WEBGPU_RENDERING_ROADMAP.md)
-的 E0 工作包中，不能把规划状态误写成当前能力。
+## Auto exposure 与 filmic
+
+`ColorUber.exposure` 是手动 EV compensation。可选 `AutoExposure` 已实现 WebGPU GPU
+histogram、percentile metering、明暗不同速度的 eye adaptation 与 submission-aware exposure history；
+`ColorUber` 同时支持 `filmic` 及 slope/toe/shoulder/blackClip/whiteClip 参数。默认 tone mapper 仍为
+`pbr-neutral`。详见
+[曝光与天气合同](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md#histogram-exposure-and-filmic-display)。
+
+在 `PostProcessRenderPipelineFactory` 中显式传入 `autoExposure: {}` 启用；未传入时不创建曝光 compute
+pass 或 history。自动曝光在 Bloom 后统计线性 HDR 颜色，在 ColorUber 前应用，随后执行手动 EV
+compensation 与 display transform。自行组合 Forward
+features 时保持同样的顺序。AutoExposure 声明 compute/storage requirements，因此会把 `auto`
+限定到兼容 WebGPU，显式 WebGL2 会在创建阶段失败；没有 CPU 曝光模拟。普通固定曝光和 filmic
+raster 仍支持两后端。
+
+```ts
+const pipeline = new Hilo3d.PostProcessRenderPipelineFactory({
+    autoExposure: {},
+    bloom: { intensity: 0.8 },
+    colorUber: { exposure: 0, toneMapping: 'filmic', filmicSlope: 1 }
+});
+```
 
 ## 推荐用法
 
@@ -358,8 +375,9 @@ Uber 位于所有 HDR effect 之后。
   可实时开关 anisotropy、clearcoat 与 transmission，画面同时使用 volume attenuation、opaque
   texture、Bloom 和 Color Uber；
 - [`ground_truth_ambient_occlusion.html`](../examples/ground_truth_ambient_occlusion.html)
-  使用零模型下载的 procedural 建筑展厅和相同相机的 on/off 对照，展示拱券、台阶、细柱与密集物体间的 contact
-  visibility，并可显式选择 WebGPU/WebGL 2。
+  使用本地 dragon
+  glTF 与程序化博物馆建筑，同机位 on/off 对照展示龙鳞、石台与壁龛接触处的 visibility，并可显式选择 WebGPU/WebGL
+  2。
 - [`screen_space_global_illumination_chapel.html`](../examples/screen_space_global_illumination_chapel.html)
   使用程序化粗野主义礼拜堂和同机位 on/off 对照，展示 cyan/vermilion/violet 发光窗在石材、长椅、柱列与祭坛球体上的 diffuse
   color transport，并可显式选择 WebGPU/WebGL 2。

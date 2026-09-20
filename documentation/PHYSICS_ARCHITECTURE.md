@@ -238,7 +238,7 @@ not weaken the portable interface.
 
 ## Release boundary and next contracts
 
-The implemented P0/P1 surface is rigid-body simulation, colliders, joints, ray/shape/overlap/point
+The implemented P0–P4 surface is rigid-body simulation, colliders, joints, ray/shape/overlap/point
 queries, kinematic character controllers, events, fixed-step scheduling, node synchronization,
 snapshots, diagnostics, debug geometry, and native extensions in both 2D and 3D. Planned portable
 contracts are, in order:

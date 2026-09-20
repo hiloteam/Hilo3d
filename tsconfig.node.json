@@ -17,6 +17,7 @@
     "vite.examples.config.ts",
     "vitest.config.ts",
     "vitest.rhi.config.ts",
-    "vitest.rhi-native.config.ts"
+    "vitest.rhi-native.config.ts",
+    "examples/shared/catalog.ts"
   ]
 }

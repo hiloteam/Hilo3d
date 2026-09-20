@@ -26,6 +26,9 @@
 > Hilo3D 2.0 目前处于 alpha 阶段。现有项目升级前应先查看
 > [破坏性变更](./CHANGELOG.md#breaking-changes)。
 
+源码与网站文档可能包含 Unreleased API；请按 [版本边界](./documentation/VERSIONS.md)
+核对已安装包的类型声明。
+
 ## 为什么选择 Hilo3D
 
 Hilo3D 在同一引擎中兼顾高层场景创作和底层 GPU 控制。应用始终使用同一套场景、材质、渲染目标与 shader 契约，渲染器则选择原生 WebGPU 路径或生产级 WebGL
@@ -49,8 +52,14 @@ Hilo3D 在同一引擎中兼顾高层场景创作和底层 GPU 控制。应用�
 ## 安装
 
 ```sh
-npm install hilo3d
+npm install --save-exact hilo3d@next
 ```
+
+`next` 选择 2.0 预发布版本，`--save-exact`
+锁定解析后的版本；不带 tag 的安装可能仍选择 1.x。可选 addon 必须与核心版本一致。参阅
+[版本边界](./documentation/VERSIONS.md)、
+[完整快速开始](./documentation/GETTING_STARTED.md)、[可编译 recipes](./documentation/RECIPES.md) 和
+[AI 文档索引](./llms.txt)。
 
 Hilo3D 只提供 ESM。目标环境是支持 WebGPU 或 WebGL 2 的现代浏览器；WebGL
 1 和旧式全局构建不属于 2.0 契约。
@@ -82,11 +91,19 @@ const stage = await Hilo3d.Stage.create({
 new Hilo3d.Mesh({
     geometry: new Hilo3d.BoxGeometry(),
     material: new Hilo3d.PBRMaterial({
-        baseColor: new Hilo3d.Color(0.83, 0.12, 0.09)
+        baseColor: new Hilo3d.Color(0.83, 0.12, 0.09),
+        metallic: 0.1,
+        roughness: 0.6
     })
 }).addTo(stage);
 
 stage.addChild(new Hilo3d.AmbientLight({ amount: 1 }));
+stage.addChild(
+    new Hilo3d.DirectionalLight({
+        amount: 3,
+        direction: new Hilo3d.Vector3(-1, -1, -1)
+    })
+);
 
 const ticker = new Hilo3d.Ticker(60);
 ticker.addTick(stage);
@@ -187,13 +204,13 @@ compute 使用引擎经过验证的 `ComputeShader` 契约。
 - [渲染架构](./documentation/RENDERING_ARCHITECTURE.md)
 - [PBR、HDR 与后处理](./documentation/PBR_AND_POST_PROCESSING.md)
 - [现代 WebGPU 渲染路线图](./documentation/MODERN_WEBGPU_RENDERING_ROADMAP.md)
-- [材质系统现代化](./documentation/MATERIAL_SYSTEM_MODERNIZATION.md)
-- [时域渲染](./documentation/TEMPORAL_RENDERING_REMEDIATION.md)
+- [材质系统现代化](./documentation/MATERIAL_SYSTEM.md)
+- [时域渲染](./documentation/TEMPORAL_RENDERING.md)
 - [屏幕空间全局光照](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md)
 - [Froxel 体积光](./documentation/VOLUMETRIC_LIGHTING.md)
 - [物理大气与天气](./documentation/PHYSICAL_ATMOSPHERE_AND_WEATHER.md)
 - [2D 渲染与多相机合成](./documentation/2D_RENDERING.md)
-- [可脚本化渲染管线](./documentation/SCRIPTABLE_RENDER_PIPELINE_PLAN.md)
+- [可脚本化渲染管线](./documentation/SCRIPTABLE_RENDER_PIPELINE.md)
 - [破坏性变更](./CHANGELOG.md#breaking-changes)
 
 ## 本地开发
