@@ -126,6 +126,18 @@ export interface RenderPipelineRequirements {
     readonly requiredTextureFormats?: readonly Readonly<RenderPipelineTextureRequirement>[];
 }
 
+/** Static camera and invocation constraints enforced before a pipeline records graph work. */
+export interface RenderPipelineInvocationPolicy {
+    /** Accepted camera class; `any` includes perspective, orthographic, and custom cameras. */
+    readonly cameraType: 'any' | 'perspective';
+    /**
+     * Maximum calls to record() in one application frame, or `null` for no host-imposed limit.
+     * A renderFrame() callback shares this budget across surface and render-target invocations.
+     * This does not imply simultaneous GPU multiview rendering or independent temporal histories.
+     */
+    readonly maxInvocationsPerFrame: number | null;
+}
+
 /** Immutable creation inputs for one renderer-local pipeline runtime. */
 export interface RenderPipelineCreateContext {
     /** Capabilities for the selected device generation. */
@@ -369,6 +381,12 @@ export interface RenderPipelineFactory {
     readonly name: string;
     /** Static constraints snapshotted before asynchronous renderer creation. */
     readonly requirements?: Readonly<RenderPipelineRequirements>;
+    /**
+     * Camera and per-application-frame invocation constraints, snapshotted before creation.
+     * Omission accepts any camera with no host-imposed invocation limit. Violations abort the
+     * entire application frame before submission, even when the caller catches the error.
+     */
+    readonly invocationPolicy?: Readonly<RenderPipelineInvocationPolicy>;
     /** Create independent state for one Renderer. */
     create(context: RenderPipelineCreateContext): RenderPipeline | Promise<RenderPipeline>;
 }

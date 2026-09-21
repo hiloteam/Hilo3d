@@ -24,7 +24,7 @@ import { renderGraphFailure } from './RenderGraphValidation';
 import { RenderGraphGPUProfiler, type RenderGraphGPUProfileFrame } from './RenderGraphGPUProfiler';
 import type { RenderGraphTimelineRecorder } from './RenderGraphTimeline';
 
-type CompiledRGPhysicalResource = Exclude<CompiledRGResource, { readonly kind: 'texture-view' }>;
+import { TransientResourcePool, type PooledRGResource } from './RenderGraphTransientResourcePool';
 
 function sameStringList(first: readonly string[], second: readonly string[]): boolean {
     if (first.length !== second.length) return false;
@@ -175,238 +175,6 @@ class PreparedRGResourceLookup {
     }
 }
 
-interface PooledRGResource {
-    readonly key: number;
-    readonly compiled: CompiledRGPhysicalResource;
-    readonly deviceId: number;
-    readonly deviceGeneration: number;
-    readonly texture: RHITexture | null;
-    readonly textureView: RHITextureView | null;
-    readonly buffer: RHIBuffer | null;
-    inUse: boolean;
-}
-
-function mixPoolKey(hash: number, value: number): number {
-    return Math.imul(hash ^ value, 0x01000193) >>> 0;
-}
-
-function mixPoolKeyString(hash: number, value: string): number {
-    let result = mixPoolKey(hash, value.length);
-    for (let index = 0; index < value.length; index += 1) {
-        result = mixPoolKey(result, value.charCodeAt(index));
-    }
-    return result;
-}
-
-/** Allocation-free numeric bucket; structural equality below makes hash collisions harmless. */
-function resourcePoolKey(resource: CompiledRGPhysicalResource): number {
-    if (resource.kind === 'buffer') {
-        const descriptor = resource.descriptor;
-        let hash = mixPoolKey(0x811c9dc5, 1);
-        hash = mixPoolKey(hash, descriptor.size);
-        hash = mixPoolKey(hash, descriptor.usage);
-        return mixPoolKey(hash, descriptor.mappedAtCreation ? 1 : 0);
-    }
-    const descriptor = resource.descriptor;
-    let hash = mixPoolKey(0x811c9dc5, 2);
-    hash = mixPoolKeyString(hash, descriptor.dimension);
-    hash = mixPoolKeyString(hash, descriptor.viewDimension);
-    hash = mixPoolKey(hash, descriptor.size.width);
-    hash = mixPoolKey(hash, descriptor.size.height);
-    hash = mixPoolKey(hash, descriptor.size.depthOrArrayLayers);
-    hash = mixPoolKey(hash, descriptor.mipLevelCount);
-    hash = mixPoolKey(hash, descriptor.sampleCount);
-    hash = mixPoolKeyString(hash, descriptor.format);
-    hash = mixPoolKey(hash, descriptor.usage);
-    hash = mixPoolKey(hash, descriptor.viewFormats.length);
-    // Indexed deliberately: this key is computed for every transient acquire and must not create
-    // an iterator in the allocation gate.
-    let index = 0;
-    while (index < descriptor.viewFormats.length) {
-        hash = mixPoolKeyString(hash, descriptor.viewFormats[index] ?? '');
-        index += 1;
-    }
-    return hash;
-}
-
-function samePooledResourceDescriptor(
-    entry: PooledRGResource,
-    resource: CompiledRGPhysicalResource
-): boolean {
-    const cached = entry.compiled;
-    if (cached.kind !== resource.kind) return false;
-    if (cached.kind === 'buffer') {
-        if (resource.kind !== 'buffer') return false;
-        const first = cached.descriptor;
-        const second = resource.descriptor;
-        return (
-            first.size === second.size &&
-            first.usage === second.usage &&
-            first.mappedAtCreation === second.mappedAtCreation
-        );
-    }
-    if (resource.kind !== 'texture') return false;
-    const first = cached.descriptor;
-    const second = resource.descriptor;
-    return (
-        first.dimension === second.dimension &&
-        first.viewDimension === second.viewDimension &&
-        first.size.width === second.size.width &&
-        first.size.height === second.size.height &&
-        first.size.depthOrArrayLayers === second.size.depthOrArrayLayers &&
-        first.mipLevelCount === second.mipLevelCount &&
-        first.sampleCount === second.sampleCount &&
-        first.format === second.format &&
-        first.usage === second.usage &&
-        sameStringList(first.viewFormats, second.viewFormats)
-    );
-}
-
-class TransientResourcePool {
-    readonly #entries = new Map<number, PooledRGResource[]>();
-    #ownerDeviceId: number | null = null;
-    #ownerDeviceGeneration: number | null = null;
-    #destroyed = false;
-
-    useDevice(device: RHIDevice): void {
-        if (this.#destroyed) throw new Error('Render graph transient pool is destroyed');
-        if (
-            this.#ownerDeviceId !== null &&
-            (this.#ownerDeviceId !== device.id || this.#ownerDeviceGeneration !== device.generation)
-        ) {
-            this.destroyIdleEntries();
-        }
-        this.#ownerDeviceId = device.id;
-        this.#ownerDeviceGeneration = device.generation;
-    }
-
-    acquire(
-        resource: CompiledRGPhysicalResource,
-        device: RHIDevice,
-        result: PreparedRGResource
-    ): void {
-        this.useDevice(device);
-        const key = resourcePoolKey(resource);
-        const entries = this.#entries.get(key);
-        if (entries) {
-            for (let index = entries.length - 1; index >= 0; index -= 1) {
-                const entry = entries[index];
-                if (!entry) continue;
-                const staleGeneration =
-                    entry.deviceId === device.id && entry.deviceGeneration !== device.generation;
-                const destroyed =
-                    (entry.texture?.destroyed ?? false) ||
-                    (entry.textureView?.destroyed ?? false) ||
-                    (entry.buffer?.destroyed ?? false);
-                if (!entry.inUse && (staleGeneration || destroyed)) {
-                    entry.textureView?.destroy();
-                    entry.texture?.destroy();
-                    entry.buffer?.destroy();
-                    entries.splice(index, 1);
-                }
-            }
-            for (const entry of entries) {
-                if (
-                    !entry.inUse &&
-                    samePooledResourceDescriptor(entry, resource) &&
-                    entry.deviceId === device.id &&
-                    entry.deviceGeneration === device.generation &&
-                    !(entry.texture?.destroyed ?? false) &&
-                    !(entry.buffer?.destroyed ?? false)
-                ) {
-                    entry.inUse = true;
-                    result.poolEntry = entry;
-                    result.allocated = false;
-                    return;
-                }
-            }
-        }
-
-        let texture: RHITexture | null = null;
-        let textureView: RHITextureView | null = null;
-        let buffer: RHIBuffer | null = null;
-        try {
-            if (resource.kind === 'texture') {
-                texture = device.createTexture(resource.descriptor);
-                textureView = texture.createView();
-            } else {
-                buffer = device.createBuffer(resource.descriptor);
-            }
-        } catch (error) {
-            textureView?.destroy();
-            texture?.destroy();
-            buffer?.destroy();
-            throw error;
-        }
-        const entry: PooledRGResource = {
-            key,
-            compiled: resource,
-            deviceId: device.id,
-            deviceGeneration: device.generation,
-            texture,
-            textureView,
-            buffer,
-            inUse: true
-        };
-        if (entries) entries.push(entry);
-        else this.#entries.set(key, [entry]);
-        result.poolEntry = entry;
-        result.allocated = true;
-    }
-
-    release(entry: PooledRGResource): void {
-        // A mapped-at-creation buffer can be unmapped or remapped to a subrange by its frame.
-        // Neither backend can synchronously restore the original whole-buffer mapping contract,
-        // so it is a one-frame allocation even though ordinary transient buffers are reusable.
-        if (entry.compiled.kind === 'buffer' && entry.compiled.descriptor.mappedAtCreation) {
-            this.discard(entry);
-            return;
-        }
-        if (
-            this.#destroyed ||
-            entry.deviceId !== this.#ownerDeviceId ||
-            entry.deviceGeneration !== this.#ownerDeviceGeneration
-        ) {
-            this.discard(entry);
-            return;
-        }
-        entry.inUse = false;
-    }
-
-    discard(entry: PooledRGResource): void {
-        entry.textureView?.destroy();
-        entry.texture?.destroy();
-        entry.buffer?.destroy();
-        const entries = this.#entries.get(entry.key);
-        if (!entries) return;
-        const index = entries.indexOf(entry);
-        if (index >= 0) entries.splice(index, 1);
-        if (entries.length === 0) this.#entries.delete(entry.key);
-    }
-
-    destroy(): void {
-        if (this.#destroyed) return;
-        this.#destroyed = true;
-        this.destroyIdleEntries();
-        this.#ownerDeviceId = null;
-        this.#ownerDeviceGeneration = null;
-    }
-
-    private destroyIdleEntries(): void {
-        for (const [key, entries] of this.#entries) {
-            for (let index = entries.length - 1; index >= 0; index -= 1) {
-                const entry = entries[index];
-                if (!entry || entry.inUse) continue;
-                entry.textureView?.destroy();
-                entry.texture?.destroy();
-                entry.buffer?.destroy();
-                entries.splice(index, 1);
-            }
-            if (entries.length === 0) this.#entries.delete(key);
-        }
-    }
-}
-
 class RenderGraphExecutorWorkspace {
     readonly resources: PreparedRGResource[] = [];
     readonly preparedByHandle = new PreparedRGResourceLookup();
@@ -529,9 +297,13 @@ export interface RenderGraphExecutorStorageDiagnostics {
 }
 
 export interface RGExecutionResult {
+    /** Validated graph whose commands were submitted, including final resource contents. */
+    readonly graph: CompiledRenderGraph;
     readonly submission: RHISubmission;
     /** Reused caller-owned counters when supplied; snapshot before starting another frame. */
     readonly diagnostics: RHIFrameDiagnostics;
+    /** Report initial observer failures only after the owner has committed the submitted frame. */
+    throwTimelineError(): void;
     getExtractedTexture(handle: RGTextureHandle): RHITexture;
     getExtractedBuffer(handle: RGBufferHandle): RHIBuffer;
 }
@@ -544,6 +316,8 @@ export interface RGExecutionOptions {
     readonly abortSignal?: { throwIfAborted(): void };
     /** @internal Enables pass markers, CPU phases and automatic WebGPU timestamp queries. */
     readonly timeline?: RenderGraphTimelineRecorder;
+    /** @internal Reports asynchronous observer failures without invalidating GPU submission. */
+    readonly onTimelineError?: (error: unknown) => void;
 }
 
 export interface RGPassContext {
@@ -636,11 +410,22 @@ class RGPassContextImpl extends RGDeclaredResourceContext implements RGPassConte
 }
 
 class RGExecutionResultImpl implements RGExecutionResult {
+    #timelineFailure: { readonly error: unknown } | null = null;
+
     constructor(
+        readonly graph: CompiledRenderGraph,
         readonly submission: RHISubmission,
         readonly diagnostics: RHIFrameDiagnostics,
         private readonly extracted: ReadonlyMap<RGResourceHandle, ExtractedRGResource> | null
     ) {}
+
+    captureTimelineError(error: unknown): void {
+        this.#timelineFailure = { error };
+    }
+
+    throwTimelineError(): void {
+        if (this.#timelineFailure !== null) throw this.#timelineFailure.error;
+    }
 
     getExtractedTexture(handle: RGTextureHandle): RHITexture {
         const resource = this.extracted?.get(handle);
@@ -762,9 +547,10 @@ export class RenderGraphExecutor {
         options: RGExecutionOptions = {}
     ): RGExecutionResult {
         if (this.#destroyed) throw new Error('Render graph executor is destroyed');
-        this.#transientPool.useDevice(device);
+        this.#transientPool.beginFrame(device);
         const workspace = this.acquireWorkspace();
         const timeline = options.timeline;
+        timeline?.setAsyncErrorReporter(options.onTimelineError);
         const prepareStart = timeline === undefined ? 0 : performance.now();
         const preparedList = workspace.resources;
         const preparedByHandle = workspace.preparedByHandle;
@@ -883,10 +669,12 @@ export class RenderGraphExecutor {
         }
         context.diagnostics.transientAllocations += transientAllocations;
         const passContext = new RGPassContextImpl(context, preparedByHandle);
-        let gpuProfile: RenderGraphGPUProfileFrame | null =
-            timeline === undefined ? null : this.#gpuProfiler.begin(device, timeline);
+        let gpuProfile: RenderGraphGPUProfileFrame | null = null;
+        let submission: RHISubmission;
+        let extracted: Map<RGResourceHandle, ExtractedRGResource> | null = null;
         const executeStart = timeline === undefined ? 0 : performance.now();
         try {
+            gpuProfile = timeline === undefined ? null : this.#gpuProfiler.begin(device, timeline);
             options.prePassCommands?.flush(context);
             options.abortSignal?.throwIfAborted();
             for (let passIndex = 0; passIndex < graph.passes.length; passIndex += 1) {
@@ -908,14 +696,6 @@ export class RenderGraphExecutor {
             passContext.setPass(null);
             options.abortSignal?.throwIfAborted();
             gpuProfile?.resolve(context);
-            const submission = queue.endFrame(context);
-            if (timeline !== undefined) {
-                timeline.setExecuteDuration(performance.now() - executeStart);
-                gpuProfile?.submitted(submission);
-                timeline.publish();
-            }
-            gpuProfile = null;
-            let extracted: Map<RGResourceHandle, ExtractedRGResource> | null = null;
             for (const resource of preparedList) {
                 if (resource.compiled.extracted) {
                     extracted ??= new Map<RGResourceHandle, ExtractedRGResource>();
@@ -926,13 +706,7 @@ export class RenderGraphExecutor {
                     });
                 }
             }
-            releaseAfterSubmission(
-                workspace,
-                this.#transientPool,
-                submission,
-                this.#releaseWorkspace
-            );
-            return new RGExecutionResultImpl(submission, context.diagnostics, extracted);
+            submission = queue.endFrame(context);
         } catch (error) {
             passContext.setPass(null);
             gpuProfile?.abort();
@@ -945,6 +719,21 @@ export class RenderGraphExecutor {
             this.#releaseWorkspace(workspace);
             throw error;
         }
+
+        // endFrame is the irreversible submission boundary. Arm cleanup before notifying any
+        // consumers, and return their failures separately so frame owners can commit first.
+        const result = new RGExecutionResultImpl(graph, submission, context.diagnostics, extracted);
+        releaseAfterSubmission(workspace, this.#transientPool, submission, this.#releaseWorkspace);
+        if (timeline !== undefined) {
+            timeline.setExecuteDuration(performance.now() - executeStart);
+            try {
+                gpuProfile?.submitted(submission);
+                timeline.publish();
+            } catch (error) {
+                result.captureTimelineError(error);
+            }
+        }
+        return result;
     }
 
     private acquireWorkspace(): RenderGraphExecutorWorkspace {

@@ -349,7 +349,11 @@ export interface ScriptableRenderGraph {
         key: object,
         descriptor: Readonly<RenderPipelinePersistentTargetDescriptor>
     ): RenderPipelineTargetResources;
-    /** Acquire one renderer-owned history ring; it rotates only after a successful write frame. */
+    /**
+     * Acquire one renderer-owned history ring. Only a submitted, live write retaining complete
+     * contents rotates the ring; a final discard invalidates the current slot and keeps the last
+     * stored history.
+     */
     acquireHistoryTexture(
         key: object,
         descriptor: Readonly<RenderPipelineHistoryTextureDescriptor>

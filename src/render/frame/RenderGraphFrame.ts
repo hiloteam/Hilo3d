@@ -80,7 +80,8 @@ export class RenderGraphFrame {
         context: RenderGraphFrameContext,
         build: RenderGraphFrameBuildCallback,
         abortSignal?: RenderGraphFrameAbortSignal,
-        timelineSink?: RenderGraphTimelineSink | null
+        timelineSink?: RenderGraphTimelineSink | null,
+        onTimelineError?: (error: unknown) => void
     ): RGExecutionResult {
         if (this.#active)
             throw new Error('Nested execution on the same RenderGraphFrame is not allowed');
@@ -94,8 +95,9 @@ export class RenderGraphFrame {
             timelineSink === undefined || timelineSink === null
                 ? undefined
                 : new RenderGraphTimelineRecorder(context.frameIndex, timelineSink);
+        let graph: RenderGraphBuilder | null = null;
         try {
-            const graph = this.#renderGraph.createBuilder();
+            graph = this.#renderGraph.createBuilder();
             const recordStart = timeline === undefined ? 0 : performance.now();
             const result = build(
                 Object.freeze({ context, graph, arena: this.arena, uploads: this.uploads })
@@ -118,6 +120,7 @@ export class RenderGraphFrame {
                 diagnostics: this.diagnostics,
                 prePassCommands: this.uploads,
                 ...(timeline === undefined ? {} : { timeline }),
+                ...(onTimelineError === undefined ? {} : { onTimelineError }),
                 ...(abortSignal === undefined ? {} : { abortSignal })
             });
             this.uploads.commit(execution.submission);
@@ -127,7 +130,11 @@ export class RenderGraphFrame {
             this.uploads.rollback();
             throw error;
         } finally {
-            this.#active = false;
+            try {
+                graph?.discard();
+            } finally {
+                this.#active = false;
+            }
         }
     }
 }

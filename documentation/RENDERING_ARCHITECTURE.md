@@ -71,7 +71,8 @@ pipeline，避免设备首选 `bgra8unorm` 时产生额外的浏览器展示拷�
 2. 单次遍历收集 `visible` 且通过当前 Camera layer mask 的 Mesh 与 Light。
 3. 进行视锥裁剪，构建不透明、透明和显式 Instancing 队列。
 4. 不透明物体按 `renderOrder / material / geometry`
-   聚类，减少状态切换；透明物体保留上游给出的后向前顺序。
+   聚类，再按相机 view-space 前向距离从近到远排列，同深度时保留稳定 identity 顺序。显式实例批以最近成员深度排列，成员也按前向距离排序；距离在规划时缓存，不在 draw 中计算。混合输入先按显示层级和
+   `renderOrder` 区分队列，避免不透明项打断透明深度排序；透明项保持从远到近和相邻兼容合批。
 5. 规划 Shadow Atlas，并准备 Shadow Pass。
 6. 把 Mesh 编译为可复用的 `PreparedDraw`：Pipeline、BindGroup、Vertex/Index
    Buffer、动态状态和 Draw 参数都在执行前准备完毕。
@@ -248,6 +249,30 @@ runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipe
   `recordShadows()` 不会复活旧 atlas/LightBlock；
 - factory 可异步创建 runtime，但每个 Renderer 必须获得独立 runtime；同一个 runtime 不能附着到两个 Renderer。
 
+Factory 的 `invocationPolicy` 声明相机类型和每 application frame 的调用次数上限：
+`cameraType: 'any' | 'perspective'`，`maxInvocationsPerFrame: number | null`，其中 `null`
+表示不设置次数上限。省略整个 policy 的自定义 factory 保持任意相机、多次调用的默认合同。
+`ForwardRenderPipelineFactory` 显式声明该默认值，`PostProcessRenderPipelineFactory` 透传它；
+`ClusteredForwardPlusPipelineFactory` 声明 `perspective` 和
+`1`。policy 在异步创建前完成校验与冻结，Host 在创建 invocation context、触发 scene
+callback 和调用 runtime 之前检查；surface 与 RenderTarget 调用共享同一预算。违规会使整个 application
+frame 失效，即使应用捕获错误也不能提交之前录制的部分图，下一帧重新计数。这是现有调用能力的公开声明，不表示 Clustered 已支持多相机 history 或多视图渲染。Clustered
+runtime 自身仍保留相机类型与同帧重复调用检查，保证现有自定义 factory 装饰器及直接组合 runtime 调用不会绕过限制。
+
+SRP 内部职责分为三个模块：
+[`ScriptableRenderPipelineContext.ts`](../src/render/internal/ScriptableRenderPipelineContext.ts)
+负责 invocation、资源句柄、culling/list 与图编排；
+[`ScriptableRenderPipelineResources.ts`](../src/render/internal/ScriptableRenderPipelineResources.ts)
+负责 persistent target/history、提交事务、frame bind group 与恢复所有权；
+[`ScriptableRenderPassExecution.ts`](../src/render/internal/ScriptableRenderPassExecution.ts)
+负责 pass
+storage、setup/prepare/execute 的独立 lease、draw/copy/compute 准备及受限命令执行。共享类型和纯校验位于独立叶模块，执行模块只通过 type-only
+import 引用上下文合同。
+
+内置 Scene、Fullscreen、Compute 和 GPU-driven pass 在构造时注册类型化的内部 preparation
+adapter。完成用户 `setup()` 后，执行模块通过单次注册表查找接入对应的资源准备，不再逐项 `instanceof`
+识别内置 Pass 类。普通自定义 pass 继续使用公开的受限命令 facade；adapter 注册表不从包入口导出，不增加 native/RHI 逃逸接口。注册发生在 Pass 创建时，帧内不创建 adapter 或逐 draw 分派对象。
+
 带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
 requirements；每个 feature 配置在 Renderer 创建时产生独立且只能附着一次的 runtime。feature
 context 暴露内置 forward/shadow 共用的 `cullingResults`，因此附加 Scene
@@ -399,6 +424,17 @@ output 或不支持的 WebGPU 设备仍 fail-closed，不会静默退化到 WebG
 limits 覆盖 object/geometry/visible/cluster/light-index 全部 buffer 与最坏 dispatch
 dimension，在 runtime 分配前完成设备准入。
 
+Clustered 的 runtime/factory 保留在
+[`ClusteredForwardPlus.ts`](../src/render/pipeline/ClusteredForwardPlus.ts)，负责场景、功能状态和逐帧 Pass 编排。GPU
+record ABI、compute Pass、raster shader、材质变体、display Pass 与可复用参数分别位于
+[`clusteredLayout.ts`](../src/render/pipeline/internal/clusteredLayout.ts)、
+[`clusteredComputePasses.ts`](../src/render/pipeline/internal/clusteredComputePasses.ts)、
+[`clusteredRasterShaders.ts`](../src/render/pipeline/internal/clusteredRasterShaders.ts)、
+[`clusteredMaterialVariants.ts`](../src/render/pipeline/internal/clusteredMaterialVariants.ts)、
+[`clusteredDisplayPasses.ts`](../src/render/pipeline/internal/clusteredDisplayPasses.ts) 和
+[`clusteredPassParameters.ts`](../src/render/pipeline/internal/clusteredPassParameters.ts)。这些是同一共享 GPU
+Scene/Clustered 实现的模块边界，shader 字符串、variant cache 和稳定 Pass 实例保持原有合同。
+
 设备恢复必须保留 runtime 创建时可见的完整公共 capability 超集，包括 limits 和全部公共 format/use/sample-count 查询；能力缩减会使恢复明确失败，而不是让旧 runtime 在后续 pass 中延迟出错。
 
 相关代码：[`RenderPipelineHost.ts`](../src/render/internal/RenderPipelineHost.ts)、[`pipeline/`](../src/render/pipeline)、[`ScriptableRenderPipelineContext.ts`](../src/render/internal/ScriptableRenderPipelineContext.ts)。
@@ -419,8 +455,9 @@ view。`ScriptableRenderGraph.createTextureView()` 可选择 mip、array
 layer、dimension、format 和 depth/stencil
 aspect；sampled、storage、attachment 与 copy 共用这一个 view
 identity。跨帧纹理由 renderer-owned 双/三缓冲 history recipe 管理；当前 history
-recipe 明确限定为单 sample、单 mip、单 layer 的 2D color texture，使任一提交成功的 current
-writer 都能完整初始化下一帧 history。跨帧 buffer 继续使用 renderer-owned
+recipe 明确限定为单 sample、单 mip、单 layer 的 2D color
+texture。只有存活 writer 在有效 submission 后留下完整且未 discard 的 current 内容，才轮换 history；discard 使 current
+slot 无效并保留最后一次完整存储的历史。跨帧 buffer 继续使用 renderer-owned
 `StorageBuffer`。后者是公共逻辑资源，CPU 写入走统一 upload transaction，异步读取走 graph
 copy、submission fence 和 staging map；每个 Renderer 同时只允许一个 pending storage-buffer
 readback，调用方应串行等待。`cpu-shadow` 与 `reinitialize`
@@ -529,6 +566,11 @@ reset arena/uploads
 `RHISubmission`
 后，缓存 revision 与资源“本帧已使用”状态才会提交。这避免了“CPU 侧认为更新成功，但 GPU 命令并未提交”的状态撕裂。
 
+Build/Setup 抛错或返回 Promise-like 时，Frame 在 `finally` 中 discard
+builder，立即清空 Pass 参数和 import
+provider 引用并归还构建存储；discard 幂等，旧 builder/handle 仍失效。编译失败和正常结束使用同一回收路径，连续错误不会为同一个串行 Renderer 积累未归还的 builder
+storage。
+
 `FrameArena`、`RHIUploadBatch`、Pass 参数、Builder/Compiler/Executor
 Workspace 都采用高水位复用：容量增长到历史峰值后，稳态帧尽量复用已有数组、对象和 TypedArray，减少 GC 压力。
 
@@ -567,13 +609,22 @@ Compiler 是纯 CPU 阶段，主要完成：
 3. 拒绝未初始化读取、Discard 后读取、同 Pass 非可移植读写反馈、Attachment 尺寸/采样数不匹配和依赖环。storage
    buffer 只有通过窄化的 `readWriteBuffer()` 才能合法原地读写；storage
    texture 仍不允许 sampled/write feedback。
-4. 使用稳定拓扑排序得到可复现的 Pass 顺序；没有依赖关系时保留插入顺序。
-5. 以标记输出和 Side Effect Pass 为根做反向可达分析，裁掉不会影响结果的 Pass 与资源。
+4. 使用最小 source-index ready
+   heap 的 Kahn 拓扑排序得到可复现的 Pass 顺序；每次选择当前可执行的最早录制 Pass，新解锁的较早 Pass 也优先于已就绪的较晚 Pass。调度复杂度为
+   `O(E + P log P)`，indegree、ready heap 和 order 的 typed-array backing 按最高 Pass 数复用。
+5. 以标记输出和 Side Effect
+   Pass 为根，仅沿内容依赖做反向可达分析。RAW、附件 load、read-write 和显式 dependsOn 保留生产者；WAR/WAW 只约束存活 Pass 的执行顺序，不会让未使用的 reader 或被完整覆盖的 writer 复活。内部部分 buffer
+   clear 显式声明保留旧内容，与整 buffer clear/copy 区分。
 6. 计算存活资源的 `firstUse / lastUse` 生命周期区间。
+7. 从实际存活 Pass 重建最终内容状态，记录是否被图写入、是否完整初始化；texture
+   view 的 mip/layer/aspect 与 parent texture 使用同一判定，最终 discard 使对应内容无效。
 
-这意味着大量错误会在创建临时 GPU 资源和 `queue.beginFrame()` 之前失败，两个后端获得相同的错误边界。
+这意味着大量错误会在创建临时 GPU 资源和 `queue.beginFrame()`
+之前失败，两个后端获得相同的错误边界。图仍先验证全部 Pass 的依赖环，再做存活分析；调度工作区复用不改变历史 compiled
+graph 的独立性。当前仍逐帧构建并编译不可变图结果，不把调度优化表述为 compiled-graph
+cache 或整帧零分配。
 
-相关代码：[`RenderGraphCompiler.ts`](../src/render/graph/RenderGraphCompiler.ts)、[`RenderGraphValidation.ts`](../src/render/graph/RenderGraphValidation.ts)。
+相关代码：[`RenderGraphCompiler.ts`](../src/render/graph/RenderGraphCompiler.ts)、[`RenderGraphPassScheduler.ts`](../src/render/graph/RenderGraphPassScheduler.ts)、[`RenderGraphValidation.ts`](../src/render/graph/RenderGraphValidation.ts)。
 
 ### 2.3 执行：资源准备、Pass 执行与提交围栏
 
@@ -592,7 +643,11 @@ Executor 的顺序是：
 当前实现已经具备生命周期分析和跨帧瞬态资源池，但池中资源会保持占用直到对应 Submission 完成；本文不把“根据
 `firstUse / lastUse` 在同一帧内做物理内存别名”列为当前已实现能力。
 
-相关代码：[`RenderGraphExecutor.ts`](../src/render/graph/RenderGraphExecutor.ts)、[`RenderGraph.ts`](../src/render/graph/RenderGraph.ts)。
+已完成提交的闲置资源按使用顺序淘汰，最多保留 128 项、估算 256 MiB，闲置超过 120 次 graph
+execution 也会淘汰。纹理估算包含 mip、layer、3D depth、压缩块和 MSAA；opaque
+depth 格式采用保守字节数，不声称等于驱动实际显存。待提交完成的资源不计入闲置预算，也不能提前销毁；固定 descriptor 在预算内继续精确复用。这使连续 resize/动态分辨率的历史尺寸有界；单帧工作集超过闲置预算时允许重新分配，预算不限制有效渲染工作。
+
+相关代码：[`RenderGraphExecutor.ts`](../src/render/graph/RenderGraphExecutor.ts)、[`RenderGraphTransientResourcePool.ts`](../src/render/graph/RenderGraphTransientResourcePool.ts)、[`RenderGraph.ts`](../src/render/graph/RenderGraph.ts)。
 
 ### 2.4 可选 CPU/GPU 时间线
 
@@ -604,6 +659,12 @@ recorder。它记录 record、compile、prepare、execute 四个 CPU 区间、�
 `QUERY_RESOLVE -> COPY_DST|MAP_READ` 三槽 ring 异步回读；生产帧从不等待 map，槽位占满只把该帧标记为
 `saturated`。没有 diagnostics 且 pipeline 不消费 timing 时，不创建 QuerySet/resolve/readback 资源，也不在逐 draw 路径增加分支；dynamic-resolution
 runtime 被替换或销毁后，旧 submission 的异步 snapshot 仍只投递给捕获它的旧 runtime，不能污染恢复后的 controller。
+
+`queue.endFrame()` 是提交边界。初始 timeline consumer 抛错会在上传 revision、runtime
+submission 回调、history 和资源提交清理完成后向调用方报告，不能再 abort 已提交的 GPU frame，也不调用
+`frameDiscarded()`。诊断 sink 和 runtime
+sink 分别调用、分别观察返回的 Promise-like；异步 observer 失败沿 renderer 的错误报告通道送出，与 GPU
+readback 失败分开，不把有效的 timestamp 结果改成 `failed`，不污染 submission 状态。
 
 RHI 同时提供 submission-aware `RHIQuerySet`、pass timestamp
 writes、显式 resolve，以及 command、render pass、compute pass 的 debug
@@ -910,7 +971,7 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 - storage texture binding 仍是 write-only 且必须完整覆盖所选单 mip view；跨帧 texture 使用
   `acquireHistoryTexture()` 的 renderer-owned 双/三缓冲 recipe；当前 recipe
   fail-closed 为单 sample、单 mip、单 layer 的 2D color
-  texture。history 只在有效 submission 且 current 确有 writer 时轮换；resize/format/quality
+  texture。history 只在有效 submission 且 current 确有存活 writer 并保留完整内容时轮换；最终 discard 不发布新 history。resize/format/quality
   revision、显式 invalidation 和 device
   recovery 都递增 generation 并使旧内容失效。跨帧 buffer 继续通过 `importStorageBuffer()`
   导入；engine-managed sampled 2D texture 通过 `importTexture()` 导入，并沿用 `TextureResourceCache`

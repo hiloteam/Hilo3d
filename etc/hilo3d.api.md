@@ -870,6 +870,7 @@ export interface ClusteredForwardPlusDiagnostics {
 export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactory {
     constructor(options: Readonly<ClusteredForwardPlusPipelineOptions>);
     create(context: RenderPipelineCreateContext): Promise<RenderPipeline>;
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy>;
     readonly name = "GPU Scene + Clustered Forward+";
     readDiagnostics(): Promise<Readonly<ClusteredForwardPlusDiagnostics>>;
     readonly requirements: Readonly<RenderPipelineRequirements>;
@@ -2208,6 +2209,7 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     constructor(options?: ForwardRenderPipelineFactoryOptions);
     create(context: RenderPipelineCreateContext): RenderPipeline;
     readonly features: readonly ForwardRenderPipelineFeature[];
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy>;
     readonly name = "forward";
     readonly opaqueTexture: boolean;
     readonly requirements: Readonly<RenderPipelineRequirements>;
@@ -5820,6 +5822,7 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
     constructor(options?: Readonly<PostProcessRenderPipelineOptions>);
     // (undocumented)
     create(context: RenderPipelineCreateContext): RenderPipeline;
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy>;
     // (undocumented)
     readonly name = "post-process-forward";
     // (undocumented)
@@ -6625,6 +6628,7 @@ export type RenderPipelineExtent = Readonly<{
 // @public
 export interface RenderPipelineFactory {
     create(context: RenderPipelineCreateContext): RenderPipeline | Promise<RenderPipeline>;
+    readonly invocationPolicy?: Readonly<RenderPipelineInvocationPolicy>;
     readonly name: string;
     readonly requirements?: Readonly<RenderPipelineRequirements>;
 }
@@ -6643,6 +6647,12 @@ export interface RenderPipelineHistoryTextureResources {
     history(index?: number): RenderGraphTextureHandle;
     readonly historyCount: number;
     readonly valid: boolean;
+}
+
+// @public
+export interface RenderPipelineInvocationPolicy {
+    readonly cameraType: 'any' | 'perspective';
+    readonly maxInvocationsPerFrame: number | null;
 }
 
 // @public

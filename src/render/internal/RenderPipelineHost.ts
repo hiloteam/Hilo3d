@@ -1,4 +1,5 @@
 import type Camera from '../../camera/Camera';
+import PerspectiveCamera from '../../camera/PerspectiveCamera';
 import { RenderGraphFrame, type RenderGraphFrameBuildScope } from '../frame/RenderGraphFrame';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RGExecutionResult } from '../graph/RenderGraphExecutor';
@@ -21,8 +22,10 @@ import type {
     RenderPipelineCapabilities,
     RenderPipelineContext,
     RenderPipelineFactory,
+    RenderPipelineInvocationPolicy,
     RenderPipelineRequirements
 } from '../pipeline/RenderPipeline';
+import { snapshotRenderPipelineInvocationPolicy } from '../pipeline/RenderPipelineFactory';
 
 const attachedPipelineRuntimes = new WeakSet();
 
@@ -48,6 +51,7 @@ export interface RenderPipelineHostLifecycle {
     ): RenderPipelineContext;
     endPipelineInvocation(completed: boolean): void;
     getRenderGraphTimelineSink?(): RenderGraphTimelineSink | null;
+    reportTimelineError?(error: unknown): void;
 }
 
 /**
@@ -58,6 +62,17 @@ export interface RenderPipelineHostLifecycle {
  */
 export class RenderPipelineHost {
     readonly #frame = new RenderGraphFrame();
+    readonly #reportTimelineError = (error: unknown): void => {
+        if (this.lifecycle.reportTimelineError !== undefined) {
+            this.lifecycle.reportTimelineError(error);
+        } else {
+            queueMicrotask(() => {
+                throw error instanceof Error
+                    ? error
+                    : new Error('Render graph timeline observer failed', { cause: error });
+            });
+        }
+    };
     readonly #abortSignal = Object.freeze({
         throwIfAborted: (): void => {
             if (this.#aborted) throw this.createAbortedError();
@@ -87,6 +102,8 @@ export class RenderPipelineHost {
     #capabilities: RenderPipelineCapabilities | null = null;
     #minimumCapabilities: RenderPipelineCapabilities | null = null;
     #requirements: Readonly<RenderPipelineRequirements> | null = null;
+    #invocationPolicy: Readonly<RenderPipelineInvocationPolicy> | null = null;
+    #pipelineInvocationCount = 0;
     #pipelineInvocationActive = false;
     readonly #runtimeOwner = Object.freeze({});
 
@@ -116,6 +133,7 @@ export class RenderPipelineHost {
         if (this.#runtime !== null) throw new Error('RenderPipelineHost is already initialized');
         const capabilities = createRenderPipelineCapabilities(deviceCapabilities);
         const requirements = factory.requirements ?? {};
+        const invocationPolicy = snapshotRenderPipelineInvocationPolicy(factory.invocationPolicy);
         validateRenderPipelineRequirements(requirements, capabilities, deviceCapabilities);
         const candidate: unknown = await factory.create(
             Object.freeze({
@@ -199,6 +217,7 @@ export class RenderPipelineHost {
         this.#capabilities = capabilities;
         this.#minimumCapabilities = capabilities;
         this.#requirements = requirements;
+        this.#invocationPolicy = invocationPolicy;
     }
 
     validateReplacementDevice(deviceCapabilities: RHICapabilities): void {
@@ -263,6 +282,8 @@ export class RenderPipelineHost {
         let completed = false;
         let contextCreated = false;
         try {
+            this.validatePipelineInvocation(camera, runtime.name);
+            this.#pipelineInvocationCount++;
             const context = this.lifecycle.createPipelineContext(
                 scene,
                 camera,
@@ -280,6 +301,9 @@ export class RenderPipelineHost {
                 throw new TypeError('Render pipeline record() must be synchronous');
             }
             completed = true;
+        } catch (error) {
+            this.abort(error);
+            throw error;
         } finally {
             try {
                 if (contextCreated) this.lifecycle.endPipelineInvocation(completed);
@@ -300,6 +324,7 @@ export class RenderPipelineHost {
         const frameIndex = this.allocateFrameIndex();
         this.#recording = true;
         this.#activeFrameIndex = frameIndex;
+        this.#pipelineInvocationCount = 0;
         this.#aborted = false;
         this.#abortReason = undefined;
         this.#record = record;
@@ -322,15 +347,35 @@ export class RenderPipelineHost {
                           recordRenderGraphTimeline: (
                               snapshot: Readonly<RenderGraphTimelineSnapshot>
                           ) => {
-                              diagnosticTimelineSink?.recordRenderGraphTimeline(snapshot);
-                              runtime?.recordRenderGraphTimeline?.(snapshot);
+                              let failed = false;
+                              let failure: unknown;
+                              try {
+                                  this.notifyTimelineConsumer(diagnosticTimelineSink, snapshot);
+                              } catch (error) {
+                                  failed = true;
+                                  failure = error;
+                              }
+                              try {
+                                  this.notifyTimelineConsumer(runtime, snapshot);
+                              } catch (error) {
+                                  if (failed) {
+                                      throw new AggregateError(
+                                          [failure, error],
+                                          'Render graph timeline consumers failed',
+                                          { cause: error }
+                                      );
+                                  }
+                                  throw error;
+                              }
+                              if (failed) throw failure;
                           }
                       });
             const execution = this.#frame.execute(
                 context,
                 this.#buildFrame,
                 this.#abortSignal,
-                timelineSink
+                timelineSink,
+                this.#reportTimelineError
             );
             submitted = true;
             let submissionCallbackFailed = false;
@@ -353,6 +398,23 @@ export class RenderPipelineHost {
                 completionFailed = true;
                 completionFailure = error;
             }
+            let timelineFailed = false;
+            let timelineFailure: unknown;
+            try {
+                execution.throwTimelineError();
+            } catch (error) {
+                timelineFailed = true;
+                timelineFailure = error;
+            }
+            if (timelineFailed && (submissionCallbackFailed || completionFailed)) {
+                const errors: unknown[] = [];
+                if (submissionCallbackFailed) errors.push(submissionCallbackFailure);
+                if (completionFailed) errors.push(completionFailure);
+                errors.push(timelineFailure);
+                throw new AggregateError(errors, 'Submitted frame completion callbacks failed', {
+                    cause: errors[0]
+                });
+            }
             if (submissionCallbackFailed && completionFailed) {
                 throw new AggregateError(
                     [submissionCallbackFailure, completionFailure],
@@ -362,6 +424,7 @@ export class RenderPipelineHost {
             }
             if (completionFailed) throw completionFailure;
             if (submissionCallbackFailed) throw submissionCallbackFailure;
+            if (timelineFailed) throw timelineFailure;
         } catch (error) {
             firstFailure = error;
             failureCount = 1;
@@ -426,6 +489,8 @@ export class RenderPipelineHost {
         this.#capabilities = null;
         this.#minimumCapabilities = null;
         this.#requirements = null;
+        this.#invocationPolicy = null;
+        this.#pipelineInvocationCount = 0;
         this.#pipelineInvocationActive = false;
         const failures: unknown[] = [];
         try {
@@ -460,6 +525,34 @@ export class RenderPipelineHost {
         return new Error('Renderer frame recording was aborted after a command failed', {
             cause: this.#abortReason
         });
+    }
+
+    private validatePipelineInvocation(camera: Camera, name: string): void {
+        const policy = this.#invocationPolicy;
+        if (policy === null)
+            throw new Error('Render pipeline invocation policy is not initialized');
+        if (policy.cameraType === 'perspective' && !(camera instanceof PerspectiveCamera)) {
+            throw new TypeError(`Render pipeline ${name} requires a PerspectiveCamera`);
+        }
+        const maximum = policy.maxInvocationsPerFrame;
+        if (maximum !== null && this.#pipelineInvocationCount >= maximum) {
+            throw new Error(
+                `Render pipeline ${name} supports at most ${String(maximum)} invocation(s) per application frame`
+            );
+        }
+    }
+
+    private notifyTimelineConsumer(
+        consumer: RenderGraphTimelineSink | RenderPipeline | null,
+        snapshot: Readonly<RenderGraphTimelineSnapshot>
+    ): void {
+        const source: {
+            recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): unknown;
+        } | null = consumer;
+        const notification = source?.recordRenderGraphTimeline?.(snapshot);
+        if (notification !== undefined) {
+            void Promise.resolve(notification).catch(this.#reportTimelineError);
+        }
     }
 
     private createValidatedReplacementCapabilities(

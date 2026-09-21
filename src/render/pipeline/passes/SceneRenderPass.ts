@@ -1,3 +1,4 @@
+import { registerScriptablePassAdapter } from './internal/ScriptablePassAdapter';
 import type { RendererViewport } from '../../RendererCore';
 import type StorageGraphicsShader from '../../compute/StorageGraphicsShader';
 import type Mesh from '../../../core/Mesh';
@@ -95,6 +96,9 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
             throw new TypeError('Scene render pass name must be non-empty');
         }
         this.name = name;
+        registerScriptablePassAdapter<SceneRenderPassParameters>(this, (target, parameters) => {
+            target.configureScene(parameters);
+        });
     }
 
     /** Declare attachments and the renderer list without issuing commands. */

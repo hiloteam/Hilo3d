@@ -1,3 +1,4 @@
+import { registerScriptablePassAdapter } from './internal/ScriptablePassAdapter';
 import {
     snapshotMaterialPipelineState,
     type MaterialPipelineState
@@ -379,6 +380,9 @@ export class GPUDrivenRenderPass implements ScriptableRenderPass<GPUDrivenRender
             }
         }
         this.name = name;
+        registerScriptablePassAdapter<GPUDrivenRenderPassParameters>(this, (target, parameters) => {
+            target.configureGPUDriven(this, parameters);
+        });
         this.shader = options.shader;
         this.pipelineState = snapshotMaterialPipelineState(options.pipelineState);
         this.vertexLayouts = snapshotVertexLayouts(

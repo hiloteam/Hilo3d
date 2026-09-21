@@ -116,13 +116,13 @@ import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import { RenderPipelineHost, type RenderPipelineHostLifecycle } from './RenderPipelineHost';
 import { cameraCompositionRequiresSingleSample } from './CameraCompositionPolicy';
 import { depthClearValue } from '../renderer/DepthConvention';
-import {
-    ScriptableRenderPipelineContextImpl,
-    ScriptableRenderPipelineResources,
-    type ScriptableRenderPipelineServices,
-    type ScriptableShadowAtlasBuild,
-    type ScriptableSurfaceFramePolicy
-} from './ScriptableRenderPipelineContext';
+import { ScriptableRenderPipelineContextImpl } from './ScriptableRenderPipelineContext';
+import { ScriptableRenderPipelineResources } from './ScriptableRenderPipelineResources';
+import type {
+    ScriptableRenderPipelineServices,
+    ScriptableShadowAtlasBuild,
+    ScriptableSurfaceFramePolicy
+} from './ScriptableRenderPipelineTypes';
 
 type SharedRendererOptions =
     Omit<RendererWebGL2Options, 'backend'> | Omit<RendererWebGPUOptions, 'backend'>;
@@ -604,6 +604,9 @@ class SharedRendererDriver
 
     completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void {
         const resources = this.requireResources();
+        if (this.#scriptableResourcesFrameStarted) {
+            this.#scriptablePipelineResources.finalizeHistoryWrites(execution.graph);
+        }
         for (const target of this.#usedTargets) {
             resources.targets.markUsed(target, frameIndex);
         }
@@ -647,6 +650,10 @@ class SharedRendererDriver
                 // Preserve the graph build/prepare/execute error.
             }
         }
+    }
+
+    reportTimelineError(error: unknown): void {
+        reportListenerFailure(error);
     }
 
     endFrame(submitted: boolean): void {
