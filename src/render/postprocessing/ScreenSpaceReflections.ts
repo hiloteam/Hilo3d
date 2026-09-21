@@ -20,12 +20,14 @@ import {
 import { PORTABLE_FULLSCREEN_VERTEX_SOURCE } from '../pipeline/passes/internal/PortableFullscreenShader';
 import type {
     RenderGraphBufferHandle,
+    RenderGraphPassHandle,
     RenderGraphTextureAccessHandle,
     RenderGraphTextureHandle,
     RenderPipelineColorAttachment,
     RenderPipelineExtent,
     RenderPipelineHistoryTextureDescriptor,
-    RenderPipelineTextureDescriptor
+    RenderPipelineTextureDescriptor,
+    ScriptableRenderPassBuilder
 } from '../pipeline/ScriptableRenderGraph';
 
 const INVALID_BUFFER = 0 as RenderGraphBufferHandle;
@@ -203,8 +205,32 @@ struct FrameData {
     ambient: vec4<f32>,
 };`;
 
+interface InitializedSSRComputeParameters extends ComputeRenderPassParameters {
+    readonly initialization?: RenderGraphPassHandle | null;
+}
+
+/** Sparse tile writes require their full-target initializer even when no tile is dispatched. */
+class ScreenSpaceReflectionComputePass extends ComputeRenderPass {
+    override setup(
+        builder: ScriptableRenderPassBuilder,
+        parameters: InitializedSSRComputeParameters
+    ): void {
+        super.setup(builder, parameters);
+        if ('indirectBuffer' in parameters.dispatch) {
+            const initialization = parameters.initialization;
+            if (initialization === undefined || initialization === null) {
+                throw new Error('Sparse SSR dispatch requires its full-target initialization pass');
+            }
+            builder.dependsOn(initialization);
+        }
+    }
+}
+
 function computePass(shader: ComputeShader): ComputeRenderPass {
-    return new ComputeRenderPass(new ComputeKernel({ label: shader.label, shader }), shader.label);
+    return new ScreenSpaceReflectionComputePass(
+        new ComputeKernel({ label: shader.label, shader }),
+        shader.label
+    );
 }
 
 const LINEAR_CLAMP_SAMPLER = new ComputeSampler({
@@ -2354,6 +2380,7 @@ class MutableComputeParameters implements ComputeRenderPassParameters {
     readonly textures: MutableTextureBinding[];
     readonly samplers: ComputeSampler[];
     dispatch: ComputeDispatch = { x: 1, y: 1, z: 1 };
+    initialization: RenderGraphPassHandle | null = null;
 
     constructor(bufferCount: number, textureCount: number, samplerCount: number) {
         this.buffers = Array.from({ length: bufferCount }, () => ({ buffer: INVALID_BUFFER }));
@@ -2375,10 +2402,15 @@ class MutableComputeParameters implements ComputeRenderPassParameters {
 
     setDispatch(x: number, y: number): void {
         this.dispatch = { x, y, z: 1 };
+        this.initialization = null;
     }
 
-    setIndirectDispatch(buffer: RenderGraphBufferHandle): void {
+    setIndirectDispatch(
+        buffer: RenderGraphBufferHandle,
+        initialization: RenderGraphPassHandle
+    ): void {
         this.dispatch = { indirectBuffer: buffer, indirectOffset: 0 };
+        this.initialization = initialization;
     }
 }
 
@@ -2657,7 +2689,7 @@ export class ScreenSpaceReflectionsController {
         reset.setTexture(0, currentReflection);
         reset.setTexture(1, currentHit);
         reset.setDispatch(tileCountX, tileCountY);
-        context.graph.addPass(TRACE_RESET_PASS, reset);
+        const resetPass = context.graph.addPass(TRACE_RESET_PASS, reset);
 
         const classification = context.acquirePassParameters(this.#classificationPool);
         classification.setBuffer(0, resources.frameBuffer);
@@ -2703,7 +2735,7 @@ export class ScreenSpaceReflectionsController {
         }
         trace.setTexture(textureIndex++, currentReflection);
         trace.setTexture(textureIndex, currentHit);
-        trace.setIndirectDispatch(dispatchArguments);
+        trace.setIndirectDispatch(dispatchArguments, resetPass);
         context.graph.addPass(this.#tracePass, trace);
 
         const colorHistory = context.graph.acquireHistoryTexture(
@@ -2742,7 +2774,10 @@ export class ScreenSpaceReflectionsController {
                 Math.max(1, Math.ceil(reflectionWidth / TRACE_WORKGROUP_SIZE)),
                 Math.max(1, Math.ceil(reflectionHeight / TRACE_WORKGROUP_SIZE))
             );
-            context.graph.addPass(TEMPORAL_HISTORY_RESET_PASS, historyReset);
+            const historyResetPass = context.graph.addPass(
+                TEMPORAL_HISTORY_RESET_PASS,
+                historyReset
+            );
 
             const resolve = context.acquirePassParameters(this.#resolvePool);
             resolve.setBuffer(0, diagnostics);
@@ -2761,7 +2796,7 @@ export class ScreenSpaceReflectionsController {
             resolve.setTexture(11, depthHistory.current);
             resolve.setTexture(12, stateHistory.current);
             resolve.setTexture(13, responseHistory.current);
-            resolve.setIndirectDispatch(dispatchArguments);
+            resolve.setIndirectDispatch(dispatchArguments, historyResetPass);
             context.graph.addPass(this.#temporalResolvePass, resolve);
         } else {
             const initialize = context.acquirePassParameters(this.#initializePool);
@@ -2791,7 +2826,10 @@ export class ScreenSpaceReflectionsController {
             Math.max(1, Math.ceil(reflectionWidth / TRACE_WORKGROUP_SIZE)),
             Math.max(1, Math.ceil(reflectionHeight / TRACE_WORKGROUP_SIZE))
         );
-        context.graph.addPass(SPATIAL_FILTER_RESET_PASS, reconstructionReset);
+        const reconstructionResetPass = context.graph.addPass(
+            SPATIAL_FILTER_RESET_PASS,
+            reconstructionReset
+        );
 
         const reconstruction = context.acquirePassParameters(this.#spatialFilterPool);
         reconstruction.setBuffer(0, diagnostics);
@@ -2802,7 +2840,7 @@ export class ScreenSpaceReflectionsController {
         reconstruction.setTexture(3, stateHistory.current);
         reconstruction.setTexture(4, responseHistory.current);
         reconstruction.setTexture(5, reconstructed);
-        reconstruction.setIndirectDispatch(dispatchArguments);
+        reconstruction.setIndirectDispatch(dispatchArguments, reconstructionResetPass);
         context.graph.addPass(this.#spatialReconstructionPass, reconstruction);
 
         const filtered = context.graph.createTexture(
@@ -2815,7 +2853,7 @@ export class ScreenSpaceReflectionsController {
             Math.max(1, Math.ceil(reflectionWidth / TRACE_WORKGROUP_SIZE)),
             Math.max(1, Math.ceil(reflectionHeight / TRACE_WORKGROUP_SIZE))
         );
-        context.graph.addPass(SPATIAL_FILTER_RESET_PASS, filterReset);
+        const filterResetPass = context.graph.addPass(SPATIAL_FILTER_RESET_PASS, filterReset);
 
         const filter = context.acquirePassParameters(this.#spatialFilterPool);
         filter.setBuffer(0, diagnostics);
@@ -2826,7 +2864,7 @@ export class ScreenSpaceReflectionsController {
         filter.setTexture(3, stateHistory.current);
         filter.setTexture(4, responseHistory.current);
         filter.setTexture(5, filtered);
-        filter.setIndirectDispatch(dispatchArguments);
+        filter.setIndirectDispatch(dispatchArguments, filterResetPass);
         context.graph.addPass(this.#spatialStabilityPass, filter);
 
         const stabilized = context.graph.createTexture(
@@ -2839,7 +2877,7 @@ export class ScreenSpaceReflectionsController {
             Math.max(1, Math.ceil(reflectionWidth / TRACE_WORKGROUP_SIZE)),
             Math.max(1, Math.ceil(reflectionHeight / TRACE_WORKGROUP_SIZE))
         );
-        context.graph.addPass(SPATIAL_FILTER_RESET_PASS, stabilityReset);
+        const stabilityResetPass = context.graph.addPass(SPATIAL_FILTER_RESET_PASS, stabilityReset);
 
         const stability = context.acquirePassParameters(this.#spatialFilterPool);
         stability.setBuffer(0, diagnostics);
@@ -2850,7 +2888,7 @@ export class ScreenSpaceReflectionsController {
         stability.setTexture(3, stateHistory.current);
         stability.setTexture(4, responseHistory.current);
         stability.setTexture(5, stabilized);
-        stability.setIndirectDispatch(dispatchArguments);
+        stability.setIndirectDispatch(dispatchArguments, stabilityResetPass);
         context.graph.addPass(this.#spatialCleanupPass, stability);
 
         const composite = context.acquirePassParameters(this.#compositePool);

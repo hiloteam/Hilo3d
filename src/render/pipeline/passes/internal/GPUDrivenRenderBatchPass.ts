@@ -1,3 +1,4 @@
+import { registerScriptablePassAdapter } from './ScriptablePassAdapter';
 import type { RendererViewport } from '../../../RendererCore';
 import type {
     RenderGraphBufferHandle,
@@ -111,6 +112,12 @@ export class GPUDrivenRenderBatchPass implements ScriptableRenderPass<GPUDrivenR
     constructor(name: string) {
         if (name.length === 0) throw new TypeError('GPU-driven batch pass name must be non-empty');
         this.name = name;
+        registerScriptablePassAdapter<GPUDrivenRenderBatchPassParameters>(
+            this,
+            (target, parameters) => {
+                target.configureGPUDrivenBatch(parameters);
+            }
+        );
     }
 
     setup(

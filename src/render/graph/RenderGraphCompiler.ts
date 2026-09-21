@@ -18,6 +18,7 @@ import {
     normalizeRHITextureViewDescriptorForTextureDescriptor
 } from '../rhi/core/RHIValidation';
 import type { RGPassNode, RenderGraphBuildSnapshot } from './RenderGraphBuilder';
+import { RenderGraphPassScheduler } from './RenderGraphPassScheduler';
 import type {
     RGBufferAccessDeclaration,
     RGBufferHandle,
@@ -35,7 +36,14 @@ import type {
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
 
-export interface CompiledRGTextureResource {
+interface CompiledRGContentState {
+    /** At least one selected subresource is written by a scheduled, non-culled pass. */
+    readonly writtenByGraph: boolean;
+    /** Every selected subresource retains initialized contents after scheduled execution. */
+    readonly initializedAfterExecution: boolean;
+}
+
+export interface CompiledRGTextureResource extends CompiledRGContentState {
     readonly kind: 'texture';
     readonly handle: RGTextureHandle;
     readonly name: string;
@@ -49,7 +57,7 @@ export interface CompiledRGTextureResource {
     readonly lifetime: RGResourceLifetime | null;
 }
 
-export interface CompiledRGBufferResource {
+export interface CompiledRGBufferResource extends CompiledRGContentState {
     readonly kind: 'buffer';
     readonly handle: RGBufferHandle;
     readonly name: string;
@@ -62,7 +70,7 @@ export interface CompiledRGBufferResource {
     readonly lifetime: RGResourceLifetime | null;
 }
 
-export interface CompiledRGTextureViewResource {
+export interface CompiledRGTextureViewResource extends CompiledRGContentState {
     readonly kind: 'texture-view';
     readonly handle: RGTextureViewHandle;
     readonly name: string;
@@ -151,6 +159,7 @@ class RenderGraphCompilerWorkspace {
     readonly passIndexByHandle = new Map<RGPassHandle, number>();
     readonly outgoing: Set<number>[] = [];
     readonly incoming: Set<number>[] = [];
+    readonly contentIncoming: Set<number>[] = [];
     readonly roots = new Set<number>();
     readonly scratchReadSet = new Set<RGResourceHandle>();
     readonly scratchReadWriteSet = new Set<RGBufferHandle>();
@@ -159,8 +168,7 @@ class RenderGraphCompilerWorkspace {
     readonly scratchAttachmentHazards = new Set<RGHazardKey>();
     readonly firstUse = new Map<RGResourceHandle, number>();
     readonly lastUse = new Map<RGResourceHandle, number>();
-    readonly indegree: number[] = [];
-    readonly order: number[] = [];
+    readonly scheduler = new RenderGraphPassScheduler();
     readonly stack: number[] = [];
     readonly scheduledSourceIndices: number[] = [];
     readonly diagnostics: MutableCompilerStorageDiagnostics = {
@@ -172,7 +180,6 @@ class RenderGraphCompilerWorkspace {
 
     readonly #readerSetPool: Set<number>[] = [];
     #readerSetCursor = 0;
-    consumed = new Uint8Array(0);
     live = new Uint8Array(0);
 
     begin(resourceCount: number, passCount: number): void {
@@ -194,8 +201,6 @@ class RenderGraphCompilerWorkspace {
         this.scratchAttachmentHazards.clear();
         this.firstUse.clear();
         this.lastUse.clear();
-        this.indegree.length = 0;
-        this.order.length = 0;
         this.stack.length = 0;
         this.scheduledSourceIndices.length = 0;
         this.#readerSetCursor = 0;
@@ -208,6 +213,7 @@ class RenderGraphCompilerWorkspace {
         while (this.outgoing.length < passCount) {
             this.outgoing.push(new Set<number>());
             this.incoming.push(new Set<number>());
+            this.contentIncoming.push(new Set<number>());
         }
         if (this.outgoing.length !== previousPassCapacity) {
             this.diagnostics.passCapacity = this.outgoing.length;
@@ -216,12 +222,10 @@ class RenderGraphCompilerWorkspace {
         for (let index = 0; index < passCount; index += 1) {
             this.outgoing[index]?.clear();
             this.incoming[index]?.clear();
+            this.contentIncoming[index]?.clear();
         }
-        if (passCount > this.consumed.length) {
-            let capacity = Math.max(1, this.consumed.length);
-            while (capacity < passCount) capacity *= 2;
-            this.consumed = new Uint8Array(capacity);
-            this.live = new Uint8Array(capacity);
+        if (this.scheduler.reserve(passCount)) {
+            this.live = new Uint8Array(this.scheduler.capacity);
             this.diagnostics.growthCount++;
         }
     }
@@ -260,46 +264,9 @@ class RenderGraphCompilerWorkspace {
         this.scratchAttachmentHazards.clear();
         this.firstUse.clear();
         this.lastUse.clear();
-        this.indegree.length = 0;
-        this.order.length = 0;
         this.stack.length = 0;
         this.scheduledSourceIndices.length = 0;
     }
-}
-
-function stableTopologicalOrder(
-    outgoing: Set<number>[],
-    incoming: Set<number>[],
-    passCount: number,
-    workspace: RenderGraphCompilerWorkspace
-): readonly number[] {
-    const indegree = workspace.indegree;
-    indegree.length = passCount;
-    for (let index = 0; index < passCount; index += 1) {
-        indegree[index] = incoming[index]?.size ?? 0;
-    }
-    const consumed = workspace.consumed;
-    consumed.fill(0, 0, passCount);
-    const order = workspace.order;
-    order.length = 0;
-    while (order.length < passCount) {
-        let selected = -1;
-        for (let index = 0; index < passCount; index += 1) {
-            if (consumed[index] === 0 && indegree[index] === 0) {
-                selected = index;
-                break;
-            }
-        }
-        if (selected < 0) renderGraphFailure('cycle', 'render graph contains a pass cycle');
-        consumed[selected] = 1;
-        order.push(selected);
-        for (const dependent of outgoing[selected] ?? []) {
-            const value = indegree[dependent];
-            if (value === undefined) throw new Error('Render graph dependency index is invalid');
-            indegree[dependent] = value - 1;
-        }
-    }
-    return order;
 }
 
 function normalizedResource(
@@ -325,6 +292,8 @@ function normalizedResource(
             provider: resource.provider,
             readFromLastGraphWriter: resource.readFromLastGraphWriter,
             initiallyInitialized: resource.initiallyInitialized,
+            writtenByGraph: false,
+            initializedAfterExecution: resource.initiallyInitialized,
             extracted: resource.extracted,
             lifetime: null
         };
@@ -349,6 +318,8 @@ function normalizedResource(
             texture: resource.texture,
             descriptor,
             extracted: false,
+            writtenByGraph: false,
+            initializedAfterExecution: texture.initiallyInitialized,
             lifetime: null
         };
     }
@@ -368,6 +339,8 @@ function normalizedResource(
         imported: resource.imported,
         provider: resource.provider,
         initiallyInitialized: resource.initiallyInitialized,
+        writtenByGraph: false,
+        initializedAfterExecution: resource.initiallyInitialized,
         extracted: resource.extracted,
         lifetime: null
     };
@@ -819,6 +792,11 @@ export class RenderGraphCompiler {
         const passIndexByHandle = workspace.passIndexByHandle;
         const outgoing = workspace.outgoing;
         const incoming = workspace.incoming;
+        const contentIncoming = workspace.contentIncoming;
+        const addContentDependency = (before: number, after: number): void => {
+            addEdge(outgoing, incoming, before, after);
+            if (before !== after) contentIncoming[after]?.add(before);
+        };
         for (const resource of snapshot.resources) {
             const normalized = normalizedResource(resource, capabilities, resourceByHandle);
             normalizedResources.push(normalized);
@@ -905,7 +883,7 @@ export class RenderGraphCompiler {
         const readHazardDependencies = (keys: readonly RGHazardKey[], pass: RGPassNode): void => {
             for (const key of keys) {
                 const writer = lastWriter.get(key);
-                if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
+                if (writer !== undefined) addContentDependency(writer, pass.index);
                 const readers = readersSinceWrite.get(key) ?? workspace.acquireReaderSet(key);
                 readers.add(pass.index);
             }
@@ -938,7 +916,7 @@ export class RenderGraphCompiler {
                         ? lastPreferredGraphWriter.get(key)
                         : undefined;
                     if (preferredWriter !== undefined) {
-                        addEdge(outgoing, incoming, preferredWriter, pass.index);
+                        addContentDependency(preferredWriter, pass.index);
                         usedPreferredWriter = true;
                     } else readHazardDependencies([key], pass);
                 }
@@ -1113,7 +1091,7 @@ export class RenderGraphCompiler {
                         pass.name
                     );
                 }
-                addEdge(outgoing, incoming, dependency, pass.index);
+                addContentDependency(dependency, pass.index);
             }
             for (const handle of pass.reads) {
                 readResource(handle, pass, true);
@@ -1217,11 +1195,10 @@ export class RenderGraphCompiler {
             );
         }
 
-        const completeOrder = stableTopologicalOrder(
+        const completeOrder = workspace.scheduler.schedule(
             outgoing,
             incoming,
-            snapshot.passes.length,
-            workspace
+            snapshot.passes.length
         );
         const roots = workspace.roots;
         for (const pass of snapshot.passes) if (pass.sideEffect) roots.add(pass.index);
@@ -1249,14 +1226,41 @@ export class RenderGraphCompiler {
             }
             for (const writer of outputWriters) roots.add(writer);
         }
-        const live = markLivePasses(roots, incoming, snapshot.passes.length, workspace);
+        // RAW/load/read-write and explicit dependencies require their producers to survive.
+        // WAR/WAW only order surviving accesses; an overwritten producer or unused reader
+        // must not become live merely because a later pass writes the same physical resource.
+        const live = markLivePasses(roots, contentIncoming, snapshot.passes.length, workspace);
         const scheduledSourceIndices = workspace.scheduledSourceIndices;
         scheduledSourceIndices.length = 0;
-        for (const index of completeOrder) {
+        for (let order = 0; order < snapshot.passes.length; order += 1) {
+            const index = completeOrder[order];
+            if (index === undefined) {
+                throw new Error('Render graph compiler lost a scheduled pass index');
+            }
             if (live[index] !== 0) scheduledSourceIndices.push(index);
         }
         const firstUse = workspace.firstUse;
         const lastUse = workspace.lastUse;
+        // Rebuild final availability from scheduled passes, because a culled discard/write
+        // must not affect history or extracted-resource state reported after submission.
+        lastWriter.clear();
+        contentAvailable.clear();
+        for (const resource of normalizedResources) {
+            if (resource.kind === 'texture-view') continue;
+            for (const key of requireHazardKeys(workspace, resource.handle)) {
+                contentAvailable.set(key, resource.initiallyInitialized);
+            }
+        }
+        const recordFinalWrite = (
+            keys: readonly RGHazardKey[],
+            sourceIndex: number,
+            stored: boolean
+        ): void => {
+            for (const key of keys) {
+                lastWriter.set(key, sourceIndex);
+                contentAvailable.set(key, stored);
+            }
+        };
         const compiledPasses: CompiledRGPass[] = [];
         for (let order = 0; order < scheduledSourceIndices.length; order += 1) {
             const sourceIndex = scheduledSourceIndices[order];
@@ -1270,9 +1274,24 @@ export class RenderGraphCompiler {
             const bufferAccesses = Object.freeze(
                 pass.bufferAccesses.map(access => Object.freeze({ ...access }))
             );
+            for (const handle of pass.writes) {
+                recordFinalWrite(requireHazardKeys(workspace, handle), sourceIndex, true);
+            }
             for (const attachment of pass.colorAttachments) {
                 writes.add(attachment.texture);
-                if (attachment.resolveTarget !== undefined) writes.add(attachment.resolveTarget);
+                recordFinalWrite(
+                    requireHazardKeys(workspace, attachment.texture),
+                    sourceIndex,
+                    attachment.storeOp === 'store'
+                );
+                if (attachment.resolveTarget !== undefined) {
+                    writes.add(attachment.resolveTarget);
+                    recordFinalWrite(
+                        requireHazardKeys(workspace, attachment.resolveTarget),
+                        sourceIndex,
+                        true
+                    );
+                }
             }
             if (pass.depthStencilAttachment) {
                 const { resource, access } = validateDepthStencilAttachment(
@@ -1283,6 +1302,21 @@ export class RenderGraphCompiler {
                 (access.depth.writes || access.stencil.writes ? writes : reads).add(
                     resource.resource.handle
                 );
+                const keys = requireHazardKeys(workspace, resource.resource.handle);
+                if (access.depth.writes) {
+                    recordFinalWrite(
+                        filterHazardKeysByAspect(keys, 'depth'),
+                        sourceIndex,
+                        access.depth.stores
+                    );
+                }
+                if (access.stencil.writes) {
+                    recordFinalWrite(
+                        filterHazardKeysByAspect(keys, 'stencil'),
+                        sourceIndex,
+                        access.stencil.stores
+                    );
+                }
             }
             for (const handle of reads) {
                 if (!firstUse.has(handle)) firstUse.set(handle, order);
@@ -1333,7 +1367,16 @@ export class RenderGraphCompiler {
                           firstUse: first,
                           lastUse: lastUse.get(resource.handle) ?? first
                       });
-            compiledResources.push(Object.freeze({ ...resource, lifetime }));
+            compiledResources.push(
+                Object.freeze({
+                    ...resource,
+                    lifetime,
+                    writtenByGraph: requireHazardKeys(workspace, resource.handle).some(key =>
+                        lastWriter.has(key)
+                    ),
+                    initializedAfterExecution: genericContentAvailable(resource)
+                })
+            );
         }
         return new CompiledRenderGraph(
             snapshot.generation,

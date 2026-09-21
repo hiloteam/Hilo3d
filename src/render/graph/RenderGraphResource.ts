@@ -50,8 +50,9 @@ export type RGBufferReadUse = 'storage' | 'vertex' | 'index' | 'copy-source' | '
 export type RGBufferWriteUse = 'storage' | 'copy-destination';
 
 /**
- * One setup-declared buffer access. Read-write is deliberately limited to storage bindings;
- * texture feedback and implicit buffer feedback remain invalid.
+ * One setup-declared buffer access. Read-write denotes an in-place storage binding or an
+ * internal partial copy-destination update that preserves initialized bytes outside its range.
+ * Texture feedback and implicit buffer feedback remain invalid.
  */
 export type RGBufferAccessDeclaration =
     | Readonly<{
@@ -67,7 +68,7 @@ export type RGBufferAccessDeclaration =
     | Readonly<{
           buffer: RGBufferHandle;
           mode: 'read-write';
-          use: 'storage';
+          use: 'storage' | 'copy-destination';
       }>;
 
 /** A color attachment is a render-pass read/write access, not sampled feedback. */
@@ -102,7 +103,7 @@ export interface RGTextureResourceNode {
     readonly imported: RHITexture | null;
     readonly provider: RGImportedTextureProvider | null;
     readonly resourceLifetime: RHIResourceLifetime;
-    /** @internal Pure graph reads prefer this graph's complete writer chain when one exists. */
+    /** @internal Pure reads prefer the final content-producing clear/load chain when one exists. */
     readonly readFromLastGraphWriter: boolean;
     /** Whether every selected subresource has contents before this graph invocation. */
     readonly initiallyInitialized: boolean;

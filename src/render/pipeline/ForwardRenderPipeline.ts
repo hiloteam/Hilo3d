@@ -19,6 +19,7 @@ import type {
     RenderPipelineContext,
     RenderPipelineCreateContext,
     RenderPipelineFactory,
+    RenderPipelineInvocationPolicy,
     RenderPipelineOutputDepthStencilAttachment,
     RenderPipelineRequirements
 } from './RenderPipeline';
@@ -1537,6 +1538,11 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
 export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     /** Stable factory name. */
     readonly name = 'forward';
+    /** Accepts every camera class and repeated invocations within one application frame. */
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy> = Object.freeze({
+        cameraType: 'any',
+        maxInvocationsPerFrame: null
+    });
     /** Merged static requirements from every feature configuration. */
     readonly requirements: Readonly<RenderPipelineRequirements>;
     /** Constructor-snapshotted feature configurations in insertion order. */

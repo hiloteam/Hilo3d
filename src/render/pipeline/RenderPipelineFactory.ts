@@ -1,9 +1,44 @@
 import type {
     RenderPipelineCreateContext,
     RenderPipelineFactory,
+    RenderPipelineInvocationPolicy,
     RenderPipelineRequirements,
     RenderPipelineTextureRequirement
 } from './RenderPipeline';
+
+const DEFAULT_INVOCATION_POLICY: Readonly<RenderPipelineInvocationPolicy> = Object.freeze({
+    cameraType: 'any',
+    maxInvocationsPerFrame: null
+});
+
+/** @internal Validate and freeze invocation constraints before asynchronous initialization. */
+export function snapshotRenderPipelineInvocationPolicy(
+    policy: Readonly<RenderPipelineInvocationPolicy> | undefined
+): Readonly<RenderPipelineInvocationPolicy> {
+    if (policy === undefined) return DEFAULT_INVOCATION_POLICY;
+    const candidate: unknown = policy;
+    if (typeof candidate !== 'object' || candidate === null) {
+        throw new TypeError('Render pipeline invocationPolicy must be an object');
+    }
+    const cameraType: unknown = Reflect.get(candidate, 'cameraType');
+    const maxInvocationsPerFrame: unknown = Reflect.get(candidate, 'maxInvocationsPerFrame');
+    if (cameraType !== 'any' && cameraType !== 'perspective') {
+        throw new TypeError(
+            'Render pipeline invocationPolicy cameraType must be any or perspective'
+        );
+    }
+    if (
+        maxInvocationsPerFrame !== null &&
+        (typeof maxInvocationsPerFrame !== 'number' ||
+            !Number.isSafeInteger(maxInvocationsPerFrame) ||
+            maxInvocationsPerFrame < 1)
+    ) {
+        throw new RangeError(
+            'Render pipeline maxInvocationsPerFrame must be a positive safe integer or null'
+        );
+    }
+    return Object.freeze({ cameraType, maxInvocationsPerFrame });
+}
 
 function snapshotTextureRequirement(
     requirement: Readonly<RenderPipelineTextureRequirement>
@@ -76,9 +111,11 @@ export function snapshotRenderPipelineFactory(
     }
     const create = factory.create.bind(factory);
     const requirements = snapshotRenderPipelineRequirements(factory.requirements);
+    const invocationPolicy = snapshotRenderPipelineInvocationPolicy(factory.invocationPolicy);
     return Object.freeze({
         name: factory.name,
         requirements,
+        invocationPolicy,
         create(context: RenderPipelineCreateContext) {
             return create(context);
         }

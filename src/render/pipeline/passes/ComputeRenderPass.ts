@@ -1,3 +1,4 @@
+import { registerScriptablePassAdapter } from './internal/ScriptablePassAdapter';
 import type UniformBuffer from '../../UniformBuffer';
 import type { UniformBufferRange } from '../../UniformBuffer';
 import ComputeKernel from '../../compute/ComputeKernel';
@@ -152,6 +153,9 @@ export class ComputeRenderPass implements ScriptableRenderPass<ComputeRenderPass
         }
         this.kernel = kernel;
         this.name = resolvedName;
+        registerScriptablePassAdapter<ComputeRenderPassParameters>(this, (target, parameters) => {
+            target.configureCompute(this, parameters);
+        });
         Object.freeze(this);
     }
 

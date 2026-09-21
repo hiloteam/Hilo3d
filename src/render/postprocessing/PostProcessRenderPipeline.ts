@@ -6,6 +6,7 @@ import type {
     RenderPipeline,
     RenderPipelineCreateContext,
     RenderPipelineFactory,
+    RenderPipelineInvocationPolicy,
     RenderPipelineRequirements
 } from '../pipeline/RenderPipeline';
 import { Bloom, type BloomOptions } from './Bloom';
@@ -48,6 +49,8 @@ export interface PostProcessRenderPipelineOptions {
 export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
     readonly name = 'post-process-forward';
     readonly requirements: Readonly<RenderPipelineRequirements>;
+    /** Camera and invocation contract inherited from the composed Forward factory. */
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy>;
     readonly #forward: ForwardRenderPipelineFactory;
 
     constructor(options: Readonly<PostProcessRenderPipelineOptions> = {}) {
@@ -79,6 +82,7 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
             features
         });
         this.requirements = this.#forward.requirements;
+        this.invocationPolicy = this.#forward.invocationPolicy;
     }
 
     create(context: RenderPipelineCreateContext): RenderPipeline {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import OrthographicCamera from '../../../src/camera/OrthographicCamera';
+import Camera from '../../../src/camera/Camera';
 import Mesh from '../../../src/core/Mesh';
 import Geometry from '../../../src/geometry/Geometry';
 import Material from '../../../src/material/BasicMaterial';
@@ -167,6 +169,245 @@ describe('MeshDrawListPlanner', () => {
             opaqueMaterialB
         ]);
         expect(second.transparentMeshes).toEqual([transparentA, transparentB]);
+    });
+
+    it.each(['perspective', 'orthographic', 'custom'] as const)(
+        'sorts opaque origins by camera-view distance with %s cameras and either depth mode',
+        kind => {
+            const planner = new MeshDrawListPlanner();
+            const sharedMaterial = material('depth-material');
+            const sharedGeometry = geometry('depth-geometry');
+            const near = mesh('z-near', sharedMaterial, sharedGeometry);
+            const far = mesh('a-far', sharedMaterial, sharedGeometry);
+            // The large lateral offset distinguishes view depth from radial camera distance.
+            near.setPosition(4, 20, 0).updateMatrixWorld(true);
+            far.setPosition(-5, 2, 0).updateMatrixWorld(true);
+            const camera =
+                kind === 'perspective'
+                    ? new PerspectiveCamera()
+                    : kind === 'orthographic'
+                      ? new OrthographicCamera()
+                      : new Camera();
+            camera.setPosition(5, 2, 0).lookAt(new Vector3(4, 2, 0));
+
+            for (const depthMode of ['standard', 'reversed'] as const) {
+                camera.depthMode = depthMode;
+                camera.updateViewProjectionMatrix();
+                const plan = planner.build([far, near], null, true, camera);
+
+                expect(plan.opaqueMeshes).toEqual([near, far]);
+                expect(plan.opaqueItems).toEqual([near, far]);
+            }
+
+            camera.lookAt(new Vector3(6, 2, 0)).updateViewProjectionMatrix();
+            expect(planner.build([near, far], null, true, camera).opaqueItems).toEqual([far, near]);
+        }
+    );
+
+    it('preserves material and geometry groups, renderOrder priority, and stable depth ties', () => {
+        const planner = new MeshDrawListPlanner();
+        const materialA = material('a');
+        const materialB = material('b');
+        const geometryA = geometry('a');
+        const geometryB = geometry('b');
+        const first = mesh('z-first-order', materialB, geometryB);
+        first.renderOrder = -1;
+        const near = mesh('z-near', materialA, geometryA);
+        const far = mesh('a-far', materialA, geometryA);
+        const sameDepthA = mesh('a-tie', materialA, geometryA);
+        const sameDepthB = mesh('b-tie', materialA, geometryA);
+        const otherGeometry = mesh('a-geometry', materialA, geometryB);
+        const otherMaterial = mesh('a-material', materialB, geometryA);
+        first.setPosition(0, 0, -100).updateMatrixWorld(true);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        far.setPosition(0, 0, -20).updateMatrixWorld(true);
+        sameDepthA.setPosition(0, 0, -5).updateMatrixWorld(true);
+        sameDepthB.setPosition(0, 0, -5).updateMatrixWorld(true);
+        otherGeometry.setPosition(0, 0, -1).updateMatrixWorld(true);
+        otherMaterial.setPosition(0, 0, -1).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+        const inputs = [otherMaterial, otherGeometry, far, sameDepthB, sameDepthA, near, first];
+        const expected = [first, near, sameDepthA, sameDepthB, far, otherGeometry, otherMaterial];
+
+        expect(planner.build(inputs, null, true, camera).opaqueItems).toEqual(expected);
+        expect(planner.build(inputs.reverse(), null, true, camera).opaqueItems).toEqual(expected);
+
+        near.setPosition(0, 0, -30).updateMatrixWorld(true);
+        expect(planner.build(inputs, null, true, camera).opaqueItems).toEqual([
+            first,
+            sameDepthA,
+            sameDepthB,
+            far,
+            near,
+            otherGeometry,
+            otherMaterial
+        ]);
+    });
+
+    it('orders stable opaque instance batches and direct draws by their nearest member', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('batched-depth');
+        const sharedGeometry = geometry('batched-depth');
+        const farInstances = Array.from({ length: 128 }, (_, index) => {
+            const value = mesh(`far-${String(index)}`, sharedMaterial, sharedGeometry, true);
+            value.setPosition(0, 0, -40 + index / 128).updateMatrixWorld(true);
+            return value;
+        });
+        const nearA = mesh('near-a', sharedMaterial, sharedGeometry, true);
+        const nearB = mesh('near-b', sharedMaterial, sharedGeometry, true);
+        nearA.setPosition(0, 0, -6).updateMatrixWorld(true);
+        nearB.setPosition(0, 0, -2).updateMatrixWorld(true);
+        const middle = mesh('middle-direct', sharedMaterial, sharedGeometry);
+        middle.setPosition(0, 0, -10).updateMatrixWorld(true);
+        const input = [...farInstances, nearA, nearB, middle];
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+        const plan = planner.build(input, null, true, camera);
+        const nearBatch = plan.instancedBatches[0];
+        const farBatch = plan.instancedBatches[1];
+        const storage = planner.diagnostics().storageAllocationCount;
+
+        expect(nearBatch?.meshes).toEqual([nearB, nearA]);
+        expect(farBatch?.meshes).toEqual([...farInstances].reverse());
+        expect(plan.opaqueItems).toEqual([nearBatch, middle, farBatch]);
+
+        for (let iteration = 0; iteration < 4; iteration++) {
+            nearA.setPosition(0, 0, -60 - iteration).updateMatrixWorld(true);
+            nearB.setPosition(0, 0, -50 - iteration).updateMatrixWorld(true);
+            planner.build(input, null, true, camera);
+            expect(plan.opaqueItems).toEqual([middle, farBatch, nearBatch]);
+            expect(plan.instancedBatches).toEqual([farBatch, nearBatch]);
+            expect(nearBatch?.meshes).toEqual([nearB, nearA]);
+            expect(planner.diagnostics().storageAllocationCount).toBe(storage);
+        }
+    });
+
+    it('retains collection and batch-member order when sorting is disabled', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('unsorted-depth');
+        const sharedGeometry = geometry('unsorted-depth');
+        const far = mesh('a-far', sharedMaterial, sharedGeometry);
+        const near = mesh('z-near', sharedMaterial, sharedGeometry);
+        const farInstance = mesh('a-far-instance', sharedMaterial, sharedGeometry, true);
+        const nearInstance = mesh('z-near-instance', sharedMaterial, sharedGeometry, true);
+        far.setPosition(0, 0, -10).updateMatrixWorld(true);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        farInstance.setPosition(0, 0, -10).updateMatrixWorld(true);
+        nearInstance.setPosition(0, 0, -2).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+        const inputs = [far, near, farInstance, nearInstance];
+        planner.build(inputs, null, true, camera);
+
+        const plan = planner.build(inputs, null, false, camera);
+
+        expect(plan.opaqueMeshes).toEqual([far, near]);
+        expect(plan.instancedBatches[0]?.meshes).toEqual([farInstance, nearInstance]);
+        expect(plan.opaqueItems).toEqual([far, near, plan.instancedBatches[0]]);
+    });
+
+    it('applies opaque view-depth sorting after an effective material override', () => {
+        const planner = new MeshDrawListPlanner();
+        const source = material('transparent-source', 0, true);
+        const forced = material('opaque-override');
+        const sharedGeometry = geometry('override-depth');
+        const near = mesh('z-near', source, sharedGeometry);
+        const far = mesh('a-far', source, sharedGeometry);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        far.setPosition(0, 0, -10).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+
+        const plan = planner.build([far, near], forced, true, camera);
+
+        expect(plan.opaqueItems).toEqual([near, far]);
+        expect(plan.transparentItems).toEqual([]);
+    });
+
+    it('retains sprite display and transparent back-to-front ordering alongside opaque depth sorting', () => {
+        const planner = new MeshDrawListPlanner();
+        const transparent = material('transparent', 0, true);
+        const sharedGeometry = geometry('shared');
+        const frontSprite = mesh('front-sprite', transparent, sharedGeometry, true);
+        const backSprite = mesh('back-sprite', transparent, sharedGeometry, true);
+        Reflect.set(frontSprite, 'isSprite', true);
+        Reflect.set(backSprite, 'isSprite', true);
+        frontSprite.zIndex = 2;
+        backSprite.zIndex = -2;
+        frontSprite.setPosition(0, 0, -100).updateMatrixWorld(true);
+        backSprite.setPosition(0, 0, -1).updateMatrixWorld(true);
+        const near = mesh('near-transparent', transparent, sharedGeometry);
+        const far = mesh('far-transparent', transparent, sharedGeometry);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        far.setPosition(0, 0, -10).updateMatrixWorld(true);
+        const opaque = mesh('opaque', material('opaque'), sharedGeometry);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+
+        const plan = planner.build(
+            [frontSprite, near, opaque, far, backSprite],
+            null,
+            true,
+            camera
+        );
+
+        expect(plan.transparentItems).toEqual([
+            plan.instancedBatches[0],
+            far,
+            near,
+            plan.instancedBatches[1]
+        ]);
+        expect(plan.instancedBatches[0]?.meshes).toEqual([backSprite]);
+        expect(plan.instancedBatches[1]?.meshes).toEqual([frontSprite]);
+        expect(plan.opaqueItems).toEqual([opaque]);
+    });
+
+    it('sorts mixed queues without batching transparent instances across a direct draw', () => {
+        const planner = new MeshDrawListPlanner();
+        const transparent = material('transparent', 0, true);
+        const sharedGeometry = geometry('mixed-adjacency');
+        const farA = mesh('far-a', transparent, sharedGeometry, true);
+        const farB = mesh('far-b', transparent, sharedGeometry, true);
+        const near = mesh('near', transparent, sharedGeometry, true);
+        const middle = mesh('middle', transparent, sharedGeometry);
+        const opaque = mesh('opaque', material('opaque'), sharedGeometry);
+        farA.setPosition(0, 0, -12).updateMatrixWorld(true);
+        farB.setPosition(0, 0, -11).updateMatrixWorld(true);
+        near.setPosition(0, 0, -2).updateMatrixWorld(true);
+        middle.setPosition(0, 0, -7).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+        const inputs = [near, opaque, middle, farB, farA];
+        const plan = planner.build(inputs, null, true, camera);
+
+        expect(plan.instancedBatches.map(batch => batch.meshes)).toEqual([[farA, farB], [near]]);
+        expect(plan.transparentItems).toEqual([
+            plan.instancedBatches[0],
+            middle,
+            plan.instancedBatches[1]
+        ]);
+        expect(plan.opaqueItems).toEqual([opaque]);
+
+        // Reused owner records must reflect this build's transforms rather than old depth keys.
+        near.setPosition(0, 0, -20).updateMatrixWorld(true);
+        farA.setPosition(0, 0, -3).updateMatrixWorld(true);
+        farB.setPosition(0, 0, -2).updateMatrixWorld(true);
+        planner.build(inputs, null, true, camera);
+        expect(plan.instancedBatches.map(batch => batch.meshes)).toEqual([[near], [farA, farB]]);
+        expect(plan.transparentItems).toEqual([
+            plan.instancedBatches[0],
+            middle,
+            plan.instancedBatches[1]
+        ]);
+
+        planner.build(inputs, null, false, camera);
+        expect(plan.instancedBatches.map(batch => batch.meshes)).toEqual([[near], [farB, farA]]);
+        expect(plan.transparentItems).toEqual([
+            middle,
+            plan.instancedBatches[0],
+            plan.instancedBatches[1]
+        ]);
     });
 
     it('reuses result, batch, diagnostics, and high-water records without steady allocations', () => {

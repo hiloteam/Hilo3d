@@ -87,6 +87,7 @@ describe.each(['standard', 'reversed'] as const)('SSR thin surfaces with %s dept
                 renderer.renderToTarget(target, scene, camera);
                 await renderer.waitForIdle();
             }
+            expect((await factory.readDiagnostics()).screenSpaceReflectionActiveTileCount).toBe(0);
             const disabled = await target.readColorAttachment({
                 x: 36,
                 y: 62,

@@ -117,29 +117,53 @@ export class RenderGraphGPUProfileFrame {
             return;
         }
         this.recorder.markGPUPending();
-        const byteLength = this.#queryCount * 8;
         void submission.done
-            .then(async () => {
-                await this.slot.readbackBuffer.mapAsync('read', 0, byteLength);
-                const mapped = this.slot.readbackBuffer.getMappedRange(0, byteLength);
-                const timestamps = new BigUint64Array(
-                    new BigUint64Array(mapped, 0, this.#queryCount)
-                );
-                this.slot.readbackBuffer.unmap();
-                this.releaseSlot();
-                this.recorder.completeGPU(this.#queryPassIndices, timestamps);
-            })
-            .catch(() => {
-                if (this.slot.readbackBuffer.mapState === 'mapped') {
-                    try {
-                        this.slot.readbackBuffer.unmap();
-                    } catch {
-                        // Device loss may make even cleanup validation unavailable.
-                    }
+            .then(
+                () => this.completeSubmission(),
+                () => {
+                    this.failSubmission();
                 }
-                this.releaseSlot();
-                this.recorder.failGPU();
+            )
+            .catch((error: unknown) => {
+                // Consumer failures are diagnostics failures, not failed GPU timestamps.
+                this.recorder.reportAsyncError(error);
             });
+    }
+
+    private async completeSubmission(): Promise<void> {
+        const byteLength = this.#queryCount * 8;
+        let timestamps: BigUint64Array;
+        try {
+            await this.slot.readbackBuffer.mapAsync('read', 0, byteLength);
+            try {
+                const mapped = this.slot.readbackBuffer.getMappedRange(0, byteLength);
+                timestamps = new BigUint64Array(new BigUint64Array(mapped, 0, this.#queryCount));
+            } finally {
+                if (this.slot.readbackBuffer.mapState === 'mapped') {
+                    this.slot.readbackBuffer.unmap();
+                }
+            }
+        } catch {
+            this.failSubmission();
+            return;
+        }
+        this.releaseSlot();
+        this.recorder.completeGPU(this.#queryPassIndices, timestamps);
+    }
+
+    private failSubmission(): void {
+        try {
+            if (this.slot.readbackBuffer.mapState === 'mapped') {
+                try {
+                    this.slot.readbackBuffer.unmap();
+                } catch {
+                    // Device loss may make even cleanup validation unavailable.
+                }
+            }
+        } finally {
+            this.releaseSlot();
+        }
+        this.recorder.failGPU();
     }
 
     abort(): void {

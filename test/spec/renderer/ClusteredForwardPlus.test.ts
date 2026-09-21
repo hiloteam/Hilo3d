@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import OrthographicCamera from '../../../src/camera/OrthographicCamera';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
 import Skeleton from '../../../src/core/Skeleton';
@@ -32,8 +33,10 @@ import {
     type RenderPassParameterPool
 } from '../../../src/render/pipeline/RenderPassParameterPool';
 import type {
+    RenderPipeline,
     RenderPipelineContext,
     RenderPipelineCreateContext,
+    RenderPipelineFactory,
     RenderPipelineShadowResources
 } from '../../../src/render/pipeline/RenderPipeline';
 import {
@@ -881,6 +884,97 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
             maxBufferSize: geometryBufferBytes
         });
     });
+
+    it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
+        'preserves Clustered invocation guards inside legacy factory and runtime decorators',
+        async () => {
+            const geometry = new BoxGeometry();
+            const material = new PBRMaterial();
+            const clustered = new ClusteredForwardPlusPipelineFactory({
+                buckets: [{ geometry, material }],
+                maxObjects: 1,
+                maxLights: 1,
+                maxLightIndices: 8,
+                maxLightsPerCluster: 1,
+                maxViewportWidth: 8,
+                maxViewportHeight: 8,
+                hiZ: false,
+                bloomStrength: 0
+            });
+            let recordChildTwice = false;
+            const wrapper: RenderPipelineFactory = {
+                name: 'legacy-clustered-decorator',
+                requirements: clustered.requirements,
+                async create(context): Promise<RenderPipeline> {
+                    const child = await clustered.create(context);
+                    return {
+                        name: 'legacy-clustered-runtime',
+                        record(frame): void {
+                            child.record(frame);
+                            if (recordChildTwice) child.record(frame);
+                        },
+                        frameSubmitted(frameIndex): void {
+                            child.frameSubmitted?.(frameIndex);
+                        },
+                        frameDiscarded(frameIndex): void {
+                            child.frameDiscarded?.(frameIndex);
+                        },
+                        destroy(): void {
+                            child.destroy();
+                        }
+                    };
+                }
+            };
+            const renderer = await Renderer.create({
+                backend: 'webgpu',
+                domElement: document.createElement('canvas'),
+                width: 8,
+                height: 8,
+                antialias: false,
+                renderPipeline: wrapper
+            });
+            try {
+                const extension = renderer.getExtension('rhi') as {
+                    readonly device: RHIDevice;
+                } | null;
+                if (extension === null) throw new Error('Expected the public RHI extension');
+                const beginFrame = vi.spyOn(extension.device.graphicsQueue, 'beginFrame');
+                const scene = new Node();
+                new Mesh({ geometry, material }).addTo(scene);
+                const camera = new PerspectiveCamera({ near: 0.1, far: 20 });
+                camera.setPosition(0, 0, 6).lookAt(new Vector3());
+
+                expect(() => {
+                    renderer.render(scene, new OrthographicCamera());
+                }).toThrow(/requires a PerspectiveCamera/u);
+                expect(() => {
+                    renderer.renderFrame(frame => {
+                        frame.render(scene, camera);
+                        expect(() => {
+                            frame.render(scene, camera);
+                        }).toThrow(/one perspective-camera invocation per frame/u);
+                    });
+                }).toThrow(/aborted/u);
+                recordChildTwice = true;
+                expect(() => {
+                    renderer.render(scene, camera);
+                }).toThrow(/one perspective-camera invocation per frame/u);
+                expect(beginFrame).not.toHaveBeenCalled();
+
+                recordChildTwice = false;
+                renderer.render(scene, camera);
+                await renderer.waitForIdle();
+                expect(beginFrame).toHaveBeenCalledOnce();
+                const recordedFrame = beginFrame.mock.results[0];
+                if (recordedFrame?.type !== 'return') throw new Error('Expected a recorded frame');
+                expect(recordedFrame.value.diagnostics.drawCount).toBeGreaterThan(0);
+                expect(recordedFrame.value.diagnostics.indirectDrawCount).toBeGreaterThan(0);
+            } finally {
+                renderer.destroy();
+            }
+        },
+        20_000
+    );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
         'shades globally sorted layered, morph, and skinned transparent PBR from clustered lights',

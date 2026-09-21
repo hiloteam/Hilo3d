@@ -29,9 +29,13 @@ export type RendererListQueue = 'opaque' | 'transparent' | 'all';
 /**
  * Stable renderer-list sorting policy.
  *
- * `material-front-to-back` is valid for opaque/all queues and preserves camera ordering for the
- * transparent subqueue of `all`. `back-to-front` is valid for transparent queues. `none` retains
- * collection order within each draw class while explicit instancing may still group meshes.
+ * `material-front-to-back` groups opaque meshes by renderOrder, material, and geometry, then sorts
+ * their world origins by increasing camera-view distance within each group, with stable identity
+ * ties. Explicit instance batches keep their membership, sort their members front-to-back, and use
+ * the nearest member to order the batch among matching direct draws and batches. This policy is
+ * valid for opaque/all queues and preserves camera ordering for the transparent subqueue of `all`.
+ * `back-to-front` is valid for transparent queues. `none` retains collection order within each draw
+ * class while explicit instancing may still group meshes.
  */
 export type RendererListSorting = 'material-front-to-back' | 'back-to-front' | 'none';
 

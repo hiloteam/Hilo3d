@@ -134,7 +134,9 @@ trace 不会超过 WebGPU 单维 workgroup 上限。`ClusteredForwardPlusDiagnos
 tile/pixel 与 hit/miss 外，还暴露 uncertain、backface-rejected、history
 accepted/rejected 计数；uncertain 与 backface-rejected 是互斥 miss 子类，可直接验证命中质量和 temporal
 rejection。同一 indirect list 也驱动昂贵的 temporal neighborhood 与 adaptive
-filter；它们先用低成本 full-extent clear 确定 inactive pixel 状态，因此 sparse
+filter；它们先用低成本 full-extent clear 确定 inactive pixel 状态。每个稀疏 trace/history/filter
+dispatch 都通过显式 graph dependency 绑定自己的完整初始化 Pass，即使 active
+tile 数为零，也不能裁掉该 clear；若稀疏 consumer 本身无用，初始化 Pass 仍可随之裁剪。因此 sparse
 receiver 场景不会在空 tile 上执行 history/filter taps。HDR color
 cone 仍覆盖完整 scene，因为任一 active ray 都可能命中任意屏幕位置。
 

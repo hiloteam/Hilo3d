@@ -699,14 +699,33 @@ export class RGPassBuilder {
 
     writeBuffer(handle: RGBufferHandle, use: RGBufferWriteUse): RGBufferHandle {
         this.graph.requireResource(handle, 'buffer');
+        if (use === 'copy-destination' && this.pass.readWriteBuffers.includes(handle)) {
+            for (const access of this.pass.bufferAccesses) {
+                if (
+                    access.buffer === handle &&
+                    access.mode === 'read-write' &&
+                    access.use === 'copy-destination'
+                ) {
+                    // A pass may declare several clears, including a full-buffer clear.
+                    // Keep an earlier partial update's dependency on existing contents.
+                    return handle;
+                }
+            }
+        }
         this.addWrite(handle);
         this.graph.acquireBufferAccess(this.pass, handle, 'write', use);
         return handle;
     }
 
-    readWriteBuffer(handle: RGBufferHandle, use: 'storage'): RGBufferHandle {
+    /** Preserve prior contents for storage access or an internal partial buffer clear. */
+    readWriteBuffer(handle: RGBufferHandle, use: 'storage' | 'copy-destination'): RGBufferHandle {
         this.graph.requireResource(handle, 'buffer');
-        if (this.pass.readWriteBuffers.includes(handle)) return handle;
+        for (const access of this.pass.bufferAccesses) {
+            if (access.buffer !== handle || access.use !== use) continue;
+            if (access.mode === 'read-write') return handle;
+            // A full replacement already declared by this pass supplies all preserved bytes.
+            if (use === 'copy-destination' && access.mode === 'write') return handle;
+        }
         if (
             this.pass.readSet.has(handle) ||
             this.pass.writeSet.has(handle) ||
@@ -1096,10 +1115,17 @@ export class RenderGraphBuilder {
 
     /** @internal Called only after synchronous compilation no longer references the snapshot. */
     recycleAfterCompile(): void {
-        if (!this.#consumed || this.#recycled || this.#releaseStorage === null) return;
+        if (!this.#consumed) return;
+        this.discard();
+    }
+
+    /** @internal Invalidate a completed or abandoned build and release all retained references. */
+    discard(): void {
+        if (this.#recycled) return;
+        this.#consumed = true;
         this.#recycled = true;
         this.#storage.recycle();
-        this.#releaseStorage(this.#storage);
+        this.#releaseStorage?.(this.#storage);
     }
 
     /** @internal */

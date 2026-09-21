@@ -74,11 +74,26 @@ export class RenderGraphTimelineRecorder {
     #prepareDurationMs = 0;
     #executeDurationMs = 0;
     #gpuStatus: RenderGraphGPUTimelineStatus = 'unavailable';
+    #asyncErrorReporter: ((error: unknown) => void) | undefined;
 
     constructor(
         readonly frameIndex: number,
         readonly sink: RenderGraphTimelineSink
     ) {}
+
+    setAsyncErrorReporter(reporter: ((error: unknown) => void) | undefined): void {
+        this.#asyncErrorReporter = reporter;
+    }
+
+    reportAsyncError(error: unknown): void {
+        if (this.#asyncErrorReporter !== undefined) {
+            this.#asyncErrorReporter(error);
+            return;
+        }
+        const reporter: unknown = Reflect.get(globalThis, 'reportError');
+        if (typeof reporter === 'function') Reflect.apply(reporter, globalThis, [error]);
+        else globalThis.console.error(error);
+    }
 
     get timestampPassCount(): number {
         let count = 0;
@@ -167,7 +182,12 @@ export class RenderGraphTimelineRecorder {
                 gpuDurationMs: pass.gpuDurationMs
             })
         );
-        this.sink.recordRenderGraphTimeline(
+        // Implementations may return a promise even though the public observer contract is void.
+        // Observe it independently from native submission and timestamp-readback success.
+        const sink: {
+            recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): unknown;
+        } = this.sink;
+        const notification = sink.recordRenderGraphTimeline(
             Object.freeze({
                 frameIndex: this.frameIndex,
                 recordDurationMs: this.#recordDurationMs,
@@ -179,5 +199,10 @@ export class RenderGraphTimelineRecorder {
                 resources: Object.freeze([...this.#resources])
             })
         );
+        if (notification !== undefined) {
+            void Promise.resolve(notification).catch((error: unknown) => {
+                this.reportAsyncError(error);
+            });
+        }
     }
 }

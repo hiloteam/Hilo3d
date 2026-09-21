@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ScriptableRenderPipelineResources } from '../../../src/render/internal/ScriptableRenderPipelineContext';
-import { RHITextureUsage } from '../../../src/render/rhi/core';
+import {
+    ScriptableRenderPipelineResources,
+    type PersistentHistoryState
+} from '../../../src/render/internal/ScriptableRenderPipelineResources';
+import { RenderGraph } from '../../../src/render/graph/RenderGraph';
+import {
+    RHITextureUsage,
+    type RHICapabilities,
+    type RHIStoreOp
+} from '../../../src/render/rhi/core';
 import type { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
@@ -19,6 +27,42 @@ const HISTORY_RECIPE = Object.freeze({
     viewFormats: Object.freeze([]),
     bufferCount: 3 as const
 });
+
+function recordHistoryWrite(
+    resources: ScriptableRenderPipelineResources,
+    state: PersistentHistoryState,
+    capabilities: RHICapabilities,
+    storeOp: RHIStoreOp = 'store'
+): void {
+    const graph = new RenderGraph();
+    const builder = graph.createBuilder();
+    const texture = builder.createTexture('history output', {
+        size: { width: 8, height: 4 },
+        format: 'rgba8unorm',
+        usage: RHITextureUsage.RENDER_ATTACHMENT
+    });
+    builder.addPass(
+        {
+            name: 'history write',
+            setup(pass): void {
+                pass.useColorAttachment({
+                    texture,
+                    loadOp: 'clear',
+                    storeOp,
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 }
+                });
+            },
+            execute(): void {
+                // This fixture verifies ownership and metadata without emitting commands.
+            }
+        },
+        undefined
+    );
+    builder.markOutput(texture);
+    resources.noteHistoryTextureWrite(state, texture);
+    resources.finalizeHistoryWrites(graph.compile(builder, capabilities));
+    graph.destroy();
+}
 
 describe('ScriptableRenderPipelineResources history', () => {
     it('rolls back failed rotation and invalidates rebuilt device generations', () => {
@@ -40,7 +84,7 @@ describe('ScriptableRenderPipelineResources history', () => {
         );
         expect(first.writeIndex).toBe(0);
         expect(first.initialized).toEqual([false, false, false]);
-        resources.noteHistoryTextureWrite(first.state);
+        recordHistoryWrite(resources, first.state, registry.deviceCapabilities);
         resources.endFrame(targets, registry, true);
 
         resources.beginFrame(1, registry);
@@ -53,7 +97,7 @@ describe('ScriptableRenderPipelineResources history', () => {
         );
         expect(failed.writeIndex).toBe(1);
         expect(failed.initialized).toEqual([true, false, false]);
-        resources.noteHistoryTextureWrite(failed.state);
+        recordHistoryWrite(resources, failed.state, registry.deviceCapabilities);
         resources.endFrame(targets, registry, false);
 
         resources.beginFrame(2, registry);
@@ -66,7 +110,7 @@ describe('ScriptableRenderPipelineResources history', () => {
         );
         expect(retried.writeIndex).toBe(1);
         expect(retried.initialized).toEqual([true, false, false]);
-        resources.noteHistoryTextureWrite(retried.state);
+        recordHistoryWrite(resources, retried.state, registry.deviceCapabilities);
         resources.endFrame(targets, registry, true);
 
         const replacementDevice = backend.createDevice();
@@ -109,7 +153,7 @@ describe('ScriptableRenderPipelineResources history', () => {
             registry,
             HISTORY_RECIPE
         );
-        resources.noteHistoryTextureWrite(initial.state);
+        recordHistoryWrite(resources, initial.state, registry.deviceCapabilities);
         resources.endFrame(targets, registry, true);
 
         resources.beginFrame(1, registry);
@@ -133,5 +177,43 @@ describe('ScriptableRenderPipelineResources history', () => {
         resources.releasePersistentTargets(targets, registry);
         registry.destroy();
         backend.destroy();
+    });
+
+    it('invalidates a discarded slot without rotating away from the last stored history', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const registry = new ResourceRegistry(backend.createDevice());
+        const resources = new ScriptableRenderPipelineResources();
+        const targets = {} as unknown as RenderTargetResourceCache;
+        const owner = {};
+        const key = {};
+        try {
+            for (let index = 0; index < 3; index++) {
+                resources.beginFrame(index, registry);
+                const frame = resources.prepareHistoryTexture(
+                    owner,
+                    key,
+                    index,
+                    registry,
+                    HISTORY_RECIPE
+                );
+                expect(frame.writeIndex).toBe(index);
+                recordHistoryWrite(
+                    resources,
+                    frame.state,
+                    registry.deviceCapabilities,
+                    index === 2 ? 'discard' : 'store'
+                );
+                resources.endFrame(targets, registry, true);
+            }
+            resources.beginFrame(3, registry);
+            const next = resources.prepareHistoryTexture(owner, key, 3, registry, HISTORY_RECIPE);
+            expect(next.writeIndex).toBe(2);
+            expect(next.initialized).toEqual([true, true, false]);
+            resources.endFrame(targets, registry, false);
+        } finally {
+            resources.releasePersistentTargets(targets, registry);
+            registry.destroy();
+            backend.destroy();
+        }
     });
 });

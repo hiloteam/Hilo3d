@@ -25,6 +25,7 @@ import {
     Node,
     OrbitControls,
     PBRMaterial,
+    PostProcessRenderPipelineFactory,
     PerspectiveCamera,
     Renderer,
     SCENE_STORAGE_BIND_GROUP,
@@ -71,6 +72,8 @@ import {
     type RenderPipelineOutputColorAttachment,
     type RenderPipelineOutputDepthStencilAttachment,
     type RenderPipelineRequirements,
+    type RenderPipelineFactory,
+    type RenderPipelineInvocationPolicy,
     type RenderGraphBufferHandle,
     type RenderGraphTextureAccessHandle,
     type RenderGraphTextureHandle,
@@ -747,6 +750,15 @@ const computeRequirements = {
     requiredCapabilities: ['storage-buffer', 'compute-pass', 'indirect-draw'],
     requiredLimits: { maxComputeWorkgroupsPerDimension: 1 }
 } satisfies RenderPipelineRequirements;
+const pipelineInvocationPolicy = {
+    cameraType: 'perspective',
+    maxInvocationsPerFrame: 1
+} satisfies RenderPipelineInvocationPolicy;
+declare const customPipelineFactory: RenderPipelineFactory;
+const configuredInvocationPolicy: Readonly<RenderPipelineInvocationPolicy> | undefined =
+    customPipelineFactory.invocationPolicy;
+const postProcessInvocationPolicy: Readonly<RenderPipelineInvocationPolicy> =
+    new PostProcessRenderPipelineFactory().invocationPolicy;
 const computeTextureSampleType: ComputeTextureSampleType = 'unfilterable-float';
 const computeTextureViewDimension: ComputeTextureViewDimension = '2d';
 const storageGraphicsSampleType: ShaderTextureSampleType = 'uint';
@@ -824,6 +836,9 @@ void storageReadback;
 void transientStorageBuffer;
 void computeSampler;
 void computeRequirements;
+void pipelineInvocationPolicy;
+void configuredInvocationPolicy;
+void postProcessInvocationPolicy;
 void computeTextureSampleType;
 void computeTextureViewDimension;
 void storageGraphicsSampleType;

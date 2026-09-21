@@ -325,7 +325,9 @@ describe.each([
         await processor.submissions.waitForIdle();
 
         expect(prepareInstancedBatch).toHaveBeenCalledOnce();
-        expect(prepareInstancedBatch.mock.calls[0]?.[1]).toEqual(meshes);
+        // The main camera looks downward from y=2: the y=1 mesh is nearest, while the two
+        // y=0 meshes have equal view depth and retain their deterministic identity order.
+        expect(prepareInstancedBatch.mock.calls[0]?.[1]).toEqual([meshes[1], meshes[0], meshes[2]]);
         const mainDraw = prepareInstancedBatch.mock.results[0]?.value as PreparedDraw | undefined;
         if (mainDraw === undefined) throw new Error('Main instanced draw was not prepared');
         expect(main.diagnostics.drawCount).toBe(1);

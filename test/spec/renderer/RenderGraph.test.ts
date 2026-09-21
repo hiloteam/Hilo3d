@@ -640,7 +640,7 @@ describe('RenderGraph compile', () => {
         backend.destroy();
     });
 
-    it('keeps RAW, WAR, and WAW buffer hazards through explicit storage read-write access', () => {
+    it('retains the last buffer producer through explicit storage read-write access', () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();
         const graph = new RenderGraph();
@@ -701,13 +701,8 @@ describe('RenderGraph compile', () => {
 
         const compiled = graph.compile(builder, device.capabilities);
 
-        expect(compiled.passes.map(pass => pass.name)).toEqual([
-            'initial write',
-            'read',
-            'overwrite',
-            'integrate in place'
-        ]);
-        const integrate = compiled.passes[3];
+        expect(compiled.passes.map(pass => pass.name)).toEqual(['overwrite', 'integrate in place']);
+        const integrate = compiled.passes[1];
         expect(integrate?.reads).toEqual(new Set([buffer]));
         expect(integrate?.writes).toEqual(new Set([buffer]));
         expect(integrate?.bufferAccesses).toEqual([{ buffer, mode: 'read-write', use: 'storage' }]);

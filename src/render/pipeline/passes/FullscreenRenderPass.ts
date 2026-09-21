@@ -1,3 +1,4 @@
+import { registerScriptablePassAdapter } from './internal/ScriptablePassAdapter';
 import {
     DEFAULT_MATERIAL_PIPELINE_STATE,
     snapshotMaterialPipelineState,
@@ -78,6 +79,12 @@ export class FullscreenRenderPass implements ScriptableRenderPass<FullscreenRend
             throw new TypeError('Fullscreen render pass name must be non-empty');
         }
         this.name = name;
+        registerScriptablePassAdapter<FullscreenRenderPassParameters>(
+            this,
+            (target, parameters) => {
+                target.configureFullscreen(this, parameters);
+            }
+        );
         this.shader = options.shader;
         this.pipelineState = snapshotMaterialPipelineState(options.pipelineState);
         this.uniformBuffers = Object.freeze([...(options.uniformBuffers ?? [])]);

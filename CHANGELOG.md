@@ -2,6 +2,11 @@
 
 ### Features
 
+- Expose immutable render-pipeline invocation policies for camera type and per-frame call limits.
+  Forward supports arbitrary cameras and multiple invocations; Clustered declares its existing
+  single-perspective-camera limit. The shared host validates calls before recording and rejects
+  partial-frame submission after a policy violation. Custom factories without a policy retain their
+  previous behavior.
 - Add opt-in WebGPU dynamic diffuse global illumination to Clustered Forward+: camera-independent
   rigid PBR BVH tracing, budgeted visibility-aware irradiance probes, dynamic lighting, bounded
   bounce feedback, relocation, transactional history and device recovery. Both indirect and direct
@@ -20,7 +25,31 @@
 - Publish a concise llms.txt and source Markdown with build provenance; add source/anchor/command
   checks and synchronized public-API recipes verified against packed core/addon packages.
 
+### Changes
+
+- Separate SRP invocation context, resource/history ownership and pass execution, and register
+  built-in preparation adapters at pass construction instead of identifying pass classes in the
+  central setup path. Split Clustered shader, layout and parameter modules from frame orchestration
+  while preserving shader sources and the shared Render Graph/RHI path.
+- Replace quadratic Render Graph ready-pass scans with stable minimum-index heap scheduling and
+  reusable typed-array workspace, preserving existing dependency validation and pass order.
+
 ### Fixes
+
+- Bound completed Render Graph transient-resource retention by idle count, estimated bytes and age
+  while preserving in-flight submission ownership and exact-descriptor reuse.
+- Recycle abandoned graph builders after recording/setup failures and reject stale references
+  without retaining every failed frame's parameters and resource providers.
+- Separate content liveness from ordering hazards so unused readers and fully overwritten writes are
+  culled. Preserve load/read-write/partial-clear dependencies and support complete then partial
+  clears of a new transient buffer in one pass.
+- Commit history validity from the final surviving store/discard operations. A discarded current
+  slot becomes invalid without replacing the last stored history.
+- Report timeline observer failures after committed GPU work without rolling back runtime/history
+  state; observe asynchronous diagnostic and runtime callbacks independently from GPU timestamps.
+- Honor `material-front-to-back` using cached view-space depth within opaque state groups, including
+  explicit instance batches. Keep mixed opaque/transparent sorting transitive so opaque entries
+  cannot obstruct transparent depth ordering.
 
 - Stabilize static DDGI with fixed per-probe quadrature, geometry-stable relocation and exact
   submission-aware light revisions. Correct TAA/TAAU jitter-free history reprojection, neighborhood
