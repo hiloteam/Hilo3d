@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Color, Node, OrthographicCamera, Renderer, Stage } from 'hilo3d';
+import {
+    registerRendererDiagnostics,
+    unregisterRendererDiagnostics
+} from '../../../src/render/diagnostics/RendererDiagnosticsRegistry';
 import { configureLive2D } from '../../../addon-live2d/src/Live2DConfiguration';
 import { Live2DModel } from '../../../addon-live2d/src/Live2DModel';
 import type { Live2DAssets } from '../../../addon-live2d/src/Live2DAssets';
@@ -655,8 +659,11 @@ describe('Live2DModel production ownership and automatic scene updates', () => {
                 maskSize: 32
             });
             const camera = new OrthographicCamera({ near: 0.1, far: 10, z: 2 });
+            const canvas = document.createElement('canvas');
+            const diagnostics = registerRendererDiagnostics(canvas);
             const stage = await Stage.create({
                 backend,
+                canvas,
                 width: 32,
                 height: 32,
                 pixelRatio: 1,
@@ -666,21 +673,37 @@ describe('Live2DModel production ownership and automatic scene updates', () => {
             });
             stage.addChild(model);
             const target = stage.renderer.createRenderTarget({ width: 32, height: 32 });
+            stage.renderer.setRenderTarget(target);
             const pixel = (data: Uint8Array, x: number, y: number): number[] =>
                 Array.from(data.subarray((y * 32 + x) * 4, (y * 32 + x) * 4 + 4));
+            const waitForDraw = async (phase: string): Promise<void> => {
+                try {
+                    await stage.renderer.waitForIdle();
+                } catch (cause) {
+                    throw new Error(`${backend}: ${phase} submission failed`, { cause });
+                }
+                expect(
+                    diagnostics.snapshot().frame.draws,
+                    `${backend}: ${phase} draws`
+                ).toBeGreaterThan(0);
+            };
+            const readFrame = async (phase: string): Promise<Uint8Array> => {
+                await waitForDraw(phase);
+                try {
+                    return (await target.readColorAttachment()).data;
+                } catch (cause) {
+                    throw new Error(`${backend}: ${phase} readback failed`, { cause });
+                }
+            };
             try {
                 stage.tick(16);
-                stage.renderer.renderToTarget(target, stage, camera, true);
-                await stage.renderer.waitForIdle();
-                let data = (await target.readColorAttachment()).data;
+                let data = await readFrame('initial clipping');
                 expect(pixel(data, 8, 4)).toEqual([255, 0, 0, 255]);
                 expect(pixel(data, 8, 28)).toEqual([0, 0, 0, 0]);
                 expect(at(at(fixture.sessions, 0).calls, 0).delta).toBe(0.016);
                 model.setParameter('X', -1);
                 stage.tick(16);
-                stage.renderer.renderToTarget(target, stage, camera, true);
-                await stage.renderer.waitForIdle();
-                data = (await target.readColorAttachment()).data;
+                data = await readFrame('parameter update');
                 expect(pixel(data, 24, 4)).toEqual([0, 0, 0, 0]);
                 expect(pixel(data, 8, 4)).toEqual([255, 0, 0, 255]);
                 const session = at(fixture.sessions, 0);
@@ -688,18 +711,18 @@ describe('Live2DModel production ownership and automatic scene updates', () => {
                 session.opacity = 0.5;
                 model.opacity = 0.5;
                 stage.tick(16);
-                stage.renderer.renderToTarget(target, stage, camera, true);
-                await stage.renderer.waitForIdle();
-                data = (await target.readColorAttachment()).data;
+                data = await readFrame('combined opacity');
                 expect(pixel(data, 8, 4)[3]).toBe(64);
                 expect(model.opacity).toBe(0.5);
                 expect(session.art.opacity).toBe(1);
                 model.automaticUpdate = false;
                 stage.tick(16);
+                await waitForDraw('automatic update disabled');
                 expect(at(fixture.sessions, 0).calls).toHaveLength(3);
             } finally {
                 target.destroy();
                 stage.destroy();
+                unregisterRendererDiagnostics(canvas, diagnostics);
             }
             expectReleased(at(fixture.sessions, 0));
         });
