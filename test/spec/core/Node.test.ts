@@ -5,6 +5,37 @@ import type { NodeTraverseCallback } from '../../../src/core/Node';
 const Node = Hilo3d.Node;
 
 describe('Node', () => {
+    it('dispatches nested non-Mesh destruction overrides once, including children of Mesh', () => {
+        const destroyed: string[] = [];
+        class AddonNode extends Node {
+            override destroy(renderer?: Hilo3d.Renderer, textures = false): this {
+                destroyed.push(this.name);
+                return super.destroy(renderer, textures);
+            }
+        }
+        const root = new Node();
+        const parent = new AddonNode({ name: 'parent' });
+        const leaf = new AddonNode({ name: 'leaf' });
+        parent.addChild(leaf);
+        root.addChild(parent);
+        const wrapper = new Hilo3d.Mesh();
+        // This models the Mesh override, which cleans its own resources without calling Node.
+        const destroyWrapper = vi.spyOn(wrapper, 'destroy').mockImplementation(() => {
+            wrapper.removeFromParent();
+            return wrapper;
+        });
+        wrapper.addChild(new AddonNode({ name: 'mesh-child' }));
+        root.addChild(wrapper);
+        root.destroy();
+        root.destroy();
+        expect(destroyed).toEqual(['parent', 'leaf', 'mesh-child']);
+        expect(destroyWrapper).toHaveBeenCalledOnce();
+        expect(root.children).toHaveLength(0);
+        expect(parent.children).toHaveLength(0);
+        expect(wrapper.children).toHaveLength(0);
+        expect(leaf.parent).toBeNull();
+    });
+
     it('create', () => {
         const node = new Node();
         expect(node.isNode).toBe(true);
@@ -20,6 +51,7 @@ describe('Node', () => {
             z: 1,
             sortingLayer: 4,
             zIndex: 12,
+            sortingGroup: true,
             jointName: 'head'
         });
         node.addChild(
@@ -35,6 +67,7 @@ describe('Node', () => {
         expect(clonedNode.z).toBe(node.z);
         expect(clonedNode.sortingLayer).toBe(4);
         expect(clonedNode.zIndex).toBe(12);
+        expect(clonedNode.sortingGroup).toBe(true);
         expect(clonedNode.jointName).toBe(node.jointName);
         expect(clonedNode.children).toHaveLength(1);
         expect(clonedNode.children.at(0)?.name).toBe('child0');

@@ -3,12 +3,17 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
+import { live2DExampleRuntimePlugin } from './scripts/live2d-example-runtime-plugin';
 
 const shaderPattern = /\.(?:frag|glsl|vert)$/u;
 const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';
 const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
 
 export const addonAliases = [
+    {
+        find: '@hilo/addon-live2d',
+        replacement: fileURLToPath(new URL('./addon-live2d/src/index.ts', import.meta.url))
+    },
     {
         find: '@hilo/addon-particle',
         replacement: fileURLToPath(new URL('./addon-particle/src/index.ts', import.meta.url))
@@ -127,7 +132,7 @@ const runtimeDependencies = ['gl-matrix'] as const;
 
 export function createViteConfig(): UserConfig {
     return {
-        plugins: [shaderIncludePlugin(), exampleManifestPlugin()],
+        plugins: [shaderIncludePlugin(), exampleManifestPlugin(), live2DExampleRuntimePlugin()],
         resolve: { alias: [...addonAliases] },
         optimizeDeps: {
             include: [...runtimeDependencies]

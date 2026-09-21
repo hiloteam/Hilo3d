@@ -60,6 +60,10 @@ const physicsReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./physics.spec.ts', import.meta.url)),
     'utf8'
 );
+const live2dReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./live2d.spec.ts', import.meta.url)),
+    'utf8'
+);
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -79,11 +83,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(96);
+        expect(examplePaths).toHaveLength(97);
     });
 
-    it('expands 96 pages into the complete 177-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(177);
+    it('expands 97 pages into the complete 179-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(179);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -117,7 +121,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(94);
+        expect(catalog).toHaveLength(95);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -126,8 +130,8 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(80);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(93);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(81);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(94);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -365,6 +369,7 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'live2d.html',
             'scriptable_pipeline.html',
             'screen_space_global_illumination_chapel.html',
             'cascaded_shadows.html',
@@ -427,6 +432,7 @@ describe('example release matrix contract', () => {
             'resourceManagerTest.html': 'resource-diagnostics'
         });
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
+            'live2d.html': { test: '1' },
             'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
             'dynamic_global_illumination_atelier.html': { test: '1' },
@@ -447,6 +453,43 @@ describe('example release matrix contract', () => {
         expect(
             Object.keys(EXAMPLE_COMPLETION_CONTRACTS).every(path => examplePaths.includes(path))
         ).toBe(true);
+    });
+
+    it('schedules the official Live2D example through both dedicated rendering gates', () => {
+        expect(backendsForExample('live2d.html')).toEqual(['webgl2', 'webgpu']);
+        expect(exampleUsesDedicatedReleaseTest('live2d.html')).toBe(true);
+        expect(
+            createExampleCatalog(examplePaths).find(entry => entry.path === 'live2d.html')
+        ).toMatchObject({ category: 'animation', featured: false });
+        expect(exampleRequestUrl('live2d.html', 'webgpu')).toBe(
+            '/examples/live2d.html?backend=webgpu&test=1'
+        );
+        expect(live2dReleaseTestSource).toContain(
+            "for (const backend of ['webgl2', 'webgpu'] as const)"
+        );
+        expect(live2dReleaseTestSource).not.toMatch(/\btest\.(?:skip|fixme)\s*\(/u);
+        const packageJson = JSON.parse(
+            readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
+        ) as { readonly scripts?: Readonly<Record<string, unknown>> };
+        for (const [scriptName, expectedBackends] of [
+            ['test:ui', ['webgl2', 'webgpu']],
+            ['test:ui:webgl2', ['webgl2']],
+            ['test:ui:webgl2:ci', ['webgl2']],
+            ['test:ui:webgpu', ['webgpu']]
+        ] as const) {
+            const script = packageJson.scripts?.[scriptName];
+            if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
+            expect(script, scriptName).toContain('test/ui/live2d.spec.ts');
+            expect(script, scriptName).toContain('--project=chromium');
+            expect(script, scriptName).not.toContain('--grep-invert');
+            const grep = /--grep (?:"([^"]+)"|(\S+))/u.exec(script);
+            const pattern = grep?.[1] ?? grep?.[2];
+            const filter = pattern === undefined ? null : new RegExp(pattern, 'u');
+            expect(
+                ['webgl2', 'webgpu'].filter(backend => filter?.test(`Haru @${backend}`) ?? true),
+                scriptName
+            ).toEqual(expectedBackends);
+        }
     });
 
     it('assigns every physics backend case to the dedicated interaction and pixel gate', () => {
@@ -533,7 +576,7 @@ describe('example release matrix contract', () => {
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
         expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
-            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
+            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
         );
         expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
             'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'

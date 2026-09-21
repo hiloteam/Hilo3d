@@ -19,5 +19,10 @@
     "vitest.rhi.config.ts",
     "vitest.rhi-native.config.ts",
     "examples/shared/catalog.ts"
+  ],
+  "references": [
+    {
+      "path": "./addon-live2d/tsconfig.tools.json"
+    }
   ]
 }

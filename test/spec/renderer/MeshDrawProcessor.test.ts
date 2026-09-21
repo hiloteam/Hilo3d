@@ -22,6 +22,7 @@ import Color from '../../../src/math/Color';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
 import type RendererCore from '../../../src/render/RendererCore';
+import UniformBuffer from '../../../src/render/UniformBuffer';
 import StorageGraphicsShader from '../../../src/render/compute/StorageGraphicsShader';
 import { RenderGraphFrame } from '../../../src/render/frame/RenderGraphFrame';
 import { createRenderGraphFrameContext } from '../../../src/render/frame/RenderGraphFrameContext';
@@ -56,7 +57,8 @@ import {
     materialBlockLayout,
     sceneBlockLayout
 } from '../../../src/render/ubo/BuiltInUniformBlocks';
-import type { Std140Layout } from '../../../src/render/ubo/Std140Layout';
+import { createStd140Layout, type Std140Layout } from '../../../src/render/ubo/Std140Layout';
+import { registerUniformBlockBinding } from '../../../src/render/ubo/UniformBlockBindings';
 import Shader from '../../../src/shader/Shader';
 import Texture from '../../../src/texture/Texture';
 import { describe, expect, it, vi } from 'vitest';
@@ -749,6 +751,113 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('MeshDrawProcessor on %s', (_name, createBackend) => {
+    it('releases shared geometry and built-in material buffers only after the final mesh owner', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const first = createLitMesh('LAMBERT');
+        const proxy = new Mesh({ geometry: first.geometry, material: first.material });
+        await finishSubmission(fixture.backend, executeMeshFrame(fixture, first.mesh, 1));
+        const proxyFrame = executeMeshFrame(fixture, proxy, 2);
+        await finishSubmission(fixture.backend, proxyFrame);
+        const vertices = first.geometry.vertices;
+        if (vertices === null) throw new Error('Shared geometry has no vertices');
+        const vertexBuffer = fixture.processor.buffers.resolveBuffer(vertices, 'vertex');
+        const materialBlock = fixture.processor.uniformBlocks.resolveUniformBlock(
+            'MaterialBlock',
+            proxy,
+            first.material
+        );
+        const materialBuffer = fixture.processor.buffers.resolveBuffer(materialBlock, 'uniform');
+
+        fixture.processor.detachMesh(first.mesh);
+        fixture.processor.collect(2);
+        expect(vertexBuffer.destroyed).toBe(false);
+        expect(materialBuffer.destroyed).toBe(false);
+        const remainingFrame = executeMeshFrame(fixture, proxy, 3);
+        await finishSubmission(fixture.backend, remainingFrame);
+        expect(remainingFrame.draw).toBe(proxyFrame.draw);
+        expect(fixture.processor.buffers.resolveBuffer(vertices, 'vertex')).toBe(vertexBuffer);
+        expect(fixture.processor.buffers.resolveBuffer(materialBlock, 'uniform')).toBe(
+            materialBuffer
+        );
+
+        fixture.processor.detachMesh(proxy);
+        fixture.processor.collect(3);
+        expect(fixture.processor.buffers.diagnostics(vertices, 'vertex')).toBeNull();
+        expect(fixture.processor.buffers.diagnostics(materialBlock, 'uniform')).toBeNull();
+        expect(vertexBuffer.destroyed).toBe(true);
+        expect(materialBuffer.destroyed).toBe(true);
+        destroyFixture(fixture);
+    });
+
+    it('retains canonical vertex aliases and a custom UBO shared by different materials', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        registerUniformBlockBinding('MeshOwnerBlock');
+        const fragmentSource = `#version 300 es
+precision highp float;
+layout(std140) uniform MeshOwnerBlock { vec4 u_ownerColor; };
+layout(location = 0) out vec4 color;
+void main() { color = u_ownerColor; }`;
+        const block = UniformBuffer.fromSchema(createStd140Layout({ u_ownerColor: 'vec4' }), {
+            u_ownerColor: [1, 0, 0, 1]
+        });
+        const first = createMesh(new Uint16Array([0, 1, 2]), fragmentSource);
+        const second = createMesh(undefined, fragmentSource);
+        const alias = new GeometryData(first.vertices.data, 3, {
+            bufferViewId: first.vertices.bufferViewId
+        });
+        second.geometry.vertices = alias;
+        second.geometry.indices = first.geometry.indices;
+        first.material.uniformBlocks['MeshOwnerBlock'] = block;
+        second.material.uniformBlocks['MeshOwnerBlock'] = block;
+        await finishSubmission(fixture.backend, executeMeshFrame(fixture, first.mesh, 1));
+        const secondFrame = executeMeshFrame(fixture, second.mesh, 2);
+        await finishSubmission(fixture.backend, secondFrame);
+        const vertex = fixture.processor.buffers.resolveBuffer(first.vertices, 'vertex');
+        const uniform = fixture.processor.buffers.resolveBuffer(block, 'uniform');
+        expect(fixture.processor.buffers.resolveBuffer(alias, 'vertex')).toBe(vertex);
+
+        fixture.processor.detachMesh(first.mesh);
+        fixture.processor.collect(2);
+        const remainingFrame = executeMeshFrame(fixture, second.mesh, 3);
+        await finishSubmission(fixture.backend, remainingFrame);
+        expect(remainingFrame.draw).toBe(secondFrame.draw);
+        expect(fixture.processor.buffers.resolveBuffer(alias, 'vertex')).toBe(vertex);
+        expect(fixture.processor.buffers.resolveBuffer(block, 'uniform')).toBe(uniform);
+        expect(vertex.destroyed || uniform.destroyed).toBe(false);
+
+        fixture.processor.detachMesh(second.mesh);
+        fixture.processor.collect(3);
+        expect(vertex.destroyed && uniform.destroyed).toBe(true);
+        expect(fixture.processor.buffers.diagnostics(first.vertices, 'vertex')).toBeNull();
+        expect(fixture.processor.buffers.diagnostics(alias, 'vertex')).toBeNull();
+        expect(fixture.processor.buffers.diagnostics(block, 'uniform')).toBeNull();
+        destroyFixture(fixture);
+    });
+
+    it('bounds buffer resources through repeated create, draw and destroy cycles', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const initialCount = fixture.processor.registry.diagnostics().trackedResourceCount;
+        for (let frameIndex = 1; frameIndex <= 24; frameIndex++) {
+            const { mesh, geometry, material } = createLitMesh('LAMBERT');
+            await finishSubmission(fixture.backend, executeMeshFrame(fixture, mesh, frameIndex));
+            const materialBlock = fixture.processor.uniformBlocks.resolveUniformBlock(
+                'MaterialBlock',
+                mesh,
+                material
+            );
+            fixture.processor.detachMesh(mesh);
+            fixture.processor.collect(frameIndex);
+            expect(fixture.processor.registry.diagnostics()).toMatchObject({
+                trackedResourceCount: initialCount,
+                pendingReleaseCount: 0
+            });
+            if (geometry.vertices === null) throw new Error('Churn geometry has no vertices');
+            expect(fixture.processor.buffers.diagnostics(geometry.vertices, 'vertex')).toBeNull();
+            expect(fixture.processor.buffers.diagnostics(materialBlock, 'uniform')).toBeNull();
+        }
+        destroyFixture(fixture);
+    });
+
     it('defers scene semantics until a resource-only frame needs mesh preparation', async () => {
         const fixture = await createProcessorFixture(createBackend());
         const lightManager = new LightManager();

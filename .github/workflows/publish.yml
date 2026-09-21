@@ -92,3 +92,4 @@ jobs:
           publish_package .
           publish_package addon-particle
           publish_package addon-physics
+          publish_package addon-live2d

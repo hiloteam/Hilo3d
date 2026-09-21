@@ -1,9 +1,11 @@
 import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
+import type Node from '../../core/Node';
 import type Geometry from '../../geometry/Geometry';
 import type Material from '../../material/MaterialInstance';
 import Vector3 from '../../math/Vector3';
 import { MAX_INSTANCES_PER_DRAW } from '../ubo/BuiltInUniformBlocks';
+import { TransparentSortingGroups } from './TransparentSortingGroups';
 
 /** A reusable instanced draw group. Its contents are valid until the planner is rebuilt. */
 export interface MeshDrawInstanceBatch {
@@ -63,6 +65,7 @@ interface MutableMeshDrawInstanceBatch {
     identityOrder: number;
     inputIndex: number;
     orderPreserving: boolean;
+    sortingGroup: Node | null;
     opaqueDepth: number;
     nextInGroup: MutableMeshDrawInstanceBatch | null;
 }
@@ -148,6 +151,7 @@ export class MeshDrawListPlanner {
     readonly #opaqueItems: MeshDrawListItem[] = [];
     readonly #transparentItems: MeshDrawListItem[] = [];
     readonly #seenMeshes = new Set<Mesh>();
+    readonly #sortingGroups = new TransparentSortingGroups();
     readonly #owners = new Map<Mesh, OwnerRecord>();
     readonly #ownerSlots: OwnerRecord[] = [];
     readonly #ownerPool: OwnerRecord[] = [];
@@ -230,6 +234,7 @@ export class MeshDrawListPlanner {
     readonly #compareTransparent = (a: Mesh, b: Mesh): number => {
         const recordA = this.requireOwnerRecord(a);
         const recordB = this.requireOwnerRecord(b);
+        if (this.#sortingGroups.active) return recordA.inputIndex - recordB.inputIndex;
         const displayOrder = compare2DOrder(a, b);
         if (displayOrder !== 0) return displayOrder;
         const renderOrderA = isSpriteMesh(a) ? 0 : recordA.renderOrder;
@@ -356,7 +361,11 @@ export class MeshDrawListPlanner {
         this.#inputMaterialOverride = materialOverride;
         this.#sortCamera = sort ? sortCamera : null;
         try {
-            if (sort) this.sort2DInputsIfNeeded();
+            if (sort) {
+                this.#sortingGroups.prepare(this.#input, materialOverride, this.#sortCamera);
+                this.sort2DInputsIfNeeded();
+                this.#sortingGroups.sort(this.#input);
+            }
             this.advanceEpoch();
             this.clearActivePlan();
             this.pruneAbsentOwners();
@@ -385,6 +394,7 @@ export class MeshDrawListPlanner {
             this.#inputMaterialOverride = null;
             this.#sortCamera = null;
             this.#seenMeshes.clear();
+            this.#sortingGroups.reset();
         }
     }
 
@@ -403,7 +413,10 @@ export class MeshDrawListPlanner {
         for (const batch of this.#instancedBatches) {
             if (!batch.orderPreserving) continue;
             if (!removeIdentity(batch.meshes, mesh)) continue;
-            if (batch.meshes.length === 0) removeIdentity(this.#instancedBatches, batch);
+            if (batch.meshes.length === 0) {
+                removeIdentity(this.#instancedBatches, batch);
+                batch.sortingGroup = null;
+            }
             break;
         }
         removeIdentity(this.#input, mesh);
@@ -427,6 +440,7 @@ export class MeshDrawListPlanner {
             if (record !== undefined) this.releaseOwner(record);
         }
         this.#seenMeshes.clear();
+        this.#sortingGroups.reset();
         this.updateDiagnostics();
     }
 
@@ -511,7 +525,8 @@ export class MeshDrawListPlanner {
                 geometry,
                 material,
                 mesh.renderOrder,
-                inputIndex
+                inputIndex,
+                this.#sortingGroups.group(mesh)
             );
             batch.meshes.push(mesh);
             if (batch.meshes.length > this.#diagnosticState.largestInstancedBatchCapacity) {
@@ -635,6 +650,7 @@ export class MeshDrawListPlanner {
                 identityOrder: 0,
                 inputIndex: 0,
                 orderPreserving: false,
+                sortingGroup: null,
                 opaqueDepth: 0,
                 nextInGroup: null
             };
@@ -651,6 +667,7 @@ export class MeshDrawListPlanner {
         batch.identityOrder = ++this.#nextBatchIdentityOrder;
         batch.inputIndex = 0;
         batch.orderPreserving = false;
+        batch.sortingGroup = null;
         batch.opaqueDepth = 0;
         batch.nextInGroup = null;
         if (tail === null) materialGroups.set(material, batch);
@@ -679,7 +696,8 @@ export class MeshDrawListPlanner {
         geometry: Geometry,
         material: Material,
         renderOrder: number,
-        inputIndex: number
+        inputIndex: number,
+        sortingGroup: Node | null
     ): MutableMeshDrawInstanceBatch {
         const tail = this.#orderPreservingBatchTail;
         if (
@@ -688,6 +706,7 @@ export class MeshDrawListPlanner {
             tail.geometry === geometry &&
             tail.material === material &&
             tail.renderOrder === renderOrder &&
+            tail.sortingGroup === sortingGroup &&
             tail.meshes.length < MAX_INSTANCES_PER_DRAW
         ) {
             this.#orderPreservingBatchTailInputIndex = inputIndex;
@@ -708,6 +727,7 @@ export class MeshDrawListPlanner {
                 identityOrder: ++this.#nextBatchIdentityOrder,
                 inputIndex,
                 orderPreserving: true,
+                sortingGroup: null,
                 opaqueDepth: 0,
                 nextInGroup: null
             };
@@ -724,6 +744,7 @@ export class MeshDrawListPlanner {
         batch.epoch = this.#epoch;
         batch.inputIndex = inputIndex;
         batch.orderPreserving = true;
+        batch.sortingGroup = sortingGroup;
         batch.nextInGroup = null;
         this.#instancedBatches.push(batch);
         this.#orderPreservingBatchTail = batch;
@@ -817,7 +838,10 @@ export class MeshDrawListPlanner {
         let index = 0;
         while (index < this.#instancedBatches.length) {
             const batch = this.#instancedBatches[index];
-            if (batch !== undefined) batch.meshes.length = 0;
+            if (batch !== undefined) {
+                batch.meshes.length = 0;
+                batch.sortingGroup = null;
+            }
             index++;
         }
         this.#opaqueMeshes.length = 0;

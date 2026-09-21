@@ -53,6 +53,7 @@ import {
     type MeshParameters,
     type NodeParameters,
     type OrbitControlsOptions,
+    type OrderedRendererListDescriptor,
     type CullingResultsHandle,
     type ComputeTextureSampleType,
     type ComputeTextureViewDimension,
@@ -153,6 +154,138 @@ import {
 import { createPhysicsStageSystem } from '@hilo/addon-physics';
 import { createRapier2DPhysicsSystem } from '@hilo/addon-physics/rapier2d';
 import { createRapier3DPhysicsSystem } from '@hilo/addon-physics/rapier3d';
+import {
+    Live2DNode,
+    Live2DModel,
+    configureLive2D,
+    createCubismCoreSource,
+    live2DFeature,
+    loadLive2DAssets,
+    type CubismCoreModel,
+    type CubismCoreUtils,
+    type Live2DAssetLoadOptions,
+    type Live2DAssets,
+    type Live2DBlendMode,
+    type Live2DDrawable,
+    type Live2DModelSettings,
+    type Live2DConfiguration,
+    type Live2DModelLoadOptions,
+    type Live2DBounds,
+    type Live2DParameterOptions,
+    type Live2DMotionOptions,
+    type Live2DExpressionOptions,
+    type Live2DRuntime,
+    type Live2DNodeOptions,
+    type Live2DSource
+} from '@hilo/addon-live2d';
+import { createCubismRuntime } from '@hilo/addon-live2d/cubism';
+import {
+    buildLive2DRuntime,
+    runLive2DRuntimeCLI,
+    type BuildLive2DRuntimeOptions,
+    type BuildLive2DRuntimeResult
+} from '@hilo/addon-live2d/tools';
+
+const live2DConfiguration = {
+    runtimeUrl: new URL('https://example.test/live2d/runtime.js'),
+    nonce: 'application-csp-nonce',
+    timeoutMilliseconds: 15_000
+} satisfies Live2DConfiguration;
+const configureLive2DTyped: (configuration: Readonly<Live2DConfiguration>) => void =
+    configureLive2D;
+const live2DLoadOptions = {
+    name: 'avatar',
+    assetVersion: '2026-09',
+    automaticUpdate: true,
+    maskSize: 512,
+    signal: new AbortController().signal,
+    timeoutMilliseconds: 10_000
+} satisfies Live2DModelLoadOptions;
+const live2DModelLoad: Promise<Live2DModel> = Live2DModel.load(
+    '/avatar/model.model3.json',
+    live2DLoadOptions
+);
+declare const highLevelLive2DModel: Live2DModel;
+const motionOptions = {
+    index: 0,
+    loop: true,
+    priority: 'force',
+    fadeInSeconds: 0.2
+} satisfies Live2DMotionOptions;
+const expressionOptions = {
+    fadeInSeconds: 0.1,
+    fadeOutSeconds: 0.3
+} satisfies Live2DExpressionOptions;
+const parameterOptions = { weight: 0.75 } satisfies Live2DParameterOptions;
+const live2DMotionStarted: boolean = highLevelLive2DModel.playMotion('Idle', motionOptions);
+highLevelLive2DModel.setExpression('Smile', expressionOptions);
+highLevelLive2DModel
+    .setParameter('ParamAngleX', 15, parameterOptions)
+    .clearParameter('ParamAngleX');
+highLevelLive2DModel.beforeExpressions = (parameters, deltaSeconds): void => {
+    parameters.add('ParamAngleX', deltaSeconds);
+};
+highLevelLive2DModel.afterExpressions = parameters => {
+    parameters.multiply('ParamEyeLOpen', 0.8);
+};
+highLevelLive2DModel.automaticUpdate = true;
+highLevelLive2DModel.sortingGroup = true;
+highLevelLive2DModel.paused = false;
+highLevelLive2DModel.timeScale = 1;
+highLevelLive2DModel.motionTimeScale = 0.5;
+highLevelLive2DModel.lipSync = 0.25;
+highLevelLive2DModel.advance(16);
+highLevelLive2DModel.stopMotions();
+highLevelLive2DModel.clearExpression();
+const live2DBounds: Live2DBounds = highLevelLive2DModel.getModelBounds();
+const live2DHit: boolean = highLevelLive2DModel.hitTest(0, 0, 'Head');
+const cubismRuntimeFactory: (namespace: unknown) => Live2DRuntime = createCubismRuntime;
+const buildRuntimeOptions = {
+    coreFile: '/licensed-sdk/Core/live2dcubismcore.min.js',
+    frameworkDirectory: '/licensed-sdk/Framework/src',
+    outputDirectory: '/application/public/live2d',
+    additionalLicenseFiles: ['/licensed-sdk/NOTICE']
+} satisfies BuildLive2DRuntimeOptions;
+const runtimeBuilder: (
+    options: Readonly<BuildLive2DRuntimeOptions>
+) => Promise<BuildLive2DRuntimeResult> = buildLive2DRuntime;
+const runtimeCLI: (args: readonly string[]) => Promise<void> = runLive2DRuntimeCLI;
+void live2DConfiguration;
+void configureLive2DTyped;
+void live2DModelLoad;
+void live2DMotionStarted;
+void live2DBounds;
+void live2DHit;
+void cubismRuntimeFactory;
+void buildRuntimeOptions;
+void runtimeBuilder;
+void runtimeCLI;
+
+declare const cubismModel: CubismCoreModel;
+declare const cubismUtils: CubismCoreUtils;
+const live2DSource: Live2DSource = createCubismCoreSource(cubismModel, cubismUtils);
+const live2DNodeOptions = {
+    source: live2DSource,
+    textures: [] as readonly Texture<unknown>[],
+    maskSize: 512,
+    ownsTextures: false
+} satisfies Live2DNodeOptions;
+const live2DNode = new Live2DNode(live2DNodeOptions);
+live2DNode.opacity = 0.75;
+live2DNode.sync();
+const live2DDrawable: Live2DDrawable | undefined = live2DSource.drawables[0];
+const live2DBlendMode: Live2DBlendMode = live2DDrawable?.blendMode ?? 'normal';
+const live2DAssetOptions = {
+    signal: new AbortController().signal
+} satisfies Live2DAssetLoadOptions;
+const live2DAssets: Promise<Live2DAssets> = loadLive2DAssets(
+    '/model.model3.json',
+    live2DAssetOptions
+);
+const live2DSettings: Promise<Live2DModelSettings> = live2DAssets.then(assets => assets.settings);
+void live2DFeature;
+void live2DBlendMode;
+void live2DSettings;
 
 const clusteredGeometry = new BoxGeometry();
 const clusteredMaterial = new PBRMaterial({ clearcoatFactor: 0.5 });
@@ -561,6 +694,14 @@ const persistentTargetReleased: boolean = scriptableGraph.releasePersistentTarge
     Object.freeze({})
 );
 const featureCullingResults: CullingResultsHandle = forwardFeatureContext.cullingResults;
+const orderedListDescriptor = {
+    cullingResults: featureCullingResults,
+    meshes: [clusteredExemplar],
+    materialPass: 'forward'
+} satisfies OrderedRendererListDescriptor;
+const orderedList: RendererListHandle =
+    forwardFeatureContext.pipeline.createOrderedRendererList(orderedListDescriptor);
+void orderedList;
 forwardFeatureContext.resources.replaceDepth(graphMipChain);
 const temporalAAOptions = { renderScale: 0.75, sharpness: 0.1 } satisfies TemporalAAOptions;
 const temporalAA = new TemporalAA(temporalAAOptions);

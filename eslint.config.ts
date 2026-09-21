@@ -10,6 +10,7 @@ export default defineConfig(
         'coverage/**',
         'dist/**',
         'addon-particle/dist/**',
+        'addon-live2d/dist/**',
         'addon-physics/dist/**',
         'dist-examples/**',
         'docs/**',
@@ -17,7 +18,8 @@ export default defineConfig(
         'node_modules/**',
         'playwright-report/**',
         'reports/**',
-        'test-results/**'
+        'test-results/**',
+        'third-party/live2d/cubism-5-r.5/**'
     ]),
     {
         files: ['**/*.{ts,tsx,mts,cts}'],

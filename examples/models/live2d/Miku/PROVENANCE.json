@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "sourcePage": "https://www.live2d.com/zh-CHS/learn/sample/hatsune-miku/",
+  "downloadCatalog": "https://cubism.live2d.com/sample-data/js/download.js",
+  "archive": {
+    "url": "https://cubism.live2d.com/sample-data/bin/miku/miku_ja.zip",
+    "filename": "miku_ja.zip",
+    "bytes": 43689423,
+    "sha256": "3503062b4aef1a3dc8409cda8934938f0d1c15a282221251511887c6daa1981b",
+    "downloadedOn": "2026-09-22",
+    "responseStatus": 200
+  },
+  "variant": "miku_pro/runtime",
+  "attribution": {
+    "characterAndIllustration": "Crypton Future Media, INC.",
+    "modeling": "Live2D Inc."
+  },
+  "licenseClassification": "Externally licensed character under current Live2D sample terms; Crypton/Piapro character conditions apply. Not MIT.",
+  "intendedUse": "Free Live2D integration example, including the user-requested GitHub Pages demonstration. Character rights remain governed by the linked Crypton/Piapro terms; the engine MIT license does not relicense these assets.",
+  "historicalNotice": "ReadMe.upstream.txt is preserved verbatim from the 2020 archive. Its generic Live2D-original/commercial-use wording must not be treated as commercial permission for Miku; consult current linked character terms.",
+  "modifications": [],
+  "omitted": [
+    "miku_free variant (alternative model, not referenced by selected PRO manifest)",
+    "Cubism Editor project/artwork files outside the selected runtime directory (not needed for runtime playback)"
+  ],
+  "audio": "No audio files exist in this archive; none removed.",
+  "runtimeSummary": {
+    "manifest": "miku_sample_t04.model3.json",
+    "textureCount": 1,
+    "motions": {
+      "Idle": 3,
+      "Tap": 2,
+      "Flick": 2,
+      "FlickUp": 1
+    },
+    "expressions": 0,
+    "hitAreas": [],
+    "parameterCount": 59
+  },
+  "files": [
+    {
+      "path": "miku_sample_t04.2048/texture_00.png",
+      "archivePath": "miku_pro/runtime/miku_sample_t04.2048/texture_00.png",
+      "bytes": 4194650,
+      "sha256": "e434d8ca363a00d7b28590a9d49a92cf21e79348d5468441d1613c4d9b602c27"
+    },
+    {
+      "path": "miku_sample_t04.cdi3.json",
+      "archivePath": "miku_pro/runtime/miku_sample_t04.cdi3.json",
+      "bytes": 8381,
+      "sha256": "5ee149089b23873cf247f0d1aa495806f983a8a3237e7674fa6a56ea60b28961"
+    },
+    {
+      "path": "miku_sample_t04.moc3",
+      "archivePath": "miku_pro/runtime/miku_sample_t04.moc3",
+      "bytes": 289920,
+      "sha256": "6ada807bb167c5721cb26780c4926582eb2dc4098c2db4c6d751fc3e0f4b995f"
+    },
+    {
+      "path": "miku_sample_t04.model3.json",
+      "archivePath": "miku_pro/runtime/miku_sample_t04.model3.json",
+      "bytes": 1015,
+      "sha256": "ec898228e6eda63ea94c42858178d26bd8d3d44d5c3a44a8822e293db516df84"
+    },
+    {
+      "path": "miku_sample_t04.physics3.json",
+      "archivePath": "miku_pro/runtime/miku_sample_t04.physics3.json",
+      "bytes": 33097,
+      "sha256": "88fabbd3d544bda376288a2d7c7bd1d1cd7105419ac7325e7bbac567139c4bfd"
+    },
+    {
+      "path": "motion/miku_01.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_01.motion3.json",
+      "bytes": 5948,
+      "sha256": "a3a096037614ad9e2d6cb0f924be7e2a4082fd79f0afa2b7fcd230afa08bf395"
+    },
+    {
+      "path": "motion/miku_02.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_02.motion3.json",
+      "bytes": 6253,
+      "sha256": "682ff4e4891f46f2b35748e2c2611afde9699717e05c3c15e7e0fd9946fdb185"
+    },
+    {
+      "path": "motion/miku_03.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_03.motion3.json",
+      "bytes": 6476,
+      "sha256": "78c3ffc68303a47947f7bd52b1ac7e5a3f7a0b734c3ea48d76d257a715cb27a8"
+    },
+    {
+      "path": "motion/miku_04.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_04.motion3.json",
+      "bytes": 4308,
+      "sha256": "79a81f227ab4c442fa1608459934a35853f8c4db9b918940ee86a29d11dbef99"
+    },
+    {
+      "path": "motion/miku_05.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_05.motion3.json",
+      "bytes": 7226,
+      "sha256": "c66235acf218098fb8bf43f33ca8c43c4ac2c97df43427304387f37a13bc65bf"
+    },
+    {
+      "path": "motion/miku_06.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_06.motion3.json",
+      "bytes": 5561,
+      "sha256": "35c270e8478c7d3f9f5a1423ab9915e64dc557689732eb5959a863a1cbd2df10"
+    },
+    {
+      "path": "motion/miku_07.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_07.motion3.json",
+      "bytes": 4949,
+      "sha256": "3c1ba6dd6cd29de717291cd718e53eda013c2afcf8ca9d50423af5057aafc430"
+    },
+    {
+      "path": "motion/miku_08.motion3.json",
+      "archivePath": "miku_pro/runtime/motion/miku_08.motion3.json",
+      "bytes": 9246,
+      "sha256": "1273ce7f2f8e8d78f9c1dfff241d57d9f2b13fedb9b186de563875e180cc11dd"
+    },
+    {
+      "path": "ReadMe.upstream.txt",
+      "archivePath": "miku_pro/ReadMe.txt",
+      "bytes": 2532,
+      "sha256": "2ff49edb007cd9fae4acfa050ef0eccfa48ef76c4cc37639a4d03b25fe107906"
+    }
+  ]
+}

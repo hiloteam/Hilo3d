@@ -30,7 +30,8 @@ export {
     getRenderNodeExtension,
     RENDER_NODE_EXTENSION,
     type RenderNodeExtension,
-    type RenderNodeGPUExtension
+    type RenderNodeGPUExtension,
+    type RenderNodeRasterExtension
 } from './RenderNodeExtension';
 export type * from './ScriptableRenderGraph';
 export * from './passes';

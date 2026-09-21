@@ -676,7 +676,8 @@ export class MeshDrawProcessor {
         target: RHIMeshDrawTargetDescriptor,
         materialOverride: Material | null = null,
         sceneTexturePreparation: SceneTexturePreparationState | null = null,
-        materialPass?: MaterialPassRole
+        materialPass?: MaterialPassRole,
+        plannerInstancedFallback = false
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
@@ -686,7 +687,7 @@ export class MeshDrawProcessor {
         if (!geometry || !material) {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
-        if (mesh.useInstanced) {
+        if (mesh.useInstanced && !plannerInstancedFallback) {
             throw new TypeError('Instanced meshes are outside the first mesh-draw slice');
         }
         const fragmentOutputMode = this.fragmentOutputModeFor(target);
@@ -741,7 +742,8 @@ export class MeshDrawProcessor {
             mesh,
             material,
             this.registry.deviceCapabilities,
-            this.#programBindingInfo
+            this.#programBindingInfo,
+            plannerInstancedFallback
         );
         const pipeline = this.pipelines.prepare(
             shader,
@@ -787,13 +789,15 @@ export class MeshDrawProcessor {
             }
             this.#pendingVertexBuffers[slot] = this.buffers.prepareVertexBuffer(
                 stream.source,
-                stream.sources
+                stream.sources,
+                mesh
             );
         }
         const indexBuffer = indices
             ? this.buffers.prepareIndexBuffer(
                   indices,
-                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined
+                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined,
+                  mesh
               )
             : null;
         const elementCount = indices?.count ?? vertexPlan.vertexCount;
@@ -971,13 +975,15 @@ export class MeshDrawProcessor {
             }
             this.#pendingVertexBuffers[slot] = this.buffers.prepareVertexBuffer(
                 stream.source,
-                stream.sources
+                stream.sources,
+                mesh
             );
         }
         const indexBuffer = indices
             ? this.buffers.prepareIndexBuffer(
                   indices,
-                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined
+                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined,
+                  mesh
               )
             : null;
         const elementCount = indices?.count ?? vertexPlan.vertexCount;
@@ -1143,13 +1149,15 @@ export class MeshDrawProcessor {
             }
             this.#pendingVertexBuffers[slot] = this.buffers.prepareVertexBuffer(
                 stream.source,
-                stream.sources
+                stream.sources,
+                owner
             );
         }
         const indexBuffer = indices
             ? this.buffers.prepareIndexBuffer(
                   indices,
-                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined
+                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined,
+                  owner
               )
             : null;
         const elementCount = indices?.count ?? vertexPlan.vertexCount;
@@ -1397,18 +1405,22 @@ export class MeshDrawProcessor {
             }
             this.#pendingVertexBuffers[slot] = this.buffers.prepareVertexBuffer(
                 stream.source,
-                stream.sources
+                stream.sources,
+                owner
             );
         }
         if (instanceStream !== null) {
             this.#pendingVertexBuffers[instanceStream.slot] = this.buffers.prepareVertexBuffer(
-                instanceStream.source
+                instanceStream.source,
+                undefined,
+                owner
             );
         }
         const indexBuffer = indices
             ? this.buffers.prepareIndexBuffer(
                   indices,
-                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined
+                  primitiveRestart ? PRIMITIVE_RESTART_INDEX_BUFFER_OPTIONS : undefined,
+                  owner
               )
             : null;
         const elementCount = indices?.count ?? vertexPlan.vertexCount;
@@ -1532,9 +1544,7 @@ export class MeshDrawProcessor {
         this.releaseMeshShader(mesh);
         released += this.releaseMeshTextures(mesh);
         this.#preparedMeshes.delete(mesh);
-        for (const buffer of this.uniformBlocks.releaseOwnerBuffers(mesh)) {
-            if (this.buffers.detachUniformBuffer(buffer)) released++;
-        }
+        released += this.releaseBufferOwner(mesh);
         return released;
     }
 
@@ -2144,7 +2154,7 @@ export class MeshDrawProcessor {
             if (uniform === null) {
                 throw new Error('Instanced WebGPU shader requires a compiled InstanceBlock');
             }
-            this.buffers.prepareUniformBuffer(uniform);
+            this.buffers.prepareUniformBuffer(uniform, owner);
             scratch.handles[index] = this.buffers.getUniformBufferHandle(uniform);
         }
         return scratch.handles;
@@ -2592,19 +2602,14 @@ export class MeshDrawProcessor {
         const record = this.#instanceRecords.get(owner);
         if (record === undefined) {
             this.instances.detach(owner);
-            return 0;
+            return this.releaseBufferOwner(owner);
         }
         let released = 0;
         if (this.bindGroups.detach(owner)) released++;
         this.#instanceDraws.delete(owner);
         this.#uniformScratch.delete(owner);
         this.#sampledScratch.delete(owner);
-        for (const source of record.instanceSources) {
-            released += this.buffers.detachGeometryData(source);
-        }
-        for (const block of record.instanceBlocks) {
-            if (this.buffers.detachUniformBuffer(block)) released++;
-        }
+        released += this.releaseBufferOwner(owner);
         for (const mesh of record.meshes) {
             const owners = this.#instanceOwnersByMesh.get(mesh);
             owners?.delete(owner);
@@ -2618,7 +2623,7 @@ export class MeshDrawProcessor {
 
     private releaseShadowOwner(owner: object): number {
         const record = this.#shadowRecords.get(owner);
-        if (record === undefined) return 0;
+        if (record === undefined) return this.releaseBufferOwner(owner);
         let released = 0;
         if (this.bindGroups.detach(owner)) released++;
         this.#shadowDraws.delete(owner);
@@ -2631,7 +2636,14 @@ export class MeshDrawProcessor {
         owners?.delete(owner);
         if (owners?.size === 0) this.#shadowOwnersByMesh.delete(record.mesh);
         this.#shadowRecords.delete(owner);
+        released += this.releaseBufferOwner(owner);
         return released;
+    }
+
+    private releaseBufferOwner(owner: object): number {
+        const released = this.buffers.releaseOwner(owner);
+        for (const buffer of released.uniforms) this.uniformBlocks.releaseBuffer(buffer);
+        return released.count;
     }
 
     private assertIdle(): void {

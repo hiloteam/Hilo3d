@@ -3,6 +3,7 @@ import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import OrthographicCamera from '../../../src/camera/OrthographicCamera';
 import Camera from '../../../src/camera/Camera';
 import Mesh from '../../../src/core/Mesh';
+import Node from '../../../src/core/Node';
 import Geometry from '../../../src/geometry/Geometry';
 import Material from '../../../src/material/BasicMaterial';
 import Vector3 from '../../../src/math/Vector3';
@@ -63,6 +64,143 @@ function expectEmpty(plan: Readonly<MeshDrawListPlan>): void {
 }
 
 describe('MeshDrawListPlanner', () => {
+    it('keeps transparent groups atomic while preserving leaf renderOrder and scene ties', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('group-material', 0, true);
+        const sharedGeometry = geometry('group-geometry');
+        const a0 = mesh('a0', sharedMaterial, sharedGeometry);
+        const a1 = mesh('a1', sharedMaterial, sharedGeometry);
+        const b0 = mesh('b0', sharedMaterial, sharedGeometry);
+        const b1 = mesh('b1', sharedMaterial, sharedGeometry);
+        a1.renderOrder = 10;
+        b1.renderOrder = 5;
+        const a = new Node({ sortingGroup: true }).addChild(a1).addChild(a0);
+        const b = new Node({ sortingGroup: true }).addChild(b1).addChild(b0);
+        const before = mesh('before', sharedMaterial, sharedGeometry);
+        before.renderOrder = -1;
+        const after = mesh('after', sharedMaterial, sharedGeometry);
+        after.renderOrder = 20;
+        const sprite = mesh('sprite', sharedMaterial, sharedGeometry);
+        sprite.renderOrder = 100;
+        Reflect.set(sprite, 'isSprite', true);
+        const inputs = [a1, a0, sprite, b1, b0, after, before];
+        expect(planner.build(inputs).transparentMeshes).toEqual([
+            before,
+            a0,
+            a1,
+            sprite,
+            b0,
+            b1,
+            after
+        ]);
+        a.sortingLayer = 1;
+        expect(planner.build(inputs).transparentMeshes).toEqual([
+            before,
+            sprite,
+            b0,
+            b1,
+            after,
+            a0,
+            a1
+        ]);
+        a.sortingLayer = 0;
+        a.sortingGroup = false;
+        b.sortingGroup = false;
+        expect(planner.build(inputs).transparentMeshes).toEqual([
+            before,
+            a0,
+            sprite,
+            b0,
+            b1,
+            a1,
+            after
+        ]);
+        a.sortingGroup = b.sortingGroup = true;
+        expect(planner.build(inputs, null, false).transparentMeshes).toEqual(inputs);
+    });
+
+    it('sorts nested groups by group roots and rebuilds paths after reparenting', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('nested-material', 0, true);
+        const sharedGeometry = geometry('nested-geometry');
+        const outerLeaf = mesh('outer', sharedMaterial, sharedGeometry);
+        const inner0 = mesh('inner0', sharedMaterial, sharedGeometry);
+        const inner1 = mesh('inner1', sharedMaterial, sharedGeometry);
+        inner1.renderOrder = 100;
+        inner0.sortingLayer = -100;
+        const outside = mesh('outside', sharedMaterial, sharedGeometry);
+        outside.renderOrder = -100;
+        const inner = new Node({ sortingGroup: true, zIndex: -1 })
+            .addChild(inner1)
+            .addChild(inner0);
+        const outer = new Node({ sortingGroup: true }).addChild(outerLeaf).addChild(inner);
+        const other = new Node({ sortingGroup: true }).addChild(outside);
+        expect(planner.build([outerLeaf, inner1, inner0, outside]).transparentMeshes).toEqual([
+            inner0,
+            inner1,
+            outerLeaf,
+            outside
+        ]);
+        other.addChild(inner);
+        expect(planner.build([outerLeaf, outside, inner1, inner0]).transparentMeshes).toEqual([
+            outerLeaf,
+            inner0,
+            inner1,
+            outside
+        ]);
+        expect(outer.children).toEqual([outerLeaf]);
+    });
+
+    it('uses group-origin view depth per camera without leaking descendant depths outside', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('camera-group-material', 0, true);
+        const sharedGeometry = geometry('camera-group-geometry');
+        const aMesh = mesh('a', sharedMaterial, sharedGeometry);
+        const bMesh = mesh('b', sharedMaterial, sharedGeometry);
+        aMesh.z = 100;
+        bMesh.z = -100;
+        const a = new Node({ sortingGroup: true, z: -10 }).addChild(aMesh);
+        const b = new Node({ sortingGroup: true, z: -2 }).addChild(bMesh);
+        new Node().addChild(a).addChild(b).updateMatrixWorld(true);
+        const camera = new PerspectiveCamera();
+        camera.updateViewProjectionMatrix();
+        expect(planner.build([bMesh, aMesh], null, true, camera).transparentMeshes).toEqual([
+            aMesh,
+            bMesh
+        ]);
+        camera.setPosition(0, 0, -20).lookAt(new Vector3());
+        camera.updateViewProjectionMatrix();
+        expect(planner.build([bMesh, aMesh], null, true, camera).transparentMeshes).toEqual([
+            bMesh,
+            aMesh
+        ]);
+    });
+
+    it('keeps adjacent instancing inside group boundaries and leaves opaque draws unchanged', () => {
+        const planner = new MeshDrawListPlanner();
+        const sharedMaterial = material('batch-group-material', 0, true);
+        const sharedGeometry = geometry('batch-group-geometry');
+        const meshes = Array.from({ length: 4 }, (_value, index) =>
+            mesh(`group-${String(index)}`, sharedMaterial, sharedGeometry, true)
+        );
+        const a = new Node({ sortingGroup: true });
+        const b = new Node({ sortingGroup: true });
+        for (const [index, item] of meshes.entries()) (index < 2 ? a : b).addChild(item);
+        const grouped = planner.build(meshes);
+        expect(grouped.instancedBatches.map(batch => [...batch.meshes])).toEqual([
+            meshes.slice(0, 2),
+            meshes.slice(2)
+        ]);
+        a.sortingGroup = b.sortingGroup = false;
+        expect(planner.build(meshes).instancedBatches.map(batch => [...batch.meshes])).toEqual([
+            meshes
+        ]);
+        const opaque = material('opaque-group-material');
+        const ungrouped = planner.build(meshes, opaque).opaqueItems.slice();
+        a.sortingGroup = b.sortingGroup = true;
+        expect(planner.build(meshes, opaque).opaqueItems).toEqual(ungrouped);
+    });
+
     it('classifies direct and explicitly instanced meshes and sorts every queue', () => {
         const planner = new MeshDrawListPlanner();
         const opaqueEarly = mesh('mesh-opaque-early', material('mat-early', -2), geometry('g-1'));

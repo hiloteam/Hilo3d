@@ -23,6 +23,36 @@ afterEach(() => {
 });
 
 describe('Stage', () => {
+    it('destroys addon overrides and descendants before the renderer even when one override fails', async () => {
+        const stage = await Stage.create({ backend: 'webgl2', width: 8, height: 8 });
+        const order: string[] = [];
+        class AddonNode extends Hilo3d.Node {
+            override destroy(renderer?: Hilo3d.Renderer, textures = false): this {
+                expect(renderer).toBe(stage.renderer);
+                expect(renderer?.isReady).toBe(true);
+                order.push(this.name);
+                if (this.name === 'broken') throw new Error('addon destroy failed');
+                return super.destroy(renderer, textures);
+            }
+        }
+        const broken = new AddonNode({ name: 'broken' });
+        broken.addChild(new AddonNode({ name: 'nested' }));
+        stage.addChild(broken).addChild(new AddonNode({ name: 'sibling' }));
+        const originalDestroy = stage.renderer.destroy.bind(stage.renderer);
+        const destroyRenderer = vi.spyOn(stage.renderer, 'destroy').mockImplementation(() => {
+            order.push('renderer');
+            originalDestroy();
+        });
+        expect(() => stage.destroy()).toThrow(/Stage destruction failed/u);
+        expect(order).toEqual(['broken', 'nested', 'sibling', 'renderer']);
+        expect(stage.children).toHaveLength(0);
+        expect(broken.children).toHaveLength(0);
+        expect(stage.renderer.isReady).toBe(false);
+        stage.destroy();
+        expect(destroyRenderer).toHaveBeenCalledOnce();
+        expect(order).toHaveLength(4);
+    });
+
     it('creates only through the asynchronous factory', async () => {
         expect(() => {
             Reflect.construct(Stage, []);

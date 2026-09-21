@@ -121,3 +121,20 @@ For changes, run typecheck/lint, affected renderer tests, architecture and RHI c
 WebGL2/WebGPU browser lanes. Shader changes require actual compilation/translation/pipeline
 coverage. Public API changes additionally require TypeDoc, changelog, API report, type consumption
 and package checks; exact commands and CI boundaries are in [Engineering](./ENGINEERING.md).
+
+## Explicit ordered mesh lists
+
+`context.createOrderedRendererList({ cullingResults, meshes, overrideMaterial?, materialPass? })`
+snapshots exact mesh membership and sequence. The culling handle supplies shared camera/light
+context; visibility, layer and frustum membership are intentionally the caller's responsibility.
+Draw preparation, shader roles, texture graph dependencies and mesh render hooks remain shared, but
+sorting and planner instancing are disabled for this list. Update detached world matrices before
+recording. This supports hidden mask producers such as the [Live2D addon](./LIVE2D.md).
+
+## Portable scene-node prepasses
+
+Optional `RenderNodeExtension.raster` contributions are discovered by default Forward before the
+transparent pass. They receive the current pipeline/culling context, respect hierarchy visibility
+and camera layers, and request split rendering only while active. Nested asynchronous record results
+are rejected. Commit/discard callbacks are deduplicated per application frame across views. This
+backend-neutral hook is separate from storage/compute-specific GPU scene contributions.

@@ -1,0 +1,362 @@
+{
+  "schemaVersion": 1,
+  "sdkRelease": "Cubism SDK for Web 5-r.5",
+  "core": {
+    "acquisition": "Original Core executable and notices copied byte-for-byte from a pre-existing user-owned SDK installation associated with Web 5-r.5.",
+    "executableOriginalRelativePath": "public/vendor/live2dcubismcore.min.js",
+    "noticesOriginalRelativePath": "vendor/Core",
+    "officialArchiveUrl": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+    "officialArchiveVerification": "Not independently re-verified: the SDK archive endpoint returned HTTP 403. No alternative access to that archive was attempted. The checked-in executable is pinned only by the recorded SHA-256 of the authorized local copy.",
+    "license": "Live2D Proprietary Software License Agreement",
+    "licenseUrl": "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html"
+  },
+  "framework": {
+    "repository": "https://github.com/Live2D/CubismWebFramework",
+    "tag": "5-r.5",
+    "commit": "198a3769c26ca3d7b600e932590433badd392edd",
+    "acquisition": "Cloned the official GitHub 5-r.5 tag and copied its complete src directory, LICENSE.md, README.md and tsconfig.json without modification.",
+    "license": "Live2D Open Software License Agreement",
+    "licenseUrl": "https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html"
+  },
+  "sdkNotice": {
+    "path": "cubism-5-r.5/SDK-LICENSE.md",
+    "acquisition": "Original SDK notice from the same authorized local SDK installation; preserved byte-for-byte."
+  },
+  "files": [
+    {
+      "path": "cubism-5-r.5/Core/LICENSE.md",
+      "bytes": 520,
+      "sha256": "b81e37048010ef1d336106151201a0323c3309cae44aecdedf57831fe88fa991"
+    },
+    {
+      "path": "cubism-5-r.5/Core/RedistributableFiles.txt",
+      "bytes": 205,
+      "sha256": "d16c123688299e1e69a7f5ebc01b3bd75a8d408c024002a7d35b2aae94003f8c"
+    },
+    {
+      "path": "cubism-5-r.5/Core/live2dcubismcore.d.ts",
+      "bytes": 15015,
+      "sha256": "25fcaa2a6dfe311db95ad1795a2a7e6286d9192719df4e2c3e634915dc050334"
+    },
+    {
+      "path": "cubism-5-r.5/Core/live2dcubismcore.min.js",
+      "bytes": 228042,
+      "sha256": "8741f739779b5d5210872bd3d7d99f0f1e56e6c87409e7d26d6bb4b80aa1ef47"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/LICENSE.md",
+      "bytes": 2234,
+      "sha256": "7ed849bff1e6499aa7cd882e47d246ddbbe06817c1e84cb974df949488302614"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/README.md",
+      "bytes": 5036,
+      "sha256": "aa64939625fe8c0cfd77e95991c9e2ddbbddaf5e043c4851a2d9ac604be8fadd"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/cubismdefaultparameterid.ts",
+      "bytes": 5783,
+      "sha256": "f92e20db8145f06b73728fb6ba4215bbaed723e26959471f2e291962142c95b5"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/cubismframeworkconfig.ts",
+      "bytes": 1111,
+      "sha256": "92399ad1a572ec6048ea351ce4363b357f6f86471f9edb4af84bb7e16790828b"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/cubismmodelsettingjson.ts",
+      "bytes": 24382,
+      "sha256": "58ff868afbdab05f905782be3ae411c787ad0c9c3e79ad254fc596d08bbe0b6e"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/effect/cubismbreath.ts",
+      "bytes": 3765,
+      "sha256": "06da2c2c10e91782fb99833c94842e6267dc996ddb35a1bfb99765f053c7729a"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/effect/cubismeyeblink.ts",
+      "bytes": 7222,
+      "sha256": "a1c26cfcf2656424f370e17d4b4cb0f9642db2dd452af8f562c67ced26ba64de"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/effect/cubismlook.ts",
+      "bytes": 3657,
+      "sha256": "3c7f7dbea7b34c524bcf36fb5a15f9264d4a8a7228f5b124fdaddb2c82193f21"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/effect/cubismpose.ts",
+      "bytes": 11698,
+      "sha256": "8eba3f692c8cd267ca75664d035565c6f61ac38201c56e7e2aa04389b964f1c2"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/icubismallcator.ts",
+      "bytes": 1932,
+      "sha256": "d0c3a178e6c6b86697117eac21cd7faa422bf180b4cc84adecfc3491c573055f"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/icubismmodelsetting.ts",
+      "bytes": 6652,
+      "sha256": "87543afb93a5938211c08c2e5ae0116d0fd2bd813f92f3b5f48cf38105b1cf39"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/id/cubismid.ts",
+      "bytes": 2281,
+      "sha256": "ff10538238bcda0a97756bf3e6017409acfdb901657174e7f6a027b965d34ee0"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/id/cubismidmanager.ts",
+      "bytes": 2413,
+      "sha256": "1ae3c3b2de5462d1bf6a98b5878eb7228d228d67adc7426bf549702fe6a5551e"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/live2dcubismframework.ts",
+      "bytes": 8900,
+      "sha256": "dc20093ded82ed6704d94a443fa28961ba23aefb64fb76b9be35c8de869bd934"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismmath.ts",
+      "bytes": 9603,
+      "sha256": "2e6816bfcecc459bb1c8bd7fcaa03f971b2545c90a9c75a7236cca9a0c282961"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismmatrix44.ts",
+      "bytes": 8038,
+      "sha256": "aa81745acf70315c536d0bada6cc422822765b2f44f8088a2ccea6cb6f9edc0d"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismmodelmatrix.ts",
+      "bytes": 4715,
+      "sha256": "31e8787385c4c26d78d2f627f373d7a446db1a72d38f247a442a9bc9de42ee0f"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismtargetpoint.ts",
+      "bytes": 5764,
+      "sha256": "b09812890e639d89f96e0b1774a4ccdc076d1174fcb3daa95b0acd8102285999"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismvector2.ts",
+      "bytes": 4153,
+      "sha256": "369b0c0b842432f7156827bf77047276fb23b10301d9f5d40762497b9f75372d"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/math/cubismviewmatrix.ts",
+      "bytes": 8345,
+      "sha256": "3276768bd6efbe287a3384eb1960f6c1901f10137f38396096a9e8e84b9a65f5"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismmoc.ts",
+      "bytes": 3675,
+      "sha256": "99a80e2102af7b3ba10b15d684f965930707018b6b239a0ce6d14e3a867f266b"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismmodel.ts",
+      "bytes": 62659,
+      "sha256": "fa4c21a270b3d18ae9f550cebf181d54504cf4b4198f1eeba6d0f3c55d7055a5"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismmodelmultiplyandscreencolor.ts",
+      "bytes": 31866,
+      "sha256": "478b4fb805e6d4b5c450a58f29eaebcf75d176f87421797e218b0e3542a3b4b3"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismmodeluserdata.ts",
+      "bytes": 4248,
+      "sha256": "d4aaf59e04f834de345e0f9f1cced1062c28c9b1203bf09da17a0a8c2dddb6c4"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismmodeluserdatajson.ts",
+      "bytes": 3035,
+      "sha256": "4c8f546a393ac47bf8245dd8f7ae65e50eb61518578c33c3ad28ef23b2ffa4c1"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/model/cubismusermodel.ts",
+      "bytes": 15104,
+      "sha256": "41707e75f0ab36808a3ba42d40a477d0b33e7c7da73cbce5a3de0771bd957a9c"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/acubismmotion.ts",
+      "bytes": 14092,
+      "sha256": "649524b171f1a3ab8588a16dcb707a4f0da848f7fb87ad2b34148e0eea45ee08"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismbreathupdater.ts",
+      "bytes": 1698,
+      "sha256": "57acaadd41e6dac1ca31f69521166edf8366508e3dcf21ce9279687df72080df"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismexpressionmotion.ts",
+      "bytes": 12157,
+      "sha256": "20a75e357391116974a589fe8a9e5da3234cd214a214df94407f29b0152e86c5"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismexpressionmotionmanager.ts",
+      "bytes": 9079,
+      "sha256": "17a12b23cf811cf8c7794b67beef53d47b10070ebd1d05a87becafe4a03fc403"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismexpressionupdater.ts",
+      "bytes": 1989,
+      "sha256": "75fcf716ce50acd81c4d5f3e1179c6557e32fa4b8960d373aa36fe2734ec0c1b"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismeyeblinkupdater.ts",
+      "bytes": 2187,
+      "sha256": "a7e90b32cc8d47600ee0b2da44106efe4ea2a915556ccb28d6aa7f3ff93a5dcc"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismlipsyncupdater.ts",
+      "bytes": 3003,
+      "sha256": "390bc6da44e9d2b38704b990cbbe31442b562eeb2b7d4bc1a17a1a94034958a3"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismlookupdater.ts",
+      "bytes": 2155,
+      "sha256": "a8fc4734ae53fa0f1b65b38a5358e6e7a456429a2743fc20f5fad637659bae18"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotion.ts",
+      "bytes": 37913,
+      "sha256": "eb3e8862f60feedd12bc47300d8486b044c39a8af21e66f12613ce941c8fa5f6"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotioninternal.ts",
+      "bytes": 4928,
+      "sha256": "ede0f46ebdd0f4e0c25f5ba1825f6bccf658a463e08c0bc72a8af26230865805"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotionjson.ts",
+      "bytes": 12496,
+      "sha256": "92eb9dd6fbe6086e02952fec021cf0daa68a3fc335ae88dd19ee281591b34c64"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotionmanager.ts",
+      "bytes": 3821,
+      "sha256": "7e88b825f99e4cbc1fd13ae07a7f5063a20ef9d96bf86855e426fb221813e72d"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotionqueueentry.ts",
+      "bytes": 7248,
+      "sha256": "4619da4891829c7f8f5741a4b7f711a6cc2beb9fa06075a2b8caefec20b2ea19"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismmotionqueuemanager.ts",
+      "bytes": 10707,
+      "sha256": "1aa0f6a39ffe9d83e0e06217a9cf6ebdf3a6e593242ff84d08684bbd2f4a01bb"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismphysicsupdater.ts",
+      "bytes": 1719,
+      "sha256": "003fda6b8a6537b75fff8f0cd4894d9f7f9ee0a1f668197d91d497adab3dbdd9"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismposeupdater.ts",
+      "bytes": 1644,
+      "sha256": "58658839ea9aab83da69b91d6e54b9825ddb80cca47ee5c1cef615715e58c28e"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/cubismupdatescheduler.ts",
+      "bytes": 5149,
+      "sha256": "ab59717783d79bf3675e55cf2037683cced648bca4a47dcb438c78184c9b1b5e"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/icubismupdater.ts",
+      "bytes": 3688,
+      "sha256": "ba937ffd59bc52f4de426aadac4269630e0267d36b5ba9acab788993f586feea"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/motion/iparameterprovider.ts",
+      "bytes": 1156,
+      "sha256": "c0b8c01f855dcf4e25a08ad19afb5136d8f92f3d6536ba125194c649df140b0b"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/physics/cubismphysics.ts",
+      "bytes": 44141,
+      "sha256": "41457e7486d380825f30936e34951c0de5362769e8229b99c28702a5a398d734"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/physics/cubismphysicsinternal.ts",
+      "bytes": 8981,
+      "sha256": "db6ee02fe53f01f9575149d33ae44fc69876b32225da921b44bfc8a6d294082b"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/physics/cubismphysicsjson.ts",
+      "bytes": 17868,
+      "sha256": "cc52bf67990131e322626729a044640b016e57b42dde80c0dfd4054af815d9b2"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismclippingmanager.ts",
+      "bytes": 38519,
+      "sha256": "b38ca529a5bedac4eaa0d0ff04ae4ccaaaf3173d04250dc01af4e88e72730ec9"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismoffscreenmanager.ts",
+      "bytes": 18723,
+      "sha256": "06c8d8c7c7fcdafd126f5f01881a023f8a4158c6222cf54e4672bd35a0609ebc"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismoffscreenrendertarget_webgl.ts",
+      "bytes": 7489,
+      "sha256": "04ae8ccfa59c8dc1f43528ec0ceccd06b4180e582c802d14e38a1eaf14c0694c"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismrenderer.ts",
+      "bytes": 13697,
+      "sha256": "42f6fa6343effdb9085cd1cd49b62f06f6e172483583c3cf325e0859aee8f9c8"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismrenderer_webgl.ts",
+      "bytes": 62458,
+      "sha256": "f054aa514bf1ee4d162698de62bc3565d8e18ef348dd9234d6dab1e78bc0e678"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismrendertarget_webgl.ts",
+      "bytes": 8511,
+      "sha256": "8948ac1fb66fd32a289d9e07929ef2d8e41c6deb103948e54faa6f45ebad8f21"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/rendering/cubismshader_webgl.ts",
+      "bytes": 70603,
+      "sha256": "daf9bfcbed82f4763e401fbc1ccf740e1da0a99943dbec6afb3cdfb6c3d94a32"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/type/csmrectf.ts",
+      "bytes": 2019,
+      "sha256": "c199fdc276d2d66ed3abd140b137a3e127fc52b5735869849d450eacd5f416d8"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/utils/cubismarrayutils.ts",
+      "bytes": 1073,
+      "sha256": "0f63d3a9e6f25a097905503ccedfe21130b6b857238569341628f158d44afa60"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/utils/cubismdebug.ts",
+      "bytes": 5369,
+      "sha256": "0a526141825d6a980d838e95fc6856a4362173674bb6469d8bd40d054e9e7520"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/utils/cubismjson.ts",
+      "bytes": 29319,
+      "sha256": "39d9f1806b7a6909098e1b8e2b7a1af567bbd0d6800b25beeaba4cb857c7b9f0"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/utils/cubismjsonextension.ts",
+      "bytes": 3691,
+      "sha256": "31e7a859c82c05e869651538077bb784737c459f6408a7aa3d460ba2697f3ddd"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/src/utils/cubismstring.ts",
+      "bytes": 3356,
+      "sha256": "746c4da878164ecb6444addf2934e9086897b08f0fb68fb1a5f85132f5f76a7c"
+    },
+    {
+      "path": "cubism-5-r.5/Framework/tsconfig.json",
+      "bytes": 505,
+      "sha256": "69355fbc0d9ff9878a6b4ac2b27d0c12be72ccf1dabf9620fd5f565af0d59132"
+    },
+    {
+      "path": "cubism-5-r.5/SDK-LICENSE.md",
+      "bytes": 3042,
+      "sha256": "787a7d1454240865420b96ea9a20ab5e1a5ec3c1abced2e308288c2de8aac991"
+    }
+  ]
+}

@@ -393,6 +393,76 @@ async function readTexturePixels(
 }
 
 describe('RHI WebGL2 immediate backend', () => {
+    for (const boundary of ['begin-frame', 'end-frame', 'abort-frame'] as const) {
+        it(`detects native context loss at ${boundary} before the DOM event and preserves restoration`, async () => {
+            const canvas = document.createElement('canvas');
+            const native = canvas.getContext('webgl2');
+            if (native === null) throw new Error('Context-loss fixture requires WebGL2');
+            const extension = native.getExtension('WEBGL_lose_context');
+            if (extension === null) throw new Error('WEBGL_lose_context is unavailable');
+            const device = createWebGL2RHIDevice(native);
+            const buffer = device.createBuffer({ size: 4, usage: RHIBufferUsage.COPY_SRC });
+            const generation = device.generation;
+            let nativeEventCount = 0;
+            const nativeLost = new Promise<Event>(resolve => {
+                canvas.addEventListener(
+                    'webglcontextlost',
+                    event => {
+                        nativeEventCount++;
+                        resolve(event);
+                    },
+                    { once: true }
+                );
+            });
+            const frame = boundary === 'begin-frame' ? null : device.graphicsQueue.beginFrame();
+            extension.loseContext();
+            expect(native.isContextLost()).toBe(true);
+            expect(nativeEventCount).toBe(0);
+            if (boundary === 'begin-frame') {
+                expect(() => device.graphicsQueue.beginFrame()).toThrow(/context is lost/u);
+            } else if (frame !== null && boundary === 'end-frame') {
+                expect(() => device.graphicsQueue.endFrame(frame)).toThrow(/context is lost/u);
+            } else if (frame !== null) {
+                device.graphicsQueue.abortFrame(frame);
+            }
+            await expect(device.lost).resolves.toMatchObject({
+                reason: 'context-lost',
+                generation
+            });
+            expect(nativeEventCount).toBe(0);
+            expect(device.generation).toBe(generation + 1);
+            expect(device.graphicsQueue.state).toBe('lost');
+            expect(buffer.destroyed).toBe(true);
+            if (frame !== null) expect(frame.state).toBe('aborted');
+
+            const event = await nativeLost;
+            expect(event.defaultPrevented).toBe(true);
+            expect(device.generation).toBe(generation + 1);
+            expect(device.graphicsQueue.state).toBe('lost');
+            const restored = new Promise<void>(resolve => {
+                canvas.addEventListener(
+                    'webglcontextrestored',
+                    () => {
+                        resolve();
+                    },
+                    { once: true }
+                );
+            });
+            // Restoration is allowed after the context-lost DOM dispatch has completed.
+            await new Promise<void>(resolve => {
+                globalThis.setTimeout(resolve, 0);
+            });
+            extension.restoreContext();
+            await restored;
+            expect(native.isContextLost()).toBe(false);
+            device.destroy();
+            const replacement = createWebGL2RHIDevice(native);
+            const replacementFrame = replacement.graphicsQueue.beginFrame();
+            replacement.graphicsQueue.endFrame(replacementFrame);
+            replacement.destroy();
+        });
+    }
+
     it('deduplicates scalar numeric state and uniform ranges across reset boundaries', () => {
         const canvas = document.createElement('canvas');
         const native = canvas.getContext('webgl2');
@@ -1528,6 +1598,79 @@ describe('RHI WebGL2 immediate backend', () => {
             0, 0, 0, 0, 0, 0, 255, 255, 255, 0, 0, 255, 0, 0, 0, 0
         ]);
         device.destroy();
+    });
+
+    it('preserves ImageBitmap byte colors and alpha while normalizing rows, crops and array/cube slices', async () => {
+        const canvas = document.createElement('canvas');
+        const native = canvas.getContext('webgl2');
+        if (native === null) throw new Error('Bitmap parity requires WebGL2');
+        const device = createWebGL2RHIDevice(native);
+        const sourceRows = [
+            [255, 0, 0, 255],
+            [17, 83, 149, 1],
+            [123, 45, 201, 0],
+            [240, 128, 64, 128]
+        ];
+        const source = await createImageBitmap(
+            new ImageData(new Uint8ClampedArray(sourceRows.flat()), 1, 4),
+            {
+                premultiplyAlpha: 'none',
+                imageOrientation: 'none',
+                colorSpaceConversion: 'none'
+            }
+        );
+        try {
+            for (const viewDimension of ['2d', '2d-array', 'cube'] as const) {
+                for (const flipY of [false, true]) {
+                    const texture = device.createTexture({
+                        size: {
+                            width: 4,
+                            height: 4,
+                            depthOrArrayLayers:
+                                viewDimension === 'cube' ? 6 : viewDimension === '2d-array' ? 2 : 1
+                        },
+                        viewDimension,
+                        format: 'rgba8unorm',
+                        usage:
+                            RHITextureUsage.COPY_DST |
+                            RHITextureUsage.COPY_SRC |
+                            RHITextureUsage.RENDER_ATTACHMENT
+                    });
+                    const layer = viewDimension === '2d' ? 0 : 1;
+                    const frame = device.graphicsQueue.beginFrame();
+                    frame.copyExternalImageToTexture(
+                        { source, flipY },
+                        { texture, origin: { x: 1, z: layer }, premultipliedAlpha: false },
+                        { width: 1, height: 4 }
+                    );
+                    await device.graphicsQueue.endFrame(frame).done;
+                    const pixels = await readTexturePixels(device, texture, layer);
+                    for (let row = 0; row < 4; row++) {
+                        expect(pixels.slice((row * 4 + 1) * 4, (row * 4 + 2) * 4)).toEqual(
+                            sourceRows[flipY ? 3 - row : row]
+                        );
+                    }
+                    const crop = device.graphicsQueue.beginFrame();
+                    crop.copyExternalImageToTexture(
+                        { source, flipY, origin: { y: 1 } },
+                        { texture, origin: { x: 2, y: 1, z: layer } },
+                        { width: 1, height: 2 }
+                    );
+                    await device.graphicsQueue.endFrame(crop).done;
+                    const cropped = await readTexturePixels(device, texture, layer);
+                    expect(cropped.slice((1 * 4 + 2) * 4, (1 * 4 + 3) * 4)).toEqual(
+                        sourceRows[flipY ? 2 : 1]
+                    );
+                    expect(cropped.slice((2 * 4 + 2) * 4, (2 * 4 + 3) * 4)).toEqual(
+                        sourceRows[flipY ? 1 : 2]
+                    );
+                    texture.destroy();
+                }
+            }
+        } finally {
+            source.close();
+            device.destroy();
+        }
     });
 
     it('converts top-left origins on both sides of texture-to-texture blits', async () => {

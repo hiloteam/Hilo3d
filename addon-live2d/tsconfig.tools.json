@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": true,
+    "inlineSources": true,
+    "rootDir": "tools",
+    "outDir": "dist/tools",
+    "tsBuildInfoFile": ".cache/tools.tsbuildinfo",
+    "types": ["node"],
+    "lib": ["ES2022", "ESNext.Disposable", "DOM", "DOM.Iterable"]
+  },
+  "include": ["tools/**/*.ts"]
+}

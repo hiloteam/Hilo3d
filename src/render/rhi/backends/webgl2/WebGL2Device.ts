@@ -202,16 +202,36 @@ export class WebGL2RHIDevice implements RHIDevice {
 
     assertNoNativeError(operation: string): void {
         const error = this.gl.getError();
+        if (error === this.gl.CONTEXT_LOST_WEBGL) this.markContextLost();
+        this.assertNativeContextAvailable(operation);
         if (error !== this.gl.NO_ERROR) {
             this.discardNativeErrors();
             throw new Error(`${operation} failed with WebGL error 0x${error.toString(16)}`);
         }
     }
 
+    /** @internal Detect native loss before the browser dispatches its asynchronous DOM event. */
+    assertNativeContextAvailable(operation: string): void {
+        if (!this.destroyed && !this.#lostState && this.gl.isContextLost()) this.markContextLost();
+        if (this.#lostState) {
+            throw new RHIValidationError('invalid-state', 'WebGL2 context is lost', operation);
+        }
+    }
+
     /** @internal Clear sticky native errors on an aborted execution path. */
     discardNativeErrors(): void {
-        while (this.gl.getError() !== this.gl.NO_ERROR) {
+        if (!this.destroyed && this.gl.isContextLost()) {
+            this.markContextLost();
+            return;
+        }
+        let error = this.gl.getError();
+        while (error !== this.gl.NO_ERROR) {
+            if (error === this.gl.CONTEXT_LOST_WEBGL) {
+                this.markContextLost();
+                return;
+            }
             // WebGL errors are a bounded sticky queue; drain it before the next frame.
+            error = this.gl.getError();
         }
     }
 
@@ -479,8 +499,13 @@ export class WebGL2RHIDevice implements RHIDevice {
     }
 
     private readonly handleContextLost = (event: Event): void => {
-        if (this.destroyed || this.#lostState) return;
+        if (this.destroyed) return;
         if ('preventDefault' in event) event.preventDefault();
+        this.markContextLost();
+    };
+
+    private markContextLost(): void {
+        if (this.destroyed || this.#lostState) return;
         const lostGeneration = this.generationValue;
         this.#lostState = true;
         this.generationValue++;
@@ -495,7 +520,7 @@ export class WebGL2RHIDevice implements RHIDevice {
             message: 'WebGL2 context lost',
             generation: lostGeneration
         });
-    };
+    }
 }
 
 export function createWebGL2RHIDevice(

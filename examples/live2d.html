@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta
+            name="description"
+            content="The official Hatsune Miku sample, animated and rendered by Hilo3D."
+        />
+        <title>Hatsune Miku · Hilo3D Live2D</title>
+        <link rel="stylesheet" href="./live2d.css" />
+    </head>
+    <body>
+        <main class="atelier">
+            <header class="masthead">
+                <a class="brand" href="./list.html"
+                    >h.<span>HILO3D<span class="brand-sub">CHARACTER STUDIO</span></span></a
+                >
+                <div class="backend-switch" aria-label="Rendering backend">
+                    <a data-backend-link="webgl2" href="?backend=webgl2">WebGL2</a>
+                    <a data-backend-link="webgpu" href="?backend=webgpu">WebGPU</a>
+                </div>
+            </header>
+            <div class="workspace">
+                <section class="character-panel" aria-label="Hatsune Miku character stage">
+                    <div class="character-heading">
+                        <span class="eyebrow">LIVE2D STUDY / 01</span>
+                        <h1>
+                            <span id="model-title">Meet Hatsune Miku</span
+                            ><span>让目光与动作自然相遇。</span>
+                        </h1>
+                    </div>
+                    <div class="character-stage" id="character-stage">
+                        <div class="stage-ring" aria-hidden="true"></div>
+                        <span class="stage-letter" id="stage-letter" aria-hidden="true">M</span>
+                        <canvas
+                            id="live2d-canvas"
+                            aria-label="Hatsune Miku, an interactive Live2D character"
+                        ></canvas>
+                        <div id="loading" role="status">
+                            <span class="loader-dot"></span
+                            ><span id="loading-text">Bringing Hatsune Miku to life…</span>
+                        </div>
+                        <span class="stage-caption" aria-hidden="true"
+                            >A little movement.<br />A little personality.</span
+                        >
+                    </div>
+                    <footer class="stage-footer">
+                        <span class="live-indicator"
+                            ><i></i><span id="live-state">LOADING</span></span
+                        ><span id="model-info">Official Live2D sample</span>
+                    </footer>
+                </section>
+                <aside class="controls" aria-label="Character controls">
+                    <span class="eyebrow">THE ANIMATION DESK</span>
+                    <h2 id="model-intro">A moment with Hatsune Miku.</h2>
+                    <p class="intro">
+                        Move your pointer, try a gesture, or bring her a little closer.
+                    </p>
+                    <section class="control-section">
+                        <div class="section-label">
+                            <h3>Motion</h3>
+                            <output id="motion-label">Idle</output>
+                        </div>
+                        <select id="motion-group" aria-label="Animation clip" disabled></select>
+                        <div class="motion-buttons">
+                            <button id="motion-tap" type="button" disabled>
+                                <span>✧</span>Play motion
+                            </button>
+                        </div>
+                    </section>
+                    <section class="control-section view-controls">
+                        <div class="section-label">
+                            <h3>Framing</h3>
+                            <output id="zoom-value">100%</output>
+                        </div>
+                        <div class="view-buttons">
+                            <button id="view-full" type="button" aria-pressed="true" disabled>
+                                Full body</button
+                            ><button id="view-head" type="button" aria-pressed="false" disabled>
+                                Head close-up
+                            </button>
+                        </div>
+                        <input
+                            id="zoom"
+                            type="range"
+                            min="1"
+                            max="2.5"
+                            value="1"
+                            step="0.05"
+                            aria-label="Camera zoom"
+                            disabled
+                        />
+                    </section>
+                    <section class="control-section toggles">
+                        <label
+                            ><span
+                                ><strong>Follow the pointer</strong
+                                ><small>Eyes lead, head and body follow</small></span
+                            ><input id="follow" type="checkbox" checked disabled
+                        /></label>
+                        <label
+                            ><span
+                                ><strong>Natural physics</strong
+                                ><small>Hair and clothing follow through</small></span
+                            ><input id="physics" type="checkbox" checked disabled /></label
+                        ><label
+                            ><span
+                                ><strong>Pause animation</strong
+                                ><small>Keep your pose, explore the details</small></span
+                            ><input id="pause" type="checkbox" disabled
+                        /></label>
+                    </section>
+                    <button id="reset" class="reset-button" type="button" disabled>
+                        ↺ &nbsp; Return to natural
+                    </button>
+                    <p class="credit">
+                        <span id="model-credit">初音ミク © Crypton Future Media, INC.</span
+                        ><br /><span>Live2D Cubism © Live2D Inc.</span><br /><a
+                            href="https://piapro.jp/license/pcl"
+                            target="_blank"
+                            rel="noreferrer"
+                            >Piapro Character License ↗</a
+                        ><span> · </span
+                        ><a
+                            id="model-license"
+                            href="./models/live2d/Miku/README.md"
+                            target="_blank"
+                            rel="noreferrer"
+                            >Model source &amp; licenses ↗</a
+                        ><span> · </span
+                        ><a
+                            href="./assets/live2d/runtime/licenses/Framework.LICENSE.md"
+                            target="_blank"
+                            rel="noreferrer"
+                            >SDK license ↗</a
+                        >
+                    </p>
+                </aside>
+            </div>
+            <footer class="page-footer">
+                <span>HILO3D / LIVE2D</span><span>One scene. Two rendering backends.</span>
+            </footer>
+        </main>
+        <script type="module" src="./live2d.ts"></script>
+    </body>
+</html>

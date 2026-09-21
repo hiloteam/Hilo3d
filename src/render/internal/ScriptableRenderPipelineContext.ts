@@ -40,6 +40,7 @@ import type { RendererStorageBuffer, StorageBuffer } from '../StorageBuffer';
 import type {
     CullingOptions,
     CullingResultsHandle,
+    OrderedRendererListDescriptor,
     RendererListDescriptor,
     RendererListHandle
 } from '../pipeline/RendererList';
@@ -91,11 +92,7 @@ import type {
     ScriptableRenderGraph,
     ScriptableRenderPass
 } from '../pipeline/ScriptableRenderGraph';
-import {
-    isMeshDrawInstanceBatch,
-    MeshDrawListPlanner,
-    type MeshDrawListPlan
-} from '../renderer/MeshDrawListPlanner';
+import { MeshDrawListPlanner, type MeshDrawListPlan } from '../renderer/MeshDrawListPlanner';
 import type {
     SceneTexturePreparationState,
     StorageScenePreparationState
@@ -143,6 +140,7 @@ import { positiveInteger, graphBufferUsage } from './ScriptableRenderPipelineVal
 import { ScriptableFullscreenDraw, ScriptablePassSlot } from './ScriptableRenderPassExecution';
 
 const EMPTY_LIGHTS: readonly Light[] = Object.freeze([]);
+const EMPTY_MESHES: readonly Mesh[] = Object.freeze([]);
 
 interface MutablePipelineOutputState {
     kind: 'surface' | 'render-target';
@@ -332,12 +330,13 @@ class CullingSlot {
 class RendererListSlot {
     readonly planner = new MeshDrawListPlanner();
     readonly selectedMeshes: Mesh[] = [];
-    readonly excludedMeshes = new Set<Mesh>();
+    readonly meshIdentities = new Set<Mesh>();
     handle = 0 as RendererListHandle;
     frameIndex = -1;
     culling: CullingSlot | null = null;
     overrideMaterial: Material | null = null;
     materialPass: MaterialPassRole = 'forward';
+    ordered = false;
     plan: Readonly<MeshDrawListPlan> | null = null;
 
     build(
@@ -371,9 +370,10 @@ class RendererListSlot {
         this.handle = handle;
         this.frameIndex = frameIndex;
         this.culling = culling;
+        this.ordered = false;
         this.overrideMaterial = descriptor.overrideMaterial ?? null;
         this.materialPass = descriptor.materialPass ?? 'forward';
-        this.excludedMeshes.clear();
+        this.meshIdentities.clear();
         const excludedMeshes: unknown = descriptor.excludeMeshes;
         if (excludedMeshes !== undefined) {
             if (!Array.isArray(excludedMeshes)) {
@@ -386,13 +386,13 @@ class RendererListSlot {
                         `Renderer-list excludeMeshes[${String(index)}] must be a Mesh`
                     );
                 }
-                this.excludedMeshes.add(mesh);
+                this.meshIdentities.add(mesh);
             }
         }
         const selected = this.selectedMeshes;
         selected.length = 0;
         for (const mesh of culling.visibleMeshes) {
-            if (this.excludedMeshes.has(mesh)) continue;
+            if (this.meshIdentities.has(mesh)) continue;
             const material = this.overrideMaterial ?? mesh.material;
             if (material === null) continue;
             if (descriptor.castShadowsOnly === true && !mesh.castShadows) continue;
@@ -408,14 +408,58 @@ class RendererListSlot {
         );
     }
 
+    buildOrdered(
+        handle: RendererListHandle,
+        frameIndex: number,
+        culling: CullingSlot,
+        descriptor: Readonly<OrderedRendererListDescriptor>
+    ): void {
+        const meshes: unknown = descriptor.meshes;
+        if (!Array.isArray(meshes)) {
+            throw new TypeError('Ordered renderer-list meshes must be an array');
+        }
+        this.handle = handle;
+        this.frameIndex = frameIndex;
+        this.culling = culling;
+        this.overrideMaterial = descriptor.overrideMaterial ?? null;
+        this.materialPass = descriptor.materialPass ?? 'forward';
+        this.ordered = true;
+        this.plan = null;
+        this.planner.reset();
+        this.selectedMeshes.length = 0;
+        this.meshIdentities.clear();
+        try {
+            for (let index = 0; index < meshes.length; index += 1) {
+                const mesh: unknown = meshes[index];
+                if (!(mesh instanceof Mesh)) {
+                    throw new TypeError(
+                        `Ordered renderer-list meshes[${String(index)}] must be a Mesh`
+                    );
+                }
+                if (mesh.isDestroyed) throw new Error(`Mesh ${mesh.id} is destroyed`);
+                if (mesh.geometry === null || (this.overrideMaterial ?? mesh.material) === null) {
+                    throw new Error(`Mesh ${mesh.id} requires geometry and material`);
+                }
+                if (this.meshIdentities.has(mesh)) {
+                    throw new TypeError(`Mesh ${mesh.id} appears more than once in a draw list`);
+                }
+                this.meshIdentities.add(mesh);
+                this.selectedMeshes.push(mesh);
+            }
+        } finally {
+            this.meshIdentities.clear();
+        }
+    }
+
     releaseFrameReferences(): void {
         this.planner.reset();
         this.selectedMeshes.length = 0;
-        this.excludedMeshes.clear();
+        this.meshIdentities.clear();
         this.frameIndex = -1;
         this.culling = null;
         this.overrideMaterial = null;
         this.materialPass = 'forward';
+        this.ordered = false;
         this.plan = null;
     }
 }
@@ -772,6 +816,13 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.createRendererList(descriptor);
+    }
+
+    createOrderedRendererList(
+        descriptor: Readonly<OrderedRendererListDescriptor>
+    ): RendererListHandle {
+        this.#owner.assertLeaseActive(this.#lease);
+        return this.#owner.createOrderedRendererList(descriptor);
     }
 
     recordShadows(
@@ -1274,6 +1325,22 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             this.#rendererListSlots.push(slot);
         }
         slot.build(handle, this.frameIndex, culling, descriptor);
+        this.#rendererListByHandle.set(handle, slot);
+        return handle;
+    }
+
+    createOrderedRendererList(
+        descriptor: Readonly<OrderedRendererListDescriptor>
+    ): RendererListHandle {
+        this.assertActive();
+        const culling = this.requireCulling(descriptor.cullingResults);
+        const handle = this.allocateHandle() as RendererListHandle;
+        let slot = this.#rendererListSlots[this.#rendererListCursor++];
+        if (slot === undefined) {
+            slot = new RendererListSlot();
+            this.#rendererListSlots.push(slot);
+        }
+        slot.buildOrdered(handle, this.frameIndex, culling, descriptor);
         this.#rendererListByHandle.set(handle, slot);
         return handle;
     }
@@ -2099,7 +2166,11 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         const list = this.requireRendererList(handle);
         const culling = list.culling;
         const plan = list.plan;
-        if (culling === null || plan === null) throw new Error('Renderer list is incomplete');
+        const firstItems = list.ordered ? list.selectedMeshes : plan?.opaqueItems;
+        const remainingItems = plan?.transparentItems ?? EMPTY_MESHES;
+        if (culling === null || firstItems === undefined) {
+            throw new Error('Renderer list is incomplete');
+        }
         if (this.#shadowCulling !== null && this.#shadowCulling !== culling) {
             throw new Error('Shadow recording and scene draws must use the same culling results');
         }
@@ -2134,102 +2205,58 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             }
             return storageVariant.shaderByMesh?.get(mesh) ?? storageVariant.shader;
         };
-        for (const item of plan.opaqueItems) {
-            if (item instanceof Mesh) {
-                drawPass.addDrawSnapshot(
-                    storageVariant === null
-                        ? processor.prepare(
-                              item,
-                              target,
-                              list.overrideMaterial,
-                              sceneTexturePreparation,
-                              list.materialPass
-                          )
-                        : processor.prepareStorageScene(
-                              item,
-                              target,
-                              storageShader(item),
-                              storagePipelines,
-                              storagePreparation,
-                              list.overrideMaterial
-                          )
-                );
-                continue;
-            }
-            if (storageVariant === null) {
-                drawPass.addDrawSnapshot(
-                    processor.prepareInstancedBatch(
-                        item,
-                        item.meshes,
-                        target,
-                        list.overrideMaterial,
-                        sceneTexturePreparation,
-                        list.materialPass
-                    )
-                );
-                continue;
-            }
-            for (const mesh of item.meshes) {
-                drawPass.addDrawSnapshot(
-                    processor.prepareStorageScene(
-                        mesh,
-                        target,
-                        storageShader(mesh),
-                        storagePipelines,
-                        storagePreparation,
-                        list.overrideMaterial,
-                        true
-                    )
-                );
-            }
-        }
-        for (const item of plan.transparentItems) {
-            if (!isMeshDrawInstanceBatch(item)) {
-                drawPass.addDrawSnapshot(
-                    storageVariant === null
-                        ? processor.prepare(
-                              item,
-                              target,
-                              list.overrideMaterial,
-                              sceneTexturePreparation,
-                              list.materialPass
-                          )
-                        : processor.prepareStorageScene(
-                              item,
-                              target,
-                              storageShader(item),
-                              storagePipelines,
-                              storagePreparation,
-                              list.overrideMaterial
-                          )
-                );
-                continue;
-            }
-            if (storageVariant === null) {
-                drawPass.addDrawSnapshot(
-                    processor.prepareInstancedBatch(
-                        item,
-                        item.meshes,
-                        target,
-                        list.overrideMaterial,
-                        sceneTexturePreparation,
-                        list.materialPass
-                    )
-                );
-                continue;
-            }
-            for (const mesh of item.meshes) {
-                drawPass.addDrawSnapshot(
-                    processor.prepareStorageScene(
-                        mesh,
-                        target,
-                        storageShader(mesh),
-                        storagePipelines,
-                        storagePreparation,
-                        list.overrideMaterial,
-                        true
-                    )
-                );
+        for (let group = 0; group < 2; group += 1) {
+            const items = group === 0 ? firstItems : remainingItems;
+            for (const item of items) {
+                if (item instanceof Mesh) {
+                    drawPass.addDrawSnapshot(
+                        storageVariant === null
+                            ? processor.prepare(
+                                  item,
+                                  target,
+                                  list.overrideMaterial,
+                                  sceneTexturePreparation,
+                                  list.materialPass,
+                                  list.ordered
+                              )
+                            : processor.prepareStorageScene(
+                                  item,
+                                  target,
+                                  storageShader(item),
+                                  storagePipelines,
+                                  storagePreparation,
+                                  list.overrideMaterial,
+                                  list.ordered
+                              )
+                    );
+                    continue;
+                }
+                if (storageVariant === null) {
+                    drawPass.addDrawSnapshot(
+                        processor.prepareInstancedBatch(
+                            item,
+                            item.meshes,
+                            target,
+                            list.overrideMaterial,
+                            sceneTexturePreparation,
+                            list.materialPass
+                        )
+                    );
+                    continue;
+                }
+                for (const mesh of item.meshes) {
+                    drawPass.addDrawSnapshot(
+                        processor.prepareStorageScene(
+                            mesh,
+                            target,
+                            storageShader(mesh),
+                            storagePipelines,
+                            storagePreparation,
+                            list.overrideMaterial,
+                            true
+                        )
+                    );
+                }
             }
         }
         this.services
