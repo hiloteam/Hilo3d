@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.tools.json",
-  "compilerOptions": {
-    "composite": false,
-    "noEmit": true
-  },
-  "include": ["dist/tools/**/*.d.ts"],
-  "references": []
-}

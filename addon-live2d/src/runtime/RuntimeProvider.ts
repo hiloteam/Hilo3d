@@ -1,10 +1,10 @@
-/** Options forwarded by configureLive2D to a generated, self-hosted runtime provider. */
+/** Options forwarded by configureLive2D to the package-local runtime loader. */
 export interface RuntimeProviderOptions {
     /** CSP nonce applied to the original Cubism Core script element. */
     readonly nonce?: string;
 }
 
-/** Colocated deployment assets produced by the SDK builder. */
+/** Colocated package assets produced by the internal builder. */
 export interface RuntimeProviderAssets {
     readonly coreUrl: URL;
     readonly moduleUrl: URL;
@@ -90,7 +90,7 @@ function requireFactory(value: unknown): RuntimeFactoryModule {
 }
 
 /**
- * Create the factory exported by a generated runtime.js deployment.
+ * Create the internal factory used by the bundled default runtime.
  *
  * Core stays byte-identical and loads before Framework module initialization. Failed script,
  * module or runtime creation releases its pending promise so callers can retry. A document may

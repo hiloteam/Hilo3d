@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
-import { live2DExampleRuntimePlugin } from './scripts/live2d-example-runtime-plugin';
+import { live2DExampleRuntimePlugin } from './addon-live2d/tools/vite-plugin';
 
 const shaderPattern = /\.(?:frag|glsl|vert)$/u;
 const exampleManifestModuleId = 'virtual:hilo3d-example-manifest';

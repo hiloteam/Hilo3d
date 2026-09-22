@@ -1,37 +1,23 @@
-#!/usr/bin/env node
-import { createHash, randomUUID } from 'node:crypto';
-import { copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Plugin, RollupOutput } from 'rollup';
+import { fileURLToPath } from 'node:url';
+import { rollup, type Plugin, type RollupOutput } from 'rollup';
+import ts from 'typescript';
 
-import type * as TypeScript from 'typescript';
+type TypeScriptModule = typeof ts;
 
-type TypeScriptModule = typeof TypeScript;
-
-/** Explicit user-owned SDK inputs for a self-hosted Live2D runtime deployment. */
+/** Internal package build inputs. The fixed SDK layout is also used by authored test fixtures. */
 export interface BuildLive2DRuntimeOptions {
-    /** Original, unmodified Cubism Core browser executable from the user's licensed SDK. */
-    readonly coreFile: string;
-    /** Official Framework directory, or its src directory. */
-    readonly frameworkDirectory: string;
-    /** Deployment directory receiving runtime.js, immutable assets, licenses and provenance. */
+    readonly sdkDirectory: string;
     readonly outputDirectory: string;
-    /** Explicit Core license override when the SDK uses a nonstandard directory layout. */
-    readonly coreLicenseFile?: string;
-    /** Explicit Framework license override when the SDK uses a nonstandard layout. */
-    readonly frameworkLicenseFile?: string;
-    /** Additional SDK notices to preserve byte-for-byte. */
-    readonly additionalLicenseFiles?: readonly string[];
-    /** Stable names for package/bundler assets; standalone deployments default to content hashes. */
-    readonly assetNaming?: 'content-hash' | 'stable';
 }
 
-/** Paths and audit counts emitted by one completed SDK deployment build. */
+/** Package assets and audit counts produced by the internal builder. */
 export interface BuildLive2DRuntimeResult {
-    readonly runtimeFile: string;
+    readonly coreFile: string;
+    readonly cpuModuleFile: string;
     readonly manifestFile: string;
-    readonly files: readonly string[];
     readonly frameworkModuleCount: number;
 }
 
@@ -59,30 +45,20 @@ const frameworkModules: readonly FrameworkModule[] = [
     { name: 'CubismPose', path: 'effect/cubismpose' }
 ];
 const cpuEntry = '\0hilo-live2d-cpu-entry';
-const providerEntry = '\0hilo-live2d-provider-entry';
 interface BuilderFiles {
     readonly packageFile: string;
     readonly packageRoot: string;
     readonly adapterFile: string;
-    readonly providerFile: string;
 }
 
 async function resolveBuilderFiles(): Promise<BuilderFiles> {
-    // Self-resolution survives Vite's bundled config loader and npm bin symlinks. A checkout uses
-    // its reviewed TS sources; a published package uses only the shipped dist modules.
+    // Self-resolution retains the checkout location when Vite bundles its configuration.
     const packageFile = fileURLToPath(import.meta.resolve('@hilo/addon-live2d/package.json'));
     const packageRoot = dirname(packageFile);
-    const sourceAdapter = join(packageRoot, 'src/cubism/CubismRuntime.ts');
-    const source = await isFile(sourceAdapter);
-    const adapterFile = source ? sourceAdapter : join(packageRoot, 'dist/cubism/CubismRuntime.js');
-    const providerFile = join(
-        packageRoot,
-        source ? 'src/runtime/RuntimeProvider.ts' : 'dist/runtime/RuntimeProvider.js'
-    );
-    if (!(await isFile(adapterFile)) || !(await isFile(providerFile))) {
-        throw new Error('The Live2D runtime builder is missing its adapter or provider module.');
-    }
-    return { packageFile, packageRoot, adapterFile, providerFile };
+    const adapterFile = join(packageRoot, 'src/cubism/CubismRuntime.ts');
+    if (!(await isFile(adapterFile)))
+        throw new Error('The internal runtime builder requires addon sources.');
+    return { packageFile, packageRoot, adapterFile };
 }
 
 function digest(bytes: Uint8Array): string {
@@ -126,22 +102,6 @@ function within(directory: string, path: string): boolean {
     return local === '' || (!isAbsolute(local) && local !== '..' && !local.startsWith(`..${sep}`));
 }
 
-async function firstFile(
-    candidates: readonly string[],
-    description: string,
-    remedy = 'supply its explicit license option'
-): Promise<string> {
-    for (const candidate of candidates) if (await isFile(candidate)) return realpath(candidate);
-    throw new Error(`${description} is missing; ${remedy}.`);
-}
-
-async function frameworkSource(path: string): Promise<string> {
-    const root = await realpath(path);
-    if (await isFile(join(root, 'live2dcubismframework.ts'))) return root;
-    if (await isFile(join(root, 'src/live2dcubismframework.ts'))) return join(root, 'src');
-    throw new Error('--framework-dir must contain official Framework/src TypeScript sources.');
-}
-
 function assertCPUModule(path: string): void {
     const normalized = path.replaceAll('\\', '/').toLowerCase();
     if (
@@ -164,7 +124,7 @@ function assertCPUModule(path: string): void {
 }
 
 function createPlugin(
-    ts: TypeScriptModule,
+    compiler: TypeScriptModule,
     virtualEntries: ReadonlyMap<string, string>,
     framework: string,
     sdkUseDefineForClassFields: boolean
@@ -201,13 +161,13 @@ function createPlugin(
         },
         transform(code, id) {
             if (!id.endsWith('.ts')) return null;
-            const result = ts.transpileModule(code, {
+            const result = compiler.transpileModule(code, {
                 fileName: id,
                 reportDiagnostics: true,
                 compilerOptions: {
-                    target: ts.ScriptTarget.ES2022,
-                    module: ts.ModuleKind.ESNext,
-                    moduleResolution: ts.ModuleResolutionKind.Bundler,
+                    target: compiler.ScriptTarget.ES2022,
+                    module: compiler.ModuleKind.ESNext,
+                    moduleResolution: compiler.ModuleResolutionKind.Bundler,
                     isolatedModules: true,
                     useDefineForClassFields: within(framework, id)
                         ? sdkUseDefineForClassFields
@@ -217,12 +177,13 @@ function createPlugin(
                 }
             });
             const errors =
-                result.diagnostics?.filter(item => item.category === ts.DiagnosticCategory.Error) ??
-                [];
+                result.diagnostics?.filter(
+                    item => item.category === compiler.DiagnosticCategory.Error
+                ) ?? [];
             if (errors.length > 0) {
                 throw new Error(
                     errors
-                        .map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n'))
+                        .map(item => compiler.flattenDiagnosticMessageText(item.messageText, '\n'))
                         .join('\n')
                 );
             }
@@ -260,61 +221,19 @@ async function preserveFile(source: string, target: string): Promise<FileDigest>
     return { path: basename(target), bytes: bytes.byteLength, sha256: digest(bytes) };
 }
 
-/**
- * Build a deployable ESM runtime from an explicitly supplied, licensed Cubism SDK.
- *
- * This normally transpiles and bundles official CPU TypeScript. It never rewrites Core, imports
- * a native Cubism renderer, or copies model artwork into the addon. Output licenses are preserved
- * unchanged; the manifest records exactly which Framework sources entered the deployment.
- */
+/** Build package-local CPU assets while preserving Core, licenses and source provenance. */
 export async function buildLive2DRuntime(
     options: Readonly<BuildLive2DRuntimeOptions>
 ): Promise<BuildLive2DRuntimeResult> {
-    const assetNaming: unknown = options.assetNaming;
-    if (assetNaming !== undefined && assetNaming !== 'content-hash' && assetNaming !== 'stable') {
-        throw new TypeError('Live2D assetNaming must be content-hash or stable.');
-    }
-    const core = await realpath(options.coreFile);
-    const framework = await frameworkSource(options.frameworkDirectory);
+    const sdkRoot = await realpath(options.sdkDirectory);
+    const core = await realpath(join(sdkRoot, 'Core/live2dcubismcore.min.js'));
+    const framework = await realpath(join(sdkRoot, 'Framework/src'));
     const frameworkRoot = dirname(framework);
     const output = await canonicalDestination(resolve(options.outputDirectory));
-    if (within(frameworkRoot, output) || within(output, core) || output === dirname(core)) {
-        throw new Error('The output directory must be separate from the supplied SDK inputs.');
+    if (within(sdkRoot, output) || within(output, sdkRoot)) {
+        throw new Error('The output directory must be separate from the SDK inputs.');
     }
-    if (!(await isFile(core))) throw new Error('--core-file must be the original Core executable.');
-    const coreLicense = options.coreLicenseFile
-        ? await realpath(options.coreLicenseFile)
-        : await firstFile(
-              [
-                  join(dirname(core), 'CORE-LICENSE.md'),
-                  join(dirname(core), 'LICENSE.md'),
-                  join(dirname(core), 'LICENSE.txt'),
-                  join(dirname(core), '..', 'LICENSE.md')
-              ],
-              'Cubism Core license'
-          );
-    const frameworkLicense = options.frameworkLicenseFile
-        ? await realpath(options.frameworkLicenseFile)
-        : await firstFile(
-              [
-                  join(frameworkRoot, 'LICENSE.md'),
-                  join(frameworkRoot, 'LICENSE.txt'),
-                  join(frameworkRoot, 'LICENSE')
-              ],
-              'Cubism Framework license'
-          );
-    const additional = [...(options.additionalLicenseFiles ?? [])];
-    for (const name of ['SDK-LICENSE.md', 'LICENSE.md', 'LICENSE.txt']) {
-        const candidate = join(frameworkRoot, '..', name);
-        if (await isFile(candidate)) additional.push(candidate);
-    }
-    for (const directory of [dirname(core), frameworkRoot, dirname(frameworkRoot)]) {
-        for (const name of ['NOTICE', 'NOTICE.md', 'NOTICE.txt', 'THIRD-PARTY-NOTICES.md']) {
-            const candidate = join(directory, name);
-            if (await isFile(candidate)) additional.push(candidate);
-        }
-    }
-    const { packageFile, packageRoot, adapterFile, providerFile } = await resolveBuilderFiles();
+    const { packageFile, packageRoot, adapterFile } = await resolveBuilderFiles();
     const packageInfo: unknown = JSON.parse(await readFile(packageFile, 'utf8'));
     if (
         typeof packageInfo !== 'object' ||
@@ -324,15 +243,6 @@ export async function buildLive2DRuntime(
     ) {
         throw new Error('The addon package version is missing.');
     }
-    const [{ rollup }, { default: ts }] = await Promise.all([
-        import('rollup'),
-        import('typescript')
-    ]).catch((cause: unknown): never => {
-        throw new Error(
-            'SDK runtime building needs optional development tools. Install them with: npm install --save-dev rollup typescript',
-            { cause }
-        );
-    });
     const sdkConfigFile = join(frameworkRoot, 'tsconfig.json');
     let sdkUseDefineForClassFields = false;
     if (await isFile(sdkConfigFile)) {
@@ -377,7 +287,7 @@ export async function buildLive2DRuntime(
         cpuCode = singleModule(
             await cpuBundle.generate({
                 format: 'es',
-                banner: '// User-provided Live2D Cubism Framework CPU modules; see licenses/ and live2d-runtime.manifest.json.'
+                banner: '// Bundled Live2D Cubism Framework CPU modules; see licenses/ and live2d-runtime.manifest.json.'
             })
         );
         sdkSources = await Promise.all(
@@ -410,52 +320,24 @@ export async function buildLive2DRuntime(
         await cpuBundle.close();
     }
     const coreBytes = await readFile(core);
-    const coreName =
-        options.assetNaming === 'stable'
-            ? 'live2dcubismcore.min.js'
-            : `live2dcubismcore.${digest(coreBytes).slice(0, 16)}.min.js`;
-    const cpuName =
-        options.assetNaming === 'stable'
-            ? 'runtime-core.js'
-            : `runtime-core.${digest(Buffer.from(cpuCode)).slice(0, 16)}.js`;
-    entries.set(
-        providerEntry,
-        [
-            `import { createRuntimeProvider } from ${JSON.stringify(providerFile)};`,
-            'export const apiVersion = 1;',
-            `export const createLive2DRuntime = createRuntimeProvider({ coreUrl: new URL(${JSON.stringify(coreName)}, import.meta.url), moduleUrl: new URL(${JSON.stringify(cpuName)}, import.meta.url) });`
-        ].join('\n')
-    );
-    const providerBundle = await rollup({ input: providerEntry, plugins: [plugin] });
-    let providerCode: string;
-    try {
-        providerCode = singleModule(await providerBundle.generate({ format: 'es' }));
-    } finally {
-        await providerBundle.close();
-    }
+    const coreName = 'live2dcubismcore.min.js';
+    const cpuName = 'runtime-core.js';
     await mkdir(output, { recursive: true });
-    const files: string[] = [];
     const coreTarget = join(output, coreName);
     const cpuTarget = join(output, cpuName);
-    files.push(coreTarget, cpuTarget);
     await copyFile(core, coreTarget);
     await writeFile(cpuTarget, cpuCode);
     const licenses: FileDigest[] = [];
     for (const [source, name] of [
-        [coreLicense, 'Core.LICENSE.md'],
-        [frameworkLicense, 'Framework.LICENSE.md'],
-        [join(packageRoot, 'LICENSE'), 'Addon.MIT.LICENSE']
+        [join(sdkRoot, 'Core/LICENSE.md'), 'Core.LICENSE.md'],
+        [join(frameworkRoot, 'LICENSE.md'), 'Framework.LICENSE.md'],
+        [join(packageRoot, 'LICENSE'), 'Addon.MIT.LICENSE'],
+        [join(sdkRoot, 'Core/RedistributableFiles.txt'), 'Core.RedistributableFiles.txt'],
+        [join(sdkRoot, 'SDK-LICENSE.md'), 'SDK.LICENSE.md']
     ] as const) {
         const target = join(output, 'licenses', name);
         const info = await preserveFile(source, target);
         licenses.push({ ...info, path: `licenses/${info.path}` });
-        files.push(target);
-    }
-    for (const [index, source] of [...new Set(additional)].entries()) {
-        const target = join(output, 'licenses', `SDK-${String(index + 1)}-${basename(source)}`);
-        const info = await preserveFile(source, target);
-        licenses.push({ ...info, path: `licenses/${info.path}` });
-        files.push(target);
     }
     const manifestFile = join(output, 'live2d-runtime.manifest.json');
     await writeFile(
@@ -490,108 +372,16 @@ export async function buildLive2DRuntime(
                     version: packageInfo.version,
                     adapterSources
                 },
-                provider: {
-                    path: 'runtime.js',
-                    bytes: Buffer.byteLength(providerCode),
-                    sha256: digest(Buffer.from(providerCode))
-                },
                 tools: { node: process.version, typescript: ts.version }
             },
             null,
             2
         )}\n`
     );
-    files.push(manifestFile);
-    const runtimeFile = join(output, 'runtime.js');
-    const temporary = join(output, `.runtime-${randomUUID()}.tmp`);
-    try {
-        await writeFile(temporary, providerCode);
-        await rename(temporary, runtimeFile);
-    } finally {
-        await rm(temporary, { force: true });
-    }
-    files.push(runtimeFile);
-    return { runtimeFile, manifestFile, files, frameworkModuleCount: sdkSources.length };
-}
-
-const usage = `Usage: hilo-live2d-runtime --sdk <official SDK directory> --output <public/live2d>
-   or: hilo-live2d-runtime --core-file <Core executable> --framework-dir <Framework/src> --output <public/live2d>
-
-Optional: --core-license <file> --framework-license <file> --license <additional notice> (repeatable)
-
-Consumes a user-provided SDK. Core and licenses are copied unchanged; no SDK or model files are supplied by the addon.
-`;
-
-/** Parse the deployment CLI without loading optional build dependencies for --help. */
-export async function runLive2DRuntimeCLI(args: readonly string[]): Promise<void> {
-    if (args.length === 0 || args.includes('--help')) {
-        process.stdout.write(usage);
-        return;
-    }
-    const values = new Map<string, string>();
-    const licenses: string[] = [];
-    const supported = new Set([
-        '--sdk',
-        '--core-file',
-        '--framework-dir',
-        '--output',
-        '--core-license',
-        '--framework-license',
-        '--license'
-    ]);
-    for (let index = 0; index < args.length; index += 2) {
-        const flag = args[index];
-        const value = args[index + 1];
-        if (!flag || !supported.has(flag) || !value || value.startsWith('--'))
-            throw new Error(`Invalid runtime build argument ${flag ?? ''}.\n${usage}`);
-        if (flag === '--license') licenses.push(value);
-        else if (values.has(flag)) throw new Error(`Duplicate runtime build option ${flag}.`);
-        else values.set(flag, value);
-    }
-    const sdkDirectory = values.get('--sdk');
-    if (sdkDirectory && (values.has('--core-file') || values.has('--framework-dir'))) {
-        throw new Error('Use --sdk or explicit --core-file/--framework-dir paths, not both.');
-    }
-    const coreFile = sdkDirectory
-        ? await firstFile(
-              [
-                  join(sdkDirectory, 'Core/live2dcubismcore.min.js'),
-                  join(sdkDirectory, 'Core/live2dcubismcore.js')
-              ],
-              'SDK Core executable',
-              'provide the complete SDK or use explicit input paths'
-          )
-        : values.get('--core-file');
-    const frameworkDirectory = sdkDirectory
-        ? join(sdkDirectory, 'Framework')
-        : values.get('--framework-dir');
-    const outputDirectory = values.get('--output');
-    if (!coreFile || !frameworkDirectory || !outputDirectory) throw new Error(usage);
-    const coreLicenseFile = values.get('--core-license');
-    const frameworkLicenseFile = values.get('--framework-license');
-    const result = await buildLive2DRuntime({
-        coreFile,
-        frameworkDirectory,
-        outputDirectory,
-        ...(coreLicenseFile === undefined ? {} : { coreLicenseFile }),
-        ...(frameworkLicenseFile === undefined ? {} : { frameworkLicenseFile }),
-        additionalLicenseFiles: licenses
-    });
-    process.stdout.write(
-        `Built ${result.runtimeFile} from ${String(result.frameworkModuleCount)} official Framework CPU modules.\n`
-    );
-}
-
-const invokedFile = process.argv[1];
-if (
-    invokedFile &&
-    (await isFile(resolve(invokedFile))) &&
-    pathToFileURL(await realpath(invokedFile)).href === import.meta.url
-) {
-    try {
-        await runLive2DRuntimeCLI(process.argv.slice(2));
-    } catch (error) {
-        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-        process.exitCode = 1;
-    }
+    return {
+        coreFile: coreTarget,
+        cpuModuleFile: cpuTarget,
+        manifestFile,
+        frameworkModuleCount: sdkSources.length
+    };
 }

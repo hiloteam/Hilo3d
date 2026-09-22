@@ -6,11 +6,23 @@
     "declarationMap": false,
     "sourceMap": true,
     "inlineSources": true,
-    "rootDir": "tools",
-    "outDir": "dist/tools",
+    "rootDir": ".",
+    "outDir": ".cache/tools",
     "tsBuildInfoFile": ".cache/tools.tsbuildinfo",
     "types": ["node"],
+    "paths": {
+      "hilo3d": ["../src/Hilo3d.ts"],
+      "@hilo/addon-live2d": ["./src/index.ts"]
+    },
     "lib": ["ES2022", "ESNext.Disposable", "DOM", "DOM.Iterable"]
   },
-  "include": ["tools/**/*.ts"]
+  "include": ["tools/**/*.ts", "test/**/*.ts"],
+  "references": [
+    {
+      "path": "../tsconfig.lib.json"
+    },
+    {
+      "path": "./tsconfig.json"
+    }
+  ]
 }

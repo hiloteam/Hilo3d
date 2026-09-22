@@ -1,13 +1,13 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { cp } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizePath, type Plugin, type ResolvedConfig } from 'vite';
-import { buildPinnedLive2DRuntime } from '../addon-live2d/tools/prepare-runtime.js';
-import type { BuildLive2DRuntimeResult } from '../addon-live2d/tools/build-runtime.js';
+import { buildPinnedLive2DRuntime } from './prepare-runtime.js';
+import type { BuildLive2DRuntimeResult } from './build-runtime.js';
 
 /** Resolve source-checkout assets; installed packages already contain these beside their loader. */
-export function live2DExampleRuntimePlugin(copyBuildAssets = false): Plugin {
-    const root = fileURLToPath(new URL('../', import.meta.url));
+export function live2DExampleRuntimePlugin(copyBuildNotices = false): Plugin {
+    const root = fileURLToPath(new URL('../../', import.meta.url));
     const loader = resolve(root, 'addon-live2d/src/runtime/DefaultRuntime.ts');
     const directory = resolve(root, 'addon-live2d/.cache/prebuilt-runtime');
     const inputs = ['vendor', 'src', 'tools'].map(name => resolve(root, 'addon-live2d', name));
@@ -29,7 +29,7 @@ export function live2DExampleRuntimePlugin(copyBuildAssets = false): Plugin {
                         /* A corrected input can retry. */
                     }
                 }
-                return buildPinnedLive2DRuntime(directory, 'stable');
+                return buildPinnedLive2DRuntime(directory);
             })();
             building = attempt;
             const current: Promise<BuildLive2DRuntimeResult> = attempt.then(result =>
@@ -103,19 +103,15 @@ export function live2DExampleRuntimePlugin(copyBuildAssets = false): Plugin {
             }
         },
         async closeBundle(): Promise<void> {
-            if (!copyBuildAssets || configuration?.command !== 'build' || pending === null) return;
-            const result = await pending;
+            if (!copyBuildNotices || configuration?.command !== 'build' || pending === null) return;
+            await pending;
             const destination = resolve(
                 configuration.root,
                 configuration.build.outDir,
-                'examples/assets/live2d/runtime'
+                'examples/assets/live2d/licenses'
             );
-            for (const file of result.files) {
-                const name = relative(directory, file);
-                const target = resolve(destination, name);
-                await mkdir(dirname(target), { recursive: true });
-                await copyFile(file, target);
-            }
+            // Vite already emits both runtime assets through DefaultRuntime's static URLs.
+            await cp(resolve(directory, 'licenses'), destination, { recursive: true });
         }
     };
 }

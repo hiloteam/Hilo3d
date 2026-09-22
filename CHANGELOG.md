@@ -44,6 +44,10 @@
 
 ### Changes
 
+- Keep Live2D build and package verification tooling inside the addon. Remove its obsolete public
+  SDK builder CLI/tools export, optional build-tool peers and unused standalone provider output;
+  examples reuse bundler-emitted runtime assets and copy only their license notices.
+
 - Separate SRP invocation context, resource/history ownership and pass execution, and register
   built-in preparation adapters at pass construction instead of identifying pass classes in the
   central setup path. Split Clustered shader, layout and parameter modules from frame orchestration

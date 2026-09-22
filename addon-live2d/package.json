@@ -16,17 +16,10 @@
       "types": "./dist/cubism/index.d.ts",
       "import": "./dist/cubism/index.js",
       "default": "./dist/cubism/index.js"
-    },
-    "./tools": {
-      "types": "./dist/tools/build-runtime.d.ts",
-      "import": "./dist/tools/build-runtime.js",
-      "default": "./dist/tools/build-runtime.js"
     }
   },
   "files": [
     "dist/",
-    "!dist/tools/build-package.*",
-    "!dist/tools/prepare-runtime.*",
     "README.md",
     "THIRD-PARTY-NOTICES.md"
   ],
@@ -36,9 +29,7 @@
     "clean": "rimraf dist .cache"
   },
   "peerDependencies": {
-    "hilo3d": "2.0.0-alpha.8",
-    "rollup": ">=4.0.0 <5",
-    "typescript": ">=5.9.0 <7"
+    "hilo3d": "2.0.0-alpha.8"
   },
   "devDependencies": {
     "hilo3d": "file:..",
@@ -56,16 +47,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "SEE LICENSE IN THIRD-PARTY-NOTICES.md",
-  "bin": {
-    "hilo-live2d-runtime": "./dist/tools/build-runtime.js"
-  },
-  "peerDependenciesMeta": {
-    "rollup": {
-      "optional": true
-    },
-    "typescript": {
-      "optional": true
-    }
-  }
+  "license": "SEE LICENSE IN THIRD-PARTY-NOTICES.md"
 }

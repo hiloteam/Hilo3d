@@ -7,6 +7,7 @@ export default defineConfig(
     globalIgnores([
         'skills/**/assets/**',
         '.cache/**',
+        'addon-live2d/.cache/**',
         'coverage/**',
         'dist/**',
         'addon-particle/dist/**',

@@ -67,15 +67,11 @@ async function verifyVendorFiles(): Promise<void> {
 
 /** Build the package or gallery runtime from the same verified, repository-owned SDK inputs. */
 export async function buildPinnedLive2DRuntime(
-    directory: string,
-    assetNaming: 'content-hash' | 'stable' = 'content-hash'
+    directory: string
 ): Promise<BuildLive2DRuntimeResult> {
     await verifyVendorFiles();
     return buildLive2DRuntime({
-        coreFile: resolve(sdkRoot, 'Core/live2dcubismcore.min.js'),
-        frameworkDirectory: resolve(sdkRoot, 'Framework'),
-        outputDirectory: directory,
-        additionalLicenseFiles: [resolve(sdkRoot, 'Core/RedistributableFiles.txt')],
-        assetNaming
+        sdkDirectory: sdkRoot,
+        outputDirectory: directory
     });
 }

@@ -58,8 +58,8 @@ initialization. The default deadline is 30 seconds.
 
 The included SDK files retain their own terms, separately from the adapter MIT license; see
 [package notices](../addon-live2d/THIRD-PARTY-NOTICES.md). Their inclusion does not license
-character artwork. Internal deployment tooling remains available to contributors but is not part of
-the ordinary model-loading workflow.
+character artwork. Build tooling lives privately in `addon-live2d/tools/`; its outputs stay in
+`.cache/` and no SDK builder CLI, `/tools` export or build-tool peer dependency is published.
 
 `assetVersion` writes a dedicated query parameter onto the manifest and each resolved resource URL
 while preserving its own query/hash; arbitrary parent authentication/query parameters are not
@@ -140,17 +140,19 @@ for reuse or another deployment. The artwork never enters npm packages.
 The example uses the same zero-configuration addon loader as installed applications. Vite's
 source-checkout plugin prepares assets from the addon's pinned inputs and resolves their static URLs
 before normal asset processing. A published package already contains those files, so consumers need
-no Hilo-specific Vite plugin. Builds preserve the notices alongside example runtime assets.
+no Hilo-specific Vite plugin. The source plugin lives in `addon-live2d/tools/vite-plugin.ts` and
+copies only licenses to `examples/assets/live2d/licenses/`; Vite already emits both runtime assets.
 
 Portable tests use authored fake SDK/model fixtures and asymmetric image data, not proprietary SDK
 binaries. They cover initialization sharing/retry, deadlines, abort races/late cleanup, independent
 sessions, animation policies, update ordering, static validation, real Stage pixels,
-sorting/picking, context/device recovery and destruction. SDK deployment tests inspect unchanged
+sorting/picking, context/device recovery and destruction. Internal build tests inspect unchanged
 Core bytes, license/provenance, CPU-only module graphs, nonce handling, load order and retry
 behavior. The official Miku example is the maintained actual-SDK browser fixture for both backends,
 with stable captures, post-capture interactions and page lifecycle coverage. Test existence
 describes the contract; the handoff records which checks actually ran for a given change.
 
-The package contract installs real tarballs into an empty consumer, bundles the public addon with
-Vite, blocks every external network request, and checks default startup, concurrent model ownership,
-real pixels, CSP nonce propagation and retry of an injected CPU-module request failure.
+Build and package tests live in `addon-live2d/test/`; root commands delegate to those checks. The
+package contract installs real tarballs into an empty consumer, bundles the public addon with Vite,
+blocks every external network request, and checks default startup, concurrent model ownership, real
+pixels, CSP nonce propagation and retry of an injected CPU-module request failure.

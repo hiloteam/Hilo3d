@@ -179,12 +179,6 @@ import {
     type Live2DSource
 } from '@hilo/addon-live2d';
 import { createCubismRuntime } from '@hilo/addon-live2d/cubism';
-import {
-    buildLive2DRuntime,
-    runLive2DRuntimeCLI,
-    type BuildLive2DRuntimeOptions,
-    type BuildLive2DRuntimeResult
-} from '@hilo/addon-live2d/tools';
 
 const live2DConfiguration = {
     nonce: 'application-csp-nonce',
@@ -239,16 +233,6 @@ highLevelLive2DModel.clearExpression();
 const live2DBounds: Live2DBounds = highLevelLive2DModel.getModelBounds();
 const live2DHit: boolean = highLevelLive2DModel.hitTest(0, 0, 'Head');
 const cubismRuntimeFactory: (namespace: unknown) => Live2DRuntime = createCubismRuntime;
-const buildRuntimeOptions = {
-    coreFile: '/licensed-sdk/Core/live2dcubismcore.min.js',
-    frameworkDirectory: '/licensed-sdk/Framework/src',
-    outputDirectory: '/application/public/live2d',
-    additionalLicenseFiles: ['/licensed-sdk/NOTICE']
-} satisfies BuildLive2DRuntimeOptions;
-const runtimeBuilder: (
-    options: Readonly<BuildLive2DRuntimeOptions>
-) => Promise<BuildLive2DRuntimeResult> = buildLive2DRuntime;
-const runtimeCLI: (args: readonly string[]) => Promise<void> = runLive2DRuntimeCLI;
 void live2DConfiguration;
 void configureLive2DTyped;
 void live2DModelLoad;
@@ -256,9 +240,6 @@ void live2DMotionStarted;
 void live2DBounds;
 void live2DHit;
 void cubismRuntimeFactory;
-void buildRuntimeOptions;
-void runtimeBuilder;
-void runtimeCLI;
 
 declare const cubismModel: CubismCoreModel;
 declare const cubismUtils: CubismCoreUtils;

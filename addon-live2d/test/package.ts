@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
@@ -28,22 +29,48 @@ async function serveFile(route: Route, root: string, name: string): Promise<void
 
 /** Exercise installed, built packages in a browser; the fixture imports no repository sources. */
 export async function verifyLive2DPackage(consumer: string): Promise<void> {
-    const root = resolve(import.meta.dirname, '..');
+    const root = resolve(import.meta.dirname, '../..');
     const runtime = join(consumer, 'node_modules/@hilo/addon-live2d/dist/runtime/prebuilt');
+    execFileSync(
+        process.execPath,
+        [
+            '--input-type=module',
+            '--eval',
+            `
+        import assert from 'node:assert/strict';
+        import { Live2DNode, Live2DModel, configureLive2D, createCubismCoreSource, live2DFeature, loadLive2DAssets } from '@hilo/addon-live2d';
+        import { createCubismRuntime } from '@hilo/addon-live2d/cubism';
+        for (const value of [Live2DNode, Live2DModel, configureLive2D, createCubismCoreSource, loadLive2DAssets, createCubismRuntime, live2DFeature.create]) assert.equal(typeof value, 'function');
+        assert.equal(typeof Live2DModel.load, 'function');
+        assert.equal(Reflect.has(globalThis, 'Live2DCubismCore'), false, 'Importing the addon must not initialize its browser runtime.');
+    `
+        ],
+        { cwd: consumer, stdio: 'inherit' }
+    );
+    const packageDirectory = join(consumer, 'node_modules/@hilo/addon-live2d');
+    const metadata = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8')) as {
+        exports: Record<string, unknown>;
+        peerDependencies: Record<string, string>;
+        bin?: unknown;
+    };
+    assert.equal(metadata.bin, undefined, 'The addon must not install SDK deployment commands.');
+    assert.equal(metadata.exports['./tools'], undefined);
+    assert.deepEqual(Object.keys(metadata.peerDependencies), ['hilo3d']);
+    assert.ok(!(await readdir(join(packageDirectory, 'dist'))).includes('tools'));
+    assert.deepEqual((await readdir(runtime)).sort(), [
+        'licenses',
+        'live2d-runtime.manifest.json',
+        'live2dcubismcore.min.js',
+        'runtime-core.js'
+    ]);
     const manifest = JSON.parse(
         await readFile(join(runtime, 'live2d-runtime.manifest.json'), 'utf8')
     ) as {
         core: RuntimeFile;
         cpuModule: RuntimeFile;
-        provider: RuntimeFile;
         licenses: RuntimeFile[];
     };
-    for (const file of [
-        manifest.core,
-        manifest.cpuModule,
-        manifest.provider,
-        ...manifest.licenses
-    ]) {
+    for (const file of [manifest.core, manifest.cpuModule, ...manifest.licenses]) {
         const bytes = await readFile(join(runtime, file.path));
         assert.equal(bytes.byteLength, file.bytes);
         assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256);
@@ -62,7 +89,7 @@ export async function verifyLive2DPackage(consumer: string): Promise<void> {
     const fixtureDirectory = join(consumer, 'live2d-browser');
     await mkdir(fixtureDirectory);
     const fixture = await realpath(fixtureDirectory);
-    await copyFile(join(root, 'test/fixtures/live2d-package.ts'), join(fixture, 'main.ts'));
+    await copyFile(join(import.meta.dirname, 'fixtures/package-app.ts'), join(fixture, 'main.ts'));
     await writeFile(
         join(fixture, 'index.html'),
         '<!doctype html><html><head><link rel="icon" href="data:,"></head><body><script type="module" src="./main.ts"></script></body></html>'

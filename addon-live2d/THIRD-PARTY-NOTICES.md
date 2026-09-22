@@ -1,8 +1,8 @@
 # Package licenses
 
-The Hilo3D adapter and deployment tools are MIT licensed; see [LICENSE](./LICENSE). The generated
-files in `dist/runtime/prebuilt/` also contain Live2D software under its own terms. The MIT license
-does not apply to that third-party software.
+The Hilo3D adapter and internal build tools are MIT licensed; see [LICENSE](./LICENSE). The
+generated files in `dist/runtime/prebuilt/` also contain Live2D software under its own terms. The
+MIT license does not apply to that third-party software.
 
 - `live2dcubismcore.min.js` is the unmodified Cubism Core redistributable, governed by the
   [Live2D Proprietary Software License](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html).

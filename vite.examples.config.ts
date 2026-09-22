@@ -3,7 +3,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
 import { addonAliases, exampleManifestPlugin, shaderIncludePlugin } from './vite.config';
-import { live2DExampleRuntimePlugin } from './scripts/live2d-example-runtime-plugin';
+import { live2DExampleRuntimePlugin } from './addon-live2d/tools/vite-plugin';
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {

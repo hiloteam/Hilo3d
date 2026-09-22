@@ -33,7 +33,8 @@ monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布�
 
 `addon-live2d` 只依赖核心公共 API；应用只提供模型资源。addon 内置并延迟初始化由其 `vendor/`
 固定输入构建的运行时，发布包保留原样 Core、CPU Framework
-bundle 和独立许可证；应用构建自动携带本地运行时资源，不配置 SDK 地址或访问 CDN。细节见
+bundle 和独立许可证；应用构建自动携带本地运行时资源，不配置 SDK 地址或访问 CDN。专用工具和包验证分别放在
+`addon-live2d/tools/` 和 `addon-live2d/test/`，不进入 npm 发布内容；根级入口只负责编排。细节见
 [Live2D](./LIVE2D.md)。
 
 保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前四个包尚不足以证明把根核心整体搬到

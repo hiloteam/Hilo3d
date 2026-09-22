@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
-import { verifyLive2DPackage } from './test-live2d-package';
+import { verifyLive2DPackage } from '../addon-live2d/test/package';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hilo3d-package-'));
@@ -59,23 +59,6 @@ try {
     const recipeDirectory = join(consumerDirectory, 'recipes');
     await cp(resolve(projectRoot, 'test/types/recipes'), recipeDirectory, { recursive: true });
     const recipeFiles = (await readdir(recipeDirectory)).filter(name => name.endsWith('.ts'));
-    const live2DExportTypes = join(consumerDirectory, 'live2d-exports.test.ts');
-    await writeFile(
-        live2DExportTypes,
-        [
-            "import { Live2DModel, configureLive2D, type Live2DConfiguration, type Live2DModelLoadOptions, type Live2DRuntime } from '@hilo/addon-live2d';",
-            "import { createCubismRuntime } from '@hilo/addon-live2d/cubism';",
-            "import { buildLive2DRuntime, runLive2DRuntimeCLI, type BuildLive2DRuntimeOptions, type BuildLive2DRuntimeResult } from '@hilo/addon-live2d/tools';",
-            'const load: (url: string | URL, options?: Readonly<Live2DModelLoadOptions>) => Promise<Live2DModel> = Live2DModel.load;',
-            'const configure: (options: Readonly<Live2DConfiguration>) => void = configureLive2D;',
-            'const runtime: (namespace: unknown) => Live2DRuntime = createCubismRuntime;',
-            'const build: (options: Readonly<BuildLive2DRuntimeOptions>) => Promise<BuildLive2DRuntimeResult> = buildLive2DRuntime;',
-            'const cli: (args: readonly string[]) => Promise<void> = runLive2DRuntimeCLI;',
-            'void [load, configure, runtime, build, cli];',
-            ''
-        ].join('\n'),
-        'utf8'
-    );
     execFileSync(
         process.execPath,
         [
@@ -90,8 +73,7 @@ try {
             'NodeNext',
             '--lib',
             'ES2022,ESNext.Disposable,DOM,DOM.Iterable',
-            ...recipeFiles.map(name => join(recipeDirectory, name)),
-            live2DExportTypes
+            ...recipeFiles.map(name => join(recipeDirectory, name))
         ],
         { cwd: consumerDirectory, stdio: 'inherit' }
     );
@@ -117,9 +99,6 @@ try {
             "import { Renderer, Vector3, version } from 'hilo3d';",
             "import { createParticleStageSystem } from '@hilo/addon-particle';",
             "import { createPhysicsStageSystem } from '@hilo/addon-physics';",
-            "import { Live2DNode, Live2DModel, configureLive2D, createCubismCoreSource, live2DFeature, loadLive2DAssets } from '@hilo/addon-live2d';",
-            "import { createCubismRuntime } from '@hilo/addon-live2d/cubism';",
-            "import { buildLive2DRuntime, runLive2DRuntimeCLI } from '@hilo/addon-live2d/tools';",
             "import { createRapier2DPhysicsSystem } from '@hilo/addon-physics/rapier2d';",
             "import { createRapier3DPhysicsSystem } from '@hilo/addon-physics/rapier3d';",
             "import { existsSync, readFileSync } from 'node:fs';",
@@ -129,9 +108,6 @@ try {
             "if (typeof version !== 'string') throw new Error('version is not exported.');",
             "if (typeof createParticleStageSystem !== 'function') throw new Error('Particle System factory is not exported.');",
             "if (typeof createPhysicsStageSystem !== 'function') throw new Error('Physics System factory is not exported.');",
-            "if (typeof Live2DNode !== 'function' || typeof createCubismCoreSource !== 'function' || typeof loadLive2DAssets !== 'function' || typeof live2DFeature.create !== 'function') throw new Error('Live2D public API is not exported.');",
-            "if (typeof Live2DModel !== 'function' || typeof Live2DModel.load !== 'function' || typeof configureLive2D !== 'function') throw new Error('High-level Live2D API is not exported.');",
-            "if (typeof createCubismRuntime !== 'function' || typeof buildLive2DRuntime !== 'function' || typeof runLive2DRuntimeCLI !== 'function') throw new Error('Live2D runtime/tool subpaths are not exported.');",
             "if (typeof createRapier2DPhysicsSystem !== 'function') throw new Error('Rapier 2D System factory is not exported.');",
             "if (typeof createRapier3DPhysicsSystem !== 'function') throw new Error('Rapier 3D System factory is not exported.');",
             "for (const mapPath of ['node_modules/@hilo/addon-particle/dist/index.js.map', 'node_modules/@hilo/addon-physics/dist/index.js.map', 'node_modules/@hilo/addon-live2d/dist/index.js.map']) {",
@@ -148,14 +124,6 @@ try {
         cwd: consumerDirectory,
         stdio: 'inherit'
     });
-    const runtimeHelp = execFileSync(
-        join(consumerDirectory, 'node_modules/.bin/hilo-live2d-runtime'),
-        ['--help'],
-        { cwd: consumerDirectory, encoding: 'utf8' }
-    );
-    if (!runtimeHelp.includes('hilo-live2d-runtime --sdk') || !runtimeHelp.includes('--output')) {
-        throw new Error('Installed Live2D runtime executable did not print its deployment help.');
-    }
     await verifyLive2DPackage(consumerDirectory);
 } finally {
     await rm(temporaryRoot, { force: true, recursive: true });

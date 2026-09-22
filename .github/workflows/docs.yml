@@ -10,8 +10,6 @@ on:
       - 'src/**'
       - 'examples/**'
       - 'addon-live2d/**'
-      - 'addon-live2d/vendor/**'
-      - 'scripts/live2d-*.ts'
       - 'README.md'
       - 'README_ZH.md'
       - 'CHANGELOG.md'
