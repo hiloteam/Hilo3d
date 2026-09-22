@@ -23,6 +23,9 @@
   "references": [
     {
       "path": "./addon-live2d/tsconfig.tools.json"
+    },
+    {
+      "path": "./addon-assets/tsconfig.tools.json"
     }
   ]
 }

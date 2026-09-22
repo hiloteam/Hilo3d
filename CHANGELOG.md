@@ -2,6 +2,15 @@
 
 ### Features
 
+- Add optional `@hilo/addon-assets`: KTX2 ETC1S/UASTC module-worker transcoding, versioned texture
+  leases, cancellation/priority, coarse-first mip residency, independent budgets, hidden-resource
+  eviction and budgeted recovery replay. This is the initial A0 texture slice; geometry pages and
+  sparse HTTP loading remain separate work.
+- Make renderer idle waits snapshot already submitted work so continuous rendering cannot starve
+  asset retirement; preserve complete fence settlement on failure.
+- Add `Renderer.uploadTextures()` for graph-validated, submission-fenced texture warming without
+  draws.
+- Add a texture residency lab and actual compressed texture/package coverage on both backends.
 - Add portable local specular reflection probes with box parallax correction, bounded per-pixel
   blending and roughness filtering, shared by PBR/clearcoat and SSR fallback composition. Add
   budgeted HDR dynamic captures with atomic publication, failure rollback and device recovery; the

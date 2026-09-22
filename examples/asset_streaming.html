@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Texture Residency Lab · Hilo3D</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                color: #e9eee9;
+                background: #111a1a;
+                font:
+                    14px/1.5 system-ui,
+                    sans-serif;
+            }
+            #container {
+                position: fixed;
+                inset: 0;
+            }
+            .panel {
+                position: absolute;
+                top: 24px;
+                left: 24px;
+                width: min(340px, calc(100% - 48px));
+                padding: 24px;
+                background: #142321ed;
+                border: 1px solid #78978a55;
+                border-radius: 16px;
+            }
+            .eyebrow {
+                color: #b6d79f;
+                font-size: 11px;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+            h1 {
+                font-size: 25px;
+                margin: 8px 0;
+                font-weight: 550;
+            }
+            p {
+                color: #adbbb5;
+                margin: 8px 0 20px;
+            }
+            button {
+                padding: 9px 12px;
+                border-radius: 7px;
+                border: 1px solid #779a8c;
+                background: #23493f;
+                color: #f0f7e9;
+                cursor: pointer;
+                margin: 0 4px 8px 0;
+            }
+            button:focus-visible {
+                outline: 2px solid #deec8a;
+                outline-offset: 3px;
+            }
+            pre {
+                white-space: pre-wrap;
+                font-size: 12px;
+                border-top: 1px solid #78978a55;
+                padding-top: 16px;
+            }
+            #error {
+                color: #ffc1b0;
+            }
+            .caption {
+                position: absolute;
+                bottom: 22px;
+                left: 24px;
+                color: #adbbb5;
+            }
+            @media (max-width: 600px) {
+                .panel {
+                    top: 12px;
+                    left: 12px;
+                    padding: 16px;
+                    width: calc(100% - 24px);
+                }
+                h1 {
+                    font-size: 21px;
+                }
+                p {
+                    margin-bottom: 10px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container"></div>
+        <section class="panel">
+            <span class="eyebrow">Asset lab / source preview</span>
+            <h1>Only keep what you need.</h1>
+            <p>
+                Switch between two texture sets. A small residency budget evicts the hidden set;
+                each texture keeps its identity while detail returns.
+            </p>
+            <button id="switch">Switch texture set</button>
+            <button id="quality">Use coarse detail</button>
+            <pre id="diagnostics" aria-live="off">Preparing renderer…</pre>
+            <div id="error" role="alert"></div>
+        </section>
+        <div class="caption">Drag to orbit · Scroll to zoom · ETC1S / UASTC</div>
+        <script type="module" src="./asset_streaming.ts"></script>
+    </body>
+</html>

@@ -27,7 +27,7 @@ performance result. DDGI is still [Unreleased](./VERSIONS.md).
 | Q0   | Implemented                                 | Portable GTAO/SSGI and WebGPU Clustered Hi-Z SSR.                                                                                 | Offscreen specular is separate GI work; transparent/offscreen geometry is not screen-trace input.                                                     |
 | S0   | Implemented; evidence pending               | Stable atlas cache, caster cull, budget/cadence/pages; opt-in directional virtual clipmaps, GPU requests/remapping/LRU.           | Physical stress evidence, wider caster and local-light coverage.                                                                                      |
 | V0   | Implemented slice                           | Froxels, height/local fog, physical atmosphere/clouds and cloud shadows.                                                          | Shared atlas shadows in froxels and transparent volumetric history.                                                                                   |
-| A0   | Not started                                 | KTX1 loading and bucket LOD are existing prerequisites, not streaming.                                                            | KTX2/Basis, mip and geometry residency, worker decode and upload/memory budgets.                                                                      |
+| A0   | Texture slice implemented; evidence pending | Optional addon: KTX2/Basis workers, bounded leases/mip residency and fenced uploads.                                              | Physical workload budgets; sparse/range loading and geometry pages remain.                                                                            |
 | M0   | Not started                                 | Existing GPU Scene/bucket LOD can be reused.                                                                                      | Offline meshlets/cluster LOD, material bins and geometry streaming after A0.                                                                          |
 | GI0  | Initial slice implemented; evidence pending | Rigid opaque PBR software BVH, DDGI probes, dynamic lights and signed SSGI hybrid.                                                | Performance baseline; broader material/geometry, specular transport and optional SDF representation.                                                  |
 
@@ -36,7 +36,7 @@ performance result. DDGI is still [Unreleased](./VERSIONS.md).
 ```mermaid
 flowchart LR
   CORE["Implemented: Graph / RHI / Material / GPU Scene"] --> PERF["Pending: enrolled performance evidence"]
-  CORE --> A["Not started: A0 streaming"]
+  CORE --> A["A0 texture streaming / geometry pending"]
   A --> M["Not started: M0 meshlets"]
   S["Implemented: S0 directional virtual pages"] --> SP["Pending: shadow stress evidence"]
   GI["Implemented: GI0 DDGI + SSGI hybrid"] --> GP["Pending: GI baseline review"]
@@ -51,6 +51,11 @@ performance enrollment must have different status rows so already delivered capa
 scheduled again.
 
 ## A0: resource streaming
+
+The initial texture slice is implemented in `@hilo/addon-assets`; see
+[its contract](./ASSET_STREAMING.md). Whole-file fetch with mip-suffix replacement is explicit.
+Geometry streaming and physical-device performance enrollment remain open; the list below describes
+the complete A0 work package.
 
 Inputs: versioned compressed assets, device format capabilities, visibility/LOD demand and explicit
 memory/upload/in-flight budgets. Outputs: cancelable requests and observable mip/geometry residency

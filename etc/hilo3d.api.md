@@ -6210,6 +6210,7 @@ export class Renderer<Backend extends RendererBackend = RendererBackend> impleme
     readonly shadowUpdateMode: RendererContract['shadowUpdateMode'];
     // (undocumented)
     readonly supportsTextureCompression: RendererContract['supportsTextureCompression'];
+    readonly uploadTextures: RendererContract['uploadTextures'];
     // (undocumented)
     useInstanced: RendererContract['useInstanced'];
     // (undocumented)
@@ -6318,7 +6319,6 @@ export interface RendererContract {
     present(target?: RenderTarget, options?: RenderTargetPresentationOptions): void;
     // (undocumented)
     readonly ready: Promise<void>;
-    // (undocumented)
     releaseGPUResources(): void;
     // (undocumented)
     render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
@@ -6342,6 +6342,7 @@ export interface RendererContract {
     readonly shadowUpdateMode: 'paged' | 'full';
     // (undocumented)
     supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    uploadTextures(textures: readonly Texture<unknown>[]): Promise<void>;
     // (undocumented)
     useInstanced: boolean;
     waitForIdle(): Promise<void>;

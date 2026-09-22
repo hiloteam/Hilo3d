@@ -22,11 +22,12 @@
   "workspaces": [
     "addon-particle",
     "addon-physics",
-    "addon-live2d"
+    "addon-live2d",
+    "addon-assets"
   ],
   "scripts": {
-    "clean": "rimraf .cache addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist coverage dist dist-examples docs playwright-report reports site test-results addon-live2d/.cache addon-live2d/dist",
-    "clean:build": "rimraf .cache/types .cache/tsconfig.lib.tsbuildinfo addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist dist addon-live2d/.cache addon-live2d/dist",
+    "clean": "rimraf .cache addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist coverage dist dist-examples docs playwright-report reports site test-results addon-live2d/.cache addon-live2d/dist addon-assets/.cache addon-assets/dist",
+    "clean:build": "rimraf .cache/types .cache/tsconfig.lib.tsbuildinfo addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist dist addon-live2d/.cache addon-live2d/dist addon-assets/.cache addon-assets/dist",
     "dev": "vite --host 0.0.0.0",
     "examples:dev": "vite --config vite.examples.config.ts --host 0.0.0.0",
     "examples:serve": "vite --config vite.examples.config.ts --host 0.0.0.0 --port 4173 --strictPort --open /examples/index.html",
@@ -81,9 +82,9 @@
     "test:addon-package": "publint addon-physics && attw --pack addon-physics --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-physics",
     "test:addon-particle-package": "publint addon-particle && attw --pack addon-particle --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-particle",
     "api:update": "npm run build:types && npm run addon:build && npm run api:update:built",
-    "api:update:built": "api-extractor run --local --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-particle/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.rapier2d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.rapier3d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-live2d/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-live2d/api-extractor.cubism.json --typescript-compiler-folder node_modules/typescript",
+    "api:update:built": "api-extractor run --local --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-particle/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.rapier2d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-physics/api-extractor.rapier3d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-live2d/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-live2d/api-extractor.cubism.json --typescript-compiler-folder node_modules/typescript && api-extractor run --local --config addon-assets/api-extractor.json --typescript-compiler-folder node_modules/typescript",
     "api:check": "npm run build:types && npm run addon:build && npm run api:check:built",
-    "api:check:built": "api-extractor run --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-particle/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.rapier2d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.rapier3d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-live2d/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-live2d/api-extractor.cubism.json --typescript-compiler-folder node_modules/typescript",
+    "api:check:built": "api-extractor run --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-particle/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.rapier2d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-physics/api-extractor.rapier3d.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-live2d/api-extractor.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-live2d/api-extractor.cubism.json --typescript-compiler-folder node_modules/typescript && api-extractor run --config addon-assets/api-extractor.json --typescript-compiler-folder node_modules/typescript",
     "docs:build": "npm run build:types && npm run docs:build:built",
     "docs:build:built": "npm run docs:check:sources && typedoc",
     "docs:check": "npm run build:types && npm run docs:check:built",
@@ -98,15 +99,16 @@
     "release:versions:check": "jiti scripts/release-package-set.ts",
     "publish:check": "npm run check:modernity && npm run release:tag:verify",
     "release:check": "npm run validate",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run pack:check",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run publish:check",
     "benchmark:ddgi:collect": "jiti scripts/performance/collect-ddgi-evidence.ts",
     "docs:check:sources": "jiti scripts/check-documentation.ts",
     "docs:sync": "jiti scripts/check-documentation.ts --write",
     "test:addon-live2d-package": "publint addon-live2d && attw --pack addon-live2d --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-live2d",
-    "test:live2d-runtime-build": "jiti addon-live2d/test/build-runtime.test.ts"
+    "test:live2d-runtime-build": "jiti addon-live2d/test/build-runtime.test.ts",
+    "test:addon-assets-package": "publint addon-assets && attw --pack addon-assets --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-assets"
   },
   "repository": {
     "type": "git",

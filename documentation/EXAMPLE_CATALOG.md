@@ -1,6 +1,6 @@
 # 示例目录整理
 
-核对日期：2026-09-22。范围：98 个 HTML 入口，其中 96 个场景示例、两个画廊入口。
+核对日期：2026-09-22。范围：99 个 HTML 入口，其中 97 个场景示例、两个画廊入口。
 
 ## 整理结果
 
@@ -124,6 +124,7 @@ shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景�
 | [glTFViewer/index](../examples/glTFViewer/index.html)                                               | 精选 | loaders         | Load glTF 2.0 models from a URL, files, or a dropped folder.                                                                                                                                                    |
 | [loader/loader_progress](../examples/loader/loader_progress.html)                                   | 保留 | loaders         | Track glTF asset loading progress before interacting with the loaded scene.                                                                                                                                     |
 | [loader/shader/shader_loader](../examples/loader/shader/shader_loader.html)                         | 保留 | loaders         | Load external GLSL vertex and fragment files into a ShaderMaterial.                                                                                                                                             |
+| [asset_streaming](../examples/asset_streaming.html)                                                 | 保留 | loaders         | Stream KTX2/Basis textures with coarse-first detail, worker decoding, bounded residency and hidden-set eviction.                                                                                                |
 | [physics/rapier_character](../examples/physics/rapier_character.html)                               | 精选 | physics         | Guide a porcelain courier through a miniature obstacle course using collision-constrained character motion, stair assistance, jumping and visible scene queries.                                                |
 | [physics/rapier3d](../examples/physics/rapier3d.html)                                               | 精选 | physics         | Start a 29-domino chain reaction, launch a CCD projectile into a stacked tower, and apply impulses to compound bodies in a porcelain-and-brass physics garden.                                                  |
 | [physics/rapier_joints](../examples/physics/rapier_joints.html)                                     | 保留 | physics         | Drive a machined flywheel, connecting rod and prismatic slider, then disturb a spring-coupled double pendulum to trace motion through a complete mechanism.                                                     |

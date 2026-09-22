@@ -3,6 +3,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import packageJson from './package.json' with { type: 'json' };
 import { addonAliases, exampleManifestPlugin, shaderIncludePlugin } from './vite.config';
+import { assetRuntimePlugin } from './addon-assets/tools/vite-plugin';
 import { live2DExampleRuntimePlugin } from './addon-live2d/tools/vite-plugin';
 
 function collectHtmlFiles(directory: string): string[] {
@@ -77,9 +78,11 @@ export default defineConfig({
         shaderIncludePlugin(),
         exampleManifestPlugin(),
         copyExampleAssets(),
-        live2DExampleRuntimePlugin(true)
+        live2DExampleRuntimePlugin(true),
+        assetRuntimePlugin()
     ],
     resolve: { alias: [...addonAliases] },
+    worker: { format: 'es', plugins: () => [assetRuntimePlugin()] },
     define: {
         HILO3D_VERSION: JSON.stringify(packageJson.version),
         process: 'undefined',

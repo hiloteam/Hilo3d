@@ -7,6 +7,7 @@ interface TrackedSubmission {
     readonly deviceId: number;
     readonly deviceGeneration: number;
     settled: boolean;
+    readonly done: Promise<void>;
 }
 
 interface IdleWaiter {
@@ -100,7 +101,8 @@ export class SubmissionResourceTracker {
             order: this.#nextOrder++,
             deviceId: submission.deviceId,
             deviceGeneration: submission.deviceGeneration,
-            settled: false
+            settled: false,
+            done: submission.done
         };
         this.#lastTrackedFrame = frameIndex;
         this.#pendingSubmissionCount++;
@@ -139,6 +141,23 @@ export class SubmissionResourceTracker {
         }
         const failure = this.currentFailure();
         if (failure !== null) throw failure.reason;
+    }
+
+    /** Snapshot work already submitted; later rendering cannot extend this wait indefinitely. */
+    async waitForSubmittedWork(): Promise<void> {
+        const throughOrder = this.#nextOrder - 1;
+        const pending = this.#submissions.slice(this.#completionHead).map(value => value.done);
+        const results = await Promise.allSettled(pending);
+        const failure = this.currentFailure();
+        if (failure !== null && failure.order <= throughOrder) throw failure.reason;
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                const reason: unknown = result.reason;
+                throw reason instanceof Error
+                    ? reason
+                    : new Error('Submitted work failed', { cause: reason });
+            }
+        }
     }
 
     /**

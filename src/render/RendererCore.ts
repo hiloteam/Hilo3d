@@ -1,4 +1,5 @@
 import type Camera from '../camera/Camera';
+import type Texture from '../texture/Texture';
 import type Fog from '../core/Fog';
 import type Mesh from '../core/Mesh';
 import type Node from '../core/Node';
@@ -151,6 +152,12 @@ export interface RendererContract {
     /** Record resource-ready renderer passes in one synchronous backend frame boundary. */
     renderFrame(callback: RendererFrameCallback): void;
     supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    /**
+     * Upload or refresh managed textures through one Render Graph submission without drawing.
+     * Resolves after submission completion. Call outside an active render frame; failed frames
+     * leave backend revisions uncommitted. Source content must remain stable until this resolves.
+     */
+    uploadTextures(textures: readonly Texture<unknown>[]): Promise<void>;
     /** Create a WebGPU renderer-owned storage buffer. WebGL 2 rejects this operation. */
     createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
@@ -168,6 +175,7 @@ export interface RendererContract {
     waitForIdle(): Promise<void>;
     /** Explicit opt-in access to a backend extension; unknown names return null. */
     getExtension(name: string): object | null;
+    /** Release renderer caches and emit rhiResourcesReleased after fresh caches are available. */
     releaseGPUResources(): void;
     destroy(): void;
     on(type: string, listener: EventListener, once?: boolean): this;
@@ -271,6 +279,7 @@ export abstract class RendererCore extends EventDispatcher implements RendererCo
     abstract render(stage: RendererScene, camera: Camera, fireEvent?: boolean): void;
     abstract renderFrame(callback: RendererFrameCallback): void;
     abstract supportsTextureCompression(format: TextureCompressionFormat): boolean;
+    abstract uploadTextures(textures: readonly Texture<unknown>[]): Promise<void>;
     abstract createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     abstract createRenderTarget(parameters: RenderTargetParameters): RenderTarget;
     abstract setRenderTarget(

@@ -83,11 +83,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(98);
+        expect(examplePaths).toHaveLength(99);
     });
 
-    it('expands 98 pages into the complete 181-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(181);
+    it('expands 99 pages into the complete 183-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(183);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -121,7 +121,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(96);
+        expect(catalog).toHaveLength(97);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -130,8 +130,8 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(82);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(95);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(83);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(96);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -401,7 +401,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(153);
+        expect(genericCases).toHaveLength(155);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());

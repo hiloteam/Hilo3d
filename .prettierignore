@@ -6,6 +6,7 @@ dist-examples
 docs
 etc/*.api.md
 addon-particle/etc/*.api.md
+addon-assets/etc/*.api.md
 addon-physics/etc/*.api.md
 node_modules
 playwright-report

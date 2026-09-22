@@ -15,14 +15,16 @@ const packagePaths = [
     'package.json',
     'addon-particle/package.json',
     'addon-physics/package.json',
-    'addon-live2d/package.json'
+    'addon-live2d/package.json',
+    'addon-assets/package.json'
 ];
 const expectedRepository = 'git+https://github.com/hiloteam/Hilo3d.git';
 const expectedNames = new Map<string, string>([
     ['package.json', 'hilo3d'],
     ['addon-particle/package.json', '@hilo/addon-particle'],
     ['addon-physics/package.json', '@hilo/addon-physics'],
-    ['addon-live2d/package.json', '@hilo/addon-live2d']
+    ['addon-live2d/package.json', '@hilo/addon-live2d'],
+    ['addon-assets/package.json', '@hilo/addon-assets']
 ]);
 
 function readManifest(relativePath: string): PackageManifest {

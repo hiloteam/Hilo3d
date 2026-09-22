@@ -248,7 +248,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Test the built package
-        run: npm run test:package:built
+        run: npm run test:package:built && npm run test:addon-assets-package
 
       - name: Check packed files
         run: npm run pack:check

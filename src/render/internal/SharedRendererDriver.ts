@@ -2,7 +2,8 @@ import Camera from '../../camera/Camera';
 import type Mesh from '../../core/Mesh';
 import type { DispatchEvent } from '../../core/EventDispatcher';
 import { LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP } from '../../constants/webgl';
-import type Texture from '../../texture/Texture';
+import Texture from '../../texture/Texture';
+import { textureUploadPass } from '../renderer/TextureUploadPass';
 import Shader from '../../shader/Shader';
 import {
     DEFAULT_MATERIAL_PIPELINE_STATE,
@@ -327,6 +328,7 @@ class SharedRendererDriver
     readonly #pipelineRenderTargets = new Set<RHIRenderTarget>();
     readonly #storageBuffers = new Set<RendererStorageBuffer>();
     readonly #renderTargetTextureBindings = new Set<RenderTargetTextureBindingProvider>();
+    #lastSubmissionDone: Promise<void> | null = null;
     readonly #getActiveUploadBatch = () => this.#pipelineHost.requireActiveScope().uploads;
     readonly #retiredResourceCleanups = new Set<Promise<void>>();
     readonly #webGPUDeviceOptions: Readonly<
@@ -605,6 +607,7 @@ class SharedRendererDriver
     }
 
     completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void {
+        this.#lastSubmissionDone = execution.submission.done;
         const resources = this.requireResources();
         if (this.#scriptableResourcesFrameStarted) {
             this.#scriptablePipelineResources.finalizeHistoryWrites(execution.graph);
@@ -1227,22 +1230,81 @@ class SharedRendererDriver
         );
     }
 
+    override async uploadTextures(textures: readonly Texture<unknown>[]): Promise<void> {
+        this.assertReadyForRender();
+        this.assertNoFrameMutation('uploadTextures');
+        const sources = [...new Set(textures)];
+        for (const source of sources) {
+            if (!(source instanceof Texture))
+                throw new TypeError('uploadTextures requires Texture instances');
+        }
+        if (sources.length === 0) return;
+        const priorSubmission = this.#lastSubmissionDone;
+        try {
+            this.renderFrame(() => {
+                const scope = this.#pipelineHost.requireActiveScope();
+                this.ensureMeshFrame(scope.context);
+                const processor = this.requireResources().processor;
+                const handles = sources.map(source => {
+                    const prepared = processor.textures.prepare(source);
+                    processor.resourceUses.use(prepared.texture);
+                    processor.resourceUses.use(prepared.view);
+                    processor.resourceUses.use(prepared.sampler);
+                    return scope.graph.importTextureProvider(
+                        source.name || source.id,
+                        processor.registry.resolve(prepared.texture).descriptor,
+                        () => processor.registry.resolve(prepared.texture),
+                        'persistent',
+                        true
+                    );
+                });
+                scope.graph.addPass(textureUploadPass, handles);
+            });
+        } catch (cause) {
+            const submitted = this.#lastSubmissionDone;
+            if (submitted !== null && submitted !== priorSubmission) {
+                try {
+                    await submitted;
+                } catch (submissionError) {
+                    throw new AggregateError(
+                        [cause, submissionError],
+                        'Texture upload observer and submission failed',
+                        { cause: submissionError }
+                    );
+                }
+            }
+            throw cause;
+        }
+        const done = this.#lastSubmissionDone;
+        if (done === null) throw new Error('Texture upload produced no submission.');
+        await done;
+    }
+
     override async waitForIdle(): Promise<void> {
         await this.ready;
         const resources = this.#resources;
         const recovery = resources?.recovery.recoveryPromise;
         if (recovery !== null && recovery !== undefined) await recovery;
+        const waits: Promise<unknown>[] = [...this.#retiredResourceCleanups];
         if (resources !== null) {
-            await Promise.all([
-                resources.processor.submissions.waitForIdle(),
-                resources.shadowRenderer.waitForIdle(),
-                resources.postProcess.fullscreen.submissions.waitForIdle()
-            ]);
+            waits.push(
+                resources.processor.submissions.waitForSubmittedWork(),
+                resources.shadowRenderer.submissions.waitForSubmittedWork(),
+                resources.postProcess.fullscreen.submissions.waitForSubmittedWork()
+            );
         }
-        await Promise.all([...this.#retiredResourceCleanups]);
         const device = this.#device;
         if (device !== null && !device.destroyed) {
-            await device.graphicsQueue.onSubmittedWorkDone();
+            waits.push(device.graphicsQueue.onSubmittedWorkDone());
+        }
+        const results = await Promise.allSettled(waits);
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                const reason: unknown = result.reason;
+                throw reason instanceof Error
+                    ? reason
+                    : new Error('Renderer submitted work failed', { cause: reason });
+            }
         }
     }
 
@@ -1260,6 +1322,7 @@ class SharedRendererDriver
         this.retireRenderingResources();
         this.createRenderingResources(this.requireDevice());
         for (const target of this.#pipelineRenderTargets) target.recreateResources();
+        this.dispatchLifecycleEvent('rhiResourcesReleased', undefined);
     }
 
     override destroy(): void {

@@ -11,6 +11,8 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
   particles.
 - [2D and multi-camera](./2D_RENDERING.md), [animation](./ANIMATION_SYSTEM.md),
   [PBR/post-processing](./PBR_AND_POST_PROCESSING.md).
+- [Asset streaming](./ASSET_STREAMING.md): optional KTX2/Basis workers and bounded texture
+  residency.
 - [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md), [Live2D](./LIVE2D.md).
 - [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
 - [AI documentation entry](../llms.txt): a short index; [maintenance](./AI_DOCUMENTATION.md).
