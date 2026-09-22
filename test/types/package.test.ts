@@ -187,7 +187,6 @@ import {
 } from '@hilo/addon-live2d/tools';
 
 const live2DConfiguration = {
-    runtimeUrl: new URL('https://example.test/live2d/runtime.js'),
     nonce: 'application-csp-nonce',
     timeoutMilliseconds: 15_000
 } satisfies Live2DConfiguration;

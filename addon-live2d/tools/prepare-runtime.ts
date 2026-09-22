@@ -1,25 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildLive2DRuntime } from '../addon-live2d/tools/build-runtime.js';
-
-/** Public gallery location; development and production serve exactly this directory. */
-export const LIVE2D_EXAMPLE_RUNTIME_DIRECTORY = 'examples/assets/live2d/runtime';
-
-/** Generated runtime allowlist, including its notices and provenance manifest. */
-export interface Live2DExampleRuntime {
-    readonly directory: string;
-    readonly files: ReadonlyMap<string, string>;
-}
+import { fileURLToPath } from 'node:url';
+import { buildLive2DRuntime, type BuildLive2DRuntimeResult } from './build-runtime.js';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
-const vendorRoot = resolve(projectRoot, 'third-party/live2d');
+const vendorRoot = resolve(projectRoot, 'vendor');
 const sdkRoot = resolve(vendorRoot, 'cubism-5-r.5');
-let pending: Promise<Live2DExampleRuntime> | null = null;
-let building: Promise<Live2DExampleRuntime> | null = null;
-let sourceRevision = 0;
-
 function relativeFile(root: string, path: string): string {
     const local = relative(root, path);
     if (isAbsolute(local) || local === '' || local === '..' || local.startsWith(`..${sep}`)) {
@@ -78,55 +65,17 @@ async function verifyVendorFiles(): Promise<void> {
     );
 }
 
-async function generate(): Promise<Live2DExampleRuntime> {
+/** Build the package or gallery runtime from the same verified, repository-owned SDK inputs. */
+export async function buildPinnedLive2DRuntime(
+    directory: string,
+    assetNaming: 'content-hash' | 'stable' = 'content-hash'
+): Promise<BuildLive2DRuntimeResult> {
     await verifyVendorFiles();
-    const directory = resolve(projectRoot, '.cache/live2d-example-runtime');
-    const result = await buildLive2DRuntime({
+    return buildLive2DRuntime({
         coreFile: resolve(sdkRoot, 'Core/live2dcubismcore.min.js'),
         frameworkDirectory: resolve(sdkRoot, 'Framework'),
         outputDirectory: directory,
-        additionalLicenseFiles: [resolve(sdkRoot, 'Core/RedistributableFiles.txt')]
+        additionalLicenseFiles: [resolve(sdkRoot, 'Core/RedistributableFiles.txt')],
+        assetNaming
     });
-    const files = new Map<string, string>();
-    for (const file of result.files) files.set(relativeFile(directory, file), file);
-    return { directory, files };
-}
-
-/** Invalidate a development runtime after its source inputs change. Builds remain serialized. */
-export function invalidateLive2DExampleRuntime(): void {
-    sourceRevision++;
-    pending = null;
-}
-
-/** Verify original SDK bytes and share one offline runtime until a watched source changes. */
-export function prepareLive2DExampleRuntime(): Promise<Live2DExampleRuntime> {
-    if (pending === null) {
-        const revision = sourceRevision;
-        const previous = building;
-        const attempt = (async (): Promise<Live2DExampleRuntime> => {
-            if (previous !== null) {
-                try {
-                    await previous;
-                } catch {
-                    /* A corrected source can retry a failed build. */
-                }
-            }
-            return generate();
-        })();
-        building = attempt;
-        const current: Promise<Live2DExampleRuntime> = attempt.then(runtime =>
-            revision === sourceRevision ? runtime : prepareLive2DExampleRuntime()
-        );
-        pending = current;
-        void current.catch(() => {
-            if (pending === current) pending = null;
-        });
-    }
-    return pending;
-}
-
-const invoked = process.argv[1];
-if (invoked && pathToFileURL(resolve(invoked)).href === import.meta.url) {
-    const runtime = await prepareLive2DExampleRuntime();
-    process.stdout.write(`Prepared offline Live2D runtime: ${runtime.directory}\n`);
 }

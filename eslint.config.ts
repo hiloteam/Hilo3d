@@ -19,7 +19,7 @@ export default defineConfig(
         'playwright-report/**',
         'reports/**',
         'test-results/**',
-        'third-party/live2d/cubism-5-r.5/**'
+        'addon-live2d/vendor/cubism-5-r.5/**'
     ]),
     {
         files: ['**/*.{ts,tsx,mts,cts}'],

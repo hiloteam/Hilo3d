@@ -4,7 +4,8 @@
 
 - Add Live2DModel.load with SDK-independent motion, expression, parameter and effect controls; Stage
   automatically advances and destroys owned sessions/assets. Add abortable complete loading, shared
-  bounded runtime initialization, explicit asset versioning and self-hosted SDK runtime tooling.
+  bounded runtime initialization and explicit asset versioning. Runtime assets are included in the
+  addon and loaded locally on demand; applications need no SDK setup or runtimeUrl configuration.
 - Add portable render-node raster contributions automatically discovered by Forward, and
   hierarchical transparent sorting groups with matching Camera2D pointer selection.
 - Add an official Hatsune Miku Live2D example with pointer tracking, motion controls and head
@@ -13,8 +14,8 @@
 
 - Add the optional `@hilo/addon-live2d` ESM package: application-owned Cubism source adaptation,
   model3 assets, portable deforming meshes, basic blending, soft/inverted masks and explicit
-  lifetime. Core/Framework and character resources remain external; advanced Cubism 5.3 composition
-  is rejected.
+  lifetime. Core/Framework retain their separate licenses; character resources remain external and
+  advanced Cubism 5.3 composition is rejected.
 - Add `RenderPipelineContext.createOrderedRendererList()` for explicit ordered mesh membership,
   including hidden mask sources and mixed material queues, through shared draw preparation and RHI.
 

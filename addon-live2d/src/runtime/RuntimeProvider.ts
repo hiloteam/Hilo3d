@@ -111,7 +111,9 @@ export function createRuntimeProvider(
                 if (moduleAttempts > 0)
                     url.searchParams.set('__hilo_retry', String(moduleAttempts));
                 try {
-                    const module: unknown = await import(/* @vite-ignore */ url.href);
+                    const module: unknown = await import(
+                        /* @vite-ignore */ /* webpackIgnore: true */ url.href
+                    );
                     loadedModule = requireFactory(module);
                 } catch (error) {
                     moduleAttempts++;

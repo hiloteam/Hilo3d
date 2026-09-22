@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
+import { verifyLive2DPackage } from './test-live2d-package';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hilo3d-package-'));
@@ -155,6 +156,7 @@ try {
     if (!runtimeHelp.includes('hilo-live2d-runtime --sdk') || !runtimeHelp.includes('--output')) {
         throw new Error('Installed Live2D runtime executable did not print its deployment help.');
     }
+    await verifyLive2DPackage(consumerDirectory);
 } finally {
     await rm(temporaryRoot, { force: true, recursive: true });
 }

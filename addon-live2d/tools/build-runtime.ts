@@ -23,6 +23,8 @@ export interface BuildLive2DRuntimeOptions {
     readonly frameworkLicenseFile?: string;
     /** Additional SDK notices to preserve byte-for-byte. */
     readonly additionalLicenseFiles?: readonly string[];
+    /** Stable names for package/bundler assets; standalone deployments default to content hashes. */
+    readonly assetNaming?: 'content-hash' | 'stable';
 }
 
 /** Paths and audit counts emitted by one completed SDK deployment build. */
@@ -75,7 +77,7 @@ async function resolveBuilderFiles(): Promise<BuilderFiles> {
     const adapterFile = source ? sourceAdapter : join(packageRoot, 'dist/cubism/CubismRuntime.js');
     const providerFile = join(
         packageRoot,
-        source ? 'tools/RuntimeProvider.ts' : 'dist/tools/RuntimeProvider.js'
+        source ? 'src/runtime/RuntimeProvider.ts' : 'dist/runtime/RuntimeProvider.js'
     );
     if (!(await isFile(adapterFile)) || !(await isFile(providerFile))) {
         throw new Error('The Live2D runtime builder is missing its adapter or provider module.');
@@ -268,6 +270,10 @@ async function preserveFile(source: string, target: string): Promise<FileDigest>
 export async function buildLive2DRuntime(
     options: Readonly<BuildLive2DRuntimeOptions>
 ): Promise<BuildLive2DRuntimeResult> {
+    const assetNaming: unknown = options.assetNaming;
+    if (assetNaming !== undefined && assetNaming !== 'content-hash' && assetNaming !== 'stable') {
+        throw new TypeError('Live2D assetNaming must be content-hash or stable.');
+    }
     const core = await realpath(options.coreFile);
     const framework = await frameworkSource(options.frameworkDirectory);
     const frameworkRoot = dirname(framework);
@@ -404,8 +410,14 @@ export async function buildLive2DRuntime(
         await cpuBundle.close();
     }
     const coreBytes = await readFile(core);
-    const coreName = `live2dcubismcore.${digest(coreBytes).slice(0, 16)}.min.js`;
-    const cpuName = `runtime-core.${digest(Buffer.from(cpuCode)).slice(0, 16)}.js`;
+    const coreName =
+        options.assetNaming === 'stable'
+            ? 'live2dcubismcore.min.js'
+            : `live2dcubismcore.${digest(coreBytes).slice(0, 16)}.min.js`;
+    const cpuName =
+        options.assetNaming === 'stable'
+            ? 'runtime-core.js'
+            : `runtime-core.${digest(Buffer.from(cpuCode)).slice(0, 16)}.js`;
     entries.set(
         providerEntry,
         [

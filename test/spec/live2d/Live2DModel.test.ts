@@ -353,7 +353,7 @@ describe('Live2DModel production ownership and automatic scene updates', () => {
         retry.destroy();
     });
 
-    it('snapshots configuration across concurrent loads and supports an ESM provider URL', async () => {
+    it('snapshots configuration across concurrent loads', async () => {
         await mockAssets();
         const first = runtimeFixture();
         const second = runtimeFixture();
@@ -368,20 +368,6 @@ describe('Live2DModel production ownership and automatic scene updates', () => {
         expect(second.sessions).toHaveLength(1);
         oldModel.destroy();
         newModel.destroy();
-        const moduleUrl = URL.createObjectURL(
-            new Blob(
-                [
-                    `export function createLive2DRuntime(options) { if(options.nonce !== 'example') throw new Error('nonce missing'); return { apiVersion:1, createModel(){return Promise.reject(new Error('module provider called'));} }; }`
-                ],
-                { type: 'text/javascript' }
-            )
-        );
-        try {
-            configureLive2D({ runtimeUrl: moduleUrl, nonce: 'example' });
-            await expect(Live2DModel.load(modelUrl)).rejects.toThrow('module provider called');
-        } finally {
-            URL.revokeObjectURL(moduleUrl);
-        }
     });
 
     it('rejects pre-abort and invalid deadlines before starting a provider', async () => {

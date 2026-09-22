@@ -1,12 +1,12 @@
 # @hilo/addon-live2d
 
-Live2D model loading, animation and rendering for Hilo3D. The normal application API contains no
-Cubism classes or renderer setup: configure one deployment URL, load a model and add it to Stage.
+Live2D model loading, animation and rendering for Hilo3D. Install the addon and load a model; the
+addon includes and initializes everything needed to evaluate it. No SDK download, runtime URL, CDN,
+global script tag or application-side build step is required.
 
 ```ts
-import { configureLive2D, Live2DModel } from '@hilo/addon-live2d';
+import { Live2DModel } from '@hilo/addon-live2d';
 
-configureLive2D({ runtimeUrl: '/live2d/runtime.js' });
 const model = await Live2DModel.load('/models/Miku/miku_sample_t04.model3.json', { signal });
 stage.addChild(model);
 model.playMotion('Idle', { loop: true });
@@ -15,33 +15,27 @@ model.setParameter('ParamMouthOpenY', 0.5);
 ```
 
 `stage` is an existing, ticking Hilo3D Stage and `signal` is the application's optional AbortSignal.
-See the checked `test/types/recipes/live2d.ts` recipe in the source repository for full
-setup/teardown. The repository's `examples/live2d.html` demonstrates the official Hatsune Miku
-sample with motions, pointer tracking, physics and head close-ups. Run `npm run examples:dev` in the
-repository to open it. Its model and SDK notices are retained separately; they are not included in
-the npm package.
+Supply the model3 manifest and its referenced model, texture and animation files. See the checked
+`test/types/recipes/live2d.ts` recipe in the repository for full setup and teardown.
 
-## Deploy the runtime once
+## Package-local runtime
 
-The model solver is the official licensed Cubism SDK. This npm package contains the Hilo adapter and
-deployment tool, not the SDK binary, Framework source or character artwork. Build self-hosted
-runtime assets from your own SDK installation:
+The runtime is prepared when this addon is built and shipped in `dist/runtime/prebuilt/`. It is
+loaded lazily on the first model load. Standard application bundlers consume its static
+`new URL(..., import.meta.url)` asset references and copy the two runtime assets into the
+application's own output. Native browser ESM hosting keeps those files beside the addon modules.
+Nothing is fetched from a third-party host. Node/SSR imports do not initialize the browser runtime.
 
-```sh
-npm install --save-dev rollup typescript
-hilo-live2d-runtime --sdk ./vendor/CubismSdkForWeb --output ./public/live2d
-```
+The maintained Vite example and the installed-package browser test exercise the same default loader.
+Run `npm run examples:dev` in the repository and open `examples/live2d.html` to see Miku. Consumers
+do not run the internal SDK builder. Model artwork is not included in the npm package.
 
-For split SDK layouts, use `--core-file`, `--framework-dir`, `--core-license` and `--output`; see
-`hilo-live2d-runtime --help` for the exact flags. The tool keeps Core byte-for-byte intact, compiles
-only CPU Framework modules and the adapter to ESM, rejects native WebGL renderer imports, and copies
-SDK/MIT notices with hashed-file provenance. The generated provider loads Core before the Framework.
-The ordinary addon entry point never accesses SDK globals. Rollup and TypeScript are optional build
-peers and are not imported by browser model code.
+Optional `configureLive2D({ nonce, timeoutMilliseconds })` sets a CSP nonce or a shared
+initialization deadline. Ordinary applications need no configuration. There is no `runtimeUrl`
+option. The default runtime is owned by this addon and follows its release version.
 
-Keep the generated provider entry revalidated on deployment; its Core/CPU module assets have
-content-hashed names. Supply a CSP nonce with `configureLive2D({ runtimeUrl, nonce })` when needed.
-No CDN is selected implicitly. SDK/model licensing remains separate from the addon MIT license.
+The adapter is MIT licensed; the included third-party runtime retains its separate licenses and
+notices. See [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
 
 ## Model control
 

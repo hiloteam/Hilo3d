@@ -1,5 +1,5 @@
 # Preserve pinned vendor/model bytes across platform-specific Git line-ending settings.
-third-party/live2d/cubism-5-r.5/** -text
+addon-live2d/vendor/cubism-5-r.5/** -text
 examples/models/live2d/Miku/** -text
 # This upstream notice intentionally retains the original archive's CRLF line endings.
 examples/models/live2d/Miku/ReadMe.upstream.txt whitespace=trailing-space,space-before-tab,cr-at-eol

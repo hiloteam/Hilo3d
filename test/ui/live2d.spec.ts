@@ -370,8 +370,18 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         const expectedAborts = new Set<string>();
         let heldRequest: HeldModelRequest | undefined;
         const loadedAssets = new Set<string>();
+        const loadedOrigins = new Set<string>();
+        let documentRequests = 0;
+        page.on('request', request => {
+            if (request.resourceType() === 'document' && request.frame() === page.mainFrame())
+                documentRequests++;
+        });
         page.on('response', response => {
-            if (response.ok()) loadedAssets.add(new URL(response.url()).pathname);
+            if (response.ok()) {
+                const url = new URL(response.url());
+                loadedAssets.add(url.pathname);
+                loadedOrigins.add(url.origin);
+            }
         });
         try {
             await page.goto(`/examples/live2d.html?backend=${backend}&test=1`, {
@@ -389,7 +399,13 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             );
             await expect(page.locator('#live2d-canvas')).toBeVisible();
             for (const asset of mikuAssets) expect(loadedAssets.has(asset), asset).toBe(true);
-            expect(loadedAssets.has('/examples/assets/live2d/runtime/runtime.js')).toBe(true);
+            expect(loadedAssets.has('/addon-live2d/src/runtime/DefaultRuntime.ts')).toBe(true);
+            for (const name of ['live2dcubismcore.min.js', 'runtime-core.js']) {
+                expect(
+                    [...loadedAssets].filter(asset => asset.endsWith(`/prebuilt-runtime/${name}`))
+                ).toHaveLength(1);
+            }
+            expect([...loadedOrigins]).toEqual([new URL(page.url()).origin]);
             expect(
                 [...loadedAssets].filter(asset =>
                     /\/Miku\/miku_sample_t04\.2048\/texture_\d+\.png$/u.test(asset)
@@ -463,6 +479,10 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             }
             await expect(body).toHaveAttribute('data-motion', 'Idle');
             await expect(body).toHaveAttribute('data-motion-state', 'loop');
+            expect(
+                documentRequests,
+                'Runtime preparation must not trigger a Vite page reload'
+            ).toBe(1);
             await exerciseFollowAndView(page, backend, testInfo);
             await assertGraphicsHealth(page, backend);
             failures.assertEmpty(`Miku ${backend} pointer follow and camera views`);

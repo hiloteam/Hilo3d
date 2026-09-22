@@ -10,6 +10,7 @@ export function buildLive2DRuntime(options: Readonly<BuildLive2DRuntimeOptions>)
 // @public
 export interface BuildLive2DRuntimeOptions {
     readonly additionalLicenseFiles?: readonly string[];
+    readonly assetNaming?: 'content-hash' | 'stable';
     readonly coreFile: string;
     readonly coreLicenseFile?: string;
     readonly frameworkDirectory: string;

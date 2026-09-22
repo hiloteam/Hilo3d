@@ -1,8 +1,8 @@
 /**
  * Portable Live2D rendering for Hilo3D's WebGL2 and WebGPU backends.
- * Applications configure a separately deployed, licensed Cubism Core/Framework runtime once;
- * high-level models own animation sessions, loaded assets and portable drawable rendering.
- * SDK binaries and character assets are not distributed in this package.
+ * Models automatically load the prebuilt runtime included in this addon.
+ * High-level models own animation sessions, assets and portable drawable rendering.
+ * Redistributable SDK runtime files retain their separate Live2D licenses; artwork is not bundled.
  *
  * @packageDocumentation
  */
@@ -18,9 +18,5 @@ export {
     type Live2DBounds,
     type Live2DParameterOptions
 } from './Live2DModel.js';
-export {
-    configureLive2D,
-    type Live2DConfiguration,
-    type Live2DRuntimeProviderOptions
-} from './Live2DConfiguration.js';
+export { configureLive2D, type Live2DConfiguration } from './Live2DConfiguration.js';
 export type * from './runtime/Live2DRuntime.js';

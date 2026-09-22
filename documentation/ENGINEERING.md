@@ -31,8 +31,9 @@ monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布�
 - 发布门禁把核心与 addon 的实际 tarball 安装进空 consumer，并运行所有根入口和 Rapier
   subpath 的真实 ESM import。仅做 `publint`、声明检查或 dry-run 不足以证明 peer 版本可运行。
 
-`addon-live2d` 只依赖核心公共 API；应用部署 Cubism
-SDK 和模型资源；addon 提供高层加载/动画 API 和严格 ESM 部署工具，不将 SDK 脚本打入 npm 包。细节见
+`addon-live2d` 只依赖核心公共 API；应用只提供模型资源。addon 内置并延迟初始化由其 `vendor/`
+固定输入构建的运行时，发布包保留原样 Core、CPU Framework
+bundle 和独立许可证；应用构建自动携带本地运行时资源，不配置 SDK 地址或访问 CDN。细节见
 [Live2D](./LIVE2D.md)。
 
 保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前四个包尚不足以证明把根核心整体搬到
@@ -54,7 +55,7 @@ SDK 和模型资源；addon 提供高层加载/动画 API 和严格 ESM 部署�
 - `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本。
 
 生产源码不会被测试全局类型或 Node 类型污染。lint 同时使用 TypeScript 类型信息检查
-`src/`、`examples/`、`test/`、`scripts/` 与工程配置。生成物和 `third-party/live2d`
+`src/`、`examples/`、`test/`、`scripts/` 与工程配置。生成物和 `addon-live2d/vendor`
 内保持原样的 SDK 输入单独排除；第三方来源、哈希与许可随输入保存，一方适配器和构建工具仍接受完整检查。
 
 ### 原生对象模型

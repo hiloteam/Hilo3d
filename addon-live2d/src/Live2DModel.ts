@@ -27,7 +27,7 @@ export interface Live2DModelLoadOptions {
     readonly maskSize?: number;
     /** Let Stage updates advance the model. Defaults to true. */
     readonly automaticUpdate?: boolean;
-    /** Advanced per-model runtime injection; ordinary callers configure runtimeUrl once. */
+    /** Advanced per-model runtime injection; otherwise use the default or configured provider. */
     readonly runtime?: Live2DRuntime;
 }
 
@@ -143,6 +143,7 @@ async function waitWithAbort<T>(pending: Promise<T>, signal: AbortSignal): Promi
 
 /**
  * Fully owned Live2D scene node: load once, attach to Stage, then use motion/expression/parameter APIs.
+ * Without configuration, the first load initializes the prebuilt runtime included in this package.
  * Stage advances the CPU runtime and synchronizes meshes automatically. Destruction releases the
  * SDK model, all animation resources, mask targets, textures and decoded images.
  */

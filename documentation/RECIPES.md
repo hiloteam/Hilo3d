@@ -271,14 +271,14 @@ export async function createPhysicsScene(container: HTMLElement, mesh: Mesh): Pr
 
 ## Live2D rendering
 
-The host supplies initialized Cubism data and textures; see [Live2D](./LIVE2D.md) for SDK ownership
-and supported rendering.
+Load a model directly; the addon includes and manages its runtime. See [Live2D](./LIVE2D.md) for
+supported models and lifecycle.
 
 <!-- recipe: test/types/recipes/live2d.ts -->
 
 ```ts
 import { OrthographicCamera, Stage } from 'hilo3d';
-import { configureLive2D, Live2DModel } from '@hilo/addon-live2d';
+import { Live2DModel } from '@hilo/addon-live2d';
 import { runScene } from './lifecycle.js';
 
 /** High-level Live2D scene with a lifecycle-owned ticker. */
@@ -288,14 +288,12 @@ export interface Live2DScene {
     destroy(): void;
 }
 
-/** Load a model with one deployment URL; Stage owns animation, masks and destruction. */
+/** Load a model directly; Stage owns animation, masks and destruction. */
 export async function createLive2DScene(
     container: HTMLElement,
     modelUrl: string,
-    runtimeUrl: string,
     signal?: AbortSignal
 ): Promise<Live2DScene> {
-    configureLive2D({ runtimeUrl });
     const model = await Live2DModel.load(modelUrl, signal === undefined ? {} : { signal });
     let stage: Stage | null = null;
     try {

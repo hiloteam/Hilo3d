@@ -14,7 +14,7 @@ import { RenderNodeExtension } from 'hilo3d';
 import { Texture } from 'hilo3d';
 
 // @public
-export function configureLive2D(configuration: Readonly<Live2DConfiguration>): void;
+export function configureLive2D(configuration?: Readonly<Live2DConfiguration>): void;
 
 // @public
 export function createCubismCoreSource(model: CubismCoreModel, utils: CubismCoreUtils): Live2DSource;
@@ -88,7 +88,6 @@ export interface Live2DBounds {
 export interface Live2DConfiguration {
     readonly nonce?: string;
     readonly runtime?: Live2DRuntime | (() => Live2DRuntime | Promise<Live2DRuntime>);
-    readonly runtimeUrl?: string | URL;
     readonly timeoutMilliseconds?: number;
 }
 
@@ -293,11 +292,6 @@ export interface Live2DRuntime {
 // @public
 export interface Live2DRuntimeCreateOptions {
     readonly signal?: AbortSignal;
-}
-
-// @public
-export interface Live2DRuntimeProviderOptions {
-    readonly nonce?: string;
 }
 
 // @public

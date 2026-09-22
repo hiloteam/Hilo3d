@@ -2,16 +2,17 @@
 
 `@hilo/addon-live2d` provides a high-level `Live2DModel.load()` API. Ordinary Hilo applications use
 model/animation/parameter methods and Stage lifecycle, without creating Cubism objects, evaluating
-Core or synchronizing drawable buffers. Core/Framework remain a separately deployed, licensed SDK;
+Core or synchronizing drawable buffers. The addon includes its runtime and initializes it lazily;
 the core engine does not import Cubism or the addon.
 
 ## Public application workflow
 
-Configure `configureLive2D({ runtimeUrl })` once at bootstrap. Load a model with an optional abort
-signal, timeout and explicit `assetVersion`, then add it to a ticking Stage. The loader fetches the
-model3 manifest, moc3, textures and declared animation/effect resources. Each model owns its runtime
-session and assets. Stage uses the existing Node update hook (milliseconds) to advance the session
-(seconds) and sync geometry once per tick; camera invocations do not advance animation.
+Call `Live2DModel.load(modelUrl)` directly, then add the result to a ticking Stage. Model loads
+accept an optional abort signal, timeout and explicit `assetVersion`; no SDK setup or runtime URL is
+needed. The loader fetches the model3 manifest, moc3, textures and declared animation/effect
+resources. Each model owns its runtime session and assets. Stage uses the existing Node update hook
+(milliseconds) to advance the session (seconds) and sync geometry once per tick; camera invocations
+do not advance animation.
 
 `playMotion()` defaults to force replacement and supports named priorities, group entry selection,
 loop overrides and fades. Expression, parameter, pause/time-scale, eye-blink, physics and lip-sync
@@ -31,31 +32,38 @@ continues sibling cleanup after failures, and releases the renderer last. Standa
 can advance explicitly; the first explicit renderFrame must be preceded by model.prepare outside the
 frame's allocation guard.
 
-## SDK deployment and ownership
+## Runtime ownership and packaging
 
-`hilo-live2d-runtime` consumes an application-owned SDK directory (or explicit Core/Framework
-paths), emits a self-hosted ESM provider and content-hashed CPU/Core assets, and preserves license
-notices and file provenance. SDK source and binary files are not published in the addon package. The
-normal browser entry does not import SDK types/globals. The deployment provider alone loads the
-unmodified external Core browser executable, then imports the CPU Framework bundle. It does not
-rewrite CommonJS/UMD code and never imports Cubism's native WebGL renderer. All maintained
-first-party code remains strict TypeScript/ESM.
+The runtime belongs to `addon-live2d`. Pinned original inputs, provenance and license notices live
+under [addon-live2d/vendor](../addon-live2d/vendor/README.md). The addon build verifies their
+hashes, bundles the CPU Framework and adapter, and preserves Core byte-for-byte. The completed
+assets and notices ship under `dist/runtime/prebuilt/`; consumer installation never downloads or
+builds an SDK.
 
-Rollup and TypeScript are optional build peers for the Node tooling subpath. The generated runtime
-uses the SDK's motion, expression, physics, pose, blink and layout implementations; these algorithms
-are not recreated in the renderer. `/cubism` is the checked adapter boundary for tooling and
-advanced providers. `/tools` is Node-only and is not imported into browser model code.
+The first model load dynamically imports the internal default loader. Its static asset URLs let
+application bundlers copy/fingerprint the Core executable and standalone CPU module into their own
+output. Native ESM deployments retain the package directory layout. The loader fetches only these
+package/application-local assets, with no third-party runtime host. It loads Core before evaluating
+the CPU module and shares initialization among concurrent models. Applications do not manipulate
+Cubism classes or SDK globals. No native Cubism renderer enters the module graph.
 
-Provider initialization is shared, bounded by a deadline, and retried after failure. Cancellation of
-one model does not cancel another model's shared initialization. SDK code/Framework state is
-page-scoped; individual moc/model, motion/expression, physics/pose, image and GPU resources have
-explicit model ownership. Failed, cancelled or late-completing loads release acquired resources.
-Runtime API version mismatches and unsupported model rendering features fail before normal use.
+`configureLive2D({ nonce, timeoutMilliseconds })` optionally controls CSP and the shared startup
+limit; no setup call is needed normally. The former `runtimeUrl` option is removed. Advanced
+SDK-independent runtime injection remains available for tests and specialized integrations.
 
-No CDN is assumed. CSP nonce support belongs in the one-time configuration. `assetVersion` writes a
-dedicated query parameter onto the manifest and each resolved resource URL while preserving its own
-query/hash; arbitrary parent authentication/query parameters are not inherited. Use immutable model
-versions or that explicit version to avoid stale mixed model/texture data after deployment.
+SDK code/Framework state is page-scoped; individual moc/model, motion/expression, physics/pose,
+image and GPU resources have explicit model ownership. Failed, cancelled or late-completing model
+loads release acquired resources. Cancellation of one model does not cancel another model's shared
+initialization. The default deadline is 30 seconds.
+
+The included SDK files retain their own terms, separately from the adapter MIT license; see
+[package notices](../addon-live2d/THIRD-PARTY-NOTICES.md). Their inclusion does not license
+character artwork. Internal deployment tooling remains available to contributors but is not part of
+the ordinary model-loading workflow.
+
+`assetVersion` writes a dedicated query parameter onto the manifest and each resolved resource URL
+while preserving its own query/hash; arbitrary parent authentication/query parameters are not
+inherited. Use immutable model versions or this explicit version to avoid mixed model/texture data.
 
 ## Portable rendering and automatic integration
 
@@ -129,14 +137,10 @@ The normal examples and GitHub Pages builds include the model and its notices. T
 covered by the engine's MIT license: preserve its attribution and follow the linked character terms
 for reuse or another deployment. The artwork never enters npm packages.
 
-The repository keeps example-only SDK inputs under
-[third-party/live2d](../third-party/live2d/README.md). The examples Vite plugin builds an offline
-runtime into `.cache/live2d-example-runtime` and serves it at
-`/examples/assets/live2d/runtime/runtime.js`; the production examples build copies that runtime and
-its notices to the same public path. Generated bundles are not source files, and neither SDK inputs
-nor sample artwork enter npm packages. Normal example startup does not require a prebuilt addon or a
-third-party CDN. Model and SDK licensing are separate from Hilo3D's MIT license; the source notices
-describe their scope.
+The example uses the same zero-configuration addon loader as installed applications. Vite's
+source-checkout plugin prepares assets from the addon's pinned inputs and resolves their static URLs
+before normal asset processing. A published package already contains those files, so consumers need
+no Hilo-specific Vite plugin. Builds preserve the notices alongside example runtime assets.
 
 Portable tests use authored fake SDK/model fixtures and asymmetric image data, not proprietary SDK
 binaries. They cover initialization sharing/retry, deadlines, abort races/late cleanup, independent
@@ -146,3 +150,7 @@ Core bytes, license/provenance, CPU-only module graphs, nonce handling, load ord
 behavior. The official Miku example is the maintained actual-SDK browser fixture for both backends,
 with stable captures, post-capture interactions and page lifecycle coverage. Test existence
 describes the contract; the handoff records which checks actually ran for a given change.
+
+The package contract installs real tarballs into an empty consumer, bundles the public addon with
+Vite, blocks every external network request, and checks default startup, concurrent model ownership,
+real pixels, CSP nonce propagation and retry of an injected CPU-module request failure.

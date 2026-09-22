@@ -1,8 +1,8 @@
-# Live2D SDK inputs for the offline character example
+# Runtime inputs owned by addon-live2d
 
-This directory contains original third-party SDK inputs for the maintained Live2D example. They are
-not covered by Hilo3D's MIT license. They are not included in the `hilo3d` or `@hilo/addon-live2d`
-npm packages.
+This directory contains original third-party SDK inputs used to build the addon runtime. They are
+not covered by Hilo3D's MIT license. The addon package includes the original Core executable and a
+compiled CPU Framework bundle with their notices; the raw SDK source tree is not published.
 
 - `cubism-5-r.5/Core/` contains the unmodified Core executable, declarations, license notice and
   redistributable-file list from an authorized, pre-existing local SDK copy associated with Cubism
@@ -28,22 +28,15 @@ Framework is governed by the
 [Live2D Open Software License](https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html).
 The original notices also describe applicable SDK release-license conditions. Preserve those notices
 and review their terms when distributing a deployment. Hatsune Miku artwork and its separate terms
-live under `examples/models/live2d/Miku/`.
+live under `../../examples/models/live2d/Miku/`.
 
 ## Generated runtime
 
-Vite serves `/examples/assets/live2d/runtime/runtime.js`. On the first matching development request,
-[the preparation script](../../scripts/prepare-live2d-example.ts) verifies the SDK inputs and builds
-the runtime into ignored `.cache/live2d-example-runtime/`. Successful requests share that build.
-Development watches addon source/tools and pinned SDK inputs; a change invalidates the cache,
-rebuilds through a serialized queue, then fully reloads the page so its CPU runtime is current.
+`npm run build --workspace=@hilo/addon-live2d` builds the runtime into
+`addon-live2d/dist/runtime/prebuilt/` after verifying pinned input hashes. The application's bundler
+copies the static asset URLs alongside its own JavaScript; direct browser ESM uses the package
+layout. Applications call `Live2DModel.load()` without preparing an SDK or selecting a runtime URL.
 
-`npm run examples:build` generates the same files and copies the runtime, immutable Core/CPU
-modules, original license notices and manifest into `dist-examples/examples/assets/live2d/runtime/`.
-Site publication copies this directory with the rest of the examples. Development and published
-examples need neither a CDN nor a raw `third-party/` URL. Generated JavaScript is never committed
-under `examples/`.
-
-To prepare the cache explicitly, run `npx jiti scripts/prepare-live2d-example.ts` after `npm ci`. No
-prior engine or addon build is required. Original SDK sources are excluded only from first-party
-formatting/linting; the first-party scripts and provenance files retain normal checks.
+The source-checkout Vite plugin uses the same builder with an ignored
+`addon-live2d/.cache/prebuilt-runtime/` directory. Original SDK inputs remain unchanged and are
+excluded from first-party lint/formatting, while the builder, adapter and provenance remain checked.

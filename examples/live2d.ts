@@ -1,6 +1,5 @@
 import { Color, OrthographicCamera, Stage, Ticker } from '../src/Hilo3d';
 import {
-    configureLive2D,
     Live2DModel,
     type Live2DBounds,
     type Live2DParameterAccess,
@@ -389,9 +388,6 @@ window.addEventListener('pageshow', (event: PageTransitionEvent) => {
 
 async function initialize(): Promise<void> {
     try {
-        configureLive2D({
-            runtimeUrl: new URL('./assets/live2d/runtime/runtime.js', location.href).href
-        });
         const created = await Stage.create({
             backend,
             canvas,
