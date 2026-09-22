@@ -1,4 +1,5 @@
 import Node, { type NodeParameters, type NodePointerEvent, type NodeRaycastInfo } from './Node';
+import Mesh from './Mesh';
 import version from './version';
 import Renderer, {
     type RendererBackend,
@@ -24,6 +25,7 @@ import {
 } from '../render/internal/RenderPipelineBackendSelection';
 import { setCameraCompositionSingleSample } from '../render/internal/CameraCompositionPolicy';
 import { getRenderNodeExtension } from '../render/pipeline/RenderNodeExtension';
+import { TransparentSortingGroups } from '../render/renderer/TransparentSortingGroups';
 import { StageSystemRegistry, type StageSystem } from './StageSystem';
 
 type DOMViewport = ReturnType<typeof getElementRect>;
@@ -350,6 +352,10 @@ function containsNode(parent: Node, possibleChild: Node): boolean {
  * ```
  */
 class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
+    #destructionStarted = false;
+    readonly #pickSortingGroups = new TransparentSortingGroups();
+    readonly #pickGroupMeshes: Mesh[] = [];
+    readonly #pickGroupHits = new Map<Mesh, NodeRaycastInfo>();
     static override readonly typeName: string = 'Stage';
     isStage = true;
     override className = 'Stage';
@@ -828,7 +834,7 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
                     top2DHit = hit;
                 }
             }
-            if (top2DHit !== null) return top2DHit;
+            if (top2DHit !== null) return this.grouped2DHit(hitResult, camera) ?? top2DHit;
         }
         const camera = this.cameras.at(-1);
         if (!camera) return null;
@@ -839,6 +845,40 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         const point = this._stageResultAtPoint.point;
         point.copy(camera.unprojectVector(point.set(x, y, 0), this.width, this.height));
         return this._stageResultAtPoint;
+    }
+
+    private grouped2DHit(
+        hits: readonly (NodeRaycastInfo | Vector3)[],
+        camera: Camera
+    ): NodeRaycastInfo | null {
+        const meshes = this.#pickGroupMeshes;
+        const byMesh = this.#pickGroupHits;
+        try {
+            for (const hit of hits) {
+                if (
+                    hit instanceof Vector3 ||
+                    !(hit.mesh instanceof Mesh) ||
+                    !camera.isLayerVisible(hit.mesh)
+                )
+                    continue;
+                if (!byMesh.has(hit.mesh)) meshes.push(hit.mesh);
+                byMesh.set(hit.mesh, hit);
+            }
+            this.#pickSortingGroups.prepare(meshes, null, camera);
+            if (!this.#pickSortingGroups.active) return null;
+            this.#pickSortingGroups.sort(meshes);
+            // Transparent scene draws follow all opaque draws, including when an opaque hit has
+            // a higher local zIndex. Only grouped scenes opt into this shared ordering path.
+            for (let index = meshes.length - 1; index >= 0; index--) {
+                const mesh = meshes[index];
+                if (mesh?.material?.forwardQueue === 'transparent') return byMesh.get(mesh) ?? null;
+            }
+            return null;
+        } finally {
+            this.#pickSortingGroups.reset();
+            meshes.length = 0;
+            byMesh.clear();
+        }
     }
     private sortCameras(): void {
         let sorted = true;
@@ -866,6 +906,8 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
      * @returns this
      */
     override destroy(): this {
+        if (this.#destructionStarted) return this;
+        this.#destructionStarted = true;
         const errors: unknown[] = [];
         this.enableDOMEvent([...this._enabledDOMEvents], false);
         this._eventTargets.clear();
@@ -874,7 +916,11 @@ class Stage<Backend extends RendererBackend = RendererBackend> extends Node {
         } catch (cause) {
             errors.push(cause);
         }
-        super.destroy(this.renderer);
+        try {
+            super.destroy(this.renderer);
+        } catch (cause) {
+            errors.push(cause);
+        }
         this.traverse(child => {
             child.off();
             child.parent = null;

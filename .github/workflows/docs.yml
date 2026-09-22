@@ -9,6 +9,7 @@ on:
       - 'CNAME'
       - 'src/**'
       - 'examples/**'
+      - 'addon-live2d/**'
       - 'README.md'
       - 'README_ZH.md'
       - 'CHANGELOG.md'

@@ -17,6 +17,7 @@ import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
 import type {
     CullingOptions,
     CullingResultsHandle,
+    OrderedRendererListDescriptor,
     RendererListDescriptor,
     RendererListHandle
 } from './RendererList';
@@ -332,6 +333,10 @@ export interface RenderPipelineContext {
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
     /** Select and sort a reusable draw list from current-frame culling results. */
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
+    /** Draw an explicit mesh sequence through shared preparation without sorting or regrouping. */
+    createOrderedRendererList(
+        descriptor: Readonly<OrderedRendererListDescriptor>
+    ): RendererListHandle;
     /**
      * Record the shared directional, spot, and point-light shadow atlas for these results.
      * Returns the exact graph texture and packed sampling data, or `null` when no shadow slice is

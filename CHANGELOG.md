@@ -2,6 +2,23 @@
 
 ### Features
 
+- Add Live2DModel.load with SDK-independent motion, expression, parameter and effect controls; Stage
+  automatically advances and destroys owned sessions/assets. Add abortable complete loading, shared
+  bounded runtime initialization and explicit asset versioning. Runtime assets are included in the
+  addon and loaded locally on demand; applications need no SDK setup or runtimeUrl configuration.
+- Add portable render-node raster contributions automatically discovered by Forward, and
+  hierarchical transparent sorting groups with matching Camera2D pointer selection.
+- Add an official Hatsune Miku Live2D example with pointer tracking, motion controls and head
+  close-ups, preserved source/license records and an offline example runtime built from separately
+  licensed SDK inputs.
+
+- Add the optional `@hilo/addon-live2d` ESM package: application-owned Cubism source adaptation,
+  model3 assets, portable deforming meshes, basic blending, soft/inverted masks and explicit
+  lifetime. Core/Framework retain their separate licenses; character resources remain external and
+  advanced Cubism 5.3 composition is rejected.
+- Add `RenderPipelineContext.createOrderedRendererList()` for explicit ordered mesh membership,
+  including hidden mask sources and mixed material queues, through shared draw preparation and RHI.
+
 - Expose immutable render-pipeline invocation policies for camera type and per-frame call limits.
   Forward supports arbitrary cameras and multiple invocations; Clustered declares its existing
   single-perspective-camera limit. The shared host validates calls before recording and rejects
@@ -27,6 +44,10 @@
 
 ### Changes
 
+- Keep Live2D build and package verification tooling inside the addon. Remove its obsolete public
+  SDK builder CLI/tools export, optional build-tool peers and unused standalone provider output;
+  examples reuse bundler-emitted runtime assets and copy only their license notices.
+
 - Separate SRP invocation context, resource/history ownership and pass execution, and register
   built-in preparation adapters at pass construction instead of identifying pass classes in the
   central setup path. Split Clustered shader, layout and parameter modules from frame orchestration
@@ -35,6 +56,16 @@
   reusable typed-array workspace, preserving existing dependency validation and pass order.
 
 ### Fixes
+
+- Normalize ImageBitmap uploads explicitly on WebGL2, preserving row direction and low/zero-alpha
+  RGB bytes through cropping, cube/array uploads and recovery without Canvas2D conversion.
+- Dispatch nested non-Mesh destruction overrides and complete sibling/renderer cleanup after errors.
+
+- Detect native WebGL2 context loss before delayed browser notification, preserve lost queue state
+  through abort cleanup, and keep restoration enabled by preventing the eventual loss event.
+
+- Release final-owner vertex/index and uniform-buffer recipes when meshes are destroyed, while
+  preserving shared geometry aliases, custom UBOs and submission-aware native retirement.
 
 - Bound completed Render Graph transient-resource retention by idle count, estimated bytes and age
   while preserving in-flight submission ownership and exact-descriptor reuse.

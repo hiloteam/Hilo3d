@@ -19,3 +19,6 @@ examples/models
 src/light/assets/ltcTexture.json
 test/asset
 test/expectScreenshot
+
+addon-live2d/etc/*.api.md
+addon-live2d/vendor/cubism-5-r.5/

@@ -101,6 +101,44 @@ function interleavedAliases(): {
 }
 
 describe('BufferResourceCache resource shape', () => {
+    it('keeps ownerless consumers alive and releases final owners behind their submission fence', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const cache = new BufferResourceCache(registry);
+        const frame = new RenderGraphFrame();
+        const owner = {};
+        const vertex = new GeometryData(new Float32Array([0, 1, 2]), 3);
+        const sharedUniform = UniformBuffer.fromSchema(createStd140Layout({ value: 'vec4' }));
+        runCacheFrame(frame, device, 1, cache, () => {
+            cache.prepareVertexBuffer(vertex, undefined, owner);
+            cache.prepareUniformBuffer(sharedUniform, owner);
+            cache.prepareUniformBuffer(sharedUniform);
+        });
+        const vertexBuffer = cache.resolveBuffer(vertex, 'vertex');
+        const uniformBuffer = cache.resolveBuffer(sharedUniform, 'uniform');
+        const vertexHandle = cache.diagnostics(vertex, 'vertex')?.handle;
+        if (vertexHandle === undefined) throw new Error('Owner test lost vertex handle');
+        registry.markUsed(vertexHandle, 1);
+
+        expect(cache.releaseOwner(owner)).toEqual({ count: 1, uniforms: [] });
+        expect(cache.diagnostics(vertex, 'vertex')).toBeNull();
+        expect(cache.resolveBuffer(sharedUniform, 'uniform')).toBe(uniformBuffer);
+        registry.collect(0);
+        expect(vertexBuffer.destroyed).toBe(false);
+        await complete(backend);
+        registry.collect(1);
+        expect(vertexBuffer.destroyed).toBe(true);
+        expect(uniformBuffer.destroyed).toBe(false);
+        expect(cache.detachUniformBuffer(sharedUniform)).toBe(true);
+        registry.collect(1);
+        expect(uniformBuffer.destroyed).toBe(true);
+        cache.destroy();
+        frame.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('separates vertex/index/uniform usage and pads allocations to four bytes', () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();

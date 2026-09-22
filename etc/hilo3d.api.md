@@ -5160,6 +5160,8 @@ class Node_2 extends EventDispatcher {
     setPosition(x: number, y: number, z: number): this;
     setRotation(x: number, y: number, z: number): this;
     setScale(x: number, y?: number, z?: number): this;
+    get sortingGroup(): boolean;
+    set sortingGroup(value: boolean);
     get sortingLayer(): number;
     set sortingLayer(value: number);
     traverse(callback: NodeTraverseCallback, onlyChild?: boolean): this;
@@ -5242,6 +5244,7 @@ export interface NodeParameters {
     scaleY?: number;
     // (undocumented)
     scaleZ?: number;
+    sortingGroup?: boolean;
     sortingLayer?: number;
     // (undocumented)
     up?: Vector3;
@@ -5374,6 +5377,14 @@ export interface OrbitControlsOptions {
     rotateSpeed?: number;
     target?: Vector3;
     zoomSpeed?: number;
+}
+
+// @public
+export interface OrderedRendererListDescriptor {
+    readonly cullingResults: CullingResultsHandle;
+    readonly materialPass?: MaterialPassRole;
+    readonly meshes: readonly Mesh[];
+    readonly overrideMaterial?: MaterialInstance;
 }
 
 // @public
@@ -6508,6 +6519,7 @@ export interface RenderNodeExtension {
     readonly gpu: RenderNodeGPUExtension | null;
     prepareRenderer?(renderer: RendererContract): void;
     prepareView?(camera: Camera): void;
+    readonly raster?: RenderNodeRasterExtension | null;
 }
 
 // @public
@@ -6519,6 +6531,14 @@ export interface RenderNodeGPUExtension {
     isVisible(camera: Camera): boolean;
     record(context: RenderPipelineContext, color: RenderGraphTextureHandle, depth: RenderGraphTextureHandle | null, drawVisible: boolean, phase: 'opaque' | 'transparent'): void;
     readonly requiresSampledDepth: boolean;
+}
+
+// @public
+export interface RenderNodeRasterExtension {
+    frameDiscarded?(frameIndex: number): void;
+    frameSubmitted?(frameIndex: number): void;
+    isVisible(camera: Camera): boolean;
+    record(context: ForwardRenderFeatureContext): unknown;
 }
 
 // @public
@@ -6581,6 +6601,7 @@ export interface RenderPipelineContext {
     readonly camera: Camera;
     readonly capabilities: RenderPipelineCapabilities;
     readonly clearColor: Readonly<RenderTargetColor>;
+    createOrderedRendererList(descriptor: Readonly<OrderedRendererListDescriptor>): RendererListHandle;
     createRendererList(descriptor: Readonly<RendererListDescriptor>): RendererListHandle;
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle;
     readonly frameIndex: number;

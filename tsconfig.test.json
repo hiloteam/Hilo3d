@@ -8,7 +8,8 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@hilo/addon-particle": ["./addon-particle/src/index.ts"],
-      "hilo3d": ["./src/Hilo3d.ts"]
+      "hilo3d": ["./src/Hilo3d.ts"],
+      "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"]
     }
   },
   "include": [
@@ -30,8 +31,20 @@
   ],
   "exclude": ["test/types/**"],
   "references": [
-    { "path": "./tsconfig.lib.json" },
-    { "path": "./addon-particle/tsconfig.json" },
-    { "path": "./addon-physics/tsconfig.json" }
+    {
+      "path": "./tsconfig.lib.json"
+    },
+    {
+      "path": "./addon-particle/tsconfig.json"
+    },
+    {
+      "path": "./addon-physics/tsconfig.json"
+    },
+    {
+      "path": "./addon-live2d/tsconfig.json"
+    },
+    {
+      "path": "./addon-live2d/tsconfig.tools.json"
+    }
   ]
 }

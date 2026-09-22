@@ -104,6 +104,8 @@ export interface NodeParameters {
     sortingLayer?: number;
     /** Fine 2D display order within `sortingLayer`. Higher values render later. */
     zIndex?: number;
+    /** Keep this node's transparent subtree together in automatic renderer-list sorting. */
+    sortingGroup?: boolean;
     pointerEnabled?: boolean;
     pointerChildren?: boolean;
     useHandCursor?: boolean;
@@ -141,6 +143,7 @@ export interface NodeParameters {
  * ```
  */
 class Node extends EventDispatcher {
+    #destructionStarted = false;
     static readonly typeName: string = 'Node';
     id: string;
     up: Vector3;
@@ -219,6 +222,7 @@ class Node extends EventDispatcher {
     layer = 1;
     private sortingLayerValue = 0;
     private zIndexValue = 0;
+    private sortingGroupValue = false;
     /**
      * 可视对象是否接受交互事件。默认为接受交互事件，即true。
      */
@@ -296,6 +300,7 @@ class Node extends EventDispatcher {
         node.layer = this.layer;
         node.sortingLayer = this.sortingLayer;
         node.zIndex = this.zIndex;
+        node.sortingGroup = this.sortingGroup;
         node.setPosition(this.x, this.y, this.z);
         node.setScale(this.scaleX, this.scaleY, this.scaleZ);
         node.setRotation(this.rotationX, this.rotationY, this.rotationZ);
@@ -829,6 +834,19 @@ class Node extends EventDispatcher {
         this.zIndexValue = value;
     }
     /**
+     * Treat this transparent subtree as one external sorting unit. Defaults to false.
+     * Groups sort by their own sortingLayer/zIndex, camera-view depth and stable scene order;
+     * descendant renderOrder values apply only inside the group. Nested groups remain atomic.
+     * Opaque queues and explicit ordered or unsorted renderer lists are unaffected.
+     */
+    get sortingGroup(): boolean {
+        return this.sortingGroupValue;
+    }
+    set sortingGroup(value: boolean) {
+        if (typeof value !== 'boolean') throw new TypeError('Node.sortingGroup must be boolean.');
+        this.sortingGroupValue = value;
+    }
+    /**
      * x轴坐标
      */
     get x(): number {
@@ -1061,23 +1079,33 @@ class Node extends EventDispatcher {
         }
     }
     /**
-     * 销毁 Node 资源
+     * Destroy this hierarchy, invoking each child node's destroy override once.
+     * Child failures are aggregated after remaining descendants have been released and detached.
      * @param renderer - stage时可以不传
      * @param destroyTextures - 是否销毁材质的贴图，默认不销毁
      * @returns this
      */
     destroy(renderer?: Renderer, destroyTextures = false): this {
-        const nodes = this.getChildrenByBaseClassName('Node');
+        if (this.#destructionStarted) return this;
+        this.#destructionStarted = true;
+        const errors: unknown[] = [];
         this.off();
-        nodes.forEach(node => {
-            if (node.isMesh) {
-                node.destroy(renderer, destroyTextures);
-            } else {
-                node.off();
-                node.removeFromParent();
+        for (const child of [...this.children]) {
+            try {
+                child.destroy(renderer, destroyTextures);
+            } catch (error: unknown) {
+                errors.push(error);
             }
-        });
+            // Mesh and third-party overrides may own only their own resources or throw before
+            // calling super. Finish any remaining hierarchy without invoking the override again.
+            try {
+                Node.prototype.destroy.call(child, renderer, destroyTextures);
+            } catch (error: unknown) {
+                errors.push(error);
+            }
+        }
         this.removeFromParent();
+        if (errors.length !== 0) throw new AggregateError(errors, 'Node destruction failed.');
         return this;
     }
     _onMatrixUpdate(): void {

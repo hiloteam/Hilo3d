@@ -7,9 +7,11 @@ export default defineConfig(
     globalIgnores([
         'skills/**/assets/**',
         '.cache/**',
+        'addon-live2d/.cache/**',
         'coverage/**',
         'dist/**',
         'addon-particle/dist/**',
+        'addon-live2d/dist/**',
         'addon-physics/dist/**',
         'dist-examples/**',
         'docs/**',
@@ -17,7 +19,8 @@ export default defineConfig(
         'node_modules/**',
         'playwright-report/**',
         'reports/**',
-        'test-results/**'
+        'test-results/**',
+        'addon-live2d/vendor/cubism-5-r.5/**'
     ]),
     {
         files: ['**/*.{ts,tsx,mts,cts}'],

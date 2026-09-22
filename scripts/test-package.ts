@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
+import { verifyLive2DPackage } from '../addon-live2d/test/package';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hilo3d-package-'));
@@ -26,6 +27,7 @@ try {
     const archivePath = pack(projectRoot);
     const particleArchivePath = pack(resolve(projectRoot, 'addon-particle'));
     const physicsArchivePath = pack(resolve(projectRoot, 'addon-physics'));
+    const live2DArchivePath = pack(resolve(projectRoot, 'addon-live2d'));
 
     await writeFile(
         join(consumerDirectory, 'package.json'),
@@ -44,6 +46,7 @@ try {
             archivePath,
             particleArchivePath,
             physicsArchivePath,
+            live2DArchivePath,
             resolve(projectRoot, 'node_modules/gl-matrix'),
             resolve(projectRoot, 'node_modules/web-naga'),
             resolve(projectRoot, 'node_modules/@dimforge/rapier2d-compat'),
@@ -98,7 +101,8 @@ try {
             "import { createPhysicsStageSystem } from '@hilo/addon-physics';",
             "import { createRapier2DPhysicsSystem } from '@hilo/addon-physics/rapier2d';",
             "import { createRapier3DPhysicsSystem } from '@hilo/addon-physics/rapier3d';",
-            "import { readFileSync } from 'node:fs';",
+            "import { existsSync, readFileSync } from 'node:fs';",
+            "for (const optionalTool of ['rollup', 'typescript']) if (existsSync(`node_modules/${optionalTool}`)) throw new Error(`Consumer unexpectedly installed optional build tool ${optionalTool}`);",
             "if (typeof Renderer !== 'function') throw new Error('Renderer is not exported.');",
             "if (typeof Vector3 !== 'function') throw new Error('Vector3 is not exported.');",
             "if (typeof version !== 'string') throw new Error('version is not exported.');",
@@ -106,7 +110,7 @@ try {
             "if (typeof createPhysicsStageSystem !== 'function') throw new Error('Physics System factory is not exported.');",
             "if (typeof createRapier2DPhysicsSystem !== 'function') throw new Error('Rapier 2D System factory is not exported.');",
             "if (typeof createRapier3DPhysicsSystem !== 'function') throw new Error('Rapier 3D System factory is not exported.');",
-            "for (const mapPath of ['node_modules/@hilo/addon-particle/dist/index.js.map', 'node_modules/@hilo/addon-physics/dist/index.js.map']) {",
+            "for (const mapPath of ['node_modules/@hilo/addon-particle/dist/index.js.map', 'node_modules/@hilo/addon-physics/dist/index.js.map', 'node_modules/@hilo/addon-live2d/dist/index.js.map']) {",
             "  const map = JSON.parse(readFileSync(mapPath, 'utf8'));",
             '  if (!Array.isArray(map.sourcesContent) || map.sourcesContent.length !== map.sources.length) throw new Error(`Missing inline sources for ${mapPath}`);',
             '}',
@@ -120,6 +124,7 @@ try {
         cwd: consumerDirectory,
         stdio: 'inherit'
     });
+    await verifyLive2DPackage(consumerDirectory);
 } finally {
     await rm(temporaryRoot, { force: true, recursive: true });
 }

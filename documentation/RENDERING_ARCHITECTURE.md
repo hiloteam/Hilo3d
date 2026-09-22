@@ -1065,3 +1065,21 @@ Composition/framing: 16:9 landscape, central Hilo3d architecture hub with six ba
 Style/medium: clean vector-like engineering infographic, dark navy background, cyan/blue/violet accents, concise English technical labels
 Constraints: use only the six supplied advantages; avoid unverifiable performance numbers; no watermark
 ```
+
+## Optional Live2D rendering and explicit lists
+
+The [Live2D addon](./LIVE2D.md) supplies ordinary shared-renderer meshes plus a Forward mask
+feature. Its mask producers use `createOrderedRendererList()` to select hidden meshes with an exact
+draw sequence; scene collection, shader compilation, resource preparation and RHI remain shared.
+Core/Framework simulation stays outside the engine dependency graph.
+
+Mesh destruction now releases vertex/index and uniform-buffer cache records when their final
+prepared-draw owner detaches. Canonical vertex aliases and buffers shared across meshes/materials
+remain valid; ownerless compute/fullscreen accesses retain their explicit lifetime. Native
+allocations still retire behind the last submission fence.
+
+WebGL2 detects native context loss at frame/error boundaries even before the browser dispatches
+`webglcontextlost`. Loss invalidation is idempotent, abort cleanup retains the lost queue state, and
+the eventual DOM event is still prevented so the browser permits restoration. The shared renderer
+observes the existing device-loss promise at the next microtask checkpoint; callers handling an
+interrupted frame can distinguish that recovery transition from ordinary draw errors.

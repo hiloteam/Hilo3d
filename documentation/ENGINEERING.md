@@ -21,7 +21,7 @@ npm run examples:dev
 
 仓库采用一个 Git 仓库、一个 lockfile 和一组根级质量门禁管理多个独立发布包，也就是 npm workspaces
 monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布边界是根目录的 `hilo3d` 核心包，以及
-`addon-particle/`、`addon-physics/` 两个 workspace：
+`addon-particle/`、`addon-physics/`、`addon-live2d/` 三个 workspace：
 
 - 粒子和物理，尤其 Rapier WASM，保持独立包和显式导入，未使用的能力不会进入核心依赖图；
 - addon 用 peer dependency 声明支持的核心版本，用本地 `file:..` dev
@@ -31,7 +31,13 @@ monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布�
 - 发布门禁把核心与 addon 的实际 tarball 安装进空 consumer，并运行所有根入口和 Rapier
   subpath 的真实 ESM import。仅做 `publint`、声明检查或 dry-run 不足以证明 peer 版本可运行。
 
-保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前三个包尚不足以证明把根核心整体搬到
+`addon-live2d` 只依赖核心公共 API；应用只提供模型资源。addon 内置并延迟初始化由其 `vendor/`
+固定输入构建的运行时，发布包保留原样 Core、CPU Framework
+bundle 和独立许可证；应用构建自动携带本地运行时资源，不配置 SDK 地址或访问 CDN。专用工具和包验证分别放在
+`addon-live2d/tools/` 和 `addon-live2d/test/`，不进入 npm 发布内容；根级入口只负责编排。细节见
+[Live2D](./LIVE2D.md)。
+
+保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前四个包尚不足以证明把根核心整体搬到
 `packages/hilo3d/`
 的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
 `packages/*`，不改变上述发布边界。
@@ -50,7 +56,8 @@ monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布�
 - `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本。
 
 生产源码不会被测试全局类型或 Node 类型污染。lint 同时使用 TypeScript 类型信息检查
-`src/`、`examples/`、`test/`、`scripts/` 与工程配置，生成物是唯一的目录级忽略对象。
+`src/`、`examples/`、`test/`、`scripts/` 与工程配置。生成物和 `addon-live2d/vendor`
+内保持原样的 SDK 输入单独排除；第三方来源、哈希与许可随输入保存，一方适配器和构建工具仍接受完整检查。
 
 ### 原生对象模型
 
@@ -140,6 +147,10 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 校验对象是构建后的真实包内容，因而能够发现错误 export
 condition、缺失声明、错误扩展名、未发布依赖或多打包文件。
 
+Live2D 包消费验证会在 Chromium 中加载安装后的 addon 并检查真实像素。独立的 package CI
+job 因此也必须在包测试前执行
+`npx playwright install --with-deps chromium`，安装浏览器及其系统依赖；其他 job 的浏览器安装不会跨 runner 共享。
+
 ## API 文档与站点
 
 API 工程有两个互补产物：
@@ -158,8 +169,8 @@ API Extractor 的 release-tag 提示按项目级固定政策关闭：Hilo3d
 2.x 的根 barrel 导出面全部视为 public，不设置 alpha/beta 分层。setter 文档提示也按固定政策关闭：访问器说明由 getter/TypeDoc 作为唯一正文来源。两项都不关闭 TypeScript 诊断、forgotten
 export、API 差异或 TypeDoc 验证，也不是待删除的迁移豁免。
 
-`npm run site:build`
-是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子 addon 和物理 addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这三个包时直接调用依赖预构建产物的 API 检查。
+`npm run site:build` 是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子、物理和 Live2D
+addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这四个包时直接调用依赖预构建产物的 API 检查。
 
 typed lint 同样遵循干净 checkout 规则：工作流调用
 `npm run lint`，由该命令先构建核心和 addon 声明，再执行 ESLint；不得自行组合会遗漏 workspace 声明的

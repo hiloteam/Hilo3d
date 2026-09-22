@@ -876,6 +876,7 @@ export class WebGL2Queue extends WebGL2ObjectBase implements RHIQueue {
     }
 
     beginFrame(descriptor: RHIFrameDescriptor = {}): WebGL2CommandContext {
+        this.owner.assertNativeContextAvailable('queue.beginFrame');
         if (this.#state !== 'idle')
             throw new RHIValidationError('invalid-state', `queue is ${this.#state}`, 'queue');
         this.assertUsable('queue');
@@ -924,6 +925,7 @@ export class WebGL2Queue extends WebGL2ObjectBase implements RHIQueue {
         const concrete = this.requireActive(context);
         concrete.abort();
         this.owner.discardNativeErrors();
+        if (this.#active !== concrete) return;
         this.#active = null;
         this.#state = 'idle';
         this.owner.state.setDiagnostics(null);
@@ -942,6 +944,7 @@ export class WebGL2Queue extends WebGL2ObjectBase implements RHIQueue {
         if (this.#active !== context) return;
         context.abort();
         this.owner.discardNativeErrors();
+        if (this.#active !== context) return;
         this.#active = null;
         this.#state = 'idle';
         this.owner.state.setDiagnostics(null);
@@ -1482,6 +1485,10 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
         const mipLevel = destination.mipLevel ?? 0;
         const mipHeight = Math.max(1, Math.floor(destinationTexture.height / 2 ** mipLevel));
         const cubeTexture = isCubeTexture(gl, destinationTexture);
+        const bitmapSource =
+            (typeof ImageBitmap !== 'undefined' && source.source instanceof ImageBitmap) ||
+            Object.prototype.toString.call(source.source) === '[object ImageBitmap]';
+        const flipNativeRows = cubeTexture ? source.flipY === true : source.flipY !== true;
         const nativeDestinationY = cubeTexture ? destinationY : mipHeight - destinationY - height;
         const info = destinationTexture.formatInfo;
         const externalGL = gl as WebGL2ExternalImageUploadContext;
@@ -1502,15 +1509,54 @@ export class WebGL2CommandContext extends WebGL2ObjectBase implements RHICommand
             // Keeping cube sources in their original row order preserves seamless filtering
             // across faces; applying a face-local V flip in the shader makes that transform
             // discontinuous at every face boundary.
-            state.setPixelStore(
-                gl.UNPACK_FLIP_Y_WEBGL,
-                cubeTexture ? (source.flipY === true ? 1 : 0) : source.flipY === true ? 0 : 1
-            );
+            state.setPixelStore(gl.UNPACK_FLIP_Y_WEBGL, !bitmapSource && flipNativeRows ? 1 : 0);
             state.setPixelStore(
                 gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
                 destination.premultipliedAlpha === true ? 1 : 0
             );
             state.setPixelStore(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.BROWSER_DEFAULT_WEBGL);
+            if (bitmapSource && flipNativeRows) {
+                // ImageBitmap ignores UNPACK_FLIP_Y_WEBGL. Address its original rows directly,
+                // avoiding a Canvas2D premultiply/unpremultiply roundtrip that loses low-alpha RGB.
+                // This executes only for a texture upload; ordinary image draws remain unchanged.
+                for (let row = 0; row < height; row++) {
+                    state.setPixelStore(gl.UNPACK_SKIP_ROWS, (source.origin?.y ?? 0) + row);
+                    const targetY = nativeDestinationY + height - row - 1;
+                    if (
+                        destinationTexture.target === gl.TEXTURE_2D ||
+                        destinationTexture.target === gl.TEXTURE_CUBE_MAP
+                    ) {
+                        externalGL.texSubImage2D(
+                            cubeTexture
+                                ? gl.TEXTURE_CUBE_MAP_POSITIVE_X + destinationZ
+                                : gl.TEXTURE_2D,
+                            mipLevel,
+                            destinationX,
+                            targetY,
+                            width,
+                            1,
+                            info.format,
+                            info.type,
+                            source.source
+                        );
+                    } else {
+                        externalGL.texSubImage3D(
+                            destinationTexture.target,
+                            mipLevel,
+                            destinationX,
+                            targetY,
+                            destinationZ,
+                            width,
+                            1,
+                            1,
+                            info.format,
+                            info.type,
+                            source.source
+                        );
+                    }
+                }
+                return;
+            }
             if (
                 destinationTexture.target === gl.TEXTURE_2D ||
                 destinationTexture.target === gl.TEXTURE_CUBE_MAP

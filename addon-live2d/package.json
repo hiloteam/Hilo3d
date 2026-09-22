@@ -1,0 +1,51 @@
+{
+  "name": "@hilo/addon-live2d",
+  "version": "2.0.0-alpha.8",
+  "description": "Live2D model loading, animation and portable rendering for Hilo3D.",
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./cubism": {
+      "types": "./dist/cubism/index.d.ts",
+      "import": "./dist/cubism/index.js",
+      "default": "./dist/cubism/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist .cache && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && jiti tools/build-package.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "clean": "rimraf dist .cache"
+  },
+  "peerDependencies": {
+    "hilo3d": "2.0.0-alpha.8"
+  },
+  "devDependencies": {
+    "hilo3d": "file:..",
+    "rollup": "^4.62.2",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiloteam/Hilo3d.git",
+    "directory": "addon-live2d"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "SEE LICENSE IN THIRD-PARTY-NOTICES.md"
+}

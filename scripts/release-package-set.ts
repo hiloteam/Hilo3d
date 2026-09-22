@@ -11,12 +11,18 @@ interface PackageManifest {
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const packagePaths = ['package.json', 'addon-particle/package.json', 'addon-physics/package.json'];
+const packagePaths = [
+    'package.json',
+    'addon-particle/package.json',
+    'addon-physics/package.json',
+    'addon-live2d/package.json'
+];
 const expectedRepository = 'git+https://github.com/hiloteam/Hilo3d.git';
 const expectedNames = new Map<string, string>([
     ['package.json', 'hilo3d'],
     ['addon-particle/package.json', '@hilo/addon-particle'],
-    ['addon-physics/package.json', '@hilo/addon-physics']
+    ['addon-physics/package.json', '@hilo/addon-physics'],
+    ['addon-live2d/package.json', '@hilo/addon-live2d']
 ]);
 
 function readManifest(relativePath: string): PackageManifest {

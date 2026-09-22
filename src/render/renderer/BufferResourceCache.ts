@@ -32,6 +32,9 @@ interface BufferResourceRecord {
     readonly kind: BufferResourceKind;
     readonly usage: RHIBufferUsageFlags;
     readonly indexVariant: IndexBufferVariant | null;
+    readonly owners: Set<object>;
+    /** Ownerless callers retain the existing explicit cache lifetime. */
+    unmanaged: boolean;
     /** All GeometryData aliases for one canonical vertex byte range; null for other kinds. */
     readonly vertexSources: GeometryData[] | null;
     readonly committedVertexRevisions: Map<GeometryData, number> | null;
@@ -64,6 +67,11 @@ export interface BufferResourceCacheDiagnostics {
     readonly sourceRevision: number;
     readonly registryGeneration: number;
     readonly handle: ResourceRegistryHandle<RHIBuffer>;
+}
+
+export interface ReleasedBufferOwnerResources {
+    readonly count: number;
+    readonly uniforms: readonly UniformBuffer[];
 }
 
 function sourceRevision(source: BufferSource): number {
@@ -216,6 +224,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
     private uniformRecords = new WeakMap<UniformBuffer, BufferResourceRecord>();
     readonly #vertexRecordsByBufferViewId = new Map<string, BufferResourceRecord>();
     readonly #records = new Set<BufferResourceRecord>();
+    readonly #recordsByOwner = new Map<object, Set<BufferResourceRecord>>();
     readonly #pending = new Map<BufferResourceRecord, PendingBufferUse>();
     readonly #sourceRevisions = new Map<BufferSource, number>();
     readonly #uniformDirtySpan = { byteOffset: 0, byteLength: 0 };
@@ -244,31 +253,44 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
         this.#state = 'active';
     }
 
-    getVertexBuffer(source: GeometryData, sources: readonly GeometryData[] = [source]): RHIBuffer {
-        return this.prepareVertexSources(source, sources);
+    getVertexBuffer(
+        source: GeometryData,
+        sources: readonly GeometryData[] = [source],
+        owner?: object
+    ): RHIBuffer {
+        return this.prepareVertexSources(source, sources, owner);
     }
 
     prepareVertexBuffer(
         source: GeometryData,
-        sources: readonly GeometryData[] = [source]
+        sources: readonly GeometryData[] = [source],
+        owner?: object
     ): RHIBuffer {
-        return this.prepareVertexSources(source, sources);
+        return this.prepareVertexSources(source, sources, owner);
     }
 
-    getIndexBuffer(source: GeometryData, options?: IndexBufferPreparationOptions): RHIBuffer {
-        return this.getBuffer(source, 'index', options);
+    getIndexBuffer(
+        source: GeometryData,
+        options?: IndexBufferPreparationOptions,
+        owner?: object
+    ): RHIBuffer {
+        return this.getBuffer(source, 'index', options, owner);
     }
 
-    prepareIndexBuffer(source: GeometryData, options?: IndexBufferPreparationOptions): RHIBuffer {
-        return this.getIndexBuffer(source, options);
+    prepareIndexBuffer(
+        source: GeometryData,
+        options?: IndexBufferPreparationOptions,
+        owner?: object
+    ): RHIBuffer {
+        return this.getIndexBuffer(source, options, owner);
     }
 
-    getUniformBuffer(source: UniformBuffer): RHIBuffer {
-        return this.getBuffer(source, 'uniform');
+    getUniformBuffer(source: UniformBuffer, owner?: object): RHIBuffer {
+        return this.getBuffer(source, 'uniform', undefined, owner);
     }
 
-    prepareUniformBuffer(source: UniformBuffer): RHIBuffer {
-        return this.getUniformBuffer(source);
+    prepareUniformBuffer(source: UniformBuffer, owner?: object): RHIBuffer {
+        return this.getUniformBuffer(source, owner);
     }
 
     /**
@@ -291,17 +313,24 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
     getBuffer(
         source: GeometryData,
         kind: 'vertex' | 'index',
-        options?: IndexBufferPreparationOptions
+        options?: IndexBufferPreparationOptions,
+        owner?: object
     ): RHIBuffer;
-    getBuffer(source: UniformBuffer, kind: 'uniform'): RHIBuffer;
+    getBuffer(
+        source: UniformBuffer,
+        kind: 'uniform',
+        options?: undefined,
+        owner?: object
+    ): RHIBuffer;
     getBuffer(
         source: BufferSource,
         kind: BufferResourceKind,
-        options?: IndexBufferPreparationOptions
+        options?: IndexBufferPreparationOptions,
+        owner?: object
     ): RHIBuffer {
         if (kind === 'vertex') {
             const vertexSource = source as GeometryData;
-            return this.prepareVertexSources(vertexSource, [vertexSource]);
+            return this.prepareVertexSources(vertexSource, [vertexSource], owner);
         }
         this.assertActive();
         this.requireSourceKind(source, kind);
@@ -313,6 +342,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
             initializedThisFrame = true;
         }
         this.synchronizeRecord(record);
+        this.trackOwner(record, owner);
 
         const existing = this.#pending.get(record);
         if (existing) return this.registry.resolve(existing.handle);
@@ -345,7 +375,8 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
 
     private prepareVertexSources(
         source: GeometryData,
-        aliases: readonly GeometryData[]
+        aliases: readonly GeometryData[],
+        owner?: object
     ): RHIBuffer {
         this.assertActive();
         this.requireSourceKind(source, 'vertex');
@@ -385,6 +416,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
             }
         }
         this.synchronizeRecord(record);
+        this.trackOwner(record, owner);
 
         const recordSources = record.vertexSources;
         if (!recordSources) throw new Error('Canonical vertex record lost its alias sources');
@@ -589,6 +621,24 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
         return this.detach(source);
     }
 
+    /** Release cached allocations only after their final prepared owner is detached. */
+    releaseOwner(owner: object): ReleasedBufferOwnerResources {
+        this.assertIdle();
+        const records = this.#recordsByOwner.get(owner);
+        const uniforms: UniformBuffer[] = [];
+        let count = 0;
+        if (records !== undefined) {
+            this.#recordsByOwner.delete(owner);
+            for (const record of records) {
+                record.owners.delete(owner);
+                if (record.unmanaged || record.owners.size !== 0) continue;
+                count += this.detachRecord(record);
+                if (record.kind === 'uniform') uniforms.push(record.source as UniformBuffer);
+            }
+        }
+        return { count, uniforms };
+    }
+
     detachUniformBuffer(source: UniformBuffer): boolean {
         return this.detach(source) > 0;
     }
@@ -634,6 +684,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
             if (handle) this.registry.release(handle);
         }
         this.#records.clear();
+        this.#recordsByOwner.clear();
         this.#vertexRecordsByBufferViewId.clear();
         this.geometryRecords = new WeakMap();
         this.uniformRecords = new WeakMap();
@@ -655,6 +706,8 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
             kind,
             usage: bufferUsage(kind),
             indexVariant,
+            owners: new Set(),
+            unmanaged: false,
             vertexSources: canonicalVertexSources,
             committedVertexRevisions: kind === 'vertex' ? new Map() : null,
             lastCreatedVertexRevisions: kind === 'vertex' ? new Map() : null,
@@ -895,6 +948,12 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
 
     private detachRecord(record: BufferResourceRecord | null): number {
         if (!record || !this.#records.delete(record)) return 0;
+        for (const owner of record.owners) {
+            const records = this.#recordsByOwner.get(owner);
+            records?.delete(record);
+            if (records?.size === 0) this.#recordsByOwner.delete(owner);
+        }
+        record.owners.clear();
         if (record.vertexSources) {
             for (const source of record.vertexSources) {
                 const records = this.geometryRecords.get(source);
@@ -911,10 +970,35 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
             ) {
                 this.#vertexRecordsByBufferViewId.delete(bufferViewId);
             }
+        } else if (record.kind === 'uniform') {
+            this.uniformRecords.delete(record.source as UniformBuffer);
+        } else {
+            const source = record.source as GeometryData;
+            const records = this.geometryRecords.get(source);
+            if (records?.index === record) records.index = null;
+            if (records?.indexPrimitiveRestart === record) records.indexPrimitiveRestart = null;
+            if (records && !records.vertex && !records.index && !records.indexPrimitiveRestart) {
+                this.geometryRecords.delete(source);
+            }
         }
         this.registry.release(requireRecordHandle(record));
         record.handle = null;
         return 1;
+    }
+
+    private trackOwner(record: BufferResourceRecord, owner: object | undefined): void {
+        if (owner === undefined) {
+            record.unmanaged = true;
+            return;
+        }
+        if (record.owners.has(owner)) return;
+        record.owners.add(owner);
+        let records = this.#recordsByOwner.get(owner);
+        if (records === undefined) {
+            records = new Set();
+            this.#recordsByOwner.set(owner, records);
+        }
+        records.add(record);
     }
 
     private pendingRegistryGeneration(): number {

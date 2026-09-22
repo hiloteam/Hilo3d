@@ -59,3 +59,23 @@ export interface RendererListDescriptor {
      */
     readonly excludeMeshes?: readonly Mesh[];
 }
+
+/** Explicit mesh selection whose draw order is preserved across all material queues. */
+export interface OrderedRendererListDescriptor {
+    /** Current-frame results supplying the camera and lights, without restricting membership. */
+    readonly cullingResults: CullingResultsHandle;
+    /**
+     * Meshes to draw in the supplied order. Membership is snapshotted when the list is created;
+     * duplicate, destroyed, or incomplete meshes are rejected. Visibility, camera layers, frustum
+     * rejection, display sorting and planner-owned `useInstanced` batching are bypassed.
+     *
+     * World matrices follow the normal scene update contract. For meshes outside the invocation
+     * scene, update their root's world matrices before recording the list. Explicit per-mesh
+     * `instanceCount` and per-instance geometry streams remain supported.
+     */
+    readonly meshes: readonly Mesh[];
+    /** Optional material used for every selected mesh. */
+    readonly overrideMaterial?: Material;
+    /** Semantic material pass compiled for every selected draw. Defaults to `forward`. */
+    readonly materialPass?: MaterialPassRole;
+}

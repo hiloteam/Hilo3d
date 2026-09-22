@@ -312,3 +312,12 @@ npx vitest run test/spec/2d test/spec/camera/Camera2D.test.ts
 若默认 4173 端口已有其他工作目录的服务，必须使用 `HILO3D_PLAYWRIGHT_PORT`
 指向本工作目录的独立服务；不能把另一份源码的浏览器结果作为当前改动证据。上述浏览器矩阵是 Chromium
 SwiftShader 便携覆盖，不替代物理 GPU 的性能和兼容性验收。
+
+## Atomic transparent subtrees
+
+`Node.sortingGroup = true` treats a transparent subtree as one external ordering unit, including
+nested groups. Its root supplies sortingLayer/zIndex/depth/stable scene order; leaves keep their
+normal relative renderOrder/Sprite rules inside the group. Opaque and explicit unsorted rendering
+are unchanged, and adjacent instancing does not cross group boundaries. Camera2D pointer selection
+uses the same group order, so the visible foreground receives input. High-level Live2D models opt
+into this generic capability automatically.

@@ -356,6 +356,12 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         description: 'Paint live cells and evolve them with two alternating render targets.',
         category: 'rendering'
     },
+    'live2d.html': {
+        title: 'Miku — Live2D Character',
+        description:
+            'Animate the official Miku sample with eight motions, pointer follow, physics, and close-up views through the shared WebGL 2 and WebGPU renderer.',
+        category: 'animation'
+    },
     'loader/glTF_clone.html': {
         title: 'glTF Cloning',
         description:
