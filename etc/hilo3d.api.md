@@ -690,7 +690,7 @@ export interface BrowserFeatures {
 }
 
 // @public (undocumented)
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 10;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 11;
 
 // @public (undocumented)
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
@@ -5534,6 +5534,7 @@ export class PBRMaterial extends MaterialInstance {
     // (undocumented)
     get occlusionStrength(): number;
     set occlusionStrength(value: number);
+    readonly reflectionProbes: readonly ReflectionProbe[];
     // (undocumented)
     get roughness(): number;
     set roughness(value: number);
@@ -5647,6 +5648,7 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly occlusionMap?: PBRMaterialTextureInput;
     // (undocumented)
     readonly occlusionStrength?: number;
+    readonly reflectionProbes?: readonly ReflectionProbe[];
     // (undocumented)
     readonly roughness?: number;
     // (undocumented)
@@ -6052,6 +6054,67 @@ export interface RayParameters {
     direction?: Vector3;
     // (undocumented)
     origin?: Vector3;
+}
+
+// @public
+export class ReflectionProbe {
+    constructor(options: Readonly<ReflectionProbeOptions>);
+    readonly blendDistance: number;
+    readonly boxMax: readonly [number, number, number];
+    readonly boxMin: readonly [number, number, number];
+    readonly dynamic: boolean;
+    readonly encoding: 'linear' | 'rgbd';
+    getDiagnostics(): Readonly<ReflectionProbeDiagnostics>;
+    get intensity(): number;
+    set intensity(value: number);
+    readonly name: string;
+    readonly position: readonly [number, number, number];
+    requestUpdate(): void;
+}
+
+// @public
+export interface ReflectionProbeDiagnostics {
+    readonly capturedRevision: number;
+    readonly captures: number;
+    readonly ready: boolean;
+    readonly requestedRevision: number;
+}
+
+// @public
+export interface ReflectionProbeOptions {
+    readonly blendDistance?: number;
+    readonly boxMax: Readonly<Vector3>;
+    readonly boxMin: Readonly<Vector3>;
+    readonly encoding?: 'linear' | 'rgbd';
+    readonly intensity?: number;
+    readonly name?: string;
+    readonly position: Readonly<Vector3>;
+    readonly texture?: CubeTexture;
+}
+
+// @public
+export class ReflectionProbePipelineFactory implements RenderPipelineFactory {
+    constructor(options: Readonly<ReflectionProbePipelineOptions>);
+    create(context: RenderPipelineCreateContext): Promise<RenderPipeline>;
+    readonly invocationPolicy: Readonly<RenderPipelineInvocationPolicy>;
+    readonly name = "Local reflection probes";
+    readonly requirements: Readonly<RenderPipelineRequirements>;
+    readonly residentBytes: number;
+}
+
+// @public
+export interface ReflectionProbePipelineOptions {
+    readonly facesPerFrame?: number;
+    readonly far?: number;
+    readonly filterLevelsPerFrame?: number;
+    readonly filterSamples?: 32 | 64 | 128;
+    readonly maxResidentBytes?: number;
+    readonly near?: number;
+    readonly pipeline?: RenderPipelineFactory;
+    readonly probes: readonly ReflectionProbe[];
+    readonly resolution?: number;
+    readonly roughnessLevels?: number;
+    readonly visibility?: number;
 }
 
 // @public
@@ -6610,6 +6673,7 @@ export interface RenderPipelineContext {
     readonly output: RenderPipelineOutput;
     prepareScene(): void;
     recordShadows(cullingResults: CullingResultsHandle, options?: Readonly<RenderPipelineShadowOptions>): Readonly<RenderPipelineShadowResources> | null;
+    recordView(camera: Camera, target: RenderTarget, record: (context: RenderPipelineContext) => unknown): void;
     readonly scene: RendererScene;
     readonly useLogDepth: boolean;
     readonly viewport: RendererViewport;
@@ -6619,6 +6683,7 @@ export interface RenderPipelineContext {
 // @public
 export interface RenderPipelineCreateContext {
     readonly capabilities: RenderPipelineCapabilities;
+    createRenderTarget(parameters: Readonly<RenderTargetParameters>): RenderTarget;
     createStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer;
     warmupStorageGraphicsShaders(shaders: readonly StorageGraphicsShader[], batchSize?: number): Promise<void>;
 }
@@ -9278,6 +9343,7 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
     readonly SkinningBlock: 7;
     readonly MorphBlock: 8;
     readonly MaterialTextureBlock: 9;
+    readonly ReflectionProbeBlock: 10;
 }>;
 
 // @public

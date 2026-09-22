@@ -204,6 +204,13 @@ recovery 后保持公共材质 identity 和 dense handle 不变。直接修改�
 
 ## 7. Variant 与缓存合同
 
+局部反射通过 `PBRMaterial.reflectionProbes` 固定绑定最多两个 probe，使用可选的 128-byte
+`ReflectionProbeBlock`（WebGL2 binding 10、WebGPU group 1 binding
+64）。原 MaterialBlock、24 槽 MaterialTextureBlock 和 sampler 起始 binding 保持不变；自定义 UBO 注册从 flat
+binding 11 开始。额外的 probe sampler 参与已有 shader 反射和资源绑定路径。固定 GPU Scene
+bucket 不接纳该材质，普通 Clustered direct
+PBR 复用相同 shader。完整输入、所有权、SSR 和动态 history 边界见[局部反射](./LOCAL_REFLECTIONS.md)。
+
 稳定 variant 至少由以下维度组成：
 
 ```text

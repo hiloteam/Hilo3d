@@ -5,9 +5,9 @@ Status reviewed against source commit `6433334c` on 2026-09-20. This page tracks
 [earlier survey and completed work packages](./archive/MODERN_WEBGPU_RENDERING_ROADMAP.md) are
 historical. For cross-engine priorities and evidence gates, use [the main roadmap](./ROADMAP.md).
 
-Planning update: 2026-09-21. REFL0, DECAL0, TRANS0, RG1, MAT1 and DEFORM0 below are recorded,
-unstarted requirements. They do not change the delivered capability table or declare new public
-APIs.
+Planning update: 2026-09-22. REFL0 now has a bounded portable implementation; DECAL0, TRANS0, RG1,
+MAT1 and DEFORM0 remain unstarted requirements. They do not change the delivered capability table or
+declare new public APIs.
 
 ## Delivered slices and remaining boundaries
 
@@ -108,14 +108,14 @@ path-tracing example is not a real-time dynamic GI performance result.
 
 ## Planned rendering work packages
 
-| ID      | Priority                   | Status      | Dependencies / reuse                                                                                                           |
-| ------- | -------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| REFL0   | P1                         | Not started | Existing PBR environment sampling, SSR response/baseline composition, graph subresource views and resource recipes.            |
-| DECAL0  | P1                         | Not started | Shared material surface/attribute ABI, scene depth, graph passes and temporal invalidation.                                    |
-| TRANS0  | P1                         | Not started | Shared transparent ordering, HDR composition, particles and existing transparent temporal controllers.                         |
-| RG1     | P1, measurement-driven     | Not started | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
-| MAT1    | P2, content-driven         | Not started | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
-| DEFORM0 | P2, character-scale-driven | Not started | Compute/storage/vertex graph accesses, shared skin/morph inputs and D0 current/previous transform contracts.                   |
+| ID      | Priority                   | Status            | Dependencies / reuse                                                                                                           |
+| ------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| REFL0   | P1                         | Implemented slice | Existing PBR environment sampling, SSR response/baseline composition, graph subresource views and resource recipes.            |
+| DECAL0  | P1                         | Not started       | Shared material surface/attribute ABI, scene depth, graph passes and temporal invalidation.                                    |
+| TRANS0  | P1                         | Not started       | Shared transparent ordering, HDR composition, particles and existing transparent temporal controllers.                         |
+| RG1     | P1, measurement-driven     | Not started       | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
+| MAT1    | P2, content-driven         | Not started       | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
+| DEFORM0 | P2, character-scale-driven | Not started       | Compute/storage/vertex graph accesses, shared skin/morph inputs and D0 current/previous transform contracts.                   |
 
 All slices use the shared renderer -> Render Graph -> portable RHI path. Portable raster keeps one
 GLSL source and the existing Naga lowering; compute acceleration is capability-gated WebGPU. An
@@ -123,6 +123,13 @@ unsupported requested feature fails at creation/validation rather than silently 
 Unenabled features must not allocate intermediate targets, histories or frame work.
 
 ### REFL0: local reflection probes
+
+**Implemented boundary.** Static cubemaps, box correction, at most two probes per material, SSR
+baseline integration and budgeted atomic dynamic capture are implemented on both backends. See the
+[current contract](./LOCAL_REFLECTIONS.md) for visibility, direct-Clustered, temporal and memory
+boundaries. Dedicated physical-device performance enrollment remains pending. The acceptance
+criteria below describe the feature; broader capture visibility and automatic scene updates are
+future extensions.
 
 **Scope.** Add bounded local reflection volumes with authored/static cubemaps, parallax correction,
 roughness-prefiltered mip levels and deterministic probe selection/blending. Reuse the environment
@@ -223,12 +230,13 @@ profile only where the complete workload demonstrates a benefit.
 
 ## Recommended rendering sequence
 
-For scene lighting and appearance: **GI0 asset coverage / V0 shared atlas shadows -> REFL0 -> DECAL0
--> TRANS0**. This is priority guidance, not a dependency requiring unrelated features to ship
-together. RG1 proceeds from measured CPU or transient-memory pressure; MAT1 and DEFORM0 are driven
-by actual material and character content. A0 -> M0 continues as the independent streaming/geometry
-lane. Existing physical-GPU performance gates remain mandatory evidence for their respective
-workloads; these planned additions do not mark them complete.
+For scene lighting and appearance: **GI0 asset coverage / V0 shared atlas shadows -> DECAL0 ->
+TRANS0**. REFL0 has a bounded portable implementation with separately tracked visibility, temporal
+and performance extensions. This is priority guidance, not a dependency requiring unrelated features
+to ship together. RG1 proceeds from measured CPU or transient-memory pressure; MAT1 and DEFORM0 are
+driven by actual material and character content. A0 -> M0 continues as the independent
+streaming/geometry lane. Existing physical-GPU performance gates remain mandatory evidence for their
+respective workloads; these planned additions do not mark them complete.
 
 ## Evidence gates
 

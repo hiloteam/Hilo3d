@@ -256,6 +256,15 @@ export {
 } from './render/Renderer';
 export type { RenderGraphFramePlan } from './render/RenderGraphFramePlan';
 export * from './render/pipeline';
+export {
+    ReflectionProbe,
+    type ReflectionProbeOptions,
+    type ReflectionProbeDiagnostics
+} from './render/reflections/ReflectionProbe';
+export {
+    ReflectionProbePipelineFactory,
+    type ReflectionProbePipelineOptions
+} from './render/reflections/ReflectionProbePipeline';
 export type {
     Resource,
     ShaderDefineValue,

@@ -3,7 +3,8 @@
 An original sculpture authored for the Hilo3D Lumen Forward+ example using Blender MCP.
 Three gently twisting closed ribbons form a warm metal centerpiece designed to reveal
 the movement, overlap, and color of many local lights. No third-party model or texture
-is used; the asset is distributed under the repository's license.
+is used; the asset is distributed under the repository's license. The Adjacent local-reflection
+gallery also reuses this sculpture with different lighting and material parameters.
 
 - Asset: `orbital-bloom.glb`, glTF 2.0 binary, 325,308 bytes.
 - Geometry: 3 indexed meshes, 11,520 vertices, 23,040 triangles, smooth exported normals.

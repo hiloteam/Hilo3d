@@ -8,7 +8,7 @@ import type {
     RenderGraphTimelineSnapshot
 } from '../graph/RenderGraphTimeline';
 import type { RHICapabilities } from '../rhi/core';
-import type { RenderTarget } from '../RenderTarget';
+import type { RenderTarget, RenderTargetParameters } from '../RenderTarget';
 import type { RendererScene } from '../RendererCore';
 import type { StorageBuffer, StorageBufferDescriptor } from '../StorageBuffer';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
@@ -31,6 +31,7 @@ const attachedPipelineRuntimes = new WeakSet();
 
 /** @internal Renderer-owned lifecycle invoked around the single application graph transaction. */
 export interface RenderPipelineHostLifecycle {
+    createPipelineRenderTarget(parameters: Readonly<RenderTargetParameters>): RenderTarget;
     createFrameContext(frameIndex: number): RenderGraphFrameContext;
     beginFrame(frameIndex: number): void;
     completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void;
@@ -138,6 +139,7 @@ export class RenderPipelineHost {
         const candidate: unknown = await factory.create(
             Object.freeze({
                 capabilities,
+                createRenderTarget: this.lifecycle.createPipelineRenderTarget.bind(this.lifecycle),
                 createStorageBuffer: this.lifecycle.createPipelineStorageBuffer.bind(
                     this.lifecycle
                 ),

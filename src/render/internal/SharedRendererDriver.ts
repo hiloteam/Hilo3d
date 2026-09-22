@@ -325,6 +325,7 @@ class SharedRendererDriver
         this.#visibleMeshes.push(mesh);
     };
     readonly #renderTargets = new Set<RHIRenderTarget>();
+    readonly #pipelineRenderTargets = new Set<RHIRenderTarget>();
     readonly #storageBuffers = new Set<RendererStorageBuffer>();
     readonly #renderTargetTextureBindings = new Set<RenderTargetTextureBindingProvider>();
     #lastSubmissionDone: Promise<void> | null = null;
@@ -371,6 +372,7 @@ class SharedRendererDriver
     #framebufferCacheMetrics: RHICacheCounterContinuation | null = null;
     #scriptablePipelineContextCursor = 0;
     #activeScriptablePipelineContext: ScriptableRenderPipelineContextImpl | null = null;
+    #recordingAuxiliaryView = false;
     #scriptableResourcesFrameStarted = false;
 
     readonly #handleManagedMeshDestroy = (event: DispatchEvent): void => {
@@ -797,6 +799,70 @@ class SharedRendererDriver
         context?.end(completed);
     }
 
+    recordScriptableView(
+        scene: RendererScene,
+        camera: Camera,
+        target: RenderTarget,
+        capabilities: RenderPipelineCapabilities,
+        runtimeOwner: object,
+        record: (context: RenderPipelineContext) => unknown
+    ): void {
+        const parent = this.#activeScriptablePipelineContext;
+        if (parent === null || this.#recordingAuxiliaryView) {
+            const error = new Error(
+                'Auxiliary views require a parent context and cannot be nested'
+            );
+            this.#pipelineHost.abort(error);
+            throw error;
+        }
+        this.#recordingAuxiliaryView = true;
+        let created = false;
+        let completed = false;
+        let failed = false;
+        let failure: unknown;
+        try {
+            // Unlike a top-level invocation, an auxiliary view may never target the surface.
+            const ownedTarget = this.requireOwnedTarget(target);
+            const child = this.createPipelineContext(
+                scene,
+                camera,
+                ownedTarget,
+                false,
+                capabilities,
+                runtimeOwner
+            );
+            created = true;
+            const result = record(child);
+            if (
+                result !== null &&
+                (typeof result === 'object' || typeof result === 'function') &&
+                typeof Reflect.get(result, 'then') === 'function'
+            ) {
+                throw new TypeError('Auxiliary view callbacks must be synchronous');
+            }
+            completed = true;
+        } catch (error) {
+            failed = true;
+            failure = error;
+        } finally {
+            try {
+                if (created) this.endPipelineInvocation(completed);
+            } catch (error) {
+                if (!failed) {
+                    failed = true;
+                    failure = error;
+                }
+            } finally {
+                this.#activeScriptablePipelineContext = parent;
+                this.#recordingAuxiliaryView = false;
+            }
+        }
+        if (failed) {
+            this.#pipelineHost.abort(failure);
+            throw failure;
+        }
+    }
+
     get renderer(): RendererCore {
         return this;
     }
@@ -1041,6 +1107,18 @@ class SharedRendererDriver
     override createRenderTarget(parameters: RenderTargetParameters): RHIRenderTarget {
         this.assertReadyForRender();
         this.assertNoFrameMutation('createRenderTarget');
+        return this.createOwnedRenderTarget(parameters);
+    }
+
+    createPipelineRenderTarget(parameters: Readonly<RenderTargetParameters>): RHIRenderTarget {
+        if (this.#destroyed) throw new Error('Renderer is destroyed');
+        this.assertNoFrameMutation('createRenderTarget');
+        const target = this.createOwnedRenderTarget(parameters);
+        this.#pipelineRenderTargets.add(target);
+        return target;
+    }
+
+    private createOwnedRenderTarget(parameters: Readonly<RenderTargetParameters>): RHIRenderTarget {
         const depth = parameters.depthStencilAttachment;
         const resolvedParameters =
             this.renderingProfile === 'high-end' &&
@@ -1240,9 +1318,10 @@ class SharedRendererDriver
     override releaseGPUResources(): void {
         this.assertReadyForRender();
         this.assertNoFrameMutation('releaseGPUResources');
-        this.destroyAllRenderTargets();
+        this.destroyAllRenderTargets(true);
         this.retireRenderingResources();
         this.createRenderingResources(this.requireDevice());
+        for (const target of this.#pipelineRenderTargets) target.recreateResources();
         this.dispatchLifecycleEvent('rhiResourcesReleased', undefined);
     }
 
@@ -1468,6 +1547,7 @@ class SharedRendererDriver
 
     renderTargetDestroyed(target: RHIRenderTarget): void {
         this.#renderTargets.delete(target);
+        this.#pipelineRenderTargets.delete(target);
         if (this.renderTarget !== target) return;
         this.renderTarget = null;
         this.#ownsRenderTarget = false;
@@ -2395,10 +2475,12 @@ class SharedRendererDriver
         });
     }
 
-    private destroyAllRenderTargets(): void {
+    private destroyAllRenderTargets(preservePipelineTargets = false): void {
         const targets = [...this.#renderTargets];
-        for (const target of targets) target.destroy();
-        this.#renderTargets.clear();
+        for (const target of targets) {
+            if (!preservePipelineTargets || !this.#pipelineRenderTargets.has(target))
+                target.destroy();
+        }
         this.renderTarget = null;
         this.#ownsRenderTarget = false;
         this.#autoPresentRenderTarget = false;

@@ -2,9 +2,9 @@
 
 The repository and development website can contain **Unreleased** features even while package.json
 still carries the last release number. Read the top of [CHANGELOG](../CHANGELOG.md) and the
-installed package declarations before choosing an API. DDGI and `@hilo/addon-assets` are Unreleased
-source features as of this review; their presence in current docs does not promise they exist in the
-alpha.8 tarball.
+installed package declarations before choosing an API. DDGI, `@hilo/addon-assets`, local reflection
+probes and auxiliary SRP views are Unreleased source features as of this review; their presence in
+current docs does not promise they exist in the alpha.8 tarball.
 
 ## Install a matching release
 

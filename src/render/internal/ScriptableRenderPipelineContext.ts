@@ -808,6 +808,15 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
         this.#owner.prepareScene();
     }
 
+    recordView(
+        camera: Camera,
+        target: RenderTarget,
+        record: (context: RenderPipelineContext) => unknown
+    ): void {
+        this.#owner.assertLeaseActive(this.#lease);
+        this.#owner.recordView(camera, target, record);
+    }
+
     cull(options?: Readonly<CullingOptions>): CullingResultsHandle {
         this.#owner.assertLeaseActive(this.#lease);
         return this.#owner.cull(options);
@@ -1010,6 +1019,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     #shadowCulling: CullingSlot | null = null;
     #hasTerminalWork = false;
     #active = false;
+    #suspended = false;
     #outputFacade: TargetResourcesFacade | null = null;
     #storageBufferBySource = new WeakMap<RendererStorageBuffer, BufferRecord>();
     #sampledTextureBySource = new WeakMap<Texture<unknown>, TextureRecord>();
@@ -1308,6 +1318,33 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         );
         this.#cullingByHandle.set(handle, slot);
         return handle;
+    }
+
+    recordView(
+        camera: Camera,
+        target: RenderTarget,
+        record: (context: RenderPipelineContext) => unknown
+    ): void {
+        this.assertActive();
+        if (this.#cullingCursor > 0 || this.#shadowsRecorded)
+            throw new Error('Auxiliary views must precede parent culling and shadow recording');
+        if (!(camera instanceof Camera) || typeof record !== 'function')
+            throw new TypeError('recordView requires a Camera and synchronous callback');
+        const runtimeOwner = this.#runtimeOwner;
+        if (runtimeOwner === null) throw new Error('Pipeline runtime owner is unavailable');
+        this.#suspended = true;
+        try {
+            this.services.recordScriptableView(
+                this.requireScene(),
+                camera,
+                target,
+                this.capabilities,
+                runtimeOwner,
+                record
+            );
+        } finally {
+            this.#suspended = false;
+        }
     }
 
     prepareScene(): void {
@@ -1968,7 +2005,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     }
 
     assertLeaseActive(lease: PipelineInvocationLease): void {
-        if (!this.#active || this.#activeLease !== lease) {
+        if (!this.#active || this.#suspended || this.#activeLease !== lease) {
             throw new Error('RenderPipelineContext is valid only during synchronous record()');
         }
     }
@@ -2892,7 +2929,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     }
 
     private assertActive(): void {
-        if (!this.#active) {
+        if (!this.#active || this.#suspended) {
             throw new Error('RenderPipelineContext is valid only during synchronous record()');
         }
     }

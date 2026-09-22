@@ -554,6 +554,12 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         category: 'post-processing',
         backend: 'webgpu'
     },
+    'local_reflections_gallery.html': {
+        title: 'Adjacent — Local Reflections',
+        description:
+            'Explore two connected rooms with budgeted HDR reflection captures, parallax correction, probe blending and roughness filtering.',
+        category: 'post-processing'
+    },
     'scriptable_pipeline.html': {
         title: 'Scriptable Pipeline',
         description:

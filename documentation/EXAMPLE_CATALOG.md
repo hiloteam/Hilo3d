@@ -1,6 +1,6 @@
 # 示例目录整理
 
-核对日期：2026-09-20。范围：96 个 HTML 入口，其中 94 个场景示例、两个画廊入口。
+核对日期：2026-09-22。范围：99 个 HTML 入口，其中 97 个场景示例、两个画廊入口。
 
 ## 整理结果
 
@@ -101,6 +101,7 @@ shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景�
 | [MultiSampledRenderbuffers](../examples/MultiSampledRenderbuffers.html)                             | 保留 | rendering       | Render geometric edges with the portable multisampled forward pipeline.                                                                                                                                         |
 | [renderTarget](../examples/renderTarget.html)                                                       | 保留 | rendering       | Render a box into an offscreen target and use its color attachment as a texture.                                                                                                                                |
 | [stencilTest](../examples/stencilTest.html)                                                         | 保留 | rendering       | Use a stencil mask to control where overlapping textured geometry is visible.                                                                                                                                   |
+| [local_reflections_gallery](../examples/local_reflections_gallery.html)                             | 保留 | post-processing | Explore two connected rooms with budgeted HDR reflection captures, parallax correction, probe blending and roughness filtering.                                                                                 |
 | [screen_space_reflections_palace](../examples/screen_space_reflections_palace.html)                 | 保留 | post-processing | Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.                                                         |
 | [bloom](../examples/bloom.html)                                                                     | 精选 | post-processing | Compare engine HDR Bloom against the same raw scene in a WebGPU nocturne driven by 32,768 compute-simulated fireflies around an eclipse shrine.                                                                 |
 | [post_process](../examples/post_process.html)                                                       | 保留 | post-processing | Switch convolution kernels over the same rendered scene and compare their output.                                                                                                                               |
@@ -142,3 +143,8 @@ shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景�
 ## 验证边界
 
 目录清单检查确认页面与源文件存在、元数据完整、类别与后端一致、无重复标题、保留浏览器缩放。画廊浏览器测试验证筛选与 URL 状态、实际 iframe 导航、历史恢复、手机焦点和错误重试。渲染验证继续使用原有双后端原生 draw、submit、像素与错误门禁；清单审阅不等于所有美术场景都做过人工逐帧验收。
+
+## Adjacent 局部反射
+
+[local_reflections_gallery](../examples/local_reflections_gallery.html)
+使用两个相邻展厅演示局部反射、跨房间材质混合、离屏光源、动态捕获和粗糙度过滤。双后端共享实现；展示资产由代码生成，无外部下载。使用 OrbitControls 和共享稳定截图协议，支持资源销毁与 persisted 页面恢复。

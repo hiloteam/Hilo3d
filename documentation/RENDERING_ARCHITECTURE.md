@@ -25,6 +25,11 @@ history marker 失效。能力范围、材质排除和完整生命周期见
 
 ## 1. 一帧是怎样完成的
 
+局部镜面反射通过共享 PBR 环境采样接入，SSR 读取同一 probe specular baseline。
+`ReflectionProbePipelineFactory` 使用辅助相机作用域在同一 Render Graph/RHI
+submission 内录制六面捕获和 GGX 粗糙度过滤；完整提交后才发布双缓冲结果。辅助视图不推进主相机的时域效果，运行时拥有的捕获目标在资源释放/设备恢复后重建。数量、可见性、材质绑定和时域边界见
+[`LOCAL_REFLECTIONS.md`](./LOCAL_REFLECTIONS.md)。
+
 ### 1.1 Stage：应用与渲染器之间的入口
 
 `Stage.tick(dt)` 先递归更新场景节点，再按 `Camera.priority` 从低到高组合
