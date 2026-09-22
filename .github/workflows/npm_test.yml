@@ -244,6 +244,9 @@ jobs:
       - name: Check the public API report without rebuilding declarations
         run: npm run api:check:built
 
+      - name: Install Chromium for package browser validation
+        run: npx playwright install --with-deps chromium
+
       - name: Test the built package
         run: npm run test:package:built
 

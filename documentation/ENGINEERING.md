@@ -147,6 +147,10 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 校验对象是构建后的真实包内容，因而能够发现错误 export
 condition、缺失声明、错误扩展名、未发布依赖或多打包文件。
 
+Live2D 包消费验证会在 Chromium 中加载安装后的 addon 并检查真实像素。独立的 package CI
+job 因此也必须在包测试前执行
+`npx playwright install --with-deps chromium`，安装浏览器及其系统依赖；其他 job 的浏览器安装不会跨 runner 共享。
+
 ## API 文档与站点
 
 API 工程有两个互补产物：
