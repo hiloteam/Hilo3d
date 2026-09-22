@@ -85,6 +85,8 @@ export interface PBRMaterialVariant {
 }
 
 export function bucketMaterialIssue(material: PBRMaterial): string | null {
+    if (material.reflectionProbes.length > 0)
+        return 'uses local reflection probes (shared clustered direct path required)';
     const state = resolveMaterialPassState(material, 'forward');
     if (state === null) return 'has no forward pass';
     if (material.isTransparent || state.blend !== undefined) {

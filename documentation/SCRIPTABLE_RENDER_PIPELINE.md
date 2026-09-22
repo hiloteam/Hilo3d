@@ -37,6 +37,12 @@ submission. See [rendering architecture](./RENDERING_ARCHITECTURE.md).
   callback/frame does not make it valid when internal storage is reused.
 - Public signatures live in [RenderPipeline](../src/render/pipeline/RenderPipeline.ts),
   [ForwardRenderPipeline](../src/render/pipeline/ForwardRenderPipeline.ts), and the generated API.
+- Creation contexts can allocate runtime-owned render targets. The runtime destroys these targets;
+  renderer resource release recreates their recipes and sampled bindings without changing identity.
+  `recordView(camera, target, callback)` records auxiliary cameras before parent culling, with
+  isolated camera/light/shadow/handle scopes in the same graph and submission. Parent leases are
+  suspended; nested auxiliary views, async callbacks and partial submission after a caught callback
+  failure are rejected. See [local reflection capture](./LOCAL_REFLECTIONS.md).
 
 ## Default Forward and features
 

@@ -69,6 +69,7 @@ export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     'gtao_acceptance_lab.html': { test: '1' },
     'screen_space_global_illumination_chapel.html': { test: '1' },
     'screen_space_reflections_palace.html': { test: '1' },
+    'local_reflections_gallery.html': { test: '1' },
     'stormfront_observatory.html': { test: '1' },
     'shadow_residency_sanctum.html': { test: '1' },
     'temporal_aa_observatory.html': { test: '1' },

@@ -280,6 +280,9 @@ describe('RenderPipelineCapabilities', () => {
             formatCapabilities(source, 'rgba16float', { sampleCounts: [1] })
         );
         const host = new RenderPipelineHost({
+            createPipelineRenderTarget() {
+                throw new Error('Unused render target factory');
+            },
             createPipelineStorageBuffer() {
                 throw new Error('Capability replacement test does not create storage buffers');
             },

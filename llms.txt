@@ -58,6 +58,8 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
 - [GTAO](./documentation/GROUND_TRUTH_AMBIENT_OCCLUSION.md): Portable ambient visibility.
 - [SSR](./documentation/SCREEN_SPACE_REFLECTIONS.md): WebGPU Clustered reflections and miss
   fallback.
+- [Local reflections](./documentation/LOCAL_REFLECTIONS.md): Unreleased portable box-projected
+  probes, blending, dynamic HDR captures and shared SSR fallback.
 - [SSGI](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md): Portable screen-space diffuse
   lighting.
 - [DDGI](./documentation/DYNAMIC_GLOBAL_ILLUMINATION.md): Unreleased WebGPU world-space diffuse GI

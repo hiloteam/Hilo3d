@@ -3,7 +3,8 @@
 The repository and development website can contain **Unreleased** features even while package.json
 still carries the last release number. Read the top of [CHANGELOG](../CHANGELOG.md) and the
 installed package declarations before choosing an API. DDGI is an Unreleased source feature as of
-this review; its presence in current docs does not promise it exists in the alpha.8 tarball.
+this review; its presence in current docs does not promise it exists in the alpha.8 tarball. Local
+reflection probes and auxiliary SRP views are likewise Unreleased source APIs.
 
 ## Install a matching release
 

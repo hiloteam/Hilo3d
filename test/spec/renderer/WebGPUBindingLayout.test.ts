@@ -25,6 +25,7 @@ describe('WebGPUBindingLayout', () => {
             LightBlock: { group: 0, binding: 3 },
             MaterialBlock: { group: 1, binding: 0 },
             MaterialTextureBlock: { group: 1, binding: 1 },
+            ReflectionProbeBlock: { group: 1, binding: 64 },
             ModelBlock: { group: 2, binding: 0 },
             GeometryBlock: { group: 2, binding: 1 },
             SkinningBlock: { group: 2, binding: 2 },

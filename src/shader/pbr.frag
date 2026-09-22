@@ -250,17 +250,9 @@ void main(void) {
                             );
                         vec3 reflectionF0 = reflectionSurface.specularColor;
                     #endif
-                    #ifdef HILO_SPECULAR_ENV_MAP
-                        vec2 reflectionDFG = texture(
-                            u_brdfLUT,
-                            hiloTextureUV(vec2(
-                                reflectionNdotV,
-                                1.0 - materialRoughness
-                            ))
-                        ).rg;
-                        vec3 reflectionEnergyCompensation = vec3(1.0) +
-                            reflectionF0 *
-                            (1.0 / max(reflectionDFG.y, 0.04) - 1.0);
+                    #if defined(HILO_SPECULAR_ENV_MAP) || defined(HILO_LOCAL_REFLECTIONS)
+                        vec2 reflectionDFG = hiloEnvironmentDFG(reflectionNdotV, materialRoughness);
+                        vec3 reflectionEnergyCompensation = hiloEnvironmentEnergyCompensation(reflectionF0, reflectionDFG);
                         reflectionResponse =
                             (reflectionF0 * reflectionDFG.x + reflectionDFG.y) *
                             reflectionEnergyCompensation;

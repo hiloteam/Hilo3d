@@ -221,7 +221,8 @@ describe('built-in post-processing', () => {
         expect(pbr).toContain(
             'irradiance = HILO_DECODE_MATERIAL_COLOR(irradiance, HILO_DIFFUSE_ENV_MAP);'
         );
-        expect(pbr).toContain('hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))');
+        expect(pbr).toContain('hiloEnvironmentDFG(NdotV, perceptualRoughness)');
+        expect(pbr).toContain('hiloTextureUV(vec2(NdotV, 1.0 - roughness))');
         expect(areaLight).toContain('texture(areaLightsLtcTexture1, hiloTextureUV(uv))');
     });
 

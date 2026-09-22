@@ -6,6 +6,8 @@ import type SpotLight from '../../light/SpotLight';
 import type { RendererFeatureName } from '../RendererOptions';
 import type { RendererScene, RendererViewport } from '../RendererCore';
 import type {
+    RenderTarget,
+    RenderTargetParameters,
     RenderTargetColor,
     RenderTargetDepthStencilFormat,
     RenderTargetLoadOp,
@@ -141,6 +143,8 @@ export interface RenderPipelineInvocationPolicy {
 
 /** Immutable creation inputs for one renderer-local pipeline runtime. */
 export interface RenderPipelineCreateContext {
+    /** Create a renderer-owned target for a runtime; the runtime must destroy it on teardown. */
+    createRenderTarget(parameters: Readonly<RenderTargetParameters>): RenderTarget;
     /** Capabilities for the selected device generation. */
     readonly capabilities: RenderPipelineCapabilities;
     /**
@@ -308,6 +312,18 @@ export interface RenderPipelineShadowOptions {
 
 /** Frame-scoped recording context; retaining it after record() returns is an error. */
 export interface RenderPipelineContext {
+    /**
+     * Record an auxiliary camera into a renderer-owned target in the same graph/submission.
+     * Call before this context's first cull or shadow recording. The callback is synchronous,
+     * receives its own camera/light/graph-handle scope, and cannot nest recordView(). The parent
+     * context is suspended during the callback. Failure aborts the complete application frame.
+     * This does not invoke the configured main-view pipeline or advance its temporal history.
+     */
+    recordView(
+        camera: Camera,
+        target: RenderTarget,
+        record: (context: RenderPipelineContext) => unknown
+    ): void;
     /** Monotonic application frame index. */
     readonly frameIndex: number;
     /** Scene supplied to the current renderer invocation. */
