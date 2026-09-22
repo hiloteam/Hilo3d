@@ -1,0 +1,231 @@
+* {
+    box-sizing: border-box;
+}
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #060c12;
+    color: #f1eee7;
+    font-family: Arial, sans-serif;
+}
+#container,
+canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+header,
+main,
+footer,
+.controls,
+.rooms {
+    position: absolute;
+    z-index: 1;
+}
+header {
+    top: 32px;
+    left: 38px;
+    right: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: #dfd9ce;
+}
+header a {
+    display: flex;
+    align-items: center;
+    color: inherit;
+    text-decoration: none;
+    font-weight: bold;
+}
+header a > span:last-child {
+    margin-left: 8px;
+    font-weight: normal;
+    opacity: 0.55;
+}
+.brand-mark {
+    display: inline-flex;
+    width: 23px;
+    height: 23px;
+    margin-right: 9px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #c5b89b90;
+    font:
+        16px Georgia,
+        serif;
+    color: #f1e1c2;
+}
+main {
+    top: 108px;
+    left: 38px;
+    pointer-events: none;
+}
+.eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    color: #d5b794;
+}
+h1 {
+    margin: 10px 0 8px;
+    font:
+        normal 74px/0.95 Georgia,
+        serif;
+    letter-spacing: -0.05em;
+}
+main > p:last-child {
+    line-height: 1.8;
+    font-size: 12px;
+    color: #bcb9b2;
+}
+.rooms {
+    right: 38px;
+    top: 107px;
+    color: #a8adb1;
+}
+.rooms p {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 15px;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+}
+.rooms strong {
+    font-weight: normal;
+    color: #e0ded8;
+    padding-left: 13px;
+}
+.rooms i {
+    height: 5px;
+    width: 5px;
+    border-radius: 50%;
+}
+.rooms .amber {
+    background: #edb47a;
+    box-shadow: 0 0 9px #edb47a50;
+}
+.rooms .ice {
+    background: #75bbd5;
+    box-shadow: 0 0 9px #75bbd550;
+}
+.controls {
+    left: 38px;
+    right: 38px;
+    bottom: 68px;
+    display: flex;
+    width: fit-content;
+    background: #111920e8;
+    border: 1px solid #b5c4d029;
+    border-radius: 6px;
+    box-shadow: 0 12px 40px #00000040;
+    overflow: hidden;
+}
+button,
+.controls label {
+    padding: 17px 24px;
+    border: 0;
+    border-right: 1px solid #ffffff20;
+    background: transparent;
+    color: #8e969e;
+    font:
+        9px Arial,
+        sans-serif;
+    letter-spacing: 0.03em;
+    text-align: left;
+}
+button {
+    cursor: pointer;
+}
+button:hover {
+    background: #ffffff0d;
+}
+button:focus-visible,
+input:focus-visible {
+    outline: 2px solid #ddb788;
+    outline-offset: -3px;
+}
+button strong {
+    display: block;
+    margin-top: 9px;
+    color: #e9dfcc;
+    font-size: 12px;
+    font-weight: normal;
+}
+.controls label {
+    border: 0;
+}
+input {
+    display: block;
+    width: 135px;
+    margin: 8px 0 0;
+    accent-color: #deb783;
+}
+footer {
+    left: 38px;
+    right: 38px;
+    bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: #858e96;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+}
+.hint-divider {
+    margin: 0 10px;
+    color: #cbb88b;
+}
+#status {
+    letter-spacing: 0.04em;
+    color: #b9b4a8;
+}
+@media (max-width: 700px) {
+    header {
+        top: 22px;
+        left: 22px;
+        right: 22px;
+    }
+    main {
+        left: 22px;
+        top: 76px;
+    }
+    h1 {
+        font-size: 51px;
+    }
+    .rooms {
+        right: 23px;
+        top: 93px;
+    }
+    .rooms p {
+        gap: 5px;
+        font-size: 8px;
+    }
+    .rooms strong {
+        padding-left: 5px;
+    }
+    .controls {
+        left: 18px;
+        right: 18px;
+        bottom: 65px;
+        display: grid;
+        width: auto;
+        grid-template-columns: 1fr 1fr;
+    }
+    button,
+    .controls label {
+        padding: 12px 15px;
+    }
+    footer {
+        left: 22px;
+        right: 22px;
+        bottom: 20px;
+        flex-direction: column;
+    }
+}

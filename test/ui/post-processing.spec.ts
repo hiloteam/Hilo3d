@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import type { ExampleBackend } from './example-paths';
 import { installPageFailureMonitor } from './page-failure-monitor';
+import { captureStableFrame } from './stable-capture';
 import {
     assertStableInstrumentationHealth,
     awaitTrackedGPUQueues,
@@ -14,6 +15,103 @@ import {
 } from './render-health';
 
 const backends = ['webgl2', 'webgpu'] as const;
+type LocalReflectionWindow = Window & {
+    __HILO3D_LOCAL_REFLECTIONS__?: {
+        probes: readonly {
+            getDiagnostics(): {
+                captures: number;
+                capturedRevision: number;
+                requestedRevision: number;
+            };
+        }[];
+        dispose(): void;
+    };
+};
+
+for (const backend of backends) {
+    test(`local reflection gallery captures rooms, blends moving receivers and survives teardown @${backend}`, async ({
+        page
+    }, testInfo) => {
+        test.setTimeout(120_000);
+        await installRenderHealthProbe(page);
+        const failures = await installPageFailureMonitor(page);
+        try {
+            const quality =
+                process.env['HILO3D_REFLECTION_CAPTURE_QUALITY'] === 'production'
+                    ? '&quality=production'
+                    : '';
+            await page.goto(
+                `/examples/local_reflections_gallery.html?backend=${backend}&test=1${quality}`,
+                {
+                    waitUntil: 'domcontentloaded'
+                }
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-reflections-ready', 'true', {
+                timeout: 60_000
+            });
+            const initial = await captureStableFrame(page, backend, { frames: 2 });
+            await testInfo.attach('local-reflections-initial', {
+                body: initial,
+                contentType: 'image/png'
+            });
+            const before = nativeRenderProgress(await readRenderHealth(page), backend);
+            await page.locator('#reflections').click();
+            const disabled = await captureStableFrame(page, backend, { frames: 2 });
+            const difference = compareCanvasPixels(initial, disabled);
+            expect(difference.changedPixelCount).toBeGreaterThan(1_000);
+            expect(difference.meanChannelDelta).toBeGreaterThan(0.5);
+            await page.locator('#reflections').click();
+            await page.locator('#move').click();
+            const moved = await captureStableFrame(page, backend, { frames: 2 });
+            expect(compareCanvasPixels(initial, moved).changedPixelCount).toBeGreaterThan(1_000);
+            await page.locator('#light').click();
+            const changed = await captureStableFrame(page, backend, {
+                frames: quality.length > 0 ? 32 : 4
+            });
+            expect(
+                await page.evaluate(() =>
+                    (window as LocalReflectionWindow).__HILO3D_LOCAL_REFLECTIONS__?.probes.every(
+                        probe => {
+                            const status = probe.getDiagnostics();
+                            return (
+                                status.captures >= 2 &&
+                                status.capturedRevision === status.requestedRevision
+                            );
+                        }
+                    )
+                )
+            ).toBe(true);
+            expect(compareCanvasPixels(moved, changed).meanChannelDelta).toBeGreaterThan(0.5);
+            expect(
+                nativeRenderProgressAdvanced(
+                    before,
+                    nativeRenderProgress(await readRenderHealth(page), backend),
+                    backend
+                )
+            ).toBe(true);
+            await page.setViewportSize({ width: 716, height: 860 });
+            await captureStableFrame(page, backend, { frames: 2 });
+            await page.evaluate(() => {
+                (window as LocalReflectionWindow).__HILO3D_LOCAL_REFLECTIONS__?.dispose();
+            });
+            await expect(page.locator('body')).toHaveAttribute('data-reflections-disposed', 'true');
+            await page.evaluate(
+                () =>
+                    new Promise<void>(resolve => {
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                resolve();
+                            });
+                        });
+                    })
+            );
+            await page.goto('about:blank');
+            failures.assertEmpty(`Local reflection lifecycle on ${backend}`);
+        } finally {
+            await failures.dispose();
+        }
+    });
+}
 
 interface PixelDifference {
     readonly changedPixelCount: number;

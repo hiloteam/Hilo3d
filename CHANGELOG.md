@@ -2,6 +2,15 @@
 
 ### Features
 
+- Add portable local specular reflection probes with box parallax correction, bounded per-pixel
+  blending and roughness filtering, shared by PBR/clearcoat and SSR fallback composition. Add
+  budgeted HDR dynamic captures with atomic publication, failure rollback and device recovery; the
+  Adjacent gallery demonstrates connected rooms, moving receivers and lighting updates.
+- Add `RenderPipelineContext.recordView()` for isolated auxiliary cameras in the same graph and
+  submission, and runtime-owned `RenderPipelineCreateContext.createRenderTarget()` recipes that
+  rebuild after explicit renderer resource release. Parent leases are suspended during callbacks;
+  nested/async callbacks and caught callback failures cannot produce partial frame submissions.
+
 - Add Live2DModel.load with SDK-independent motion, expression, parameter and effect controls; Stage
   automatically advances and destroys owned sessions/assets. Add abortable complete loading, shared
   bounded runtime initialization and explicit asset versioning. Runtime assets are included in the
@@ -43,6 +52,10 @@
   checks and synchronized public-API recipes verified against packed core/addon packages.
 
 ### Changes
+
+- Reserve uniform-block binding 10 for optional local reflection data; custom block allocation now
+  starts at 11. Existing material scalar/texture layouts and material sampler indices are unchanged.
+  Applications using explicit custom binding 10 must select an unreserved binding.
 
 - Keep Live2D build and package verification tooling inside the addon. Remove its obsolete public
   SDK builder CLI/tools export, optional build-tool peers and unused standalone provider output;

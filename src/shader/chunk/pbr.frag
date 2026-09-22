@@ -131,6 +131,7 @@ uniform sampler2D u_baseColorMap;
     #endif
 
 #include "./pbr_brdf.glsl"
+#include "./localReflections.glsl"
 
 vec3 hiloComputeDiffuseSH(vec3 normal, in vec3 sh[9]) {
     return sh[0] +
@@ -148,7 +149,27 @@ vec3 hiloDecodeRGBD(vec4 color) {
     return color.rgb / max(color.a, 1e-6);
 }
 
+vec2 hiloEnvironmentDFG(float NdotV, float roughness) {
+    #ifdef HILO_SPECULAR_ENV_MAP
+        return texture(u_brdfLUT, hiloTextureUV(vec2(NdotV, 1.0 - roughness))).rg;
+    #else
+        // Bounded analytic split-sum fit for local-only IBL; no LUT asset is required.
+        vec4 r = roughness * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+        float a004 = min(r.x * r.x, exp2(-9.28 * NdotV)) * r.x + r.y;
+        return clamp(vec2(-1.04, 1.04) * a004 + r.zw, 0.0, 1.0);
+    #endif
+}
+
+vec3 hiloEnvironmentEnergyCompensation(vec3 f0, vec2 dfg) {
+    #ifdef HILO_SPECULAR_ENV_MAP
+        return vec3(1.0) + f0 * (1.0 / max(dfg.y, 0.04) - 1.0);
+    #else
+        return vec3(1.0);
+    #endif
+}
+
 vec3 hiloSampleSpecularEnvironment(vec3 direction, float perceptualRoughness) {
+    vec3 baseline = vec3(0.0);
     #ifdef HILO_SPECULAR_ENV_MAP
         float lod = clamp(
             perceptualRoughness * u_specularEnvMapMipCount,
@@ -164,9 +185,12 @@ vec3 hiloSampleSpecularEnvironment(vec3 direction, float perceptualRoughness) {
         #endif
         vec3 radiance = hiloDecodeRGBD(encoded);
         radiance = HILO_DECODE_MATERIAL_COLOR(radiance, HILO_SPECULAR_ENV_MAP);
-        return radiance * u_specularEnvIntensity;
+        baseline = radiance * u_specularEnvIntensity;
+    #endif
+    #ifdef HILO_LOCAL_REFLECTIONS
+        return hiloLocalReflection(baseline, direction, perceptualRoughness);
     #else
-        return vec3(0.0);
+        return baseline;
     #endif
 }
 
@@ -198,7 +222,7 @@ vec3 hiloGetIBLSpecular(
     float iridescenceThickness,
     float ao
 ) {
-    #ifdef HILO_SPECULAR_ENV_MAP
+    #if defined(HILO_SPECULAR_ENV_MAP) || defined(HILO_LOCAL_REFLECTIONS)
         float NdotV = max(abs(dot(N, V)), 1e-4);
         vec3 reflectionNormal = N;
         #ifdef HILO_HAS_ANISOTROPY
@@ -213,12 +237,8 @@ vec3 hiloGetIBLSpecular(
             R = normalize(u_viewInverseNormalMatrix * R);
             horizonNormal = normalize(u_viewInverseNormalMatrix * N);
         #endif
-        vec2 dfg = texture(
-            u_brdfLUT,
-            hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))
-        ).rg;
-        vec3 energyCompensation = vec3(1.0) +
-            f0 * (1.0 / max(dfg.y, 0.04) - 1.0);
+        vec2 dfg = hiloEnvironmentDFG(NdotV, perceptualRoughness);
+        vec3 energyCompensation = hiloEnvironmentEnergyCompensation(f0, dfg);
         float specularAO = clamp(
             pow(NdotV + ao, exp2(-16.0 * perceptualRoughness - 1.0)) - 1.0 + ao,
             0.0,
@@ -249,16 +269,13 @@ vec3 hiloGetIBLSpecular(
 }
 
 vec3 hiloGetIBLClearcoat(vec3 N, vec3 V, float perceptualRoughness) {
-    #ifdef HILO_SPECULAR_ENV_MAP
+    #if defined(HILO_SPECULAR_ENV_MAP) || defined(HILO_LOCAL_REFLECTIONS)
         float NdotV = max(abs(dot(N, V)), 1e-4);
         vec3 R = -normalize(reflect(V, N));
         #ifdef HILO_NEED_WORLD_NORMAL
             R = normalize(u_viewInverseNormalMatrix * R);
         #endif
-        vec2 dfg = texture(
-            u_brdfLUT,
-            hiloTextureUV(vec2(NdotV, 1.0 - perceptualRoughness))
-        ).rg;
+        vec2 dfg = hiloEnvironmentDFG(NdotV, perceptualRoughness);
         return hiloSampleSpecularEnvironment(R, perceptualRoughness) *
             (0.04 * dfg.x + dfg.y);
     #else

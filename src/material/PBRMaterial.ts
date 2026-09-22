@@ -21,10 +21,14 @@ import {
 import { MaterialTextureSlot } from './MaterialTextureSlots';
 import { MaterialTextureSemantic, MaterialUniformSemantic } from './MaterialSemantics';
 import type { ShaderOptions } from '../render/types';
+import type { ReflectionProbe } from '../render/reflections/ReflectionProbe';
+import { ReflectionProbeMaterialBinding } from '../render/reflections/ReflectionProbeMaterialBinding';
 
 export type PBRMaterialTextureInput = Texture<unknown> | MaterialTextureSlotInput | null;
 
 export interface PBRMaterialParameters extends MaterialInstanceParameters {
+    /** One or two local specular volumes, blended per pixel with the environment fallback. */
+    readonly reflectionProbes?: readonly ReflectionProbe[];
     /** Compile the standard surface without lighting. */
     readonly unlit?: boolean;
     readonly baseColor?: Color;
@@ -185,6 +189,10 @@ function slot(
 }
 
 function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
+    const probes =
+        parameters.reflectionProbes === undefined
+            ? null
+            : new ReflectionProbeMaterialBinding(parameters.reflectionProbes);
     const baseColor = input(parameters.baseColorMap);
     const metallic = input(parameters.metallicMap);
     const roughness = input(parameters.roughnessMap);
@@ -224,6 +232,18 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
         ...(parameters.cullMode === undefined ? {} : { cullMode: parameters.cullMode }),
         ...(parameters.state === undefined ? {} : { state: parameters.state }),
         staticFeatures: {
+            ...(probes === null
+                ? {}
+                : {
+                      LOCAL_REFLECTIONS: probes.probes.length,
+                      NEED_WORLD_NORMAL: 1,
+                      USE_SHADER_TEXTURE_LOD: 1,
+                      ...Object.fromEntries(
+                          probes.probes.flatMap((probe, index) =>
+                              probe.dynamic ? [] : [[`REFLECTION_CUBE_${String(index)}`, 1]]
+                          )
+                      )
+                  }),
             ...(parameters.unlit === true ? {} : { HAS_NORMAL: 1, USE_PHYSICS_LIGHT: 1 }),
             ...(baseColor === null ? {} : { BASE_COLOR_MAP: MaterialTextureSlot.BASE_COLOR }),
             ...(metallic === null ? {} : { METALLIC_MAP: MaterialTextureSlot.METALLIC }),
@@ -358,6 +378,8 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
 
 /** Physically based standard-surface material with immutable shader topology. */
 class PBRMaterial extends MaterialInstance {
+    /** Immutable membership of this material's local reflection volumes. */
+    readonly reflectionProbes: readonly ReflectionProbe[];
     readonly isPBRMaterial = true;
     override readonly className: string = 'PBRMaterial';
     readonly baseColor: Color;
@@ -408,7 +430,36 @@ class PBRMaterial extends MaterialInstance {
     readonly iridescenceThicknessMap: Texture<unknown> | null;
 
     constructor(params: Readonly<PBRMaterialParameters> = {}) {
-        super(createDefinition(params), params, false);
+        super(
+            createDefinition(params),
+            {
+                ...params,
+                // Dynamic reflection changes have no geometric velocity. Conservatively reject their
+                // material history until a finer spatial reactive contract is provided.
+                temporalReactiveFactor:
+                    params.reflectionProbes?.some(probe => probe.dynamic) === true
+                        ? 1
+                        : (params.temporalReactiveFactor ?? 0)
+            },
+            false
+        );
+        this.reflectionProbes = Object.freeze([...(params.reflectionProbes ?? [])]);
+        if (this.reflectionProbes.length > 0) {
+            if (params.unlit === true)
+                throw new TypeError('Local reflection probes require a lit PBR material');
+            if (params.uniformBlocks?.['ReflectionProbeBlock'] !== undefined)
+                throw new TypeError('ReflectionProbeBlock is owned by PBR reflectionProbes');
+            const binding = new ReflectionProbeMaterialBinding(this.reflectionProbes);
+            Object.defineProperty(this.uniformBlocks, 'ReflectionProbeBlock', {
+                enumerable: true,
+                get: () => binding.buffer
+            });
+            for (let index = 0; index < this.reflectionProbes.length; index++) {
+                this.uniforms[`u_localReflection${String(index)}`] = {
+                    get: () => binding.texture(index)
+                };
+            }
+        }
         this.baseColor = params.baseColor ?? new Color(1, 1, 1);
         this.baseColorMap = texture(params.baseColorMap);
         this.#metallic = requireRange(params.metallic ?? 1, 'metallic', 0, 1);

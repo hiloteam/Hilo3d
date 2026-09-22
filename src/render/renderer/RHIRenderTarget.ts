@@ -324,6 +324,31 @@ export class RHIRenderTarget implements RenderTarget {
         return this.#record;
     }
 
+    /** @internal Recreate a runtime-owned target after explicit renderer resource release. */
+    recreateResources(): void {
+        this.#assertAlive();
+        for (const unregister of this.#unregisterBindings.splice(0)) unregister();
+        this.#record = this.#host.renderTargetResources.prepare(
+            this,
+            targetDescriptor(this.#parameters)
+        );
+        for (let index = 0; index < this.#colorTextures.length; index++) {
+            const texture = this.#colorTextures[index];
+            if (texture !== undefined)
+                this.#unregisterBindings.push(
+                    this.#host.registerRenderTargetColorTexture(this, index, texture)
+                );
+        }
+        if (this.#depthTexture !== null)
+            this.#unregisterBindings.push(
+                this.#host.registerRenderTargetDepthTexture(
+                    this,
+                    this.#depthTexture,
+                    this.#parameters.depthStencilAttachment?.compare ?? 'less-equal'
+                )
+            );
+    }
+
     belongsTo(host: RHIRenderTargetHost): boolean {
         return this.#host === host;
     }

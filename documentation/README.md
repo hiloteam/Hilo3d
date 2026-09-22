@@ -17,21 +17,22 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 
 ## Current technical contracts
 
-| Document                                                       | Responsibility                                                            |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [Rendering architecture](./RENDERING_ARCHITECTURE.md)          | Shared frontend, Render Graph, RHI, shader and resource lifecycle.        |
-| [Scriptable Render Pipeline](./SCRIPTABLE_RENDER_PIPELINE.md)  | Factories, contexts, scene lists, features, passes and transactions.      |
-| [Compute and storage](./COMPUTE_AND_STORAGE.md)                | Direct WGSL compute, readonly storage raster, graph hazards and recovery. |
-| [Material system](./MATERIAL_SYSTEM.md)                        | Definition/Instance, semantic roles, texture slots, UBO/storage layouts.  |
-| [Temporal rendering](./TEMPORAL_RENDERING.md)                  | Motion ABI, TAA/TAAU, reactive and transparent/particle histories.        |
-| [GTAO](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)                    | Horizon AO, bent normals, integration and quality boundaries.             |
-| [SSR](./SCREEN_SPACE_REFLECTIONS.md)                           | Hi-Z reflection tracing, material response, rejection and fallback.       |
-| [SSGI](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)                  | Portable diffuse trace, temporal denoise and composition.                 |
-| [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Unreleased DDGI/software-BVH and SSGI hybrid, with evidence boundaries.   |
-| [Volumetric lighting](./VOLUMETRIC_LIGHTING.md)                | Froxels, fog, lighting, integration and history.                          |
-| [Atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) | Atmosphere LUTs, clouds/shadows, exposure and display.                    |
-| [Physics](./PHYSICS_ARCHITECTURE.md)                           | Optional Stage Systems, portable worlds, Rapier and lifetime.             |
-| [Particles](./PARTICLE_SYSTEM.md)                              | Optional addon, CPU/GPU/stateless execution and P6 authoring.             |
+| Document                                                       | Responsibility                                                                         |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [Rendering architecture](./RENDERING_ARCHITECTURE.md)          | Shared frontend, Render Graph, RHI, shader and resource lifecycle.                     |
+| [Scriptable Render Pipeline](./SCRIPTABLE_RENDER_PIPELINE.md)  | Factories, contexts, scene lists, features, passes and transactions.                   |
+| [Compute and storage](./COMPUTE_AND_STORAGE.md)                | Direct WGSL compute, readonly storage raster, graph hazards and recovery.              |
+| [Material system](./MATERIAL_SYSTEM.md)                        | Definition/Instance, semantic roles, texture slots, UBO/storage layouts.               |
+| [Temporal rendering](./TEMPORAL_RENDERING.md)                  | Motion ABI, TAA/TAAU, reactive and transparent/particle histories.                     |
+| [GTAO](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)                    | Horizon AO, bent normals, integration and quality boundaries.                          |
+| [SSR](./SCREEN_SPACE_REFLECTIONS.md)                           | Hi-Z reflection tracing, material response, rejection and fallback.                    |
+| [Local reflections](./LOCAL_REFLECTIONS.md)                    | Static probes, box projection, blending, budgeted dynamic capture and SSR composition. |
+| [SSGI](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)                  | Portable diffuse trace, temporal denoise and composition.                              |
+| [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Unreleased DDGI/software-BVH and SSGI hybrid, with evidence boundaries.                |
+| [Volumetric lighting](./VOLUMETRIC_LIGHTING.md)                | Froxels, fog, lighting, integration and history.                                       |
+| [Atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) | Atmosphere LUTs, clouds/shadows, exposure and display.                                 |
+| [Physics](./PHYSICS_ARCHITECTURE.md)                           | Optional Stage Systems, portable worlds, Rapier and lifetime.                          |
+| [Particles](./PARTICLE_SYSTEM.md)                              | Optional addon, CPU/GPU/stateless execution and P6 authoring.                          |
 
 ## Contribute and plan
 

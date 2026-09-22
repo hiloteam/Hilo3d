@@ -1,4 +1,5 @@
 import type Camera from '../../camera/Camera';
+import type { RenderPipelineContext, RenderPipelineCapabilities } from '../pipeline/RenderPipeline';
 import type Mesh from '../../core/Mesh';
 import type LightManager from '../../light/LightManager';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
@@ -166,6 +167,14 @@ export interface BufferRecord {
 
 /** @internal Renderer services deliberately narrower than either Renderer or the portable RHI. */
 export interface ScriptableRenderPipelineServices {
+    recordScriptableView(
+        scene: RendererScene,
+        camera: Camera,
+        target: RenderTarget,
+        capabilities: RenderPipelineCapabilities,
+        runtimeOwner: object,
+        record: (context: RenderPipelineContext) => unknown
+    ): void;
     readonly renderer: RendererCore;
     readonly lightManager: LightManager;
     readonly antialias: boolean;

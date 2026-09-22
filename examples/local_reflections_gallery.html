@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Adjacent — Hilo3D local reflections</title>
+        <link rel="stylesheet" href="./local_reflections_gallery.css" />
+    </head>
+    <body>
+        <div id="container"></div>
+        <header>
+            <a href="./index.html"
+                ><span class="brand-mark" aria-hidden="true">H</span> HILO3D
+                <span> / LIGHT STUDIES</span></a
+            ><span>EXHIBITION 002</span>
+        </header>
+        <main>
+            <p class="eyebrow">THE REFLECTION COLLECTION</p>
+            <h1>Adjacent.</h1>
+            <p>Warm bronze. Cool chrome.<br />The same light, seen differently.</p>
+        </main>
+        <aside class="rooms" aria-label="Gallery rooms">
+            <p>
+                <i class="amber"></i><span>01 <strong>AMBER</strong></span>
+            </p>
+            <p>
+                <i class="ice"></i><span>02 <strong>ICE</strong></span>
+            </p>
+        </aside>
+        <section class="controls" aria-label="Reflection controls">
+            <button id="reflections" aria-pressed="true">Reflections <strong>On</strong></button>
+            <button id="move">Sculpture <strong>Move to next room ↗</strong></button>
+            <button id="light">Light palette <strong>Amber / Ice</strong></button>
+            <label
+                >Surface roughness<input
+                    id="roughness"
+                    type="range"
+                    min="0.04"
+                    max="0.8"
+                    step="0.01"
+                    value="0.16"
+            /></label>
+        </section>
+        <footer>
+            <span>ORBIT WITH A DRAG <span class="hint-divider">/</span> SCROLL TO EXPLORE</span
+            ><output id="status">Capturing the rooms…</output>
+        </footer>
+        <script type="module" src="./local_reflections_gallery.ts"></script>
+    </body>
+</html>
