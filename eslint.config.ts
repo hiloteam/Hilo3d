@@ -11,6 +11,8 @@ export default defineConfig(
         'coverage/**',
         'dist/**',
         'addon-particle/dist/**',
+        'addon-assets/dist/**',
+        'addon-assets/.cache/**',
         'addon-live2d/dist/**',
         'addon-physics/dist/**',
         'dist-examples/**',

@@ -9,7 +9,8 @@
     "paths": {
       "@hilo/addon-particle": ["./addon-particle/src/index.ts"],
       "hilo3d": ["./src/Hilo3d.ts"],
-      "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"]
+      "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"],
+      "@hilo/addon-assets": ["./addon-assets/src/index.ts"]
     }
   },
   "include": [
@@ -45,6 +46,12 @@
     },
     {
       "path": "./addon-live2d/tsconfig.tools.json"
+    },
+    {
+      "path": "./addon-assets/tsconfig.json"
+    },
+    {
+      "path": "./addon-assets/tsconfig.tools.json"
     }
   ]
 }

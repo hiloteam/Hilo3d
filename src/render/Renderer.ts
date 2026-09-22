@@ -70,6 +70,8 @@ export class Renderer<
     declare readonly renderToTarget: RendererContract['renderToTarget'];
     declare readonly onInit: (callback: (renderer: this) => void) => void;
     declare readonly waitForIdle: RendererContract['waitForIdle'];
+    /** Upload managed textures through a graph submission and await its fence, without drawing. */
+    declare readonly uploadTextures: RendererContract['uploadTextures'];
     declare readonly getExtension: RendererContract['getExtension'];
     declare readonly releaseGPUResources: RendererContract['releaseGPUResources'];
     declare readonly destroy: RendererContract['destroy'];

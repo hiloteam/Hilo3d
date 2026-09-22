@@ -1083,3 +1083,12 @@ WebGL2 detects native context loss at frame/error boundaries even before the bro
 the eventual DOM event is still prevented so the browser permits restoration. The shared renderer
 observes the existing device-loss promise at the next microtask checkpoint; callers handling an
 interrupted frame can distinguish that recovery transition from ordinary draw errors.
+
+## Optional asset streaming
+
+`@hilo/addon-assets` owns HTTP/worker scheduling, versioned texture leases and mip residency. Core
+`Renderer.uploadTextures()` uses an upload-only Render Graph pass and the existing mesh processor
+texture cache, upload transaction and submission fence. It neither draws nor presents. Texture
+identity, allocation replacement, failure rollback and retirement use the shared RHI ownership. The
+addon budgets initial uploads, mip changes and replay after device loss. Exact scope and accounting
+are in [asset streaming](./ASSET_STREAMING.md).

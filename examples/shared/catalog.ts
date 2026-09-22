@@ -109,6 +109,12 @@ interface ExampleDefinition {
 
 /** Reviewed metadata for every example; HTML discovery remains the page source of truth. */
 const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
+    'asset_streaming.html': {
+        title: 'Texture Residency Lab',
+        description:
+            'Stream KTX2/Basis textures with coarse-first detail, worker decoding, bounded residency and hidden-set eviction.',
+        category: 'loaders'
+    },
     '2d_sorting_town.html': {
         title: 'Maple Afternoon — Y Sorting',
         description:

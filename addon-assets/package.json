@@ -1,0 +1,45 @@
+{
+  "name": "@hilo/addon-assets",
+  "version": "2.0.0-alpha.8",
+  "description": "Optional bounded KTX2/Basis texture streaming for Hilo3D.",
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist .cache && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && jiti tools/build-package.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "clean": "rimraf dist .cache"
+  },
+  "peerDependencies": {
+    "hilo3d": "2.0.0-alpha.8"
+  },
+  "devDependencies": {
+    "hilo3d": "file:..",
+    "@h00w/basis-universal-transcoder": "2.1.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiloteam/Hilo3d.git",
+    "directory": "addon-assets"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

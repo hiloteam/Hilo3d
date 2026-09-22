@@ -21,7 +21,7 @@ npm run examples:dev
 
 仓库采用一个 Git 仓库、一个 lockfile 和一组根级质量门禁管理多个独立发布包，也就是 npm workspaces
 monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布边界是根目录的 `hilo3d` 核心包，以及
-`addon-particle/`、`addon-physics/`、`addon-live2d/` 三个 workspace：
+`addon-particle/`、`addon-physics/`、`addon-live2d/`、`addon-assets/` 四个 workspace：
 
 - 粒子和物理，尤其 Rapier WASM，保持独立包和显式导入，未使用的能力不会进入核心依赖图；
 - addon 用 peer dependency 声明支持的核心版本，用本地 `file:..` dev
@@ -37,7 +37,7 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 `addon-live2d/tools/` 和 `addon-live2d/test/`，不进入 npm 发布内容；根级入口只负责编排。细节见
 [Live2D](./LIVE2D.md)。
 
-保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前四个包尚不足以证明把根核心整体搬到
+保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前五个包尚不足以证明把根核心整体搬到
 `packages/hilo3d/`
 的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
 `packages/*`，不改变上述发布边界。
@@ -169,8 +169,8 @@ API Extractor 的 release-tag 提示按项目级固定政策关闭：Hilo3d
 2.x 的根 barrel 导出面全部视为 public，不设置 alpha/beta 分层。setter 文档提示也按固定政策关闭：访问器说明由 getter/TypeDoc 作为唯一正文来源。两项都不关闭 TypeScript 诊断、forgotten
 export、API 差异或 TypeDoc 验证，也不是待删除的迁移豁免。
 
-`npm run site:build` 是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子、物理和 Live2D
-addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这四个包时直接调用依赖预构建产物的 API 检查。
+`npm run site:build`
+是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子、物理、Live2D 和资产 addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这五个包时直接调用依赖预构建产物的 API 检查。
 
 typed lint 同样遵循干净 checkout 规则：工作流调用
 `npm run lint`，由该命令先构建核心和 addon 声明，再执行 ESLint；不得自行组合会遗漏 workspace 声明的
@@ -230,10 +230,10 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 96 个 HTML 的后端适用矩阵
+### 98 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 96 个 HTML，包含 94 个示例和两个画廊入口；81 个页面执行双后端，WebXR 执行 WebGL
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 98 个 HTML，包含 96 个示例和两个画廊入口；83 个页面执行双后端，WebXR 执行 WebGL
 2，14 个页面执行 WebGPU，共 177 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
 Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
@@ -485,7 +485,7 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、96 个 HTML 后端适用矩阵（81 个双后端、WebXR 显式 WebGL
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、98 个 HTML 后端适用矩阵（83 个双后端、WebXR 显式 WebGL
 2-only、14 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
@@ -509,14 +509,14 @@ npm run release:tag:push
 `release:check` 保留为完整 `validate`
 的显式别名，可用于本地候选版本验收，但不再是 tag 发布步骤。功能提交 push 触发的普通 CI 负责单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁；发布操作应在该提交的 CI 通过后进行。
 
-`release:tag:push` 要求工作区干净，确认根包与两个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
+`release:tag:push` 要求工作区干净，确认根包与四个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
 `origin` 上指向其他提交的同名 tag。命令创建带 `publish <version>` 注释的版本 tag，只推送
 `refs/tags/<version>`，再从远端核验其目标提交；同一提交上的重试是幂等的。
 
 `.github/workflows/publish.yml` 监听版本 tag。GitHub-hosted
 runner 只用仓库固定的 Node/npm 工具链确认 tag、三个包版本与提交完全一致，不重复执行普通 push
 CI 已经覆盖的功能门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm
-11，通过 OIDC 依次发布核心、粒子 addon 和物理 addon。两个 addon 的 `hilo3d` peer
+11，通过 OIDC 依次发布核心、粒子、物理、Live2D 和资产 addon。四个 addon 的 `hilo3d` peer
 dependency 必须等于同批版本；幂等重试跳过 registry 中已经存在的包版本。预发布版本自动使用
 `next`，正式版本使用 `latest`，不得让 prerelease 覆盖 `latest`。npm package 的 Trusted
 Publisher 必须为三个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许
@@ -562,3 +562,11 @@ Skill 由 `validate` 与 `validate:ci` 中的 `test:skill` 回归，不在上传
 14. 新增 WebGPU
     device-owned 资源必须接入 suspend/restore/destroy 生命周期，并用测试证明恢复后公共对象 identity、所有权与当前 target 不变；CPU
     source 允许公开释放时必须提供私有、可清理且真实恢复测试覆盖的 backing，不能依赖旧 adapter 或不可观察的空重建。
+
+## Asset addon build boundary
+
+`addon-assets` ships TypeScript-emitted ESM, a module worker and a checksum-pinned Basis C-ABI WASM
+binary copied from a development-only dependency. The upstream JS wrapper is not bundled. Worker and
+WASM files are colocated so consumer Vite builds emit local assets automatically. The root package
+consumer check includes this addon and renders/recoveries on both backends from installed tarballs.
+See [asset streaming](./ASSET_STREAMING.md) for budgets and remaining A0 work.

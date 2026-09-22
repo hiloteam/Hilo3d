@@ -54,6 +54,37 @@ const GPU_DIAGNOSTIC_ERROR =
     /(?:webgl|webgpu|gpu(?:adapter|bindgroup|buffer|command|device|pipeline|queue|sampler|texture)|gl_invalid|validation error|framebuffer[^\n]*(?:incomplete|unsupported)|invalid (?:bind|buffer|command|pipeline|render|sampler|texture)|shader[^\n]*(?:compil|link))/iu;
 const PRESENTATION_TIMEOUT = process.env['CI'] === 'true' ? 30_000 : 15_000;
 
+for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`asset residency lab changes demand and tears down cleanly @${backend}`, async ({
+        page
+    }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await installRenderHealthProbe(page);
+        await page.goto(`asset_streaming.html?backend=${backend}&test=1`);
+        const status = page.locator('#diagnostics');
+        await expect(status).toContainText('ETC1S study: resident / mip 0');
+        await page.getByRole('button', { name: 'Switch texture set' }).click();
+        await expect(status).toContainText('UASTC study: resident / mip 0');
+        await expect(status).toContainText('evictions: 1');
+        await page.getByRole('button', { name: 'Use coarse detail' }).click();
+        await expect(status).toContainText('UASTC study: resident / mip 3');
+        await page.getByRole('button', { name: 'Use full detail' }).click();
+        await expect(status).toContainText('UASTC study: resident / mip 0');
+        await awaitTrackedGPUQueues(page);
+        const health = await readRenderHealth(page);
+        expect(completedRenderCommands(health, backend)).toBeGreaterThan(0);
+        expect(instrumentationErrors(health, backend)).toEqual([]);
+        await expect(page.locator('#error')).toBeEmpty();
+        await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
+        );
+        await waitForStableAnimationFrames(page);
+        expect(errors).toEqual([]);
+        expect(instrumentationErrors(await readRenderHealth(page), backend)).toEqual([]);
+    });
+}
+
 function recordUnique(messages: string[], message: string): void {
     if (!messages.includes(message)) messages.push(message);
 }

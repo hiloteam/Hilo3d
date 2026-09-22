@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
+import { verifyAssetPackage } from '../addon-assets/test/package';
 import { verifyLive2DPackage } from '../addon-live2d/test/package';
 
 const projectRoot = resolve(import.meta.dirname, '..');
@@ -28,6 +29,7 @@ try {
     const particleArchivePath = pack(resolve(projectRoot, 'addon-particle'));
     const physicsArchivePath = pack(resolve(projectRoot, 'addon-physics'));
     const live2DArchivePath = pack(resolve(projectRoot, 'addon-live2d'));
+    const assetsArchivePath = pack(resolve(projectRoot, 'addon-assets'));
 
     await writeFile(
         join(consumerDirectory, 'package.json'),
@@ -47,6 +49,7 @@ try {
             particleArchivePath,
             physicsArchivePath,
             live2DArchivePath,
+            assetsArchivePath,
             resolve(projectRoot, 'node_modules/gl-matrix'),
             resolve(projectRoot, 'node_modules/web-naga'),
             resolve(projectRoot, 'node_modules/@dimforge/rapier2d-compat'),
@@ -97,6 +100,8 @@ try {
         join(consumerDirectory, 'esm-consumer.mjs'),
         [
             "import { Renderer, Vector3, version } from 'hilo3d';",
+            "import { AssetManager, WorkerTextureDecoder } from '@hilo/addon-assets';",
+            "if (typeof AssetManager !== 'function' || typeof WorkerTextureDecoder !== 'function') throw new Error('Asset addon ESM entry is missing');",
             "import { createParticleStageSystem } from '@hilo/addon-particle';",
             "import { createPhysicsStageSystem } from '@hilo/addon-physics';",
             "import { createRapier2DPhysicsSystem } from '@hilo/addon-physics/rapier2d';",
@@ -125,6 +130,7 @@ try {
         stdio: 'inherit'
     });
     await verifyLive2DPackage(consumerDirectory);
+    await verifyAssetPackage(consumerDirectory);
 } finally {
     await rm(temporaryRoot, { force: true, recursive: true });
 }

@@ -167,6 +167,11 @@ export function webGPUExposure(): PostProcessRenderPipelineFactory {
 
 ## Optional addons
 
+The Unreleased asset addon has a checked
+[streaming setup recipe](../test/types/recipes/asset-streaming.ts). See
+[asset streaming](./ASSET_STREAMING.md) for manifests, readiness and budget ownership; do not assume
+this new package is available in the alpha.8 registry release.
+
 Install the addon version matching your exact `hilo3d` version; each addon declares an exact core
 peer. For example, with the alpha.8 release:
 

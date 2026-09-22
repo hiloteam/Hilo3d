@@ -26,6 +26,39 @@ function releasedBuffer(
 }
 
 describe('SubmissionResourceTracker', () => {
+    it('snapshots submitted work without waiting for future frames, but settles all captured fences on failure', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const tracker = new SubmissionResourceTracker(registry);
+        const first = submit(device),
+            second = submit(device);
+        void tracker.track(1, first);
+        const snapshot = tracker.waitForSubmittedWork();
+        void tracker.track(2, second);
+        first.succeed();
+        await snapshot;
+        expect(tracker.pendingSubmissionCount).toBe(1);
+        const third = submit(device);
+        void tracker.track(3, third);
+        const failure = new Error('captured fence failed');
+        let completed = false;
+        const failed = tracker.waitForSubmittedWork().catch((error: unknown) => {
+            expect(error).toBe(failure);
+            completed = true;
+        });
+        second.fail(failure);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(completed).toBe(false);
+        third.succeed();
+        await failed;
+        expect(completed).toBe(true);
+        tracker.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('collects an immediate submission and enforces strictly increasing frames', async () => {
         const backend = new FakeWebGLRHIBackend();
         const device = backend.createDevice();

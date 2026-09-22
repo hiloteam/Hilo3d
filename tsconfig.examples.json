@@ -12,7 +12,8 @@
       "@hilo/addon-physics/rapier2d": ["./addon-physics/src/rapier2d.ts"],
       "@hilo/addon-physics/rapier3d": ["./addon-physics/src/rapier3d.ts"],
       "hilo3d": ["./src/Hilo3d.ts"],
-      "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"]
+      "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"],
+      "@hilo/addon-assets": ["./addon-assets/src/index.ts"]
     }
   },
   "include": ["examples/**/*.ts", "benchmarks/ddgi/fixture-contract.ts"],
@@ -28,6 +29,9 @@
     },
     {
       "path": "./addon-live2d/tsconfig.json"
+    },
+    {
+      "path": "./addon-assets/tsconfig.json"
     }
   ]
 }
