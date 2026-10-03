@@ -26,7 +26,8 @@ export default mergeConfig(
             // coverage process. The dedicated RHI suite runs it immediately afterward.
             exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
-            // Sharded hosted CI keeps one browser file active at a time. A monolithic release
+            // Four hosted-CI shards bound each long-lived browser to about 60 isolated files,
+            // with one file active at a time. A monolithic release
             // validation and local coverage use exactly two workers so one long-lived renderer
             // does not accumulate all isolated test files and lose its browser RPC connection.
             fileParallelism: !githubActionsCoverageRun || monolithicCoverageRun,

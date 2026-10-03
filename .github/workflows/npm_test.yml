@@ -62,14 +62,14 @@ jobs:
         run: npx jiti scripts/check-ui-groups.ts
 
   coverage:
-    name: Coverage (${{ matrix.shard }}/2)
+    name: Coverage (${{ matrix.shard }}/4)
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Check out repository
@@ -95,7 +95,7 @@ jobs:
 
       - name: Run browser coverage shard
         run: >-
-          npx vitest run --coverage --shard=${{ matrix.shard }}/2 --reporter=default --reporter=blob
+          npx vitest run --coverage --shard=${{ matrix.shard }}/4 --reporter=default --reporter=blob
           --outputFile.blob=reports/vitest/report-${{ matrix.shard }}.json
         env:
           CI: 'true'
