@@ -99,6 +99,7 @@ jobs:
           --outputFile.blob=reports/vitest/report-${{ matrix.shard }}.json
         env:
           CI: 'true'
+          DEBUG: pw:browser
 
       - name: Upload coverage shard
         if: ${{ !cancelled() }}
