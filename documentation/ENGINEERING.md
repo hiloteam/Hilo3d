@@ -384,8 +384,10 @@ Actions、锁文件安装、固定 npm 10.9.4 和显式 Chromium 系统依赖，
 references 和示例目录合同预检；预检成功后并行执行四个 Vitest
 coverage 分片、RHI/架构、包/API/文档，以及六个 Playwright WebGL 2 页面/交互/视觉工作组。每个 GPU
 job 内仍只使用一个 worker，不在同一 SwiftShader 进程并发争用设备；coverage 模式因此关闭 Vitest 文件并行，并用四个独立 runner 分片限制每个长生命周期浏览器的文件数。两个分片时，Linux
-coverage 曾在完成 111 至 113 个文件后反复丢失浏览器 RPC 连接；四分片把当前每个浏览器的负载限制为约 60 个文件。保留 Chromium 进程诊断日志、全部测试及最终合并后的全局覆盖率阈值，不通过重试或跳过来掩盖未完成文件。coverage
-artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套 `reports/vitest` 目录只读取 blob
+coverage 曾在完成 111 至 113 个文件后反复丢失浏览器 RPC 连接；四分片把当前每个浏览器的负载限制为约 60 个文件。保留 Chromium 进程诊断日志、全部测试及最终合并后的全局覆盖率阈值，不通过重试或跳过来掩盖未完成文件。coverage 分片只记录部分覆盖率，全局阈值由必需的无
+`--shard`
+合并任务对完整覆盖率执行；本地完整运行也保留相同阈值。artifact 保留上传时的仓库相对目录，汇总 job 从其嵌套
+`reports/vitest` 目录只读取 blob
 report；跨 runner 分片完成后分别合并 coverage 和 Playwright 报告，并由稳定的 `Required CI`
 聚合门禁统一给 branch
 protection 使用。预检导致测试分片跳过时，报告汇总也跳过，避免缺失产物掩盖最初的失败。Playwright
