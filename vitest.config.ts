@@ -4,6 +4,9 @@ import { createViteConfig } from './vite.config';
 
 const coverageRun = process.argv.includes('--coverage');
 const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
+const githubActionsCoverageShard =
+    githubActionsCoverageRun &&
+    process.argv.some(argument => argument === '--shard' || argument.startsWith('--shard='));
 const monolithicCoverageRun =
     githubActionsCoverageRun && process.env['HILO3D_MONOLITHIC_COVERAGE'] === 'true';
 
@@ -26,7 +29,8 @@ export default mergeConfig(
             // coverage process. The dedicated RHI suite runs it immediately afterward.
             exclude: coverageRun ? ['test/spec/**/*.native.test.ts'] : [],
             // Coverage instrumentation already adds substantial Chromium/SwiftShader pressure.
-            // Sharded hosted CI keeps one browser file active at a time. A monolithic release
+            // Four hosted-CI shards bound each long-lived browser to about 60 isolated files,
+            // with one file active at a time. A monolithic release
             // validation and local coverage use exactly two workers so one long-lived renderer
             // does not accumulate all isolated test files and lose its browser RPC connection.
             fileParallelism: !githubActionsCoverageRun || monolithicCoverageRun,
@@ -42,12 +46,18 @@ export default mergeConfig(
                 reportsDirectory: 'coverage',
                 reporter: ['text', 'json-summary', 'html'],
                 reportOnFailure: true,
-                thresholds: {
-                    branches: 40,
-                    functions: 58,
-                    lines: 62,
-                    statements: 60
-                }
+                // A partial shard cannot meet a whole-suite coverage contract. The required
+                // merge-reports job has no --shard and enforces these unchanged global gates.
+                ...(githubActionsCoverageShard
+                    ? {}
+                    : {
+                          thresholds: {
+                              branches: 40,
+                              functions: 58,
+                              lines: 62,
+                              statements: 60
+                          }
+                      })
             },
             browser: {
                 enabled: true,
