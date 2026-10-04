@@ -37,6 +37,8 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
   filmic and WebGPU auto exposure.
 - [Particles](./documentation/PARTICLE_SYSTEM.md): Optional addon, CPU/GPU/stateless plans and
   authoring contracts.
+- [Audio](./documentation/AUDIO.md): Unreleased optional spatial sound, bounded voices, mixing,
+  streaming and lifecycle.
 - [Physics](./documentation/PHYSICS_ARCHITECTURE.md): Optional Stage Systems and independent Rapier
   2D/3D adapters.
 - [Example catalog](./documentation/EXAMPLE_CATALOG.md): Focused examples and backend requirements.

@@ -10,7 +10,8 @@
       "@hilo/addon-particle": ["./addon-particle/src/index.ts"],
       "hilo3d": ["./src/Hilo3d.ts"],
       "@hilo/addon-live2d": ["./addon-live2d/src/index.ts"],
-      "@hilo/addon-assets": ["./addon-assets/src/index.ts"]
+      "@hilo/addon-assets": ["./addon-assets/src/index.ts"],
+      "@hilo/addon-audio": ["./addon-audio/src/index.ts"]
     }
   },
   "include": [
@@ -52,6 +53,9 @@
     },
     {
       "path": "./addon-assets/tsconfig.tools.json"
+    },
+    {
+      "path": "./addon-audio/tsconfig.json"
     }
   ]
 }

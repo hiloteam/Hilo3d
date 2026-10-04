@@ -89,3 +89,17 @@ The RHI migration's temporary hot-path allocation budget is historical; review c
 measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before tightening it. The
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
+
+## Audio extensions
+
+The optional [audio runtime](./AUDIO.md) implements bounded real/virtual voices, spatial sources,
+concurrency, mixing, cues, caching, streaming and Stage lifecycle in Unreleased source. Chromium PCM
+and package tests provide functional/allocation evidence; no native-engine parity or hardware
+latency claim is made. Follow-up work remains here:
+
+- Gather physical-device CPU, end-to-end latency and mobile background/interruption evidence,
+  including Safari/WebKit and Firefox.
+- Add content-driven authoring graphs/AudioWorklet DSP, musical transport and parameter modulation
+  only with an explicit bounded execution and serialization contract.
+- Extend multi-listener/ambisonic output, spatial streaming and geometry propagation when a concrete
+  application requires them; retain a single audio runtime independent of rendering backends.

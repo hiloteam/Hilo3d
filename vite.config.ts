@@ -12,6 +12,10 @@ const resolvedExampleManifestModuleId = `\0${exampleManifestModuleId}`;
 
 export const addonAliases = [
     {
+        find: '@hilo/addon-audio',
+        replacement: fileURLToPath(new URL('./addon-audio/src/index.ts', import.meta.url))
+    },
+    {
         find: '@hilo/addon-assets',
         replacement: fileURLToPath(new URL('./addon-assets/src/index.ts', import.meta.url))
     },

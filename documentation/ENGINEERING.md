@@ -21,7 +21,8 @@ npm run examples:dev
 
 仓库采用一个 Git 仓库、一个 lockfile 和一组根级质量门禁管理多个独立发布包，也就是 npm workspaces
 monorepo；它不是把所有能力重新合并为一个 npm 包。当前发布边界是根目录的 `hilo3d` 核心包，以及
-`addon-particle/`、`addon-physics/`、`addon-live2d/`、`addon-assets/` 四个 workspace：
+`addon-particle/`、`addon-physics/`、`addon-live2d/`、`addon-assets/`、`addon-audio/`
+五个 workspace：
 
 - 粒子和物理，尤其 Rapier WASM，保持独立包和显式导入，未使用的能力不会进入核心依赖图；
 - addon 用 peer dependency 声明支持的核心版本，用本地 `file:..` dev
@@ -37,7 +38,7 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 `addon-live2d/tools/` 和 `addon-live2d/test/`，不进入 npm 发布内容；根级入口只负责编排。细节见
 [Live2D](./LIVE2D.md)。
 
-保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前五个包尚不足以证明把根核心整体搬到
+保持独立发布包比“单 npm 包 + 可选导出”更符合按需安装、WASM 隔离和依赖所有权。当前六个包尚不足以证明把根核心整体搬到
 `packages/hilo3d/`
 的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
 `packages/*`，不改变上述发布边界。
@@ -75,6 +76,10 @@ semantic、glTF、动画状态、纹理来源等动态结构均有明确的 inte
 `setView()`。一方维护的浏览器示例复用该入口，不在示例目录内重复实现 pointer、wheel 或 touch 相机控制器；自动巡游在适用时同样通过 controls 更新视图。
 
 ### 运行时与资源
+
+- 音频由独立 `@hilo/addon-audio` 管理，复用公共 Stage System ABI，核心和渲染后端不引用音频。
+  `npm run test:audio`
+  验证真实 PCM、调度、缓存和生命周期；包门禁还验证实际 tarball 的用户手势解锁、流式播放与销毁。预算和证据边界见[音频合同](./AUDIO.md)。
 
 - `Stage` 与 `Renderer` 只提供异步 `create(...)` 创建入口。`Stage.create(...)` 接受
   `backend: 'auto' | 'webgl2' | 'webgpu'`；省略字段等同 `auto`。auto 通过
@@ -170,7 +175,7 @@ API Extractor 的 release-tag 提示按项目级固定政策关闭：Hilo3d
 export、API 差异或 TypeDoc 验证，也不是待删除的迁移豁免。
 
 `npm run site:build`
-是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子、物理、Live2D 和资产 addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这五个包时直接调用依赖预构建产物的 API 检查。
+是本地和 CI 部署 API 文档的单一入口。它会先为核心包、粒子、物理、Live2D、资产和音频 addon 构建并检查声明，再生成 TypeDoc、示例和相互链接的站点；工作流不得在未生成这六个包时直接调用依赖预构建产物的 API 检查。
 
 typed lint 同样遵循干净 checkout 规则：工作流调用
 `npm run lint`，由该命令先构建核心和 addon 声明，再执行 ESLint；不得自行组合会遗漏 workspace 声明的
@@ -517,12 +522,12 @@ npm run release:tag:push
 `refs/tags/<version>`，再从远端核验其目标提交；同一提交上的重试是幂等的。
 
 `.github/workflows/publish.yml` 监听版本 tag。GitHub-hosted
-runner 只用仓库固定的 Node/npm 工具链确认 tag、三个包版本与提交完全一致，不重复执行普通 push
+runner 只用仓库固定的 Node/npm 工具链确认 tag、六个包版本与提交完全一致，不重复执行普通 push
 CI 已经覆盖的功能门禁；随后切换到 npm Trusted Publishing 支持的 Node 24/npm
-11，通过 OIDC 依次发布核心、粒子、物理、Live2D 和资产 addon。四个 addon 的 `hilo3d` peer
+11，通过 OIDC 依次发布核心、粒子、物理、Live2D、资产和音频 addon。五个 addon 的 `hilo3d` peer
 dependency 必须等于同批版本；幂等重试跳过 registry 中已经存在的包版本。预发布版本自动使用
 `next`，正式版本使用 `latest`，不得让 prerelease 覆盖 `latest`。npm package 的 Trusted
-Publisher 必须为三个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许
+Publisher 必须为六个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml`，允许
 `npm publish`；workflow 只授予 `contents: read` 与
 `id-token: write`。如 registry 只接受了部分包，可通过 workflow dispatch 传入已有 `release_tag`
 重试；workflow 会检出该 tag，并跳过 registry 中已经存在的同版本包。

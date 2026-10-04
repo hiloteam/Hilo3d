@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { build as buildVite } from 'vite';
 import { parseNpmPackResult } from './npm-pack-result';
+import { verifyAudioPackage } from './test-audio-package';
 import { verifyAssetPackage } from '../addon-assets/test/package';
 import { verifyLive2DPackage } from '../addon-live2d/test/package';
 
@@ -29,6 +30,7 @@ try {
     const particleArchivePath = pack(resolve(projectRoot, 'addon-particle'));
     const physicsArchivePath = pack(resolve(projectRoot, 'addon-physics'));
     const live2DArchivePath = pack(resolve(projectRoot, 'addon-live2d'));
+    const audioArchivePath = pack(resolve(projectRoot, 'addon-audio'));
     const assetsArchivePath = pack(resolve(projectRoot, 'addon-assets'));
 
     await writeFile(
@@ -50,6 +52,7 @@ try {
             physicsArchivePath,
             live2DArchivePath,
             assetsArchivePath,
+            audioArchivePath,
             resolve(projectRoot, 'node_modules/gl-matrix'),
             resolve(projectRoot, 'node_modules/web-naga'),
             resolve(projectRoot, 'node_modules/@dimforge/rapier2d-compat'),
@@ -100,6 +103,8 @@ try {
         join(consumerDirectory, 'esm-consumer.mjs'),
         [
             "import { Renderer, Vector3, version } from 'hilo3d';",
+            "import { AudioEngine, AudioClip } from '@hilo/addon-audio';",
+            "if (typeof AudioEngine !== 'function' || typeof AudioClip !== 'function') throw new Error('Audio addon ESM entry is missing');",
             "import { AssetManager, WorkerTextureDecoder } from '@hilo/addon-assets';",
             "if (typeof AssetManager !== 'function' || typeof WorkerTextureDecoder !== 'function') throw new Error('Asset addon ESM entry is missing');",
             "import { createParticleStageSystem } from '@hilo/addon-particle';",
@@ -115,7 +120,7 @@ try {
             "if (typeof createPhysicsStageSystem !== 'function') throw new Error('Physics System factory is not exported.');",
             "if (typeof createRapier2DPhysicsSystem !== 'function') throw new Error('Rapier 2D System factory is not exported.');",
             "if (typeof createRapier3DPhysicsSystem !== 'function') throw new Error('Rapier 3D System factory is not exported.');",
-            "for (const mapPath of ['node_modules/@hilo/addon-particle/dist/index.js.map', 'node_modules/@hilo/addon-physics/dist/index.js.map', 'node_modules/@hilo/addon-live2d/dist/index.js.map']) {",
+            "for (const mapPath of ['node_modules/@hilo/addon-audio/dist/index.js.map', 'node_modules/@hilo/addon-particle/dist/index.js.map', 'node_modules/@hilo/addon-physics/dist/index.js.map', 'node_modules/@hilo/addon-live2d/dist/index.js.map']) {",
             "  const map = JSON.parse(readFileSync(mapPath, 'utf8'));",
             '  if (!Array.isArray(map.sourcesContent) || map.sourcesContent.length !== map.sources.length) throw new Error(`Missing inline sources for ${mapPath}`);',
             '}',
@@ -129,6 +134,7 @@ try {
         cwd: consumerDirectory,
         stdio: 'inherit'
     });
+    await verifyAudioPackage(consumerDirectory);
     await verifyLive2DPackage(consumerDirectory);
     await verifyAssetPackage(consumerDirectory);
 } finally {

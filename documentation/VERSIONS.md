@@ -3,8 +3,8 @@
 The repository and development website can contain **Unreleased** features even while package.json
 still carries the last release number. Read the top of [CHANGELOG](../CHANGELOG.md) and the
 installed package declarations before choosing an API. DDGI, `@hilo/addon-assets`, local reflection
-probes and auxiliary SRP views are Unreleased source features as of this review; their presence in
-current docs does not promise they exist in the alpha.8 tarball.
+probes, `@hilo/addon-audio` and auxiliary SRP views are Unreleased source features as of this
+review; their presence in current docs does not promise they exist in the alpha.8 tarball.
 
 ## Install a matching release
 
@@ -14,9 +14,9 @@ returned `latest: 1.19.1` and `next: 2.0.0-alpha.8`; these are dated observation
 values. Use `npm view hilo3d dist-tags --json` to inspect current channels.
 
 Optional `@hilo/addon-particle`, `@hilo/addon-physics`, `@hilo/addon-live2d` and
-`@hilo/addon-assets` packages must match the exact core version. The physics adapters also require
-the chosen dimension's Rapier peer. The installed `.d.ts` files are the consumer's exact API
-reference; repository internals are not supported deep imports.
+`@hilo/addon-assets` and `@hilo/addon-audio` packages must match the exact core version. The physics
+adapters also require the chosen dimension's Rapier peer. The installed `.d.ts` files are the
+consumer's exact API reference; repository internals are not supported deep imports.
 
 ## Documentation builds
 
