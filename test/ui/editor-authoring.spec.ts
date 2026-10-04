@@ -860,11 +860,21 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await expect(first.locator('.project-asset-card')).toHaveCount(1);
         await renameScene(first, 'Remote asset snapshot');
         await openCollaboration(first);
+        const incomingSnapshot = second.waitForResponse(
+            response =>
+                response.url() === `${service.url}/rooms/${roomId}` &&
+                response.request().method() === 'GET'
+        );
         await first.getByRole('button', { name: 'Publish local changes', exact: true }).click();
         await expect(first.locator('.collaboration-status')).toContainText('revision 3');
         await second.waitForFunction(
             () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.entered === true
         );
+        // Complete the real snapshot transport while decoding remains gated. The local edit
+        // exercises the decode race only after the browser has finished receiving the revision.
+        const incomingResponse = await incomingSnapshot;
+        expect(incomingResponse.status()).toBe(200);
+        expect(await incomingResponse.finished()).toBeNull();
         await renameScene(second, 'Late local draft during decode');
         await second.evaluate(() => {
             (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();
