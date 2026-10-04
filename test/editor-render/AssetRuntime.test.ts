@@ -177,12 +177,17 @@ describe('editor asset runtime', () => {
                 const model = await importAsset(modelFile());
                 const image = await importAsset(await imageFile());
                 const scene = createDefaultScene();
-                scene.materials['override'] = {
-                    name: 'Normal override',
-                    color: '#ffffff',
-                    metallic: 0,
-                    roughness: 0.8,
-                    normalTexture: image.id
+                // This contract covers imported-material failure/recovery. A full demo scene's
+                // 2048px directional shadows are unrelated and dominate software-GPU execution.
+                scene.nodes = {};
+                scene.materials = {
+                    override: {
+                        name: 'Normal override',
+                        color: '#ffffff',
+                        metallic: 0,
+                        roughness: 0.8,
+                        normalTexture: image.id
+                    }
                 };
                 scene.nodes['imported'] = {
                     name: 'UV-less triangle',
