@@ -16,6 +16,7 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 - [Audio](./AUDIO.md): optional spatial sound, bounded voices, mixing and streaming.
 - [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md), [Live2D](./LIVE2D.md).
 - [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
+- [Web editor](./EDITOR.md): local scene authoring, validated JSON documents and current limits.
 - [AI documentation entry](../llms.txt): a short index; [maintenance](./AI_DOCUMENTATION.md).
 
 ## Current technical contracts

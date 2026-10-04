@@ -18,7 +18,12 @@
     "vitest.config.ts",
     "vitest.rhi.config.ts",
     "vitest.rhi-native.config.ts",
-    "examples/shared/catalog.ts"
+    "examples/shared/catalog.ts",
+    "vite.editor.config.ts",
+    "vitest.editor-node.config.ts",
+    "test/ui/render-health.ts",
+    "test/ui/stable-capture.ts",
+    "test/ui/example-paths.ts"
   ],
   "references": [
     {

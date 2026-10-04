@@ -29,9 +29,11 @@
     "scripts/site-link-references.ts",
     "scripts/shader-modernity.ts",
     "scripts/performance/**/*.ts",
-    "scripts/documentation-content.ts"
+    "scripts/documentation-content.ts",
+    "editor/**/*.ts",
+    "editor/**/*.json"
   ],
-  "exclude": ["test/types/**"],
+  "exclude": ["test/types/**", "editor/server/**"],
   "references": [
     {
       "path": "./tsconfig.lib.json"

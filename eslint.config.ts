@@ -18,6 +18,7 @@ export default defineConfig(
         'addon-live2d/dist/**',
         'addon-physics/dist/**',
         'dist-examples/**',
+        'dist-editor/**',
         'docs/**',
         'site/**',
         'node_modules/**',

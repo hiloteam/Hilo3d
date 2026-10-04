@@ -2,6 +2,10 @@
 
 ### Features
 
+- Add the standalone Hilo Studio scene editor with a Blender-inspired workspace, shared-engine
+  WebGL2/WebGPU viewport, picking, primitive and material authoring, undo/redo, local recovery, and
+  a validated, versioned JSON scene format with stable IDs for human and AI editing.
+
 - Add optional `@hilo/addon-audio`: bounded real/virtual voices, spatial attenuation/cones/Doppler,
   budgeted occlusion, concurrency and weighted cues, hierarchical mixing/snapshots/ducking/reverb,
   pinned decode caching, media streaming and Stage-owned lifecycle. Include real Chromium PCM,

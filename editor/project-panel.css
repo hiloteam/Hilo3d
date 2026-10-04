@@ -1,0 +1,405 @@
+.project-browser-dialog {
+    width: min(1060px, calc(100vw - 48px));
+    max-height: calc(100vh - 48px);
+    padding: 0;
+    background: #262729;
+    color: var(--text);
+    border: 1px solid #4c4e52;
+    border-radius: 8px;
+    box-shadow: 0 24px 100px #0009;
+}
+.project-browser-dialog::backdrop {
+    background: #101114b8;
+    backdrop-filter: blur(3px);
+}
+.project-browser-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 265px;
+    max-height: calc(100vh - 176px);
+    overflow: auto;
+}
+.project-browser-main {
+    padding: 23px;
+    min-width: 0;
+}
+.project-browser-intro h2 {
+    font-size: 22px;
+    margin: 0 0 8px;
+    font-weight: 600;
+}
+.project-browser-intro p,
+.project-browser-details p {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.7;
+}
+.project-create-row {
+    display: flex;
+    gap: 8px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+.project-create-row input {
+    flex: 1;
+    min-width: 145px;
+    height: 33px;
+}
+.project-create-row button,
+.project-browser-details > button,
+.project-warning button,
+.project-delete-confirm button {
+    min-height: 32px;
+    padding: 7px 10px;
+    border: 1px solid #44464a;
+}
+.project-browser-list {
+    display: grid;
+    gap: 7px;
+}
+.project-browser-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 12px;
+    background: #2d2e31;
+    border: 1px solid #37393d;
+    border-radius: 6px;
+}
+.project-browser-row.active {
+    border-color: #886043;
+    background: #3a302a;
+}
+.project-browser-row > div {
+    display: grid;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
+}
+.project-browser-row strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.project-browser-row span:not(.project-folder),
+.project-browser-row small {
+    color: #a2a3a7;
+    font-size: 10px;
+}
+.project-browser-row button {
+    padding: 8px;
+}
+.project-folder {
+    display: grid;
+    place-items: center;
+    color: #d69b6c;
+    background: #b8814319;
+    border: 1px solid #66513e;
+    width: 37px;
+    height: 39px;
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+.project-folder .icon {
+    width: 22px;
+    height: 22px;
+}
+.project-browser-details {
+    background: #222326;
+    border-left: 1px solid #17181a;
+    padding: 24px 19px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.project-browser-details h3 {
+    font-size: 11px;
+    margin: 0 0 6px;
+    color: #b7b8bc;
+    letter-spacing: 0.06em;
+}
+.project-browser-details label {
+    display: grid;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+}
+.project-browser-details input {
+    width: 100%;
+    height: 32px;
+    font-size: 12px;
+}
+.project-browser-details dl {
+    display: grid;
+    grid-template-columns: 65px 1fr;
+    gap: 10px;
+    font-size: 10px;
+    margin: 8px 0;
+}
+.project-browser-details dt {
+    color: var(--muted);
+}
+.project-browser-details dd {
+    margin: 0;
+}
+.project-id {
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+.project-browser-details > button {
+    justify-content: flex-start;
+}
+.project-browser-dialog .primary,
+.project-assets-toolbar .primary {
+    background: #d69566;
+    border-color: #dfa67e;
+    color: #201b18;
+    font-weight: 600;
+}
+.project-browser-dialog .danger {
+    color: #ffc1ac;
+    border-color: #946052;
+    background: #7f352833;
+}
+.project-warning,
+.project-delete-confirm {
+    display: grid;
+    gap: 9px;
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 13px;
+    background: #80532625;
+    border: 1px solid #886a3d;
+    border-radius: 5px;
+    margin: 10px 0;
+}
+.project-warning > div,
+.project-delete-confirm > div {
+    display: flex;
+    gap: 8px;
+}
+.project-delete-confirm {
+    background: #803c2925;
+    border-color: #7c4e40;
+}
+.project-scenes {
+    margin-top: 26px;
+    border-top: 1px solid #3a3c40;
+    padding-top: 15px;
+}
+.project-section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 9px;
+}
+.project-section-heading h3 {
+    font-size: 12px;
+    margin: 0;
+}
+.project-section-heading button {
+    padding: 7px;
+}
+.project-scene-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-bottom: 1px solid #353639;
+    padding: 7px 0;
+}
+.project-scene-row.active > .icon {
+    color: var(--accent);
+}
+.project-scene-row input {
+    flex: 1;
+    min-width: 80px;
+    background: transparent;
+    border-color: transparent;
+}
+.project-scene-row input:hover,
+.project-scene-row input:focus {
+    background: #1e1f21;
+    border-color: #43454a;
+}
+.project-scene-row > span {
+    color: var(--muted);
+    font-size: 10px;
+}
+.project-scene-row button {
+    min-width: 25px;
+    padding: 6px;
+}
+.project-recovery-name {
+    font-size: 11px;
+    color: var(--accent);
+    overflow-wrap: anywhere;
+}
+.project-recovery-list {
+    display: grid;
+    gap: 4px;
+    max-height: 220px;
+    overflow: auto;
+}
+.project-recovery-list button {
+    padding: 9px;
+    border: 1px solid #383a3e;
+    justify-content: space-between;
+    text-align: left;
+}
+.project-recovery-list button span {
+    display: grid;
+    gap: 5px;
+}
+.project-recovery-list small {
+    color: var(--muted);
+    font-size: 9px;
+}
+.project-browser-error {
+    color: #ffb7a0;
+    font-size: 11px;
+    padding: 0 22px 12px;
+    overflow-wrap: anywhere;
+}
+.project-browser-error:empty {
+    display: none;
+}
+.project-assets-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 17px 0;
+}
+.project-assets-toolbar > span {
+    color: var(--muted);
+    font-size: 10px;
+}
+.project-assets-toolbar b {
+    font-weight: 400;
+    margin: 0 7px;
+}
+.project-assets-toolbar button {
+    padding: 6px 9px;
+}
+.project-assets-grid {
+    display: flex;
+    gap: 11px;
+    padding: 12px 17px;
+    overflow-x: auto;
+    align-items: flex-start;
+}
+.project-asset-card {
+    width: 138px;
+    flex: 0 0 138px;
+    padding: 6px;
+    border: 1px solid #393b3e;
+    background: #292a2c;
+    border-radius: 5px;
+}
+.project-asset-preview {
+    display: flex;
+    position: relative;
+    width: 124px;
+    height: 73px;
+    background: linear-gradient(140deg, #4e4b46, #303135);
+    border: 1px solid #555256;
+    overflow: hidden;
+}
+.project-asset-preview > .icon {
+    width: 37px;
+    height: 37px;
+    color: #c1b2a7;
+}
+.project-asset-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.project-asset-preview > span {
+    position: absolute;
+    bottom: 4px;
+    right: 5px;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    background: #191a1ccc;
+    color: #ddd;
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+.project-asset-name {
+    font-size: 10px;
+    font-weight: 600;
+    width: 100%;
+    border-color: transparent;
+    background: transparent;
+    padding: 5px 2px;
+    margin-top: 5px;
+}
+.project-asset-name:hover,
+.project-asset-name:focus {
+    border-color: #484a4e;
+    background: #202123;
+}
+.project-asset-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 8px;
+}
+.project-asset-meta button {
+    padding: 2px;
+}
+.project-asset-meta .icon {
+    width: 12px;
+    height: 12px;
+}
+.project-asset-source {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    color: #83858b;
+    padding: 3px 0 1px;
+}
+.project-assets-empty {
+    display: grid;
+    justify-items: center;
+    gap: 9px;
+    text-align: center;
+    width: 100%;
+    padding: 17px;
+    color: var(--muted);
+}
+.project-assets-empty > .icon {
+    width: 27px;
+    height: 27px;
+    color: var(--accent);
+}
+.project-assets-empty strong {
+    font-size: 12px;
+    color: var(--text);
+    font-weight: 500;
+}
+.project-assets-empty small {
+    font-size: 9px;
+}
+.project-assets-dropping {
+    outline: 2px dashed var(--accent);
+    outline-offset: -7px;
+    background: #d8956312;
+}
+@media (max-width: 850px) {
+    .project-browser-body {
+        grid-template-columns: 1fr;
+    }
+    .project-browser-details {
+        border-left: 0;
+        border-top: 1px solid #17181a;
+    }
+    .project-browser-main {
+        padding: 16px;
+    }
+    .project-create-row {
+        gap: 6px;
+    }
+}

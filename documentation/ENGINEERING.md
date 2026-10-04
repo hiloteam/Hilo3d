@@ -43,6 +43,11 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
 `packages/*`，不改变上述发布边界。
 
+独立场景编辑器使用 `npm run editor:dev` 和
+`npm run editor:build`；工作区、场景 JSON 合同与能力边界见
+[Web editor](./EDITOR.md)。`npm run test:editor`
+运行场景文档单测与双后端浏览器编辑流程，编辑器浏览器测试也纳入现有 UI 发布矩阵。
+
 ## 语言与架构
 
 ### 严格 TypeScript 全覆盖
@@ -54,7 +59,8 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 - `tsconfig.lib.json`：浏览器引擎源码与 declaration emit；
 - `tsconfig.test.json`：Vitest 浏览器测试；
 - `tsconfig.examples.json`：全部示例应用；
-- `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本。
+- `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本；
+- `editor/tsconfig.json`：独立场景编辑器，共享严格配置及引擎声明边界。
 
 生产源码不会被测试全局类型或 Node 类型污染。lint 同时使用 TypeScript 类型信息检查
 `src/`、`examples/`、`test/`、`scripts/` 与工程配置。生成物和 `addon-live2d/vendor`

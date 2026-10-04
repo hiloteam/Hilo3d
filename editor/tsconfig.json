@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "../.cache/tsconfig.editor.tsbuildinfo",
+    "types": ["vite/client", "webxr"]
+  },
+  "include": ["**/*.ts", "../examples/shared/test-frame-control.ts", "**/*.json"],
+  "references": [
+    {
+      "path": "../tsconfig.lib.json"
+    }
+  ],
+  "exclude": ["server/**"]
+}

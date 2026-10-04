@@ -27,7 +27,7 @@
     "addon-audio"
   ],
   "scripts": {
-    "clean": "rimraf .cache addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist coverage dist dist-examples docs playwright-report reports site test-results addon-live2d/.cache addon-live2d/dist addon-assets/.cache addon-assets/dist addon-audio/.cache addon-audio/dist",
+    "clean": "rimraf .cache addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist coverage dist dist-examples docs playwright-report reports site test-results addon-live2d/.cache addon-live2d/dist addon-assets/.cache addon-assets/dist addon-audio/.cache addon-audio/dist dist-editor",
     "clean:build": "rimraf .cache/types .cache/tsconfig.lib.tsbuildinfo addon-particle/.cache addon-particle/dist addon-physics/.cache addon-physics/dist dist addon-live2d/.cache addon-live2d/dist addon-assets/.cache addon-assets/dist addon-audio/.cache addon-audio/dist",
     "dev": "vite --host 0.0.0.0",
     "examples:dev": "vite --config vite.examples.config.ts --host 0.0.0.0",
@@ -66,10 +66,10 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:ui:contract": "vitest run --config test/ui/vitest-contract.config.ts",
-    "test:ui": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts --project=chromium",
-    "test:ui:webgl2": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts --project=chromium --grep @webgl2",
-    "test:ui:webgl2:ci": "playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts --project=chromium --grep \"@webgl2|through webgl2\"",
-    "test:ui:webgpu": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts --project=chromium --grep @webgpu",
+    "test:ui": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts --project=chromium",
+    "test:ui:webgl2": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts --project=chromium --grep @webgl2",
+    "test:ui:webgl2:ci": "playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts --project=chromium --grep \"@webgl2|through webgl2\"",
+    "test:ui:webgpu": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts --project=chromium --grep @webgpu",
     "test:webgpu": "playwright test test/ui/webgpu.spec.ts test/ui/compute-effects.spec.ts test/ui/compute-particles.spec.ts test/ui/compute-eclipse-shrine.spec.ts test/ui/compute-raytracing.spec.ts test/ui/screen-space-reflections.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/shadow-residency-sanctum.spec.ts test/ui/dynamic-global-illumination.spec.ts --project=chromium",
     "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/clustered-forward-plus-lumen.spec.ts test/ui/volumetric-lighting.spec.ts test/ui/stormfront-observatory.spec.ts test/ui/dynamic-global-illumination.spec.ts --project=chromium-native-webgpu",
     "test:gpu-scene-scale": "playwright test test/ui/clustered-forward-plus-scale.spec.ts --project=chromium",
@@ -100,8 +100,8 @@
     "release:versions:check": "jiti scripts/release-package-set.ts",
     "publish:check": "npm run check:modernity && npm run release:tag:verify",
     "release:check": "npm run validate",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:editor:server && npm run test:rhi-benchmark-contract && npm run build && npm run test:types && npm run test:browser && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run test:editor:server && npm run build && npm run test:types && npm run test:browser:ci && npm run examples:build && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run publish:check",
     "benchmark:ddgi:collect": "jiti scripts/performance/collect-ddgi-evidence.ts",
@@ -111,7 +111,12 @@
     "test:live2d-runtime-build": "jiti addon-live2d/test/build-runtime.test.ts",
     "test:addon-assets-package": "publint addon-assets && attw --pack addon-assets --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-assets",
     "test:addon-audio-package": "publint addon-audio && attw --pack addon-audio --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-audio",
-    "test:audio": "vitest run test/spec/audio"
+    "test:audio": "vitest run test/spec/audio",
+    "editor:dev": "vite --config vite.editor.config.ts",
+    "editor:build": "vite build --config vite.editor.config.ts",
+    "test:editor": "vitest run test/spec/editor && npm run test:editor:server && playwright test test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts --project=chromium",
+    "editor:server": "jiti editor/server/cli.ts",
+    "test:editor:server": "vitest run --config vitest.editor-node.config.ts"
   },
   "repository": {
     "type": "git",

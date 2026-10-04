@@ -19,3 +19,5 @@ test/spec/**/__screenshots__/
 
 # Local-only, large fixtures.
 examples/models/test/
+
+dist-editor/

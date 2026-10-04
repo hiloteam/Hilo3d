@@ -1,0 +1,378 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hilo3d.js.org/editor/scene.schema.json",
+  "title": "Hilo3D Scene v2",
+  "description": "Editable scene source. IDs are semantic stable keys; positions use meters, rotations use Euler degrees, colors use sRGB. Parent cycles, dangling references, more than 8 directional lights (including hidden lights), hierarchy depth above 64, and documents above 2 MiB are additionally rejected at runtime. The importer migrates primitive-only v1 documents to v2. Asset and script references are resolved by the containing project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "name", "units", "environment", "materials", "nodes"],
+  "properties": {
+    "format": {
+      "const": "hilo3d-scene"
+    },
+    "version": {
+      "const": 2
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    },
+    "units": {
+      "const": "meters"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["background", "ambientIntensity"],
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "ambientIntensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "materials": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/material"
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "maxProperties": 1000,
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/node"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "not": {
+        "enum": ["constructor", "prototype"]
+      }
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "z": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        }
+      }
+    },
+    "rotation": {
+      "description": "Local x/y/z Euler components in degrees using ZYX order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        },
+        "z": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        }
+      }
+    },
+    "scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "z": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "rotation", "scale"],
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "rotation": {
+          "$ref": "#/$defs/rotation"
+        },
+        "scale": {
+          "$ref": "#/$defs/scale"
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "color", "metallic", "roughness"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "metallic": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "baseColorTexture": {
+          "$ref": "#/$defs/id"
+        },
+        "normalTexture": {
+          "$ref": "#/$defs/id"
+        },
+        "metallicRoughnessTexture": {
+          "$ref": "#/$defs/id"
+        },
+        "emissiveTexture": {
+          "$ref": "#/$defs/id"
+        },
+        "emissiveColor": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "color", "intensity"],
+      "properties": {
+        "kind": {
+          "enum": ["directional", "ambient"]
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "intensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "parent", "visible", "transform"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "type": {
+          "enum": ["group", "mesh", "light", "model", "camera"]
+        },
+        "parent": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "transform": {
+          "$ref": "#/$defs/transform"
+        },
+        "geometry": {
+          "enum": ["cube", "sphere", "cylinder", "plane"]
+        },
+        "material": {
+          "$ref": "#/$defs/id"
+        },
+        "light": {
+          "$ref": "#/$defs/light"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "asset": {
+          "$ref": "#/$defs/id"
+        },
+        "scripts": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "camera": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fov", "near", "far"],
+          "properties": {
+            "fov": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 170
+            },
+            "near": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 1000
+            },
+            "far": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 100000
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mesh"
+              }
+            }
+          },
+          "then": {
+            "required": ["geometry", "material"],
+            "not": {
+              "required": ["light"]
+            }
+          },
+          "else": {
+            "not": {
+              "required": ["geometry"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "light"
+              }
+            }
+          },
+          "then": {
+            "required": ["light"]
+          },
+          "else": {
+            "not": {
+              "required": ["light"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "model"
+              }
+            }
+          },
+          "then": {
+            "required": ["asset"]
+          },
+          "else": {
+            "not": {
+              "required": ["asset"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "camera"
+              }
+            }
+          },
+          "then": {
+            "required": ["camera"]
+          },
+          "else": {
+            "not": {
+              "required": ["camera"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": ["group", "light", "camera"]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["material"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

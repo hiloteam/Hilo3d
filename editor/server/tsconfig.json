@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "../../.cache/tsconfig.editor-server.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": [
+    "**/*.ts",
+    "../collaboration.ts",
+    "../project.ts",
+    "../assets.ts",
+    "../scene.ts",
+    "../animation.ts",
+    "../prefabs.ts",
+    "../script-types.ts",
+    "../authoring-validation.ts",
+    "../../vitest.editor-node.config.ts"
+  ]
+}

@@ -33,6 +33,12 @@
     },
     {
       "path": "./addon-audio/tsconfig.json"
+    },
+    {
+      "path": "./editor/tsconfig.json"
+    },
+    {
+      "path": "./editor/server/tsconfig.json"
     }
   ]
 }
