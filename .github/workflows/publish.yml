@@ -94,3 +94,4 @@ jobs:
           publish_package addon-physics
           publish_package addon-live2d
           publish_package addon-assets
+          publish_package addon-audio

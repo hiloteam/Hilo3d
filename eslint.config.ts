@@ -12,6 +12,8 @@ export default defineConfig(
         'dist/**',
         'addon-particle/dist/**',
         'addon-assets/dist/**',
+        'addon-audio/dist/**',
+        'addon-audio/.cache/**',
         'addon-assets/.cache/**',
         'addon-live2d/dist/**',
         'addon-physics/dist/**',

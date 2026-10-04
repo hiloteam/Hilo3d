@@ -2,6 +2,11 @@
 
 ### Features
 
+- Add optional `@hilo/addon-audio`: bounded real/virtual voices, spatial attenuation/cones/Doppler,
+  budgeted occlusion, concurrency and weighted cues, hierarchical mixing/snapshots/ducking/reverb,
+  pinned decode caching, media streaming and Stage-owned lifecycle. Include real Chromium PCM,
+  transport/cache tests and installed-tarball streaming validation.
+
 - Add optional `@hilo/addon-assets`: KTX2 ETC1S/UASTC module-worker transcoding, versioned texture
   leases, cancellation/priority, coarse-first mip residency, independent budgets, hidden-resource
   eviction and budgeted recovery replay. This is the initial A0 texture slice; geometry pages and

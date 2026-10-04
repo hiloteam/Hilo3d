@@ -30,6 +30,9 @@
     },
     {
       "path": "./addon-assets/tsconfig.tools.json"
+    },
+    {
+      "path": "./addon-audio/tsconfig.json"
     }
   ]
 }

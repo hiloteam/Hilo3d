@@ -13,6 +13,7 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
   [PBR/post-processing](./PBR_AND_POST_PROCESSING.md).
 - [Asset streaming](./ASSET_STREAMING.md): optional KTX2/Basis workers and bounded texture
   residency.
+- [Audio](./AUDIO.md): optional spatial sound, bounded voices, mixing and streaming.
 - [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md), [Live2D](./LIVE2D.md).
 - [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
 - [AI documentation entry](../llms.txt): a short index; [maintenance](./AI_DOCUMENTATION.md).
@@ -33,6 +34,7 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 | [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Unreleased DDGI/software-BVH and SSGI hybrid, with evidence boundaries.                |
 | [Volumetric lighting](./VOLUMETRIC_LIGHTING.md)                | Froxels, fog, lighting, integration and history.                                       |
 | [Atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) | Atmosphere LUTs, clouds/shadows, exposure and display.                                 |
+| [Audio](./AUDIO.md)                                            | Optional Web Audio runtime, voice/cache budgets, mixing and lifecycle.                 |
 | [Physics](./PHYSICS_ARCHITECTURE.md)                           | Optional Stage Systems, portable worlds, Rapier and lifetime.                          |
 | [Particles](./PARTICLE_SYSTEM.md)                              | Optional addon, CPU/GPU/stateless execution and P6 authoring.                          |
 

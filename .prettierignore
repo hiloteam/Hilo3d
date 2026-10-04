@@ -23,3 +23,5 @@ test/expectScreenshot
 
 addon-live2d/etc/*.api.md
 addon-live2d/vendor/cubism-5-r.5/
+
+addon-audio/etc/*.api.md
