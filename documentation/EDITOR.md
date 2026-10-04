@@ -32,6 +32,21 @@ rendering path. Add `?backend=webgl2` or `?backend=webgpu` to select a backend e
 the engine uses its documented automatic selection. An explicit WebGPU request never silently falls
 back.
 
+## GitHub Pages
+
+The existing Pages workflow builds the editor with the documentation and examples. Merging into
+`dev` publishes the static application at `https://hilo3d.js.org/editor/`; a project-subpath host
+uses `/Hilo3d/editor/`. Homepage navigation includes **Editor**. All editor scripts, styles, schemas
+and Naga WASM live below `editor/assets/` and use relative URLs, so the same artifact supports
+either hosting layout. `npm run test:editor:pages` exercises the actual built site at both URL
+layouts on WebGL2 and WebGPU, including real pixels, edits, reload persistence and teardown
+diagnostics.
+
+Pages hosts the editor frontend. Projects remain in the visitor's browser unless explicitly exported
+or shared with a configured collaboration server. Run `npm run editor:server` separately behind
+HTTPS and allow the exact Pages origin when enabling remote collaboration; GitHub Pages does not
+execute the Node service.
+
 ## Project workflow
 
 The **Projects** browser creates, opens, renames and copies projects; manages scenes; exports and
@@ -290,7 +305,9 @@ not a claim about every platform or a substitute for the engine's complete relea
 
 | Check                               | Executed result                                                                                                                                              |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Editor browser unit suite           | 171 tests across 20 files passed, including IndexedDB transaction completion, cancellation, recovery and stale activation.                                   |
+| Editor browser unit suite           | 158 tests across 19 files passed, including IndexedDB transaction completion, cancellation, recovery and stale activation.                                   |
+| Editor GPU/resource suite           | 13 tests passed in a dedicated browser process, with both backends, real submissions, import failures and context recovery.                                  |
+| Pages production suite              | Two tests passed, exercising root and project-subpath deployment on both backends with actual pixels, edits, reload and teardown.                            |
 | Collaboration Node suite            | 15 tests across three files passed, including authentication, permissions, persistence, conflicts and administrative operations.                             |
 | Integrated editor browser suite     | Seven maintained Playwright flows passed: WebGL2/WebGPU authoring and resource round trips, scripts and animation, plus CLI-backed two-client collaboration. |
 | Rendering architecture              | 150 tests passed.                                                                                                                                            |
@@ -315,9 +332,13 @@ baselines nor cross-machine performance guarantees. The maintained collector is
 [`scripts/editor/benchmark.ts`](../scripts/editor/benchmark.ts); generated local reports remain
 under the ignored `reports/editor/` directory.
 
-The complete engine `npm run validate`, full example screenshot matrix, full physical-GPU release
-lane and package publication checks were not executed for this editor-only candidate. Engine public
-exports were unchanged. The production build still reports a large initial JavaScript chunk
-(approximately 658 kB gzip, with a separate approximately 525 kB gzip Naga WASM); startup
-performance on slow networks has not been certified. Hosted service operations, external identity
-providers and multi-region collaboration are outside this self-hosted release scope.
+During MR preparation, a clean `npm run validate` attempt stopped at coverage: 2,403 tests passed
+and four failed. Two editor frame/resize waits were corrected; actual editor GPU tests now run in a
+dedicated required lane rather than the instrumented coverage browser. The other failures were
+20-second virtual-shadow and 60-second reflection-probe GPU timeouts. The complete engine release
+gate is not claimed as passing. The full physical-GPU release lane and complete example screenshot
+matrix were not run for this candidate. Engine public exports were unchanged. The production build
+still reports a large initial JavaScript chunk (approximately 658 kB gzip, with a separate
+approximately 525 kB gzip Naga WASM); startup performance on slow networks has not been certified.
+Hosted service operations, external identity providers and multi-region collaboration are outside
+this self-hosted release scope.

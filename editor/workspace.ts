@@ -212,6 +212,7 @@ export class WorkspaceLayout {
     private destroyed = false;
     private lastWidth = 0;
     private lastHeight = 0;
+    private resizeFrame = 0;
     private storageFailure: string | null = null;
 
     constructor(
@@ -269,8 +270,15 @@ export class WorkspaceLayout {
         this.observer = new ResizeObserver(() => {
             const rect = this.workspace.getBoundingClientRect();
             if (rect.width === this.lastWidth && rect.height === this.lastHeight) return;
-            if (this.gesture) this.cancelGesture();
-            this.apply();
+            if (this.resizeFrame) return;
+            // Reparenting panels changes their observed geometry. Apply in the next frame rather
+            // than mutating layout inside ResizeObserver delivery and creating a feedback loop.
+            this.resizeFrame = requestAnimationFrame(() => {
+                this.resizeFrame = 0;
+                if (this.destroyed) return;
+                if (this.gesture) this.cancelGesture();
+                this.apply();
+            });
         });
         this.observer.observe(this.workspace);
         this.apply();
@@ -355,6 +363,8 @@ export class WorkspaceLayout {
         this.cancelGesture();
         this.destroyed = true;
         this.observer.disconnect();
+        cancelAnimationFrame(this.resizeFrame);
+        this.resizeFrame = 0;
         this.controller.abort();
         for (const elements of this.panels.values()) {
             const { panel, originalParent, originalNext } = elements;

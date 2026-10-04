@@ -3,8 +3,11 @@
 ### Features
 
 - Add the standalone Hilo Studio scene editor with a Blender-inspired workspace, shared-engine
-  WebGL2/WebGPU viewport, picking, primitive and material authoring, undo/redo, local recovery, and
-  a validated, versioned JSON scene format with stable IDs for human and AI editing.
+  WebGL2/WebGPU viewport, picking, transform gizmos, multi-selection, material and GLB/image asset
+  authoring, prefab overrides, isolated script previews and animation timelines. Include durable
+  multi-scene projects, undo/redo and recovery, versioned JSON/offline schemas and portable AI
+  workspace ZIPs, a self-hosted capability-based collaboration service, and GitHub Pages deployment
+  with production checks for root and project-subpath URLs.
 
 - Add optional `@hilo/addon-audio`: bounded real/virtual voices, spatial attenuation/cones/Doppler,
   budgeted occlusion, concurrency and weighted cues, hierarchical mixing/snapshots/ducking/reverb,

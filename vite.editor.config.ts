@@ -11,6 +11,7 @@ export default defineConfig({
     build: {
         target: 'es2022',
         outDir: 'dist-editor',
+        assetsDir: 'editor/assets',
         emptyOutDir: true,
         rolldownOptions: {
             input: fileURLToPath(new URL('./editor/index.html', import.meta.url))

@@ -64,11 +64,15 @@ function timestamp(value: unknown, path: string): string {
 }
 
 /** Count portable bytes without copying any base64 payload into the temporary JSON string. */
-function enforcePortableBudget(project: ProjectDocument): void {
+function enforcePortableBudget(
+    project: Record<string, unknown>,
+    assetRecords: Record<string, unknown>
+): void {
     let binaryCharacters = 0;
     const assets = Object.fromEntries(
-        Object.entries(project.assets).map(([id, asset]) => {
-            binaryCharacters += asset.data.length;
+        Object.entries(assetRecords).map(([id, value]) => {
+            const asset = record(value, `project.assets.${id}`);
+            if (typeof asset['data'] === 'string') binaryCharacters += asset['data'].length;
             return [id, { ...asset, data: '' }];
         })
     );
@@ -127,6 +131,9 @@ export function validateProject(value: unknown): ProjectDocument {
     if (sceneIds.length < 1 || sceneIds.length > 32)
         throw new Error('Projects require 1 to 32 scenes');
     if (assetIds.length > 128) throw new Error('Projects support at most 128 assets');
+    // Reject an oversized bundle before decoding/hashing binaries or validating every scene.
+    // Recheck after normalization too, since validation can add canonical registry fields.
+    enforcePortableBudget(input, assetInput);
     const assets: Record<string, ProjectAsset> = {};
     let assetBytes = 0;
     for (const id of assetIds) {
@@ -185,7 +192,7 @@ export function validateProject(value: unknown): ProjectDocument {
         assets,
         ...validateAuthoring(input, scenes, assets)
     };
-    enforcePortableBudget(result);
+    enforcePortableBudget({ ...result }, result.assets);
     return result;
 }
 

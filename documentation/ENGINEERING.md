@@ -46,7 +46,11 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 独立场景编辑器使用 `npm run editor:dev` 和
 `npm run editor:build`；工作区、场景 JSON 合同与能力边界见
 [Web editor](./EDITOR.md)。`npm run test:editor`
-运行场景文档单测与双后端浏览器编辑流程，编辑器浏览器测试也纳入现有 UI 发布矩阵。
+运行场景文档单测与双后端浏览器编辑流程，编辑器浏览器测试也纳入现有 UI 发布矩阵。本地 `validate` /
+`validate:ci` 和 CI 的 package job 同时检查编辑器生产构建及协作服务测试。真实资产/GPU 合同通过
+`npm run test:editor:render` 在独立浏览器进程执行，并纳入 CI 的 RHI
+job；instrumented 引擎覆盖率不承担这条 GPU 生命周期测试。package job 还运行
+`npm run test:editor:pages` 验证构建后的站点在根路径与项目子路径下的双后端流程。
 
 ## 语言与架构
 
@@ -203,8 +207,8 @@ module/layout/sampler 在 device 创建时建立，按 format 复用的 pipeline
 group 在 texture allocation 时准备，因此 command execute 只编码 mipmap render pass。
 
 `npm run site:build` 将维护的静态首页放在站点根路径，将 TypeDoc 输出放入
-`/docs/`，将完整 Vite 示例构建放入 `/examples/`，并复制 `CNAME`。同时发布 root
-`llms.txt`、维护的 Markdown、recipes 与 `documentation/build.json`
+`/docs/`，将完整 Vite 示例构建放入 `/examples/`，将编辑器及其独立资源放入 `/editor/`，并复制
+`CNAME`。同时发布 root `llms.txt`、维护的 Markdown、recipes 与 `documentation/build.json`
 来源信息；源码链接固定到构建 commit，本地修改和未打 release tag 的 checkout 标为 development。详见
 [AI 文档维护](./AI_DOCUMENTATION.md) 与
 [版本边界](./VERSIONS.md)。首页、文档和案例页互相提供导航入口。生成目录不提交到主工作树，由 Pages 工作流在

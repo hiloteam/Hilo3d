@@ -190,6 +190,33 @@ describe('editor animation clips', () => {
 const timelines: Timeline[] = [];
 const hosts: HTMLElement[] = [];
 
+/** Drive only this fixture's external frame callbacks, independent of background iframe throttling. */
+function animationFrames(): {
+    advance(time: number): void;
+    next(): FrameRequestCallback | undefined;
+    pending(): number;
+} {
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.spyOn(performance, 'now').mockReturnValue(1000);
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+        frames.set(++frameId, callback);
+        return frameId;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => {
+        frames.delete(id);
+    });
+    return {
+        advance(time: number): void {
+            const callbacks = [...frames.values()];
+            frames.clear();
+            for (const callback of callbacks) callback(time);
+        },
+        next: (): FrameRequestCallback | undefined => [...frames.values()][0],
+        pending: (): number => frames.size
+    };
+}
+
 function timelineFixture(initial: AnimationClip[] = [clip()]): {
     host: HTMLElement;
     timeline: Timeline;
@@ -316,6 +343,7 @@ describe('editor timeline authoring', () => {
     });
 
     it('scrubs and plays detached preview transforms and restores authored state on stop', async () => {
+        const frames = animationFrames();
         const { host, scene, preview, stopped, change } = timelineFixture();
         const authored = structuredClone(scene);
         const transform = scene.nodes['hero-sphere']?.transform;
@@ -327,28 +355,23 @@ describe('editor timeline authoring', () => {
         );
         expect(scene).toEqual(authored);
         await timelineAction(host, 'play');
-        await expect
-            .poll(() =>
-                Number(
-                    timelineElement<HTMLInputElement>(host, '[data-timeline-field="time"]').value
-                )
-            )
-            .toBeGreaterThan(1);
+        frames.advance(1200);
+        expect(
+            Number(timelineElement<HTMLInputElement>(host, '[data-timeline-field="time"]').value)
+        ).toBe(1.2);
+        expect(preview).toHaveBeenLastCalledWith(evaluateClip(clip(), scene, 1.2), 1.2);
         await timelineAction(host, 'play');
         const pausedAt = timelineElement<HTMLInputElement>(
             host,
             '[data-timeline-field="time"]'
         ).value;
-        await new Promise<void>(resolve => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    resolve();
-                });
-            });
-        });
+        const previewsAtPause = preview.mock.calls.length;
+        frames.advance(1600);
         expect(timelineElement<HTMLInputElement>(host, '[data-timeline-field="time"]').value).toBe(
             pausedAt
         );
+        expect(preview).toHaveBeenCalledTimes(previewsAtPause);
+        expect(frames.pending()).toBe(0);
         await timelineAction(host, 'stop');
         expect(stopped).toHaveBeenCalledOnce();
         expect(timelineElement<HTMLInputElement>(host, '[data-timeline-field="time"]').value).toBe(
@@ -397,18 +420,18 @@ describe('editor timeline authoring', () => {
     });
 
     it('tears down active preview and does not emit frames after destroy', async () => {
+        const frames = animationFrames();
         const { host, timeline, preview, stopped } = timelineFixture();
         await timelineAction(host, 'play');
-        await expect.poll(() => preview.mock.calls.length).toBeGreaterThan(1);
+        frames.advance(1200);
+        expect(preview.mock.calls.length).toBeGreaterThan(1);
+        const queuedCallback = frames.next();
+        if (!queuedCallback) throw new Error('Playing timeline did not schedule another frame');
         timeline.destroy();
         const frameCount = preview.mock.calls.length;
-        await new Promise<void>(resolve => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    resolve();
-                });
-            });
-        });
+        expect(frames.pending()).toBe(0);
+        frames.advance(1600);
+        queuedCallback(1600);
         expect(preview).toHaveBeenCalledTimes(frameCount);
         expect(stopped).toHaveBeenCalledOnce();
         expect(host.querySelector('.editor-timeline')).toBeNull();

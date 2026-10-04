@@ -14,6 +14,9 @@ await cp(resolve(projectRoot, 'dist-examples/examples'), resolve(siteDirectory, 
 await cp(resolve(projectRoot, 'dist-examples/assets'), resolve(siteDirectory, 'assets'), {
     recursive: true
 });
+await cp(resolve(projectRoot, 'dist-editor/editor'), resolve(siteDirectory, 'editor'), {
+    recursive: true
+});
 await cp(resolve(projectRoot, 'CNAME'), resolve(siteDirectory, 'CNAME'));
 
 await publishDocumentation(projectRoot, siteDirectory);
@@ -23,6 +26,8 @@ await Promise.all([
     access(resolve(siteDirectory, 'documentation/build.json')),
     access(resolve(siteDirectory, 'docs/index.html')),
     access(resolve(siteDirectory, 'examples/list.html')),
+    access(resolve(siteDirectory, 'editor/index.html')),
+    access(resolve(siteDirectory, 'editor/assets')),
     access(resolve(siteDirectory, 'assets')),
     access(resolve(siteDirectory, 'CNAME')),
     access(resolve(siteDirectory, 'index.html')),

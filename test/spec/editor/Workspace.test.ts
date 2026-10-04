@@ -58,6 +58,27 @@ function pointer(target: HTMLElement, type: string, x: number, y: number): void 
     );
 }
 
+async function resizeWorkspace(
+    app: HTMLElement,
+    workspace: HTMLElement,
+    width: number
+): Promise<void> {
+    const resized = new Promise<void>(resolve => {
+        const observer = new ResizeObserver(() => {
+            if (workspace.getBoundingClientRect().width !== width) return;
+            observer.disconnect();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    resolve();
+                });
+            });
+        });
+        observer.observe(workspace);
+    });
+    app.style.width = `${String(width)}px`;
+    await resized;
+}
+
 afterEach(() => {
     for (const instance of instances.splice(0)) instance.destroy();
     for (const host of hosts.splice(0)) host.remove();
@@ -181,8 +202,8 @@ describe('editor workspace layout', () => {
         const { app, workspace, layout } = fixture();
         layout.dock('hierarchy', 'right');
         const wide = layout.getState();
-        app.style.width = '420px';
-        await expect.poll(() => workspace.classList.contains('workspace-compact')).toBe(true);
+        await resizeWorkspace(app, workspace, 420);
+        expect(workspace.classList.contains('workspace-compact')).toBe(true);
         expect(query(app, '.workspace-dock-left').hidden).toBe(true);
         expect(query(app, '.workspace-dock-right').hidden).toBe(true);
         layout.focusPanel('inspector');
@@ -192,8 +213,8 @@ describe('editor workspace layout', () => {
         key(selectedTab, 'ArrowRight');
         expect(query(app, '.assets-panel').hidden).toBe(false);
         expect(query(app, '.inspector').hidden).toBe(true);
-        app.style.width = '1200px';
-        await expect.poll(() => workspace.classList.contains('workspace-compact')).toBe(false);
+        await resizeWorkspace(app, workspace, 1200);
+        expect(workspace.classList.contains('workspace-compact')).toBe(false);
         expect(query(app, '.hierarchy').parentElement?.dataset['workspaceDock']).toBe('right');
         expect(layout.getState()).toEqual(wide);
     });

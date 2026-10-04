@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as H from '../../../src/Hilo3d';
-import { EditorAssetRuntime } from '../../../editor/asset-runtime';
-import { importAsset } from '../../../editor/assets';
-import { createEditorGeometries, EditorViewport } from '../../../editor/viewport';
-import { createDefaultScene } from '../../../editor/scene';
+import * as H from '../../src/Hilo3d';
+import { EditorAssetRuntime } from '../../editor/asset-runtime';
+import { importAsset } from '../../editor/assets';
+import { createEditorGeometries, EditorViewport } from '../../editor/viewport';
+import { createDefaultScene } from '../../editor/scene';
 
 function modelFile(requiredExtension?: string): File {
     const buffers: Uint8Array[] = [];
