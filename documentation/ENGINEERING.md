@@ -43,6 +43,17 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 的大规模路径迁移有收益；如果以后出现独立版本、独立负责人或更多共享构建包，再统一迁入
 `packages/*`，不改变上述发布边界。
 
+独立场景编辑器使用 `npm run editor:dev` 和
+`npm run editor:build`；工作区、场景 JSON 合同与能力边界见
+[Web editor](./EDITOR.md)。`npm run test:editor`
+运行场景文档单测与双后端浏览器编辑流程，编辑器浏览器测试也纳入现有 UI 发布矩阵。本地 `validate` /
+`validate:ci` 和 CI 的 package job 同时检查编辑器生产构建及协作服务测试。真实资产/GPU 合同通过
+`npm run test:editor:render` 在独立浏览器进程执行；该套件包含真实编辑器 canvas
+presentation，使用完整 Chromium compositor。必需的 macOS editor job 串行执行完整资产/GPU 套件和
+`npm run test:editor:pages`，保留全部资源、双后端、根路径与项目子路径断言。Pages 测试直接下载 Linux
+package job 构建的自包含 `site/editor`
+artifact，不重新构建受测发布文件；instrumented 引擎覆盖率不承担这条 GPU 生命周期测试。
+
 ## 语言与架构
 
 ### 严格 TypeScript 全覆盖
@@ -54,7 +65,8 @@ bundle 和独立许可证；应用构建自动携带本地运行时资源，不�
 - `tsconfig.lib.json`：浏览器引擎源码与 declaration emit；
 - `tsconfig.test.json`：Vitest 浏览器测试；
 - `tsconfig.examples.json`：全部示例应用；
-- `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本。
+- `tsconfig.node.json`：Vite、Vitest、ESLint、Playwright 和工程脚本；
+- `editor/tsconfig.json`：独立场景编辑器，共享严格配置及引擎声明边界。
 
 生产源码不会被测试全局类型或 Node 类型污染。lint 同时使用 TypeScript 类型信息检查
 `src/`、`examples/`、`test/`、`scripts/` 与工程配置。生成物和 `addon-live2d/vendor`
@@ -197,8 +209,8 @@ module/layout/sampler 在 device 创建时建立，按 format 复用的 pipeline
 group 在 texture allocation 时准备，因此 command execute 只编码 mipmap render pass。
 
 `npm run site:build` 将维护的静态首页放在站点根路径，将 TypeDoc 输出放入
-`/docs/`，将完整 Vite 示例构建放入 `/examples/`，并复制 `CNAME`。同时发布 root
-`llms.txt`、维护的 Markdown、recipes 与 `documentation/build.json`
+`/docs/`，将完整 Vite 示例构建放入 `/examples/`，将编辑器及其独立资源放入 `/editor/`，并复制
+`CNAME`。同时发布 root `llms.txt`、维护的 Markdown、recipes 与 `documentation/build.json`
 来源信息；源码链接固定到构建 commit，本地修改和未打 release tag 的 checkout 标为 development。详见
 [AI 文档维护](./AI_DOCUMENTATION.md) 与
 [版本边界](./VERSIONS.md)。首页、文档和案例页互相提供导航入口。生成目录不提交到主工作树，由 Pages 工作流在
@@ -403,6 +415,11 @@ runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
 raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
 coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
 
+package job 成功后，必需的 macOS editor job 使用相同提交和该 job 生成的 Pages editor
+artifact 验证 WebGL2/WebGPU 资产渲染及实际发布路径。该 job 也由 `Required CI`
+聚合门禁检查，跳过或取消均不能通过；失败时保留 Vitest 编辑器截图和 Pages 的 trace、截图与诊断数据。这样保留完整编辑器验收，且不把已知不稳定的 Linux
+SwiftShader WebGPU canvas presentation 当作可用运行环境。
+
 ### 动态 GI 浏览器验收
 
 `dynamic_global_illumination_atelier.html` 是 WebGPU-only 专项案例，进入 `test:webgpu` 和
@@ -458,8 +475,10 @@ CI=true HILO3D_UI_GROUP=physics npm run test:ui:webgl2:ci -- --reporter=line,./s
 WebGPU 由独立 RHI job 中的 native/offscreen SwiftShader
 lane 验证 adapter、device、pipeline、draw、submit、readback 与 backend contract。GitHub hosted
 Linux 不稳定的 WebGPU canvas presentation 不作为虚假的合并门禁；完整双后端页面/视觉矩阵仍由本地
-`npm run validate`、`npm run release:check` 与手动 physical-GPU workflow 负责。串行的
-`npm run validate:ci` 保留为 hosted 门禁的本地复现入口，过期任务由 concurrency 自动取消。
+`npm run validate`、`npm run release:check` 与手动 physical-GPU
+workflow 负责，编辑器另有必需的 macOS 双后端验收 job。串行的 `npm run validate:ci`
+保留所有这些测试，本地复现完整入口需要支持 WebGPU canvas
+presentation 的环境；过期任务由 concurrency 自动取消。
 
 Portable RHI benchmark smoke 只以单 draw 生产场景验证 fixture、allocation
 profiler、readback 和当前 RHI 路径。它不属于普通合并门禁；独立 workflow 仅在 benchmark/performance 路径变化、每日定时或手动触发时运行 WebGL

@@ -1,0 +1,282 @@
+.collaboration-open {
+    border: 1px solid #58504a;
+    padding: 6px 9px;
+    color: #c9ac94;
+}
+.collaboration-open[data-state='conflict'] {
+    color: #efb577;
+    border-color: #a17648;
+}
+.collaboration-dialog {
+    width: min(680px, calc(100vw - 24px));
+    max-height: min(820px, calc(100dvh - 30px));
+    padding: 0;
+    color: #c9cbcf;
+    background: #292b2e;
+    border: 1px solid #55575d;
+    border-radius: 9px;
+    box-shadow: 0 20px 80px #0009;
+    font-size: 12px;
+}
+.collaboration-dialog::backdrop {
+    background: #101113a8;
+}
+.collaboration-dialog,
+.collaboration-dialog * {
+    box-sizing: border-box;
+}
+.collaboration-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+.collaboration-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    padding: 18px 20px;
+    border-bottom: 1px solid #1b1c1e;
+    flex-shrink: 0;
+}
+.collaboration-heading > div {
+    display: grid;
+    gap: 5px;
+}
+.collaboration-heading strong {
+    color: #eee6df;
+    font-size: 16px;
+    font-weight: 500;
+}
+.collaboration-heading span {
+    font-size: 10px;
+    color: #989aa1;
+}
+.collaboration-heading > button {
+    font-size: 23px;
+    background: transparent;
+    border: 0;
+}
+.collaboration-body {
+    overflow: auto;
+    min-height: 0;
+    padding: 18px 20px;
+    scrollbar-width: thin;
+}
+.collaboration-description,
+.collaboration-boundary,
+.collaboration-recovery p,
+.collaboration-administration p,
+.collaboration-create p,
+.collaboration-conflict p,
+.collaboration-invites p {
+    line-height: 1.65;
+    margin: 0 0 12px;
+    color: #a8aab1;
+    font-size: 11px;
+}
+.collaboration-status {
+    border: 1px solid #4e4a40;
+    border-radius: 5px;
+    padding: 10px 12px;
+    background: #332f28;
+    color: #d7be9a;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    overflow-wrap: anywhere;
+}
+.collaboration-status[data-state='connected'] {
+    background: #29362e;
+    border-color: #405749;
+    color: #adc6b4;
+}
+.collaboration-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.collaboration-wide {
+    grid-column: 1 / -1;
+}
+.collaboration-dialog label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 10px;
+    color: #afb1b7;
+    min-width: 0;
+}
+.collaboration-dialog input,
+.collaboration-dialog select {
+    width: 100%;
+    height: 30px;
+    min-width: 0;
+    border: 1px solid #17181a;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: #d3d5d9;
+    background: #1e2023;
+}
+.collaboration-dialog input[type='checkbox'] {
+    height: 13px;
+    width: 13px;
+    accent-color: #d39768;
+}
+.collaboration-dialog button {
+    min-height: 28px;
+    padding: 5px 9px;
+    border: 1px solid #57504a;
+    background: #3c3530;
+    color: #dfc0a4;
+    font-size: 11px;
+    border-radius: 4px;
+}
+.collaboration-dialog button:hover {
+    background: #514236;
+}
+.collaboration-dialog button:disabled,
+.collaboration-dialog input:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.collaboration-dialog button:focus-visible,
+.collaboration-dialog input:focus-visible,
+.collaboration-dialog select:focus-visible,
+.collaboration-dialog summary:focus-visible {
+    outline: 2px solid #dc9c6a;
+    outline-offset: -2px;
+}
+.collaboration-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+.collaboration-actions label {
+    flex-direction: row;
+    align-items: center;
+}
+.collaboration-role {
+    color: #a2b59e;
+    font-size: 10px;
+    margin-left: auto;
+}
+.collaboration-session,
+.collaboration-administration,
+.collaboration-create {
+    border-top: 1px solid #17181c;
+    margin-top: 18px;
+    padding-top: 15px;
+}
+.collaboration-presence {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+.collaboration-presence > span {
+    background: #222529;
+    border: 1px solid #44484e;
+    border-radius: 20px;
+    padding: 5px 9px;
+    font-size: 10px;
+    color: #c1c7ce;
+}
+.collaboration-presence small {
+    color: #7e8f9b;
+    margin-left: 5px;
+}
+.collaboration-pending {
+    margin: 9px 0;
+    color: #a5a8af;
+    font-size: 10px;
+}
+.collaboration-conflict {
+    border: 1px solid #8a623b;
+    background: #3d3026;
+    border-radius: 6px;
+    padding: 13px;
+    margin-top: 12px;
+}
+.collaboration-conflict strong,
+.collaboration-invites strong {
+    font-size: 12px;
+    display: block;
+    margin-bottom: 8px;
+    color: #efc6a0;
+}
+.collaboration-dialog details > summary {
+    cursor: pointer;
+    font-size: 11px;
+    color: #c5ad96;
+    padding: 8px 0;
+}
+.collaboration-recovery {
+    margin-top: 10px;
+}
+.collaboration-recovery select {
+    flex: 1;
+    width: auto;
+    min-width: 190px;
+}
+.collaboration-create > button {
+    margin-top: 10px;
+}
+.collaboration-administration select {
+    flex: 1;
+    width: auto;
+    min-width: 180px;
+}
+.collaboration-delete-confirm {
+    margin: 18px 0 10px;
+    padding-top: 12px;
+    border-top: 1px solid #513b31;
+}
+.collaboration-invite-room {
+    display: block;
+    margin-bottom: 8px;
+    color: #becbb4;
+    font-size: 10px;
+    overflow-wrap: anywhere;
+}
+.collaboration-invites {
+    padding: 15px;
+    border: 1px solid #59684f;
+    background: #2b3229;
+    border-radius: 6px;
+    margin-top: 14px;
+}
+.collaboration-invites label {
+    margin-bottom: 10px;
+}
+.collaboration-invites label > div {
+    display: flex;
+    gap: 7px;
+}
+.collaboration-invites button {
+    flex-shrink: 0;
+}
+.collaboration-boundary {
+    margin-top: 17px;
+    margin-bottom: 0;
+    font-size: 10px;
+    color: #8c9099;
+}
+.collaboration-dialog [hidden] {
+    display: none !important;
+}
+@media (max-width: 520px) {
+    .collaboration-fields {
+        grid-template-columns: 1fr;
+    }
+    .collaboration-heading,
+    .collaboration-body {
+        padding: 13px;
+    }
+    .collaboration-actions button {
+        flex: 1;
+    }
+    .collaboration-invites label > div {
+        flex-direction: column;
+    }
+}

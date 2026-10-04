@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hilo3D editable workspace manifest v1",
+  "description": "An index of UTF-8 scene/authoring documents, inert JavaScript source files and original binary assets. References resolve inside the ZIP workspace. Asset checksums, project references and archive bounds are additionally validated by the importer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "format",
+    "version",
+    "project",
+    "scenes",
+    "assets",
+    "scripts",
+    "prefabs",
+    "instances",
+    "clips"
+  ],
+  "properties": {
+    "$schema": { "const": "./project-manifest.schema.json" },
+    "format": { "const": "hilo3d-workspace" },
+    "version": { "const": 1 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "revision", "createdAt", "updatedAt", "activeSceneId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/name" },
+        "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740990 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "activeSceneId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "scenes": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/scene" }
+    },
+    "assets": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/asset" }
+    },
+    "scripts": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/script" }
+    },
+    "prefabs": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/prefab" }
+    },
+    "instances": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/instance" }
+    },
+    "clips": {
+      "type": "object",
+      "maxProperties": 128,
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/clip" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "not": { "enum": ["constructor", "prototype"] }
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": "\\S" },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^scenes/[_a-z0-9-]+\\.scene\\.json$"
+        }
+      }
+    },
+    "prefab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^prefabs/[_a-z0-9-]+\\.prefab\\.json$"
+        }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^instances/[_a-z0-9-]+\\.instance\\.json$"
+        }
+      }
+    },
+    "clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^animations/[_a-z0-9-]+\\.clip\\.json$"
+        }
+      }
+    },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "enabled", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/name" },
+        "enabled": { "type": "boolean" },
+        "path": { "type": "string", "maxLength": 240, "pattern": "^scripts/[_a-z0-9-]+\\.js$" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "mimeType", "size", "hash", "source", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/name" },
+        "kind": { "enum": ["model", "texture"] },
+        "mimeType": { "enum": ["model/gltf-binary", "image/png", "image/jpeg", "image/webp"] },
+        "size": { "type": "integer", "minimum": 1, "maximum": 16777216 },
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fileName", "importedAt"],
+          "properties": {
+            "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+            "importedAt": { "type": "string", "format": "date-time" },
+            "license": { "type": "string", "maxLength": 120 },
+            "attribution": { "type": "string", "maxLength": 2000 },
+            "originURL": {
+              "type": "string",
+              "maxLength": 2048,
+              "pattern": "^https?://[^/@]+(?:[/?#]|$)"
+            }
+          }
+        },
+        "path": {
+          "type": "string",
+          "maxLength": 240,
+          "pattern": "^assets/[_a-z0-9-]+\\.(glb|png|jpg|webp)$"
+        }
+      }
+    }
+  }
+}

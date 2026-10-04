@@ -1,0 +1,755 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hilo3d.js.org/editor/project.schema.json",
+  "title": "Hilo Studio Project v1",
+  "description": "Canonical portable project. Old v1 projects may omit authoring registries, which migrate to empty records. The parser also verifies reference integrity, assets, mapping uniqueness, light limits, clip targets/key uniqueness/channel ranges, checksums and byte/cardinality budgets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "hilo3d-project"
+    },
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740990
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "activeSceneId": {
+      "$ref": "#/$defs/id"
+    },
+    "scenes": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/scene"
+      },
+      "maxProperties": 32,
+      "minProperties": 1
+    },
+    "assets": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/asset"
+      },
+      "maxProperties": 128
+    },
+    "prefabs": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/prefab"
+      },
+      "maxProperties": 64
+    },
+    "instances": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/instance"
+      },
+      "maxProperties": 256
+    },
+    "scripts": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/script"
+      },
+      "maxProperties": 64
+    },
+    "clips": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/clip"
+      },
+      "maxProperties": 128
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "id",
+    "name",
+    "revision",
+    "createdAt",
+    "updatedAt",
+    "activeSceneId",
+    "scenes",
+    "assets"
+  ],
+  "$defs": {
+    "scene-id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "not": {
+        "enum": ["constructor", "prototype"]
+      }
+    },
+    "scene-name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "scene-color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "scene-position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        },
+        "z": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 10000
+        }
+      }
+    },
+    "scene-rotation": {
+      "description": "Local x/y/z Euler components in degrees using ZYX order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        },
+        "z": {
+          "type": "number",
+          "minimum": -360000,
+          "maximum": 360000
+        }
+      }
+    },
+    "scene-scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "z": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        }
+      }
+    },
+    "scene-transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "rotation", "scale"],
+      "properties": {
+        "position": {
+          "$ref": "#/$defs/scene-position"
+        },
+        "rotation": {
+          "$ref": "#/$defs/scene-rotation"
+        },
+        "scale": {
+          "$ref": "#/$defs/scene-scale"
+        }
+      }
+    },
+    "scene-material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "color", "metallic", "roughness"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/scene-name"
+        },
+        "color": {
+          "$ref": "#/$defs/scene-color"
+        },
+        "metallic": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "baseColorTexture": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "normalTexture": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "metallicRoughnessTexture": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "emissiveTexture": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "emissiveColor": {
+          "$ref": "#/$defs/scene-color"
+        }
+      }
+    },
+    "scene-light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "color", "intensity"],
+      "properties": {
+        "kind": {
+          "enum": ["directional", "ambient"]
+        },
+        "color": {
+          "$ref": "#/$defs/scene-color"
+        },
+        "intensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "scene-node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "parent", "visible", "transform"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/scene-name"
+        },
+        "type": {
+          "enum": ["group", "mesh", "light", "model", "camera"]
+        },
+        "parent": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/scene-id"
+            }
+          ]
+        },
+        "visible": {
+          "type": "boolean"
+        },
+        "transform": {
+          "$ref": "#/$defs/scene-transform"
+        },
+        "geometry": {
+          "enum": ["cube", "sphere", "cylinder", "plane"]
+        },
+        "material": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "light": {
+          "$ref": "#/$defs/scene-light"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "asset": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "scripts": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/scene-id"
+          }
+        },
+        "camera": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fov", "near", "far"],
+          "properties": {
+            "fov": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 170
+            },
+            "near": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 1000
+            },
+            "far": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 100000
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mesh"
+              }
+            }
+          },
+          "then": {
+            "required": ["geometry", "material"],
+            "not": {
+              "required": ["light"]
+            }
+          },
+          "else": {
+            "not": {
+              "required": ["geometry"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "light"
+              }
+            }
+          },
+          "then": {
+            "required": ["light"]
+          },
+          "else": {
+            "not": {
+              "required": ["light"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "model"
+              }
+            }
+          },
+          "then": {
+            "required": ["asset"]
+          },
+          "else": {
+            "not": {
+              "required": ["asset"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "camera"
+              }
+            }
+          },
+          "then": {
+            "required": ["camera"]
+          },
+          "else": {
+            "not": {
+              "required": ["camera"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": ["group", "light", "camera"]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["material"]
+            }
+          }
+        }
+      ]
+    },
+    "scene": {
+      "description": "Editable scene source. IDs are semantic stable keys; positions use meters, rotations use Euler degrees, colors use sRGB. Parent cycles, dangling references, more than 8 directional lights (including hidden lights), hierarchy depth above 64, and documents above 2 MiB are additionally rejected at runtime. The importer migrates primitive-only v1 documents to v2. Asset and script references are resolved by the containing project.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "version", "name", "units", "environment", "materials", "nodes"],
+      "properties": {
+        "format": {
+          "const": "hilo3d-scene"
+        },
+        "version": {
+          "const": 2
+        },
+        "name": {
+          "$ref": "#/$defs/scene-name"
+        },
+        "units": {
+          "const": "meters"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["background", "ambientIntensity"],
+          "properties": {
+            "background": {
+              "$ref": "#/$defs/scene-color"
+            },
+            "ambientIntensity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            }
+          }
+        },
+        "materials": {
+          "type": "object",
+          "maxProperties": 256,
+          "propertyNames": {
+            "$ref": "#/$defs/scene-id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/scene-material"
+          }
+        },
+        "nodes": {
+          "type": "object",
+          "maxProperties": 1000,
+          "propertyNames": {
+            "$ref": "#/$defs/scene-id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/scene-node"
+          }
+        }
+      }
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "not": {
+        "enum": ["constructor", "prototype"]
+      }
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "\\S"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-[a-f0-9]{12}$"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "enum": ["model", "texture"]
+        },
+        "mimeType": {
+          "enum": ["model/gltf-binary", "image/png", "image/jpeg", "image/webp"]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fileName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "importedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "license": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "attribution": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "originURL": {
+              "type": "string",
+              "maxLength": 2048,
+              "format": "uri",
+              "pattern": "^https?://"
+            }
+          },
+          "required": ["fileName", "importedAt"]
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "maxLength": 22369624
+        }
+      },
+      "required": ["id", "name", "kind", "mimeType", "size", "hash", "source", "data"],
+      "description": "Checksums, ID hash suffix, image/GLB content, MIME-kind agreement and embedded-only dependencies are verified by the runtime parser."
+    },
+    "prefab": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "rootId": {
+          "$ref": "#/$defs/id"
+        },
+        "nodes": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/scene-node"
+          },
+          "maxProperties": 1000,
+          "minProperties": 1
+        },
+        "materials": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/scene-material"
+          },
+          "maxProperties": 256
+        }
+      },
+      "required": ["id", "name", "rootId", "nodes", "materials"]
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "prefabId": {
+          "$ref": "#/$defs/id"
+        },
+        "sceneId": {
+          "$ref": "#/$defs/id"
+        },
+        "rootId": {
+          "$ref": "#/$defs/id"
+        },
+        "nodeMap": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/id"
+          },
+          "maxProperties": 1000
+        },
+        "materialMap": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/id"
+          },
+          "maxProperties": 256
+        },
+        "baseline": {
+          "$ref": "#/$defs/prefab"
+        }
+      },
+      "required": ["id", "prefabId", "sceneId", "rootId", "nodeMap", "materialMap", "baseline"]
+    },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 65536,
+          "description": "JavaScript lifecycle object expression. Stored as inert text until explicit Play."
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "name", "source", "enabled"]
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "time": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 86400
+        },
+        "value": {
+          "type": "number"
+        },
+        "interpolation": {
+          "enum": ["linear", "step", "smooth"]
+        }
+      },
+      "required": ["time", "value", "interpolation"]
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "nodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "property": {
+          "enum": [
+            "position.x",
+            "position.y",
+            "position.z",
+            "rotation.x",
+            "rotation.y",
+            "rotation.z",
+            "scale.x",
+            "scale.y",
+            "scale.z"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        }
+      },
+      "required": ["id", "nodeId", "property", "keys"]
+    },
+    "clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "sceneId": {
+          "$ref": "#/$defs/id"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.004166666666666667,
+          "maximum": 86400
+        },
+        "fps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 240
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "tracks": {
+          "type": "array",
+          "maxItems": 3000,
+          "items": {
+            "$ref": "#/$defs/track"
+          }
+        }
+      },
+      "required": ["id", "name", "sceneId", "duration", "fps", "loop", "tracks"]
+    }
+  }
+}

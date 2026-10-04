@@ -233,11 +233,25 @@ jobs:
       - name: Build library
         run: npm run build
 
+      - name: Build the editor application
+        run: npm run editor:build
+
+      - name: Test editor collaboration service
+        run: npm run test:editor:server
+
       - name: Test published type consumers
         run: npm run test:types
 
-      - name: Build examples
-        run: npm run examples:build
+      - name: Build the Pages site including examples and editor
+        run: npm run site:build:built
+
+      - name: Upload the built Pages editor for browser acceptance
+        uses: actions/upload-artifact@v7
+        with:
+          name: pages-editor
+          path: site/editor
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check TypeDoc without rebuilding declarations
         run: npm run docs:check:built
@@ -255,6 +269,65 @@ jobs:
 
       - name: Check packed files
         run: npm run pack:check
+
+  editor:
+    name: Editor GPU and Pages acceptance
+    needs: package
+    # Linux SwiftShader supports the native/offscreen RHI lane; editor tests also
+    # require WebGPU canvas presentation. Keep every case in a required macOS lane.
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Set up npm
+        run: |
+          corepack enable npm
+          corepack install
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Download the built Pages editor
+        uses: actions/download-artifact@v8
+        with:
+          name: pages-editor
+          path: site/editor
+
+      - name: Test editor GPU and asset runtime contracts
+        run: npm run test:editor:render
+        env:
+          CI: 'true'
+
+      - name: Test the production editor at root and project-subpath URLs
+        run: npm run test:editor:pages
+        env:
+          CI: 'true'
+
+      - name: Upload editor failure evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-failure-evidence
+          include-hidden-files: true
+          path: |
+            .vitest-attachments
+            test/editor-render/__screenshots__
+            test-results/editor-pages
+          if-no-files-found: ignore
+          retention-days: 14
 
   ui-webgl2:
     name: WebGL2 UI (${{ matrix.group }})
@@ -369,6 +442,7 @@ jobs:
       - coverage-report
       - rhi
       - package
+      - editor
       - ui-webgl2
       - ui-report
     runs-on: ubuntu-latest
@@ -382,6 +456,7 @@ jobs:
           COVERAGE_REPORT_RESULT: ${{ needs.coverage-report.result }}
           RHI_RESULT: ${{ needs.rhi.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
+          EDITOR_RESULT: ${{ needs.editor.result }}
           UI_RESULT: ${{ needs.ui-webgl2.result }}
           UI_REPORT_RESULT: ${{ needs.ui-report.result }}
         run: |
@@ -391,6 +466,7 @@ jobs:
             "$COVERAGE_REPORT_RESULT" \
             "$RHI_RESULT" \
             "$PACKAGE_RESULT" \
+            "$EDITOR_RESULT" \
             "$UI_RESULT" \
             "$UI_REPORT_RESULT"
           do

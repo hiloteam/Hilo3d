@@ -90,6 +90,54 @@ measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before t
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
 
+## Editor development
+
+Hilo Studio targets a local-first, self-hostable browser 3D scene editor for small production teams,
+with Unity-style authoring workflows and Blender-inspired presentation. Existing engine features
+count only when they have an editor UI, a persisted contract and an exercised end-to-end workflow.
+
+### Delivery plan and acceptance gates
+
+Work proceeds through these gates; a polished screenshot alone never closes a gate. Authentication
+and synchronization may use a self-hosted service, but must work between independent browsers; there
+is no assumed cloud account or external paid service. AI-friendly means deterministic, versioned,
+inspectable project data and validated edits, not a simulated AI assistant.
+
+| ID                          | State       | Deliverable                                                                                                                                                                         | Required acceptance                                                                                                                                                                                                |
+| --------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| E0 Foundation               | Implemented | Real dual-backend viewport, hierarchy, inspector, primitives, PBR, undo, versioned scene JSON.                                                                                      | Scene migration/parser/history contracts and actual WebGL2/WebGPU authoring, picking, storage and lifecycle flows are covered; final combined checks are recorded in the editor handoff.                           |
+| E1 Direct manipulation      | Implemented | Move/rotate/scale gizmos, axis/plane/uniform handles, world/local space, snapping, multi-selection, locked nodes, grouped undo.                                                     | Pointer cancellation and Escape restore the original; nested parents and selection roots transform correctly; unrepresentable shear is rejected; actual pointer drags and undo pass on both backends.              |
+| E2 Projects and assets      | Implemented | IndexedDB projects, scene switching, revision backups, conflict-aware saving, portable project bundles, GLB and image import, stable asset references and dependency-aware removal. | Refresh and export/import preserve binary dependencies; invalid/corrupt/oversized assets fail without losing work; stale saves cannot overwrite newer changes; imported assets render through both backends.       |
+| E3 Production workspace     | Implemented | Resizable and dockable panels, saved layouts, collapse/restore, keyboard navigation, responsive recovery, search and command palette.                                               | Pointer/keyboard resize and docking persist; invalid or narrow layouts recover; viewport resizes correctly; primary workflows work without mouse-only controls.                                                    |
+| E4 Prefab authoring         | Implemented | Create reusable templates, instantiate, track field overrides, revert/apply changes, update other instances, unpack.                                                                | Nested identity and references survive round trips; instance overrides are explicit; updates preserve intentional overrides and are undoable.                                                                      |
+| E5 Script and play workflow | Implemented | Script assets and editor, bounded worker execution with a documented command API, play/pause/step/stop, diagnostics and runtime-only state.                                         | Executed scripts move actual scene nodes; termination interrupts runaway code; script exceptions surface; Stop restores authored state; import never executes scripts automatically.                               |
+| E6 Animation authoring      | Implemented | Timeline, tracks, keyframe insertion/removal, scrubbing, interpolation, playback, loop and persisted clips.                                                                         | Real node transforms match authored keys; key edits undo and round trip; scrub/play never silently overwrite authored transforms; scripts and animation have explicit ownership.                                   |
+| E7 Collaboration            | Implemented | Self-hosted authenticated project rooms, editor/viewer permissions, revisioned updates, presence, reconnect, conflict resolution and offline work.                                  | Two isolated clients converge, forbidden writes fail, stale commits produce explicit conflicts, reconnect and offline recovery preserve work; room credentials are not stored in exported project data.            |
+| E8 Release candidate        | Verified    | Complete in-app help, schema/migration documentation, licensing/provenance fields, import/save/error UX, performance and compatibility evidence.                                    | Integrated unit/contract/browser suites, production script smoke, save/recovery stress and representative large-scene measurements passed; dated platform evidence and limits are recorded in the editor document. |
+
+### Release policy
+
+Every feature has a functioning UI, durable data model and meaningful tests before it is marked
+implemented. Failures must remain visible and recoverable. New backend-specific rendering paths,
+hand-authored raster WGSL, fake controls, skipped failing tests and claims of unexecuted validation
+are excluded. Keep scope and evidence distinct: physical-GPU/browser platform evidence is recorded
+only when run, and performance results are measurements rather than invented budgets.
+
+Completed candidate validation includes bounded source/history/image/thumbnail memory, transaction
+completion and cancellation, corrupt-codec rejection, GPU loss recovery, typed script isolation,
+portable ZIP round trips and late cross-tab/remote-update protection. See
+[the dated evidence and limitations](./EDITOR.md#release-candidate-evidence--2026-10-05). All E0–E8
+gates are delivered for the documented self-hosted scope; no known critical or high-severity defect
+remains in the exercised workflows. Before a wider production rollout, run the complete engine
+release matrix and validate deployment-specific HTTPS, identity integration, service backup and
+recovery, and slow-network startup on the target infrastructure. Those operations are not claimed by
+local candidate tests.
+
+The initial scene-only version remains importable. Project bundles retain source filenames and
+user-supplied provenance. Hosted infrastructure, external identity-provider deployments and a
+complete Unity-compatible scripting/runtime ecosystem are not silently assumed prerequisites for
+this self-hostable product scope.
+
 ## Audio extensions
 
 The optional [audio runtime](./AUDIO.md) implements bounded real/virtual voices, spatial sources,

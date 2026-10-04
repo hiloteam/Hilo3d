@@ -12,13 +12,20 @@
     "benchmarks/**/*.ts",
     "eslint.config.ts",
     "playwright.config.ts",
+    "playwright.editor-pages.config.ts",
     "scripts/**/*.ts",
     "vite.config.ts",
     "vite.examples.config.ts",
     "vitest.config.ts",
     "vitest.rhi.config.ts",
     "vitest.rhi-native.config.ts",
-    "examples/shared/catalog.ts"
+    "examples/shared/catalog.ts",
+    "vite.editor.config.ts",
+    "vitest.editor-node.config.ts",
+    "vitest.editor-render.config.ts",
+    "test/ui/render-health.ts",
+    "test/ui/stable-capture.ts",
+    "test/ui/example-paths.ts"
   ],
   "references": [
     {
