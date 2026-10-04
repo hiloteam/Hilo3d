@@ -881,12 +881,11 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
             .click();
         await expect(second.locator('#app')).toHaveAttribute('data-collaboration-role', 'local');
         await expect(second.locator('#project-name')).toHaveText('Late local draft during decode');
-        if (
-            await second
-                .getByRole('dialog', { name: 'Project collaboration', exact: true })
-                .isVisible()
-        )
-            await closeCollaboration(second);
+        // Saving the separate project closes dialogs when asynchronous storage completes.
+        // Wait for that activation instead of racing its closure with another close click.
+        await expect(
+            second.getByRole('dialog', { name: 'Project collaboration', exact: true })
+        ).not.toBeVisible();
         const localCopy = await exportProject(
             second,
             info,

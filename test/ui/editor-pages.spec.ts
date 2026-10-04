@@ -145,6 +145,17 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 await waitForStableAnimationFrames(page);
                 failures.assertEmpty(`Pages teardown ${prefix || '/'} ${backend}`);
             } catch (error) {
+                // A timeout may already have closed the page. Preserve the original failure
+                // even when browser-side diagnostics are no longer available.
+                const render = await readRenderHealth(page).catch((cause: unknown) => ({
+                    unavailable: cause instanceof Error ? cause.message : String(cause)
+                }));
+                const loading = await page
+                    .locator('#viewport-loading')
+                    .textContent({ timeout: 1000 })
+                    .catch((cause: unknown) =>
+                        cause instanceof Error ? cause.message : String(cause)
+                    );
                 await info.attach('pages-failure-health', {
                     body: Buffer.from(
                         JSON.stringify(
@@ -152,8 +163,8 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                                 prefix,
                                 backend,
                                 errors: failures.snapshot(),
-                                render: await readRenderHealth(page),
-                                loading: await page.locator('#viewport-loading').textContent()
+                                render,
+                                loading
                             },
                             null,
                             2
