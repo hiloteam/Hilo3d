@@ -881,11 +881,12 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await second.waitForFunction(
             () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.entered === true
         );
-        // A real decoded bitmap proves the complete embedded asset reached this browser. The
-        // snapshot reader has already consumed its JSON before entering asset validation; CDP's
-        // request-finished notification can lag behind the gated application promise on CI.
+        // The server frames JSON with an exact byte length. Verify both transport completion and
+        // the real bitmap before editing, while application-level decode completion stays gated.
         const incomingResponse = await incomingSnapshot;
         expect(incomingResponse.status()).toBe(200);
+        expect(incomingResponse.headers()['content-length']).toMatch(/^[1-9]\d*$/u);
+        expect(await incomingResponse.finished()).toBeNull();
         expect(
             await second.evaluate(() => {
                 const gate = (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__;

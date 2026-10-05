@@ -41,12 +41,14 @@ function inputObject(value: unknown): Record<string, unknown> {
 }
 
 function reply(response: ServerResponse, status: number, data: unknown): void {
+    const body = JSON.stringify(data);
     response.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
+        'Content-Length': Buffer.byteLength(body),
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff'
     });
-    response.end(JSON.stringify(data));
+    response.end(body);
 }
 
 function readBody(request: IncomingMessage, limit: number): Promise<unknown> {
