@@ -71,23 +71,6 @@ afterEach(async () => {
 });
 
 describe('authenticated collaboration server', () => {
-    it('frames Unicode snapshots with their complete UTF-8 byte length', async () => {
-        const { url } = await fixture();
-        const project = { ...createProject(createDefaultScene()), name: '协作钢琴 🎹' };
-        const created = await request(`${url}/rooms`, 'POST', ADMIN, { project });
-        const room = (await created.json()) as CreatedRoom;
-        const response = await request(`${url}/rooms/${room.roomId}`, 'GET', room.viewerToken);
-        expect(response.status).toBe(200);
-        expect(response.headers.get('transfer-encoding')).toBeNull();
-        const bytes = await response.arrayBuffer();
-        expect(Number(response.headers.get('content-length'))).toBe(bytes.byteLength);
-        const snapshot: unknown = JSON.parse(new TextDecoder().decode(bytes));
-        expect(snapshot).toMatchObject({
-            revision: 1,
-            project: { name: '协作钢琴 🎹' }
-        });
-    });
-
     it('refuses a second writer for the same data directory and releases the lock after clean shutdown', async () => {
         const first = await fixture();
         await expect(

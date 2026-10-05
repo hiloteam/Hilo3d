@@ -60,8 +60,6 @@ Transport also caps concurrent JSON requests at 16, request bodies at the projec
 metadata, headers at 32, and slow-stream buffering at 64 KiB. Request and header timeouts are
 finite. Increase quotas only for workloads whose storage and memory budgets are understood. The
 service uses the actual socket source address; it does not trust arbitrary forwarded-IP headers.
-JSON replies declare their UTF-8 `Content-Length`, so snapshot completion is independent of a
-keep-alive connection or delayed client-side asset decoding. Event streams retain streaming framing.
 
 ## Editing, conflicts and recovery
 

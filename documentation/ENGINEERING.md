@@ -461,6 +461,8 @@ clock 控制 RAF/timer，不让真实 GPU fence 阻塞虚拟时间推进；其�
 
 CSM 和 Physics 截图前等待两个实际 ticker 帧，不能以 RAF 回调数代替已渲染帧数；限流期间 RAF 仍可执行，但场景可能尚未更新。等待者在页面销毁时会被清理并拒绝。
 
+编辑器协作竞态先完整接收真实 HTTP 快照，再把收到的原始字节交给应用并暂缓真实位图解码结果的交付。本地编辑与资产激活并发，不与尚未结束的传输并发；保留请求完成、实际解码尺寸、网络错误和渲染健康检查。
+
 UI 默认关闭 trace 连续画面采集，保留 DOM、操作、源码和网络记录；CI 关闭视频，保留失败截图和显式像素断言。涉及像素和 presentation 的工作组继续使用完整 Chromium；无像素要求的合同由 Node 或独立 RHI
 lane 检查。 `scripts/playwright-timing-reporter.ts` 将每例耗时、超时预算及结果写入
 `reports/ui-timings`，上传保留 14 天，并在 Actions

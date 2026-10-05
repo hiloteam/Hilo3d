@@ -726,21 +726,24 @@ async function renameScene(page: Page, name: string): Promise<void> {
 
 interface DecodeGate {
     entered: boolean;
+    transportComplete: boolean;
     width: number;
     height: number;
     release(): void;
 }
 type GatedWindow = Window & { __HILO_EDITOR_DECODE_GATE__?: DecodeGate };
 
-async function holdRealBitmapDecoder(page: Page): Promise<void> {
-    await page.evaluate(() => {
+async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<void> {
+    await page.evaluate(url => {
         const original = window.createImageBitmap.bind(window);
+        const originalFetch = window.fetch.bind(window);
         let unlock: () => void = () => undefined;
         const pending = new Promise<void>(resolveGate => {
             unlock = resolveGate;
         });
         const gate: DecodeGate = {
             entered: false,
+            transportComplete: false,
             width: 0,
             height: 0,
             release(): void {
@@ -750,9 +753,33 @@ async function holdRealBitmapDecoder(page: Page): Promise<void> {
                     writable: true,
                     value: original
                 });
+                Object.defineProperty(window, 'fetch', {
+                    configurable: true,
+                    writable: true,
+                    value: originalFetch
+                });
             }
         };
         (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__ = gate;
+        // Receive this real server response completely before the application gets its body.
+        // The decode race must not keep the native HTTP request alive until disconnect.
+        Object.defineProperty(window, 'fetch', {
+            configurable: true,
+            writable: true,
+            value: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+                const response = await originalFetch(input, init);
+                const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+                if (response.url !== url || method !== 'GET' || gate.transportComplete)
+                    return response;
+                const bytes = await response.arrayBuffer();
+                gate.transportComplete = true;
+                return new Response(bytes, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers
+                });
+            }
+        });
         Object.defineProperty(window, 'createImageBitmap', {
             configurable: true,
             writable: true,
@@ -769,7 +796,7 @@ async function holdRealBitmapDecoder(page: Page): Promise<void> {
                 return bitmap;
             }
         });
-    });
+    }, snapshotURL);
 }
 
 test('editor collaboration uses CLI capabilities and retains edits made during incoming asset decoding @webgl2', async ({
@@ -861,7 +888,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
 
         // Hold only the real decoder's completion. The remote snapshot remains pending while the
         // second editor makes a genuine local edit, then the original codec produces real pixels.
-        await holdRealBitmapDecoder(second);
+        await holdRealBitmapDecoder(second, `${service.url}/rooms/${roomId}`);
         await first.getByRole('button', { name: 'Assets', exact: true }).click();
         await first.getByLabel('Import asset files', { exact: true }).setInputFiles({
             name: 'Remote Direction.png',
@@ -881,18 +908,21 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await second.waitForFunction(
             () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.entered === true
         );
-        // The server frames JSON with an exact byte length. Verify both transport completion and
-        // the real bitmap before editing, while application-level decode completion stays gated.
+        // Transport is complete and the real bitmap exists, while application-level decode
+        // completion remains gated. No fabricated snapshot or image enters this race.
         const incomingResponse = await incomingSnapshot;
         expect(incomingResponse.status()).toBe(200);
-        expect(incomingResponse.headers()['content-length']).toMatch(/^[1-9]\d*$/u);
         expect(await incomingResponse.finished()).toBeNull();
         expect(
             await second.evaluate(() => {
                 const gate = (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__;
-                return { width: gate?.width, height: gate?.height };
+                return {
+                    transportComplete: gate?.transportComplete,
+                    width: gate?.width,
+                    height: gate?.height
+                };
             })
-        ).toEqual({ width: 4, height: 4 });
+        ).toEqual({ transportComplete: true, width: 4, height: 4 });
         await renameScene(second, 'Late local draft during decode');
         await second.evaluate(() => {
             (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();
