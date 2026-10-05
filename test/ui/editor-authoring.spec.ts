@@ -726,6 +726,8 @@ async function renameScene(page: Page, name: string): Promise<void> {
 
 interface DecodeGate {
     entered: boolean;
+    width: number;
+    height: number;
     release(): void;
 }
 type GatedWindow = Window & { __HILO_EDITOR_DECODE_GATE__?: DecodeGate };
@@ -739,6 +741,8 @@ async function holdRealBitmapDecoder(page: Page): Promise<void> {
         });
         const gate: DecodeGate = {
             entered: false,
+            width: 0,
+            height: 0,
             release(): void {
                 unlock();
                 Object.defineProperty(window, 'createImageBitmap', {
@@ -753,9 +757,16 @@ async function holdRealBitmapDecoder(page: Page): Promise<void> {
             configurable: true,
             writable: true,
             value: async (...parameters: unknown[]): Promise<ImageBitmap> => {
+                const bitmap = await (Reflect.apply(
+                    original,
+                    window,
+                    parameters
+                ) as Promise<ImageBitmap>);
+                gate.width = bitmap.width;
+                gate.height = bitmap.height;
                 gate.entered = true;
                 await pending;
-                return Reflect.apply(original, window, parameters) as Promise<ImageBitmap>;
+                return bitmap;
             }
         });
     });
@@ -870,11 +881,17 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await second.waitForFunction(
             () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.entered === true
         );
-        // Complete the real snapshot transport while decoding remains gated. The local edit
-        // exercises the decode race only after the browser has finished receiving the revision.
+        // A real decoded bitmap proves the complete embedded asset reached this browser. The
+        // snapshot reader has already consumed its JSON before entering asset validation; CDP's
+        // request-finished notification can lag behind the gated application promise on CI.
         const incomingResponse = await incomingSnapshot;
         expect(incomingResponse.status()).toBe(200);
-        expect(await incomingResponse.finished()).toBeNull();
+        expect(
+            await second.evaluate(() => {
+                const gate = (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__;
+                return { width: gate?.width, height: gate?.height };
+            })
+        ).toEqual({ width: 4, height: 4 });
         await renameScene(second, 'Late local draft during decode');
         await second.evaluate(() => {
             (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();

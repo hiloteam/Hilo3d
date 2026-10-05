@@ -540,7 +540,8 @@ async function initialize(): Promise<void> {
     ticker.addTick({
         tick(dt: number): void {
             if (disposed || suspended) return;
-            const seconds = Math.min(dt / 1000, 0.05);
+            // Ages and exponential envelopes follow elapsed time, including slow render frames.
+            const seconds = Math.max(0, dt / 1000);
             elapsed += seconds;
             audio.update();
             for (const [midi, deadline] of visualUntil)

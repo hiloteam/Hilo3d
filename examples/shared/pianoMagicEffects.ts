@@ -325,7 +325,9 @@ export function createPianoMagicEffects(
 
     function update(seconds: number, dt: number, energy: number): void {
         if (disposed) return;
-        const step = Math.max(0, Math.min(0.1, dt));
+        const step = Math.max(0, dt);
+        // Age existing effects in real time, but never emit a backlog after a stalled frame.
+        const emissionStep = Math.min(0.1, step);
         const musicalEnergy = Math.max(0, Math.min(1, energy));
         let heldCount = 0;
         for (const emitter of emitters) if (emitter.held) heldCount++;
@@ -346,7 +348,7 @@ export function createPianoMagicEffects(
                 const packetPulse =
                     0.42 + Math.max(0, Math.sin(emitter.age * 16 + emitter.phase)) * 0.78;
                 emitter.remainder +=
-                    step * perKeyRate * packetPulse * (0.65 + emitter.velocity * 0.35);
+                    emissionStep * perKeyRate * packetPulse * (0.65 + emitter.velocity * 0.35);
                 const count = Math.floor(emitter.remainder);
                 emitter.remainder -= count;
                 emit(emitter, count, false);

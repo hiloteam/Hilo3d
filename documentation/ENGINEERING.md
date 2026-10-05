@@ -450,7 +450,8 @@ presentation；原有双后端画廊集成和全部页面的原生绘制、像�
 submission 完成、采集 compositor 像素，并在 `finally`
 中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 与 NOCTURNE 钢琴共用此路径。钢琴的通用首帧门禁使用
 `?test=1&quality=production`
-保留正常渲染分辨率，在真实提交后稳定截图并检查 ticker 恢复后继续绘制；交互专项另验音频、特效像素与页面生命周期。测试模式还通过
+保留正常渲染分辨率，在真实提交后稳定截图并检查 ticker 恢复后继续绘制；交互专项另验音频、特效像素与页面生命周期。钢琴的粒子年龄和指数衰减使用真实 elapsed
+time，慢帧不会延长松键后的光效；仅补发粒子的时间窗口限制为 100ms，避免停顿后集中补发。消散回归在松键后实际暂停渲染 3.3 秒，再检查恢复后的提交和像素，不替换时间或随机数。测试模式还通过
 `examples/shared/test-frame-control.ts`
 等待上一帧提交完成，再留出 50ms 输入处理窗口，避免点击、状态读取和断言期间持续提交 SwiftShader 帧。截图持有暂停状态时，后台 fence 完成不能提前恢复 ticker；页面销毁后也不能重新恢复。Physics 使用真实 elapsed
 time 推进仿真，保持现有动作和物理断言。CSM 的虚拟时钟专项显式使用 `testClock=1`，由 Playwright

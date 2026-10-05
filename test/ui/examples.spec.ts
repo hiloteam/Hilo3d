@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { captureStableFrame } from './stable-capture';
+import type { TestFrameControl } from '../../examples/shared/test-frame-control';
 import { createExampleCatalog } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
@@ -61,6 +62,8 @@ interface PianoState {
     readonly reverb: number;
     readonly disposed: boolean;
 }
+
+type CaptureWindow = Window & { __HILO3D_TEST_CAPTURE__?: TestFrameControl };
 
 interface PianoSourceEvidence {
     starts: number;
@@ -364,8 +367,20 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
             body: sustainedCapture,
             contentType: 'image/png'
         });
-        for (const key of lowerChord) await page.keyboard.up(key);
-        await expect(middleC).toHaveAttribute('data-active', 'false');
+        // A stalled renderer must not stretch particle lifetimes. Release the real keys while
+        // the shared capture control pauses submissions, then resume after real elapsed time.
+        await page.evaluate(async () => {
+            const control = (window as CaptureWindow).__HILO3D_TEST_CAPTURE__;
+            if (!control) throw new Error('The piano must expose its shared capture control');
+            await control.pause();
+        });
+        try {
+            for (const key of lowerChord) await page.keyboard.up(key);
+            await expect(middleC).toHaveAttribute('data-active', 'false');
+            await page.waitForTimeout(3_300);
+        } finally {
+            await page.evaluate(() => (window as CaptureWindow).__HILO3D_TEST_CAPTURE__?.resume());
+        }
         let fadedCapture = performingCapture;
         await expect
             .poll(async () => {
