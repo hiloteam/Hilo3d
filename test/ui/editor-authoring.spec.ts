@@ -727,9 +727,11 @@ async function renameScene(page: Page, name: string): Promise<void> {
 interface DecodeGate {
     entered: boolean;
     transportComplete: boolean;
+    pendingTransports: number;
     width: number;
     height: number;
     release(): void;
+    restore(): void;
 }
 type GatedWindow = Window & { __HILO_EDITOR_DECODE_GATE__?: DecodeGate };
 
@@ -744,6 +746,7 @@ async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<v
         const gate: DecodeGate = {
             entered: false,
             transportComplete: false,
+            pendingTransports: 0,
             width: 0,
             height: 0,
             release(): void {
@@ -753,6 +756,9 @@ async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<v
                     writable: true,
                     value: original
                 });
+            },
+            restore(): void {
+                this.release();
                 Object.defineProperty(window, 'fetch', {
                     configurable: true,
                     writable: true,
@@ -767,17 +773,25 @@ async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<v
             configurable: true,
             writable: true,
             value: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-                const response = await originalFetch(input, init);
                 const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
-                if (response.url !== url || method !== 'GET' || gate.transportComplete)
-                    return response;
-                const bytes = await response.arrayBuffer();
-                gate.transportComplete = true;
-                return new Response(bytes, {
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: response.headers
-                });
+                const requestURL =
+                    input instanceof Request
+                        ? input.url
+                        : new URL(String(input), location.href).href;
+                if (requestURL !== url || method !== 'GET') return originalFetch(input, init);
+                gate.pendingTransports++;
+                try {
+                    const response = await originalFetch(input, init);
+                    const bytes = await response.arrayBuffer();
+                    gate.transportComplete = true;
+                    return new Response(bytes, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: response.headers
+                    });
+                } finally {
+                    gate.pendingTransports--;
+                }
             }
         });
         Object.defineProperty(window, 'createImageBitmap', {
@@ -934,6 +948,15 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         );
         await openCollaboration(second);
         await expect(second.locator('.collaboration-conflict')).toBeVisible();
+        // Reconciliation may receive another snapshot after the deliberately induced conflict.
+        // Finish those real transports before the user action intentionally cancels the session.
+        await expect
+            .poll(() =>
+                second.evaluate(
+                    () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.pendingTransports
+                )
+            )
+            .toBe(0);
         await second
             .getByRole('button', { name: 'Keep local copy & disconnect', exact: true })
             .click();
@@ -1010,7 +1033,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
     } finally {
         await gatePage
             ?.evaluate(() => {
-                (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();
+                (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.restore();
             })
             .catch(() => undefined);
         await Promise.allSettled(monitors.map(monitor => monitor.dispose()));
