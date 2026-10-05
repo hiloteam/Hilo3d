@@ -840,6 +840,39 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         for (const page of pages) {
             await installRenderHealthProbe(page);
             monitors.push(await installPageFailureMonitor(page));
+            // Join, reconnect and conflict handling can all fetch snapshots. Complete every
+            // actual room response before application decoding can retain its stream reader.
+            await page.addInitScript(serverURL => {
+                const originalFetch = window.fetch.bind(window);
+                const origin = new URL(serverURL).origin;
+                Object.defineProperty(window, 'fetch', {
+                    configurable: true,
+                    writable: true,
+                    value: async (
+                        input: RequestInfo | URL,
+                        init?: RequestInit
+                    ): Promise<Response> => {
+                        const method =
+                            init?.method ?? (input instanceof Request ? input.method : 'GET');
+                        const url = new URL(
+                            input instanceof Request ? input.url : String(input),
+                            location.href
+                        );
+                        const response = await originalFetch(input, init);
+                        if (
+                            method !== 'GET' ||
+                            url.origin !== origin ||
+                            !/^\/rooms\/room-[a-f0-9-]+$/u.test(url.pathname)
+                        )
+                            return response;
+                        return new Response(await response.arrayBuffer(), {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: response.headers
+                        });
+                    }
+                });
+            }, service.url);
         }
         for (const page of pages) {
             await page.goto(`${testServerOrigin}/editor/index.html?backend=webgl2&test=1`);
