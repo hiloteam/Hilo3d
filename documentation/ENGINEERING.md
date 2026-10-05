@@ -247,11 +247,11 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 99 个 HTML 的后端适用矩阵
+### 100 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 99 个 HTML，包含 97 个示例和两个画廊入口；84 个页面执行双后端，WebXR 执行 WebGL
-2，14 个页面执行 WebGPU，共 183 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 100 个 HTML，包含 98 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
+2，14 个页面执行 WebGPU，共 185 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
 Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
@@ -263,7 +263,7 @@ Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SS
 或
 `WebGL 2 only`；选择不兼容条目时，iframe 使用该条目唯一支持的后端。已有双后端页面改为单后端时，总 page/backend 测试组合数会减少一，但画廊条目总数保持不变。
 
-画廊对 97 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 25 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
+画廊对 98 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 26 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
 examples 集合内。主题数量同时反映搜索和后端条件，无结果的未选主题不显示；多词搜索支持顺序无关匹配及中文主题关键词。
 `q`、`category`、`collection`、`compatible`
 保存在画廊 URL 中，不传给示例；切换示例会清除上一个示例的专属参数。手机侧栏关闭后使用 `inert`
@@ -448,7 +448,9 @@ presentation；原有双后端画廊集成和全部页面的原生绘制、像�
 使用 `createExampleContext()` 的示例在显式 `?test=1` 时提供共享截图控制，正常页面不暴露该控制。
 `test/ui/stable-capture.ts` 先确认真实 native draw，再暂停 ticker、等待 renderer
 submission 完成、采集 compositor 像素，并在 `finally`
-中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 共用此路径。测试模式还通过
+中恢复 ticker；queue 或截图失败也恢复。Physics、CSM、Chromatic 与 NOCTURNE 钢琴共用此路径。钢琴的通用首帧门禁使用
+`?test=1&quality=production`
+保留正常渲染分辨率，在真实提交后稳定截图并检查 ticker 恢复后继续绘制；交互专项另验音频、特效像素与页面生命周期。测试模式还通过
 `examples/shared/test-frame-control.ts`
 等待上一帧提交完成，再留出 50ms 输入处理窗口，避免点击、状态读取和断言期间持续提交 SwiftShader 帧。截图持有暂停状态时，后台 fence 完成不能提前恢复 ticker；页面销毁后也不能重新恢复。Physics 使用真实 elapsed
 time 推进仿真，保持现有动作和物理断言。CSM 的虚拟时钟专项显式使用 `testClock=1`，由 Playwright
@@ -512,7 +514,7 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、99 个 HTML 后端适用矩阵（84 个双后端、WebXR 显式 WebGL
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、100 个 HTML 后端适用矩阵（85 个双后端、WebXR 显式 WebGL
 2-only、14 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00

@@ -4,6 +4,68 @@ Status: **Unreleased optional `@hilo/addon-audio` workspace.** The checkout vers
 registry availability. See [version boundaries](./VERSIONS.md) and the
 [checked consumer recipe](../test/types/recipes/audio.ts).
 
+## Interactive piano showcase
+
+[NOCTURNE — 魔法钢琴](../examples/audio_piano.html) presents the audio addon as a playable graphite
+piano in a black room. Each played key releases its own blue bioluminescent plume: fine light dust,
+sparse bright glints and flowing wisps rise above the keyboard while their light reveals the
+instrument. Quiet moments retain a faint silhouette. Play with pointer or keyboard input, or start
+the supplied _Call of Silence_ arrangement to hear spatial piano voices through a stereo convolution
+chamber. Held keys sustain their plumes, which fade into darkness after release. The stage has no
+luminous floor rings. Sound starts only after a user gesture; the scene supports both WebGL 2 and
+WebGPU.
+
+![NOCTURNE playing Call of Silence with key-local blue light and rising star dust](./assets/audio-piano/performance.png)
+
+Reviewed screenshots also show the [quiet instrument](./assets/audio-piano/idle.png) and
+[390-pixel-wide layout](./assets/audio-piano/mobile.png). See the
+[capture notes](./assets/audio-piano/README.md) for the rendering conditions.
+
+The visual reference is He Tongxue's physical magic piano, available on
+[Bilibili](https://www.bilibili.com/video/BV1d1vUBUE54/) and
+[YouTube](https://www.youtube.com/watch?v=C7D8cirnfoM). This example recreates the relationship
+between individual keys and rising blue light using procedural scene geometry and shaders; it does
+not bundle images or footage from the reference.
+
+The plumes use animated procedural GLSL, with no background image. Both backends consume the same
+GLSL ES 3.00 source; WebGPU artifacts follow engine preprocessing and Naga translation. These are
+artistic scene effects and do not enable the renderer's froxel volumetric-lighting feature. The
+effects control can disable the plumes while leaving the piano playable; the reduced-motion
+preference slows or stops decorative movement.
+
+The example-owned [`PianoMagicPlumeBlock`](../examples/shared/pianoMagicShader.ts) has a fixed
+registered binding name and a 16-byte std140 layout: `vec4 u_flow` at byte offset 0 stores elapsed
+seconds in its first component, with the other components reserved. A reused `Float32Array` supplies
+the once-per-frame update; `UniformBuffer.set()` advances revisions only when bytes change. Vertex
+colors carry each plume's seed, intensity, normalized head height and key velocity. Two three-octave
+noise fields curl the blue bodies and overlapping translucent folds. Procedural UVs rise from key to
+tip and do not sample managed images or render attachments.
+
+The [plume tests](../examples/shared/pianoMagicShader.test.ts) check the block ABI, Naga translation
+and real WebGL 2/WebGPU pixels. The browser showcase tests compare idle, held-chord and
+released-note compositor pixels, require sustained emission beyond the lifetime of an individual
+particle, and verify that higher keys move the blue columns to the right. They also toggle effects
+while holding the same chord and retain native audio, interaction and lifecycle checks.
+
+The example synthesizes piano multisamples with two velocity layers and a 2.8-second chamber
+impulse, then routes playback through `@hilo/addon-audio`. It demonstrates bounded voices, per-key
+spatial placement, separate dry/wet buses and score playback scheduled against the audio clock. Its
+piano-like timbre combines struck-string harmonics with a felt transient.
+
+The default piece is _Call of Silence_, transcribed from the user's
+[three-page piano PDF](../examples/audio/call-of-silence.pdf). The user provided the file and
+confirmed permission to use it. The [example-owned score](../examples/audio/callOfSilence.ts)
+preserves all 69 measures, both hands and tied notes; the final left-hand chord is rolled upward.
+The PDF has no metronome marking, so the example chooses 84 BPM as its performance tempo. Change
+`CALL_OF_SILENCE_BPM` to adjust it. Selecting the score happens synchronously before scene asset
+loading, creates no AudioContext and never starts playback without a user gesture.
+
+Import a local `.mid` or `.midi` arrangement to replace the default piece; imported files and parsed
+notes remain in page memory. The importer supports Standard MIDI format 0/1 with a PPQN clock, tempo
+changes and sustain, up to 2 MiB. Browser tests verify the default title, local PDF link and opening
+A4/C5 note callbacks alongside actual non-silent native audio sources, then import a different score
+and verify that it replaces playback.
+
 ## Design and feature boundary
 
 The runtime borrows the bounded concurrency/group approach from

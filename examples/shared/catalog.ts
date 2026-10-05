@@ -37,6 +37,11 @@ export const EXAMPLE_CATEGORIES = [
         description: 'Animation clips, tweening, morphing, and dynamic scenes.'
     },
     {
+        id: 'audio',
+        label: 'Audio',
+        description: 'Spatial sound, interactive instruments, voice mixing, and convolution reverb.'
+    },
+    {
         id: 'particles',
         label: 'Particles',
         description: 'Emitters, noise, topology, interaction, and GPU-resident simulation.'
@@ -169,6 +174,13 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         title: 'Area Lights',
         description: 'Illuminate a PBR surface with a rectangular area light.',
         category: 'lighting'
+    },
+    'audio_piano.html': {
+        title: 'NOCTURNE — 魔法钢琴',
+        description:
+            'Play the supplied Call of Silence piano score with blue bioluminescent plumes, procedural shaders, spatial voices and convolution reverb, or import a local MIDI arrangement.',
+        category: 'audio',
+        featured: true
     },
     'bloom.html': {
         title: 'Bloom',
@@ -701,6 +713,7 @@ const CATEGORY_SEARCH_TERMS: Readonly<Record<ExampleCategoryId, string>> = {
     lighting: '灯光 光照 阴影 环境 天空 大气',
     textures: '纹理 贴图 视频 图像',
     animation: '动画 混合 状态',
+    audio: '音频 音乐 钢琴 声音 空间 混响 琴键 曲谱 midi',
     particles: '粒子 发射 噪声 轨迹 碰撞',
     rendering: '渲染 缓冲 深度 离屏',
     'post-processing': '后处理 泛光 反射 遮蔽 抗锯齿 全局光照',

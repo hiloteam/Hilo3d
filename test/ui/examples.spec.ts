@@ -50,11 +50,538 @@ interface CompressedTextureResult {
     readonly renderedSources: readonly string[];
 }
 
+interface PianoState {
+    readonly audioState: string;
+    readonly noteCount: number;
+    readonly activeVoices: number;
+    readonly demoPlaying: boolean;
+    readonly sustain: boolean;
+    readonly effects: boolean;
+    readonly volume: number;
+    readonly reverb: number;
+    readonly disposed: boolean;
+}
+
+interface PianoSourceEvidence {
+    starts: number;
+    samplePeak: number;
+    readonly demoNotes: string[];
+}
+
+function meanSceneLuminance(scene: PNG): number {
+    let total = 0;
+    for (let offset = 0; offset < scene.data.length; offset += 4) {
+        total +=
+            (scene.data[offset] ?? 0) * 0.2126 +
+            (scene.data[offset + 1] ?? 0) * 0.7152 +
+            (scene.data[offset + 2] ?? 0) * 0.0722;
+    }
+    return total / (scene.width * scene.height);
+}
+
+function inspectBluePlumes(
+    scene: PNG,
+    idle: PNG
+): { readonly coverage: number; readonly centerX: number } {
+    if (scene.width !== idle.width || scene.height !== idle.height)
+        throw new Error('Plume evidence requires matching idle and active capture dimensions.');
+    // Restrict evidence to the space above the keys and require newly added blue radiance.
+    // The instrument's permanent cold rim and strings must not count as active note plumes.
+    const plumeHeight = Math.floor(scene.height * 0.55);
+    let pixels = 0;
+    let horizontal = 0;
+    for (let y = 0; y < plumeHeight; y++) {
+        for (let x = 0; x < scene.width; x++) {
+            const offset = (y * scene.width + x) * 4;
+            const red = scene.data[offset] ?? 0;
+            const green = scene.data[offset + 1] ?? 0;
+            const blue = scene.data[offset + 2] ?? 0;
+            const addedBlue = blue - (idle.data[offset + 2] ?? 0);
+            if (blue > 36 && blue > red + 16 && blue > green + 4 && addedBlue > 12) {
+                pixels++;
+                horizontal += x;
+            }
+        }
+    }
+    return {
+        coverage: pixels / (scene.width * plumeHeight),
+        centerX: pixels > 0 ? horizontal / pixels : 0
+    };
+}
+
+declare global {
+    interface Window {
+        readonly __PIANO_STATE__?: PianoState;
+        readonly __PIANO_SOURCE_EVIDENCE__?: PianoSourceEvidence;
+    }
+}
+
 const GPU_DIAGNOSTIC_ERROR =
     /(?:webgl|webgpu|gpu(?:adapter|bindgroup|buffer|command|device|pipeline|queue|sampler|texture)|gl_invalid|validation error|framebuffer[^\n]*(?:incomplete|unsupported)|invalid (?:bind|buffer|command|pipeline|render|sampler|texture)|shader[^\n]*(?:compil|link))/iu;
 const PRESENTATION_TIMEOUT = process.env['CI'] === 'true' ? 30_000 : 15_000;
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
+    test(`audio piano plays notes, sustains blue key plumes and preserves its lifecycle @${backend}`, async ({
+        page
+    }, testInfo) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('console', message => {
+            if (message.type() === 'error') errors.push(message.text());
+        });
+        await page.setViewportSize({ width: 960, height: 720 });
+        await installRenderHealthProbe(page);
+        await page.addInitScript(() => {
+            const evidence: PianoSourceEvidence = { starts: 0, samplePeak: 0, demoNotes: [] };
+            Object.defineProperty(window, '__PIANO_SOURCE_EVIDENCE__', { value: evidence });
+            const examined = new WeakSet<AudioBuffer>();
+            const originalStart = Reflect.get(AudioBufferSourceNode.prototype, 'start');
+            AudioBufferSourceNode.prototype.start = function (
+                ...args: Parameters<AudioBufferSourceNode['start']>
+            ): void {
+                originalStart.apply(this, args);
+                evidence.starts++;
+                // This proves a real source starts with non-silent PCM; it is not output metering.
+                if (this.buffer && !examined.has(this.buffer)) {
+                    examined.add(this.buffer);
+                    const samples = this.buffer.getChannelData(0);
+                    for (const sample of samples)
+                        evidence.samplePeak = Math.max(evidence.samplePeak, Math.abs(sample));
+                }
+            };
+        });
+        await page.goto(`audio_piano.html?backend=${backend}&test=1`);
+        const body = page.locator('body');
+        const soundPanel = page.locator('#soundPanel');
+        const settingsToggle = page.locator('#settingsToggle');
+        const state = (): Promise<PianoState> =>
+            page.evaluate(() => {
+                const snapshot = window.__PIANO_STATE__;
+                if (!snapshot) throw new Error('The piano must expose its read-only state');
+                return snapshot;
+            });
+        const sourceEvidence = (): Promise<PianoSourceEvidence> =>
+            page.evaluate(() => {
+                const evidence = window.__PIANO_SOURCE_EVIDENCE__;
+                if (!evidence) throw new Error('The piano test requires native source evidence');
+                return evidence;
+            });
+        await expect(body).toHaveAttribute('data-runtime', 'ready');
+        await expect(body).toHaveAttribute('data-audio-state', 'idle');
+        await expect(page.locator('#pieceTitle')).toHaveText('Call of Silence');
+        await expect(page.locator('#pieceDetail')).toHaveText('钢琴独奏 · 69 小节 · 84 BPM');
+        await expect(soundPanel).toBeHidden();
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('.score-link')).toHaveAttribute(
+            'href',
+            './audio/call-of-silence.pdf'
+        );
+        const scorePdf = await page.request.get(
+            new URL('./audio/call-of-silence.pdf', page.url()).href
+        );
+        expect(scorePdf.ok(), 'The bundled source score must be available beside the example').toBe(
+            true
+        );
+        expect((await scorePdf.body()).subarray(0, 5).toString()).toBe('%PDF-');
+        expect((await sourceEvidence()).starts).toBe(0);
+        await expect
+            .poll(async () => completedRenderCommands(await readRenderHealth(page), backend))
+            .toBeGreaterThan(0);
+        const idleCapture = await captureStableFrame(page, backend, {
+            frames: 2,
+            style: '.pianoOverlay { visibility: hidden !important; }'
+        });
+        await testInfo.attach(`piano-idle-${backend}`, {
+            body: idleCapture,
+            contentType: 'image/png'
+        });
+        const idleScene = PNG.sync.read(idleCapture);
+        const idleLuminance = meanSceneLuminance(idleScene);
+        await page.locator('#enableAudio').click();
+        await expect(body).toHaveAttribute('data-audio-state', 'running');
+        expect((await sourceEvidence()).starts).toBe(0);
+
+        const middleC = page.locator('#keyboard [data-midi="60"]');
+        await middleC.hover();
+        await page.mouse.down();
+        await expect(middleC).toHaveAttribute('data-active', 'true');
+        await expect(page.locator('#lastNote')).toHaveText('C4');
+        await expect.poll(async () => (await sourceEvidence()).starts).toBeGreaterThan(0);
+        expect((await sourceEvidence()).samplePeak).toBeGreaterThan(0.01);
+        await page.mouse.up();
+        await expect(middleC).toHaveAttribute('data-active', 'false');
+
+        const pointerNotes = (await state()).noteCount;
+        await page.keyboard.down('a');
+        await page.keyboard.down('w');
+        await expect(page.locator('#lastNote')).toHaveText('C#4');
+        await expect.poll(async () => (await state()).noteCount).toBe(pointerNotes + 2);
+        await expect.poll(async () => (await state()).activeVoices).toBeGreaterThan(1);
+        await page.keyboard.up('w');
+        await page.keyboard.up('a');
+
+        // Releasing Enter after focus moves must not leave the original button's note held.
+        await middleC.focus();
+        await page.keyboard.down('Enter');
+        await expect(middleC).toHaveAttribute('data-active', 'true');
+        await page.keyboard.press('Tab');
+        await expect(middleC).not.toBeFocused();
+        await page.keyboard.up('Enter');
+        await expect(middleC).toHaveAttribute('data-active', 'false');
+        await expect.poll(async () => (await state()).activeVoices, { timeout: 2_000 }).toBe(0);
+
+        await page.locator('#sustainToggle').click();
+        await expect(page.locator('#sustainToggle')).toHaveAttribute('aria-pressed', 'true');
+        expect((await state()).sustain).toBe(true);
+        await page.keyboard.press('s');
+        await expect(page.locator('#lastNote')).toHaveText('D4');
+        await expect.poll(async () => (await state()).activeVoices).toBeGreaterThan(0);
+        await page.locator('#sustainToggle').click();
+        expect((await state()).sustain).toBe(false);
+        await settingsToggle.click();
+        await expect(soundPanel).toBeVisible();
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
+        await page.locator('#volumeControl').fill('37');
+        await page.locator('#reverbControl').fill('26');
+        expect((await state()).volume).toBeCloseTo(0.37);
+        expect((await state()).reverb).toBeCloseTo(0.26);
+
+        // Keep a real chord held across the plume comparison, so expired notes cannot make the
+        // effects-off frame pass. Distinct notes must grow separate columns above their keys.
+        await middleC.focus();
+        const lowerChord = ['a', 's', 'd'] as const;
+        for (const key of lowerChord) await page.keyboard.down(key);
+        await expect(middleC).toHaveAttribute('data-active', 'true');
+        let performingCapture = idleCapture;
+        await expect
+            .poll(
+                async () => {
+                    performingCapture = await captureStableFrame(page, backend, {
+                        frames: 2,
+                        style: '.pianoOverlay { visibility: hidden !important; }'
+                    });
+                    const performing = PNG.sync.read(performingCapture);
+                    const luminance = meanSceneLuminance(performing);
+                    // The new plumes grow over time. Wait for the same pixel gates together,
+                    // rather than capture the first narrow column before its lighting develops.
+                    return {
+                        bluePlumes: inspectBluePlumes(performing, idleScene).coverage > 0.01,
+                        relativeIllumination: luminance > idleLuminance * 1.5,
+                        absoluteIllumination: luminance - idleLuminance > 1
+                    };
+                },
+                { timeout: 5_000 }
+            )
+            .toEqual({
+                bluePlumes: true,
+                relativeIllumination: true,
+                absoluteIllumination: true
+            });
+        await testInfo.attach(`piano-playing-${backend}`, {
+            body: performingCapture,
+            contentType: 'image/png'
+        });
+        const scene = PNG.sync.read(performingCapture);
+        const playingLuminance = meanSceneLuminance(scene);
+        expect(
+            playingLuminance,
+            'A held chord must illuminate the actual scene above its quiet atmosphere'
+        ).toBeGreaterThan(idleLuminance * 1.5);
+        expect(playingLuminance - idleLuminance).toBeGreaterThan(1);
+        const colors = new Set<number>();
+        let minimum = 255;
+        let maximum = 0;
+        // The UI is hidden, so text and controls cannot make a blank canvas pass this gate.
+        for (let y = 0; y < scene.height; y += 3) {
+            for (let x = 0; x < scene.width; x += 3) {
+                const offset = (y * scene.width + x) * 4;
+                const red = scene.data[offset] ?? 0;
+                const green = scene.data[offset + 1] ?? 0;
+                const blue = scene.data[offset + 2] ?? 0;
+                colors.add(((red >> 4) << 8) | ((green >> 4) << 4) | (blue >> 4));
+                const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+                minimum = Math.min(minimum, luminance);
+                maximum = Math.max(maximum, luminance);
+            }
+        }
+        expect(
+            colors.size,
+            'The piano stage must present varied rendered materials'
+        ).toBeGreaterThan(48);
+        expect(
+            maximum - minimum,
+            'The stage must preserve luminous forms and shadows'
+        ).toBeGreaterThan(90);
+
+        // Controls must remain live after capture releases its ticker pause.
+        await page.locator('#effectsToggle').click();
+        await expect(body).toHaveAttribute('data-effects', 'off');
+        expect((await state()).effects).toBe(false);
+        const unlitCapture = await captureStableFrame(page, backend, {
+            frames: 2,
+            style: '.pianoOverlay { visibility: hidden !important; }'
+        });
+        await testInfo.attach(`piano-effects-off-${backend}`, {
+            body: unlitCapture,
+            contentType: 'image/png'
+        });
+        const unlit = PNG.sync.read(unlitCapture);
+        let changed = 0;
+        for (let offset = 0; offset < scene.data.length; offset += 4) {
+            const difference = Math.max(
+                Math.abs((scene.data[offset] ?? 0) - (unlit.data[offset] ?? 0)),
+                Math.abs((scene.data[offset + 1] ?? 0) - (unlit.data[offset + 1] ?? 0)),
+                Math.abs((scene.data[offset + 2] ?? 0) - (unlit.data[offset + 2] ?? 0))
+            );
+            if (difference > 12) changed++;
+        }
+        expect(
+            changed / (scene.width * scene.height),
+            'Disabling effects must change real stage pixels'
+        ).toBeGreaterThan(0.001);
+        expect(
+            inspectBluePlumes(unlit, idleScene).coverage,
+            'Disabling effects must remove the blue columns while the chord remains held'
+        ).toBeLessThan(inspectBluePlumes(scene, idleScene).coverage * 0.2);
+        await page.locator('#effectsToggle').click();
+        await expect(body).toHaveAttribute('data-effects', 'on');
+        await expect(middleC).toHaveAttribute('data-active', 'true');
+        // Wait beyond the longest individual bubble lifetime: a held chord must keep emitting,
+        // rather than displaying only the original attack burst or a static screenshot.
+        await page.waitForTimeout(3_300);
+        const sustainedCapture = await captureStableFrame(page, backend, {
+            frames: 2,
+            style: '.pianoOverlay { visibility: hidden !important; }'
+        });
+        const sustainedScene = PNG.sync.read(sustainedCapture);
+        const sustainedLuminance = meanSceneLuminance(sustainedScene);
+        const lowerPlumes = inspectBluePlumes(sustainedScene, idleScene);
+        expect(
+            lowerPlumes.coverage,
+            'Held keys must continuously renew their plumes'
+        ).toBeGreaterThan(0.01);
+        await testInfo.attach(`piano-sustained-${backend}`, {
+            body: sustainedCapture,
+            contentType: 'image/png'
+        });
+        for (const key of lowerChord) await page.keyboard.up(key);
+        await expect(middleC).toHaveAttribute('data-active', 'false');
+        let fadedCapture = performingCapture;
+        await expect
+            .poll(async () => {
+                fadedCapture = await captureStableFrame(page, backend, {
+                    frames: 2,
+                    style: '.pianoOverlay { visibility: hidden !important; }'
+                });
+                const faded = PNG.sync.read(fadedCapture);
+                // Compare the fade against the lit frame immediately before release, rather than
+                // the earlier growing frame taken before toggling effects. Every original fade
+                // gate must settle together; a low average cannot hide surviving plumes.
+                return Math.max(
+                    meanSceneLuminance(faded) / (idleLuminance + Math.max(1, idleLuminance * 0.2)),
+                    meanSceneLuminance(faded) / (sustainedLuminance * 0.65),
+                    inspectBluePlumes(faded, idleScene).coverage / (lowerPlumes.coverage * 0.1)
+                );
+            })
+            .toBeLessThan(1);
+        expect(
+            meanSceneLuminance(PNG.sync.read(fadedCapture)),
+            'Releasing the note must let its illumination fade back into darkness'
+        ).toBeLessThan(sustainedLuminance * 0.65);
+        await testInfo.attach(`piano-faded-${backend}`, {
+            body: fadedCapture,
+            contentType: 'image/png'
+        });
+        expect(inspectBluePlumes(PNG.sync.read(fadedCapture), idleScene).coverage).toBeLessThan(
+            lowerPlumes.coverage * 0.1
+        );
+
+        const upperChord = ['k', 'l', ';'] as const;
+        for (const key of upperChord) await page.keyboard.down(key);
+        let upperCapture = fadedCapture;
+        await expect
+            .poll(async () => {
+                upperCapture = await captureStableFrame(page, backend, {
+                    frames: 2,
+                    style: '.pianoOverlay { visibility: hidden !important; }'
+                });
+                return inspectBluePlumes(PNG.sync.read(upperCapture), idleScene).coverage;
+            })
+            .toBeGreaterThan(0.01);
+        expect(
+            inspectBluePlumes(PNG.sync.read(upperCapture), idleScene).centerX - lowerPlumes.centerX,
+            'Playing higher keys must move the blue plume columns with their key positions'
+        ).toBeGreaterThan(scene.width * 0.06);
+        await testInfo.attach(`piano-upper-keys-${backend}`, {
+            body: upperCapture,
+            contentType: 'image/png'
+        });
+        for (const key of upperChord) await page.keyboard.up(key);
+        const notesBeforeDemo = (await state()).noteCount;
+        const sourcesBeforeDemo = (await sourceEvidence()).starts;
+        await page.evaluate(() => {
+            const lastNote = document.querySelector('#lastNote');
+            const evidence = window.__PIANO_SOURCE_EVIDENCE__;
+            if (!lastNote || !evidence)
+                throw new Error('Default score playback evidence is missing');
+            // Observe the real audio-clock callback without mutating the score or scheduler.
+            // Added text nodes preserve each event even if two callbacks share one browser turn.
+            const observer = new MutationObserver(records => {
+                for (const record of records)
+                    for (const node of record.addedNodes) {
+                        const name = node.textContent;
+                        if (name && evidence.demoNotes.length < 2) evidence.demoNotes.push(name);
+                    }
+                if (evidence.demoNotes.length >= 2) observer.disconnect();
+            });
+            observer.observe(lastNote, { childList: true });
+        });
+        await page.locator('#demoToggle').click();
+        await expect(page.locator('#demoToggle')).toHaveAttribute('aria-pressed', 'true');
+        await expect.poll(async () => (await sourceEvidence()).demoNotes).toEqual(['A4', 'C5']);
+        expect((await sourceEvidence()).starts).toBeGreaterThanOrEqual(sourcesBeforeDemo + 2);
+        await expect
+            .poll(async () => (await state()).noteCount)
+            .toBeGreaterThan(notesBeforeDemo + 1);
+        await page.locator('#demoToggle').click();
+        await expect(page.locator('#demoToggle')).toHaveAttribute('aria-pressed', 'false');
+        expect((await state()).demoPlaying).toBe(false);
+
+        // Two simultaneous, two-second notes in a format 0 MIDI file at the default 120 BPM.
+        await page.locator('#midiFile').setInputFiles({
+            name: 'local-nocturne.mid',
+            mimeType: 'audio/midi',
+            buffer: Buffer.from(
+                '4d546864000000060000000101e04d54726b00000015009040640090435c8f008040000080430000ff2f00',
+                'hex'
+            )
+        });
+        await expect(page.locator('#pieceTitle')).toContainText('local-nocturne');
+        const importedNotes = (await state()).noteCount;
+        const importedSources = (await sourceEvidence()).starts;
+        await page.locator('#demoToggle').click();
+        await expect.poll(async () => (await state()).noteCount).toBe(importedNotes + 2);
+        expect((await sourceEvidence()).starts).toBe(importedSources + 2);
+        await page.locator('#demoToggle').click();
+        expect((await state()).demoPlaying).toBe(false);
+
+        await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+        );
+        await expect(body).toHaveAttribute('data-runtime', 'suspended');
+        expect((await state()).disposed).toBe(false);
+        await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+        );
+        await expect(body).toHaveAttribute('data-runtime', 'ready');
+        const notesBeforeRestore = (await state()).noteCount;
+        await page.keyboard.press('d');
+        await expect.poll(async () => (await state()).noteCount).toBe(notesBeforeRestore + 1);
+        await settingsToggle.click();
+        await expect(soundPanel).toBeHidden();
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'false');
+        await testInfo.attach(`piano-interface-${backend}`, {
+            body: await captureStableFrame(page, backend, { frames: 2 }),
+            contentType: 'image/png'
+        });
+        await awaitTrackedGPUQueues(page);
+        const health = await readRenderHealth(page);
+        expect(completedRenderCommands(health, backend)).toBeGreaterThan(0);
+        expect(instrumentationErrors(health, backend)).toEqual([]);
+        await expect(page.locator('#error')).toBeEmpty();
+
+        await page.evaluate(() =>
+            window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
+        );
+        await expect(body).toHaveAttribute('data-runtime', 'destroyed');
+        expect((await state()).disposed).toBe(true);
+        const finalSources = (await sourceEvidence()).starts;
+        const finalDraws = completedRenderCommands(await readRenderHealth(page), backend);
+        await page.keyboard.press('a');
+        // Keep the document alive to observe callbacks after ticker/audio resource disposal.
+        await waitForStableAnimationFrames(page);
+        await awaitTrackedGPUQueues(page);
+        expect((await sourceEvidence()).starts).toBe(finalSources);
+        const disposedHealth = await readRenderHealth(page);
+        expect(completedRenderCommands(disposedHealth, backend)).toBe(finalDraws);
+        expect(instrumentationErrors(disposedHealth, backend)).toEqual([]);
+        expect(errors).toEqual([]);
+    });
+
+    test(`audio piano preserves a cached page while scene assets are loading @${backend}`, async ({
+        page
+    }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('console', message => {
+            if (message.type() === 'error') errors.push(message.text());
+        });
+        await installRenderHealthProbe(page);
+        let assetRequested = false;
+        let releaseAssets: (() => void) | undefined;
+        const assetGate = new Promise<void>(resolve => {
+            releaseAssets = resolve;
+        });
+        await page.route('**/photo-studio-loft-hall/diffuse.rgbd', async route => {
+            assetRequested = true;
+            await assetGate;
+            await route.continue();
+        });
+        try {
+            await page.goto(`audio_piano.html?backend=${backend}&test=1`, {
+                waitUntil: 'domcontentloaded'
+            });
+            await expect.poll(() => assetRequested).toBe(true);
+            await expect(page.locator('#enableAudio')).toBeDisabled();
+            await page.evaluate(() =>
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-runtime', 'suspended');
+            releaseAssets?.();
+            // Initialization may finish while cached, but it must not start a hidden frame loop.
+            await expect(page.locator('#enableAudio')).toBeEnabled();
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            await expect(page.locator('body')).toHaveAttribute('data-runtime', 'suspended');
+            const suspendedHealth = await readRenderHealth(page);
+            expect(completedRenderCommands(suspendedHealth, backend)).toBe(0);
+            expect(instrumentationErrors(suspendedHealth, backend)).toEqual([]);
+
+            await page.evaluate(() =>
+                window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-runtime', 'ready');
+            await expect
+                .poll(async () => completedRenderCommands(await readRenderHealth(page), backend))
+                .toBeGreaterThan(0);
+            const capture = await captureStableFrame(page, backend, {
+                frames: 2,
+                style: '.pianoOverlay { visibility: hidden !important; }'
+            });
+            expect(inspectCompositorPng(capture, page.url()).distinctColorCount).toBeGreaterThan(1);
+            await expect(page.locator('#error')).toBeEmpty();
+
+            // Autoplay is also an audio-unlock gesture; both controls must reflect that state.
+            await expect(page.locator('body')).toHaveAttribute('data-audio-state', 'idle');
+            await page.locator('#demoToggle').click();
+            await expect(page.locator('body')).toHaveAttribute('data-audio-state', 'running');
+            await expect(page.locator('#enableAudio')).toHaveAttribute('data-enabled', 'true');
+            await expect(page.locator('#enableAudio')).toContainText('声音已开启');
+            await expect(page.locator('#demoToggle')).toHaveAttribute('aria-pressed', 'true');
+
+            await page.evaluate(() =>
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
+            );
+            await expect(page.locator('body')).toHaveAttribute('data-runtime', 'destroyed');
+            await waitForStableAnimationFrames(page);
+            await awaitTrackedGPUQueues(page);
+            expect(instrumentationErrors(await readRenderHealth(page), backend)).toEqual([]);
+            expect(errors).toEqual([]);
+        } finally {
+            releaseAssets?.();
+        }
+    });
+
     test(`asset residency lab changes demand and tears down cleanly @${backend}`, async ({
         page
     }) => {
@@ -264,6 +791,23 @@ async function expectVisibleCanvasPresentations(
     examplePath: string,
     backend: ExampleBackend
 ): Promise<void> {
+    if (examplePath === 'audio_piano.html') {
+        // Keep production resolution while yielding the continuously animated showcase's ticker
+        // for its compositor capture. The shared helper waits for real submission completion.
+        const png = await captureStableFrame(page, backend, {
+            frames: 2,
+            style: '.pianoOverlay { visibility: hidden !important; }'
+        });
+        expect(
+            canvasPresentationsAreVisible([inspectCompositorPng(png, page.url())]),
+            `${examplePath} must present a visible non-uniform ${backend} frame`
+        ).toBe(true);
+        const capturedDraws = completedRenderCommands(await readRenderHealth(page), backend);
+        await expect
+            .poll(async () => completedRenderCommands(await readRenderHealth(page), backend))
+            .toBeGreaterThan(capturedDraws);
+        return;
+    }
     const deadline = Date.now() + PRESENTATION_TIMEOUT;
     let presentations: readonly CanvasPresentation[] = [];
     // Do not discard a valid compositor read merely because the read itself crossed the deadline.
@@ -535,7 +1079,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         const topics = page.locator('#categorySelect');
         const results = page.locator('.exampleButton');
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (3)');
-        await expect(page.locator('#exampleCount')).toHaveText('25 of 25 highlights');
+        await expect(page.locator('#exampleCount')).toHaveText('26 of 26 highlights');
         await topics.selectOption('2d');
         await expect(results).toHaveCount(3);
         await page.locator('#exampleSearch').fill('Sprite Batching');
@@ -549,7 +1093,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (6)');
         await page.locator('#featuredMode').click();
         await expect(results).toHaveCount(3);
-        await expect(page.locator('#exampleCount')).toHaveText('3 of 25 highlights');
+        await expect(page.locator('#exampleCount')).toHaveText('3 of 26 highlights');
         await page.locator('#allMode').click();
         await page.locator('#categorySelect').selectOption('rendering');
         await page.locator('#exampleSearch').fill('texture depth');

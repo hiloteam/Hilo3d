@@ -59,6 +59,7 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
+    'audio_piano.html': { test: '1', quality: 'production' },
     'live2d.html': { test: '1' },
     'cascaded_shadows.html': { test: '1' },
     'clustered_forward_plus_lumen.html': { test: '1' },

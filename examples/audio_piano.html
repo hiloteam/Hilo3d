@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#080d12" />
+        <meta
+            name="description"
+            content="NOCTURNE 魔法钢琴。弹奏一架星光中的三角钢琴，聆听空间音频、延音与音乐厅混响。"
+        />
+        <title>NOCTURNE · 魔法钢琴 — Audio · Hilo3D</title>
+        <link rel="stylesheet" href="./audio_piano.css" />
+    </head>
+    <body>
+        <div id="container" aria-label="三维钢琴舞台，拖动环绕，滚轮缩放"></div>
+        <main class="pianoOverlay">
+            <header class="masthead">
+                <a class="brand" href="./index.html"
+                    ><span class="brand-icon">H</span> HILO3D
+                    <span class="brand-series"><i>/</i> SOUND STUDIES</span></a
+                >
+                <span class="edition">THE SHAPE OF SOUND <i>№ 001</i></span>
+                <div class="header-tools">
+                    <button
+                        id="settingsToggle"
+                        type="button"
+                        aria-expanded="false"
+                        aria-controls="soundPanel"
+                    >
+                        声音设置</button
+                    ><span class="backend"><b></b><span id="backendLabel">PREPARING</span></span>
+                </div>
+            </header>
+            <section class="introduction">
+                <p class="eyebrow"><span></span> EVERY NOTE, A LIVING LIGHT</p>
+                <h1>Nocturne<span>.</span></h1>
+                <p class="title-cn">魔 法 钢 琴 <span>OPUS 01</span></p>
+                <p class="description">让旋律，在暗处发光。</p>
+                <button id="enableAudio" class="enable-button" type="button" disabled>
+                    <span aria-hidden="true">◖♪</span> 开启声音 <span aria-hidden="true">↗</span>
+                </button>
+                <p id="audioState" class="audio-state" role="status">正在布置舞台</p>
+                <p id="error" role="alert"></p>
+            </section>
+            <aside id="soundPanel" class="sound-panel" aria-label="声音设置" hidden>
+                <p class="panel-label">THE LISTENING ROOM <span>↗</span></p>
+                <label for="volumeControl">音量 <output id="volumeOutput">65%</output></label>
+                <input
+                    id="volumeControl"
+                    aria-label="音量"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="65"
+                />
+                <label for="reverbControl">空间混响 <output id="reverbOutput">48%</output></label>
+                <input
+                    id="reverbControl"
+                    aria-label="空间混响"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="48"
+                />
+                <div class="panel-divider"></div>
+                <label class="midi-label" for="midiFile">导入 MIDI <span>↥</span></label
+                ><input
+                    id="midiFile"
+                    class="midi-file"
+                    type="file"
+                    accept=".mid,.midi"
+                    aria-label="导入 MIDI"
+                /><a
+                    class="score-link"
+                    href="./audio/call-of-silence.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >Call of Silence · 钢琴谱 ↗</a
+                >
+                <button id="effectsToggle" type="button" aria-pressed="true">
+                    光影特效 <span class="toggle-track"></span>
+                </button>
+                <button id="resetView" class="reset" type="button">↺ &nbsp; 回到舞台</button>
+            </aside>
+            <div class="scene-caption">
+                <span class="caption-rule"></span> BLUE NOTES / LIVE
+                <span>光随音起 · 余韵未散</span>
+            </div>
+            <section class="instrument" aria-label="钢琴键盘">
+                <div class="instrument-toolbar">
+                    <div class="piece">
+                        <span class="piece-mark">♫</span>
+                        <div>
+                            <strong id="pieceTitle">Call of Silence</strong
+                            ><small id="pieceDetail"
+                                >钢琴独奏 <i>·</i> 69 小节 <i>·</i> 84 BPM</small
+                            >
+                        </div>
+                    </div>
+                    <div class="transport">
+                        <button id="demoToggle" type="button" aria-pressed="false" disabled>
+                            <span aria-hidden="true">▷</span> 自动演奏</button
+                        ><button id="importMidi" class="import-mobile" type="button">
+                            导入 MIDI ↥
+                        </button>
+                        <button id="sustainToggle" type="button" aria-pressed="false">
+                            延音踏板 <kbd>SPACE</kbd>
+                        </button>
+                    </div>
+                    <div class="note-display">
+                        <span id="lastNote">—</span><small>LAST NOTE</small>
+                    </div>
+                </div>
+                <div
+                    id="keyboard"
+                    class="keyboard"
+                    aria-label="C3 至 C6，可用鼠标、触屏或电脑键盘演奏"
+                ></div>
+                <div class="instrument-footer">
+                    <span>点击琴键弹奏 <i>·</i> A–L 白键 / W E T Y U 黑键 <i>·</i> 空格延音</span
+                    ><span
+                        ><b id="voiceCount">0</b> VOICES <i>/</i>
+                        <b id="noteCount">0</b> NOTES</span
+                    >
+                </div>
+            </section>
+            <footer class="page-footer">
+                <span>LISTEN WITH YOUR EYES</span
+                ><span>拖动环绕 <i>·</i> 滚轮靠近 <a href="./index.html">探索更多 ↗</a></span>
+            </footer>
+        </main>
+        <script type="module" src="./audio_piano.ts"></script>
+    </body>
+</html>

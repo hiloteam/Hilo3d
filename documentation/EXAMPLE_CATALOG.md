@@ -1,14 +1,14 @@
 # 示例目录整理
 
-核对日期：2026-09-22。范围：99 个 HTML 入口，其中 97 个场景示例、两个画廊入口。
+核对日期：2026-10-05。范围：100 个 HTML 入口，其中 98 个场景示例、两个画廊入口。
 
 ## 整理结果
 
 - 目录改为逐项审阅的元数据，删除文件名正则分类、自动拼标题和通用套话。新增页面仍由递归 HTML 扫描发现，缺少说明会直接报错。
-- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景后现为 25 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
+- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景和 NOCTURNE 交互钢琴后现为 26 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
-- 每个示例有独立用途。既有场景保留原 URL，新增 Atelier 后共有 94 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
+- 每个示例有独立用途。既有场景保留原 URL，当前共有 98 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
 - 静态构建删除 Blender 创作源文件的复制路径，运行时资产保留；仓库中的原始创作文件与授权说明保留。
 - 画廊提供多词搜索、中文主题关键词、主题/后端筛选、URL 状态、浏览器前进后退、手机键盘导航和加载失败重试。主题数量和筛选结果遵循当前 Highlights
@@ -16,6 +16,13 @@
 
 Atelier 归入 Lighting &
 shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景，其中 4 个精选。
+
+新增 Audio 主题及精选
+[NOCTURNE — 魔法钢琴](../examples/audio_piano.html)，在黑暗空间里弹奏石墨色钢琴，每个琴键分别生长青蓝星尘与流动光羽，展示程序化着色器、空间声源和立体声卷积混响，也支持导入仅在页面内存中处理的本地 MIDI 曲谱。冷色轮廓光勾勒琴体；细尘、稀疏亮点和卷曲薄雾随音符生长并消散，演奏时显出极淡的程序化星云。默认演奏用户提供并确认可使用的
+[Call of Silence 钢琴 PDF](../examples/audio/call-of-silence.pdf)
+转录曲谱，保留双手声部、69 小节与延音线，采用 84
+BPM。美术灵感来自何同学的魔法钢琴：静默时保持黑暗，演奏时由音符各自点亮琴键上方，按住继续发光，松键后渐暗；舞台没有地面光圈。声音经用户手势启动，渲染支持 WebGL
+2 与 WebGPU。
 
 ## 相似示例的保留理由
 
@@ -89,6 +96,7 @@ shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景�
 | [animation](../examples/animation.html)                                                             | 精选 | animation       | Blend animation clips and inspect layered motion on a procedural character.                                                                                                                                     |
 | [custom_anim_state](../examples/custom_anim_state.html)                                             | 保留 | animation       | Animate a texture atlas through typed custom animation state and UV transforms.                                                                                                                                 |
 | [live2d](../examples/live2d.html)                                                                   | 保留 | animation       | Animate the official Miku sample with eight motions, pointer follow, physics, and close-up views through the shared WebGL 2 and WebGPU renderer.                                                                |
+| [audio_piano](../examples/audio_piano.html)                                                         | 精选 | audio           | Play the supplied Call of Silence piano score with blue bioluminescent plumes, procedural shaders, spatial voices and convolution reverb, or import a local MIDI arrangement.                                   |
 | [particle_collision_theatre](../examples/particle_collision_theatre.html)                           | 保留 | particles       | Release a shower of light onto four polished surfaces. Real particle collisions scatter sparks within a quiet architectural frame.                                                                              |
 | [particle_elemental_forge](../examples/particle_elemental_forge.html)                               | 精选 | particles       | Molten light rises through a brass instrument: eight emission shapes, fine embers, cold mineral dust, and a calibrated circular plinth.                                                                         |
 | [particle_gpu_nebula](../examples/particle_gpu_nebula.html)                                         | 精选 | particles       | A copper accretion disk surrounds a dark core, with glacial dust, WebGPU simulation and resident event routing, plus portable stateless stars.                                                                  |
