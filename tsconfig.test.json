@@ -17,6 +17,8 @@
   "include": [
     "benchmarks/**/*.ts",
     "examples/shared/catalog.ts",
+    "examples/shared/pianoAudio.ts",
+    "examples/shared/pianoMidi.ts",
     "examples/shared/test-frame-control.ts",
     "examples/physics/materialExperiments.ts",
     "examples/physics/characterExperiment.ts",

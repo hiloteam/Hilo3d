@@ -83,11 +83,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(99);
+        expect(examplePaths).toHaveLength(100);
     });
 
-    it('expands 99 pages into the complete 183-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(183);
+    it('expands 100 pages into the complete 185-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(185);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -121,7 +121,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(97);
+        expect(catalog).toHaveLength(98);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -130,8 +130,8 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(83);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(96);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(84);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(97);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -200,7 +200,7 @@ describe('example release matrix contract', () => {
             'Duplicate example paths'
         );
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog.filter(entry => entry.featured)).toHaveLength(25);
+        expect(catalog.filter(entry => entry.featured)).toHaveLength(26);
         expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
         expect(
             catalog.find(entry => entry.path === 'dynamic_global_illumination_atelier.html')
@@ -210,6 +210,18 @@ describe('example release matrix contract', () => {
             featured: true,
             supportedBackends: ['webgpu']
         });
+        const piano = catalog.find(entry => entry.path === 'audio_piano.html');
+        expect(piano).toMatchObject({
+            title: 'NOCTURNE — 魔法钢琴',
+            category: 'audio',
+            featured: true,
+            supportedBackends: ['webgl2', 'webgpu']
+        });
+        if (!piano) throw new Error('Missing piano example');
+        expect(matchesExampleSearch(piano, '钢琴 混响')).toBe(true);
+        expect(matchesExampleSearch(piano, '魔法 plumes')).toBe(true);
+        expect(matchesExampleSearch(piano, 'spatial piano')).toBe(true);
+        expect(matchesExampleSearch(piano, 'midi 曲谱')).toBe(true);
         const categories: Readonly<Record<string, string>> = {
             'depthTexture.html': 'rendering',
             'normal_map.html': 'materials',
@@ -401,7 +413,7 @@ describe('example release matrix contract', () => {
         const dedicatedCases = DEDICATED_RELEASE_TEST_EXAMPLE_PATHS.flatMap(path =>
             backendsForExample(path).map(backend => ({ path, backend }))
         );
-        expect(genericCases).toHaveLength(155);
+        expect(genericCases).toHaveLength(157);
         expect(
             [...genericCases, ...dedicatedCases].map(item => `${item.path}:${item.backend}`).sort()
         ).toEqual(exampleCases.map(item => `${item.path}:${item.backend}`).sort());
@@ -432,6 +444,7 @@ describe('example release matrix contract', () => {
             'resourceManagerTest.html': 'resource-diagnostics'
         });
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
+            'audio_piano.html': { test: '1', quality: 'production' },
             'live2d.html': { test: '1' },
             'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
