@@ -32,8 +32,8 @@ addons are isolated in their own recipe modules. This is type/build evidence, no
 rendering or lifetime test. Existing browser fixtures remain the runtime evidence for the referenced
 APIs.
 
-See [version policy](./VERSIONS.md). A development checkout carrying alpha.8 plus Unreleased changes
-must never be labeled as the alpha.8 npm API. Site provenance is generated from the actual build;
+See [version policy](./VERSIONS.md). A development checkout or prepared release candidate must never
+be labeled as an already published npm API. Site provenance is generated from the actual build;
 release publication and physical performance results must be verified separately.
 
 ## Consumer task checklist

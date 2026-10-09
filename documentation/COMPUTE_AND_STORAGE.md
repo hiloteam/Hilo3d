@@ -91,8 +91,8 @@ draws. Such future work needs explicit contracts rather than a native handle esc
 Production consumers include [Clustered rendering](./MODERN_WEBGPU_RENDERING_ROADMAP.md),
 [particles](./PARTICLE_SYSTEM.md), [auto exposure](./PBR_AND_POST_PROCESSING.md),
 [atmosphere](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) and [DDGI](./DYNAMIC_GLOBAL_ILLUMINATION.md).
-DDGI is currently an Unreleased source feature; consult [versions](./VERSIONS.md) before using it
-with an npm tarball.
+DDGI is prepared for alpha.9 (publication pending); consult [versions](./VERSIONS.md) before using
+it with an npm tarball.
 
 The [GPU-driven example](../examples/compute_gpu_driven.ts),
 [specialized particles](../examples/compute_particles.ts) and

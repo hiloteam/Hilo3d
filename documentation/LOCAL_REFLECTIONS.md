@@ -1,9 +1,10 @@
 # Local specular reflections
 
-**Unreleased source feature.** `ReflectionProbe` and `ReflectionProbePipelineFactory` add local
-specular radiance to the shared PBR renderer on WebGL2 and WebGPU. This is separate from diffuse
-DDGI. The implementation uses ordinary scene lists, Render Graph, portable RHI and one GLSL → Naga
-raster source. It requires no compute or hardware ray-tracing capability.
+**Prepared for alpha.9; publication pending.** `ReflectionProbe` and
+`ReflectionProbePipelineFactory` add local specular radiance to the shared PBR renderer on WebGL2
+and WebGPU. This is separate from diffuse DDGI. The implementation uses ordinary scene lists, Render
+Graph, portable RHI and one GLSL → Naga raster source. It requires no compute or hardware
+ray-tracing capability.
 
 ![Adjacent on native WebGPU](./images/reflections/adjacent-native.png)
 

@@ -1,7 +1,8 @@
 # @hilo/addon-assets
 
-Unreleased A0 texture streaming for Hilo3D. This checkout still uses the alpha.8 development package
-version; the new package/API must not be assumed to exist in that published release.
+A0 texture streaming for the prepared Hilo3D 2.0.0-alpha.9 release. Publication is pending; this
+package/API is absent from alpha.8. Install the exact matching core and addon versions after
+release.
 
 An optional ESM addon owns KTX2/Basis requests, dedicated module workers, shared asset identities,
 reference-counted leases, visibility/LOD demand and bounded texture residency. The core owns GPU

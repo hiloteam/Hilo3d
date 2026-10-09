@@ -5,9 +5,9 @@
 
 This index describes the current source documentation, which may include Unreleased features. For
 the 2.0 alpha install `hilo3d@next`, resolve an exact version, and use that package's declarations.
-The unqualified `latest` channel may select 1.x. Optional particle/physics addons must match the
-core. DDGI currently belongs to Unreleased development; do not infer availability from package.json
-alone.
+The unqualified `latest` channel may select 1.x. All five optional addons must match the exact core
+version. DDGI, Live2D, assets and audio are prepared for alpha.9, with publication pending; consult
+the version boundaries before installing.
 
 <!-- build-provenance -->
 
@@ -37,8 +37,8 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
   filmic and WebGPU auto exposure.
 - [Particles](./documentation/PARTICLE_SYSTEM.md): Optional addon, CPU/GPU/stateless plans and
   authoring contracts.
-- [Audio](./documentation/AUDIO.md): Unreleased optional spatial sound, bounded voices, mixing,
-  streaming and lifecycle.
+- [Audio](./documentation/AUDIO.md): Optional spatial sound (alpha.9 candidate), bounded voices,
+  mixing, streaming and lifecycle.
 - [Physics](./documentation/PHYSICS_ARCHITECTURE.md): Optional Stage Systems and independent Rapier
   2D/3D adapters.
 - [Example catalog](./documentation/EXAMPLE_CATALOG.md): Focused examples and backend requirements.
@@ -60,17 +60,21 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
 - [GTAO](./documentation/GROUND_TRUTH_AMBIENT_OCCLUSION.md): Portable ambient visibility.
 - [SSR](./documentation/SCREEN_SPACE_REFLECTIONS.md): WebGPU Clustered reflections and miss
   fallback.
-- [Local reflections](./documentation/LOCAL_REFLECTIONS.md): Unreleased portable box-projected
-  probes, blending, dynamic HDR captures and shared SSR fallback.
+- [Local reflections](./documentation/LOCAL_REFLECTIONS.md): Portable box-projected (alpha.9
+  candidate) probes, blending, dynamic HDR captures and shared SSR fallback.
 - [SSGI](./documentation/SCREEN_SPACE_GLOBAL_ILLUMINATION.md): Portable screen-space diffuse
   lighting.
-- [DDGI](./documentation/DYNAMIC_GLOBAL_ILLUMINATION.md): Unreleased WebGPU world-space diffuse GI
-  and hybrid SSGI.
+- [DDGI](./documentation/DYNAMIC_GLOBAL_ILLUMINATION.md): WebGPU world-space diffuse GI (alpha.9
+  candidate) and hybrid SSGI.
 - [Volumetrics](./documentation/VOLUMETRIC_LIGHTING.md): WebGPU Clustered fog and froxels.
 - [Atmosphere](./documentation/PHYSICAL_ATMOSPHERE_AND_WEATHER.md): LUTs, clouds, shadows and
   exposure.
 
 ## Optional
+
+- [Asset streaming](./documentation/ASSET_STREAMING.md): Alpha.9 candidate KTX2 workers, leases and
+  bounded texture residency.
+- [Live2D](./documentation/LIVE2D.md): Alpha.9 candidate model loading, local runtime and lifecycle.
 
 - [Contributor instructions](./AGENTS.md): Rules for changing the engine repository, not consumer
   applications.

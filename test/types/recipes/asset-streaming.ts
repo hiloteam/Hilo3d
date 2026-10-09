@@ -6,7 +6,7 @@ import {
     type TextureAssetSource
 } from '@hilo/addon-assets';
 
-/** Unreleased asset addon recipe. Start ticking before awaiting lease.ready. */
+/** Start ticking before awaiting lease.ready. */
 export async function createStreamingScene(
     container: HTMLElement,
     source: Readonly<TextureAssetSource>

@@ -141,9 +141,9 @@ this self-hostable product scope.
 ## Audio extensions
 
 The optional [audio runtime](./AUDIO.md) implements bounded real/virtual voices, spatial sources,
-concurrency, mixing, cues, caching, streaming and Stage lifecycle in Unreleased source. Chromium PCM
-and package tests provide functional/allocation evidence; no native-engine parity or hardware
-latency claim is made. Follow-up work remains here:
+concurrency, mixing, cues, caching, streaming and Stage lifecycle in the prepared alpha.9 source.
+Chromium PCM and package tests provide functional/allocation evidence; no native-engine parity or
+hardware latency claim is made. Follow-up work remains here:
 
 - Gather physical-device CPU, end-to-end latency and mobile background/interruption evidence,
   including Safari/WebKit and Firefox.

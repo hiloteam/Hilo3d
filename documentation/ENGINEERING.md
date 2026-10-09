@@ -541,7 +541,7 @@ npm run release:tag:push
 `release:check` 保留为完整 `validate`
 的显式别名，可用于本地候选版本验收，但不再是 tag 发布步骤。功能提交 push 触发的普通 CI 负责单元、覆盖率、RHI、浏览器、视觉、文档、API 和包消费门禁；发布操作应在该提交的 CI 通过后进行。
 
-`release:tag:push` 要求工作区干净，确认根包与四个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
+`release:tag:push` 要求工作区干净，确认根包与五个 addon 的版本完全一致、可作为 Git tag，并拒绝本地或
 `origin` 上指向其他提交的同名 tag。命令创建带 `publish <version>` 注释的版本 tag，只推送
 `refs/tags/<version>`，再从远端核验其目标提交；同一提交上的重试是幂等的。
 
@@ -556,9 +556,27 @@ Publisher 必须为六个 npm 包分别绑定 `hiloteam/Hilo3d` 与 `publish.yml
 `id-token: write`。如 registry 只接受了部分包，可通过 workflow dispatch 传入已有 `release_tag`
 重试；workflow 会检出该 tag，并跳过 registry 中已经存在的同版本包。
 
+### 发布候选准备
+
+核心和五个 addon 同步更新 `version`，五个 addon 的 `peerDependencies.hilo3d`
+精确匹配核心，并同步 lockfile。把本次 CHANGELOG 条目归入目标版本；在 npm 接受发布前明确保留候选状态。更新
+`VERSIONS.md`、相关合同、recipes、addon README 和 `llms.txt`
+的可用版本边界，不要把未完成的功能或物理 GPU 性能证据改为已完成。recipe 代码先改源文件，再执行
+`npm run docs:sync`。
+
+技能位于
+`skills/hilo3d-game/`，不在 npm 包文件白名单内。新增公开能力时更新技能的路由和相应参考文档，并执行
+`npm run test:skill`。生成器自动解析 `next`
+并固定具体版本，无需为每次 alpha 发布修改解析逻辑；用户已经安装的技能需要单独更新。
+
+首次发布 addon 前，确认 npm 包名、组织权限和包级 Trusted
+Publisher 已准备好。新包不应假定已继承核心的发布配置；六个包分别绑定同一仓库和
+`publish.yml`。版本提交完成后等待该提交的 Required CI 通过，再推送版本 tag。成功后逐包核验版本、
+`next` 和精确 peer，并从干净 tag 构建带 provenance 的发布文档；最终删除对应的候选状态说明。
+
 `npm publish` 的 `prepublishOnly` 仍运行轻量 `publish:check`：现代性门禁和 tag/commit 复核。Hilo3D
-Skill 由 `validate` 与 `validate:ci` 中的 `test:skill` 回归，不在上传阶段重复高成本矩阵； `prepack`
-从 tagged source 重新构建 JS、source map 和声明。
+Skill 由普通 CI preflight 以及 `validate` 与 `validate:ci` 中的 `test:skill`
+回归，不在上传阶段重复高成本矩阵； `prepack` 从 tagged source 重新构建 JS、source map 和声明。
 
 ## 后续维护规则
 

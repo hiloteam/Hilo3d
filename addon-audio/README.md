@@ -1,8 +1,8 @@
 # @hilo/addon-audio
 
-Optional, strict TypeScript/ESM game audio for Hilo3D. **Unreleased source feature**: the workspace
-version is not evidence of an npm publication. Use the matching core/addon tarballs from this
-checkout until a release includes it.
+Optional, strict TypeScript/ESM game audio for Hilo3D. Prepared for **2.0.0-alpha.9**; npm
+publication is pending. Use matching core/addon tarballs from this checkout until publication, then
+install both packages at the exact same version.
 
 - Shared Web Audio runtime for either renderer, with no dependency from the core into the addon.
 - HRTF/equal-power 3D sound, distance curves, cones, explicit-velocity Doppler and budgeted
@@ -20,8 +20,8 @@ with `audio.clips.load(url)`; the returned lease must be released. Long music/di
 `audio.createStream(url)`. Destroy the engine (or its owning Stage) after stopping the frame loop.
 
 See the maintained
-[audio contract](https://github.com/hiloteam/Hilo3d/blob/main/documentation/AUDIO.md) and
-[checked recipe](https://github.com/hiloteam/Hilo3d/blob/main/test/types/recipes/audio.ts).
+[audio contract](https://github.com/hiloteam/Hilo3d/blob/dev/documentation/AUDIO.md) and
+[checked recipe](https://github.com/hiloteam/Hilo3d/blob/dev/test/types/recipes/audio.ts).
 Repository main may be newer than an installed package; its declarations define the exact API.
 
 All times are seconds on the audio clock. Hilo3D world units become meters through `metersPerUnit`.

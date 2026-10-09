@@ -12,7 +12,7 @@ declare new public APIs.
 ## Delivered slices and remaining boundaries
 
 “Implemented” means a bounded source implementation with tests, not a newly verified release or
-performance result. DDGI is still [Unreleased](./VERSIONS.md).
+performance result. DDGI is prepared for [alpha.9](./VERSIONS.md); publication is pending.
 
 | ID   | Status                                      | Current contract                                                                                                                  | Remaining work                                                                                                                                        |
 | ---- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |

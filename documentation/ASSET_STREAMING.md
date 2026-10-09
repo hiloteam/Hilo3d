@@ -1,8 +1,8 @@
 # A0 asset streaming
 
-Status: **Unreleased texture slice implemented; physical-device performance evidence pending.**
-`@hilo/addon-assets` is an optional workspace. The checkout version does not imply this addon is
-published. See [version boundaries](./VERSIONS.md).
+Status: **Alpha.9 texture slice implemented; publication and physical-device performance evidence
+pending.** `@hilo/addon-assets` is an optional workspace. The checkout version does not imply this
+addon is published. See [version boundaries](./VERSIONS.md).
 
 ## Ownership
 

@@ -6,7 +6,7 @@ import {
     type AudioVoice
 } from '@hilo/addon-audio';
 
-/** Unreleased audio recipe. The caller owns ticking/navigation; call enable from a user gesture. */
+/** The caller owns ticking/navigation; call enable from a user gesture. */
 export async function createAudioScene(container: HTMLElement): Promise<{
     stage: Stage;
     emitter: Node;

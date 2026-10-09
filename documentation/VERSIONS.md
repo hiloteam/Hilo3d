@@ -2,16 +2,18 @@
 
 The repository and development website can contain **Unreleased** features even while package.json
 still carries the last release number. Read the top of [CHANGELOG](../CHANGELOG.md) and the
-installed package declarations before choosing an API. DDGI, `@hilo/addon-assets`, local reflection
-probes, `@hilo/addon-audio` and auxiliary SRP views are Unreleased source features as of this
-review; their presence in current docs does not promise they exist in the alpha.8 tarball.
+installed package declarations before choosing an API. The prepared `2.0.0-alpha.9` release includes
+DDGI, local reflection probes, auxiliary SRP views, and the new Live2D, assets and audio addons.
+Publication is pending; these APIs are absent from the alpha.8 tarballs. Verify the registry before
+installing the candidate.
 
 ## Install a matching release
 
 For Hilo3D 2.0 alpha, use `npm install --save-exact hilo3d@next`. Resolve and pin the concrete
-version; do not leave a moving dist-tag in a reproducible template. The 2026-09-20 registry check
+version; do not leave a moving dist-tag in a reproducible template. The 2026-10-09 registry check
 returned `latest: 1.19.1` and `next: 2.0.0-alpha.8`; these are dated observations, not permanent tag
-values. Use `npm view hilo3d dist-tags --json` to inspect current channels.
+values. Live2D, assets and audio returned 404 on that date and need first-publication setup. Use
+`npm view hilo3d dist-tags --json` to inspect current channels.
 
 Optional `@hilo/addon-particle`, `@hilo/addon-physics`, `@hilo/addon-live2d` and
 `@hilo/addon-assets` and `@hilo/addon-audio` packages must match the exact core version. The physics

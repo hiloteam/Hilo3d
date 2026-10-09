@@ -23,6 +23,8 @@ Preferred stack:
 - glTF or GLB for shipped 3D assets
 - `@hilo/addon-particle` when scalable authored effects are required
 - `@hilo/addon-physics` plus the dimension-specific Rapier peer when rigid-body physics is required
+- `@hilo/addon-audio` for game sound, `@hilo/addon-assets` for KTX2 texture residency, and
+  `@hilo/addon-live2d` for Cubism models when the installed release includes them
 - `backend: 'auto'` unless the task explicitly targets WebGPU or WebGL2
 
 For greenfield projects, resolve `hilo3d@next`, require it to be `2.0.0` or a `2.0.0-*` prerelease,
@@ -31,9 +33,10 @@ substitute another release line. Use Node.js 20.19.0 or newer for the bundled st
 
 Import engine API only from the `hilo3d` package root and optional feature API only from its addon
 package roots; inspect installed declarations when a signature is uncertain. Do not install or
-import physics or particle addons unless the game uses them. Never copy private engine internals,
-generated docs, or repository examples into a consumer game. If the engine is not selected, choose
-the stack first. Do not use this skill to modify Hilo3D itself.
+import an addon unless the game uses it. Pin each addon to the exact installed core version and
+verify that version exists in the registry; a checkout or candidate is not publication evidence.
+Never copy private engine internals, generated docs, or repository examples into a consumer game. If
+the engine is not selected, choose the stack first. Do not use this skill to modify Hilo3D itself.
 
 ## Choose the Track
 
@@ -163,7 +166,7 @@ independent from the skill itself.
 - Forcing dense UI into the canvas without a presentation requirement
 - Scattering asset paths across gameplay code
 - Importing engine internals into a consumer game
-- Importing optional physics or particle addons in a game that does not use those systems
+- Importing optional addons in a game that does not use those systems
 - Silently changing backend after WebGPU initialization begins
 - Allocating render resources or scratch objects every frame
 - Shipping without restart, resize handling, or teardown
@@ -182,6 +185,8 @@ Load only what the task requires:
   animation, and the optional Rapier physics plugin
 - [Particle effects](references/particle-effects.md): portable definitions, runtime selection,
   lifecycle, and authoring boundaries
+- [Optional runtime addons](references/runtime-addons.md): audio unlock/time units, KTX2 workers and
+  residency, Live2D local runtime, exact versions and lifecycle
 - [Rendering and performance](references/rendering-performance.md): backend policy, draw calls,
   shaders, render targets, diagnostics, and WebGPU compute
 

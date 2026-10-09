@@ -32,7 +32,7 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 | [SSR](./SCREEN_SPACE_REFLECTIONS.md)                           | Hi-Z reflection tracing, material response, rejection and fallback.                    |
 | [Local reflections](./LOCAL_REFLECTIONS.md)                    | Static probes, box projection, blending, budgeted dynamic capture and SSR composition. |
 | [SSGI](./SCREEN_SPACE_GLOBAL_ILLUMINATION.md)                  | Portable diffuse trace, temporal denoise and composition.                              |
-| [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Unreleased DDGI/software-BVH and SSGI hybrid, with evidence boundaries.                |
+| [Dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md)                 | Alpha.9 DDGI/software-BVH and SSGI hybrid, with evidence boundaries.                   |
 | [Volumetric lighting](./VOLUMETRIC_LIGHTING.md)                | Froxels, fog, lighting, integration and history.                                       |
 | [Atmosphere and weather](./PHYSICAL_ATMOSPHERE_AND_WEATHER.md) | Atmosphere LUTs, clouds/shadows, exposure and display.                                 |
 | [Audio](./AUDIO.md)                                            | Optional Web Audio runtime, voice/cache budgets, mixing and lifecycle.                 |

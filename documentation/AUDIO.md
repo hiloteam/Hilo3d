@@ -1,7 +1,7 @@
 # Audio runtime
 
-Status: **Unreleased optional `@hilo/addon-audio` workspace.** The checkout version does not imply
-registry availability. See [version boundaries](./VERSIONS.md) and the
+Status: **Optional `@hilo/addon-audio`, prepared for alpha.9; publication pending.** The checkout
+version does not imply registry availability. See [version boundaries](./VERSIONS.md) and the
 [checked consumer recipe](../test/types/recipes/audio.ts).
 
 ## Interactive piano showcase

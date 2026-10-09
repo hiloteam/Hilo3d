@@ -6,7 +6,7 @@ import {
     Vector3
 } from 'hilo3d';
 
-/** Unreleased: pass the returned pipeline to Stage.create and use material on a receiver. */
+/** Pass the returned pipeline to Stage.create and use material on a receiver. */
 export function localRoomReflections(): {
     readonly probe: ReflectionProbe;
     readonly material: PBRMaterial;

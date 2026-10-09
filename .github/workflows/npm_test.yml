@@ -40,6 +40,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check synchronized release versions
+        run: npm run release:versions:check
+
+      - name: Check consumer game skill
+        run: npm run test:skill
+
       - name: Check documentation sources
         run: npm run docs:check:sources
 

@@ -165,7 +165,7 @@ export function webGPUExposure(): PostProcessRenderPipelineFactory {
 
 <!-- /recipe -->
 
-## Local reflections (Unreleased)
+## Local reflections (alpha.9 candidate)
 
 The current source supports portable static probes and budgeted dynamic capture. The recipe below
 uses dynamic capture; see [the local reflection contract](./LOCAL_REFLECTIONS.md) for capture
@@ -182,7 +182,7 @@ import {
     Vector3
 } from 'hilo3d';
 
-/** Unreleased: pass the returned pipeline to Stage.create and use material on a receiver. */
+/** Pass the returned pipeline to Stage.create and use material on a receiver. */
 export function localRoomReflections(): {
     readonly probe: ReflectionProbe;
     readonly material: PBRMaterial;
@@ -212,18 +212,22 @@ export function localRoomReflections(): {
 
 ## Optional addons
 
-The Unreleased asset addon has a checked
+The alpha.9 candidate asset addon has a checked
 [streaming setup recipe](../test/types/recipes/asset-streaming.ts). See
 [asset streaming](./ASSET_STREAMING.md) for manifests, readiness and budget ownership; do not assume
 this new package is available in the alpha.8 registry release.
 
 Install the addon version matching your exact `hilo3d` version; each addon declares an exact core
-peer. For example, with the alpha.8 release:
+peer. After alpha.9 publication, for example:
 
 ```sh
-npm install --save-exact hilo3d@2.0.0-alpha.8 @hilo/addon-particle@2.0.0-alpha.8
+npm install --save-exact hilo3d@2.0.0-alpha.9 @hilo/addon-particle@2.0.0-alpha.9
 # Only for 3D physics:
-npm install --save-exact @hilo/addon-physics@2.0.0-alpha.8 @dimforge/rapier3d-compat@0.20.0
+npm install --save-exact @hilo/addon-physics@2.0.0-alpha.9 @dimforge/rapier3d-compat@0.20.0
+# Install only when used:
+npm install --save-exact @hilo/addon-audio@2.0.0-alpha.9
+npm install --save-exact @hilo/addon-assets@2.0.0-alpha.9
+npm install --save-exact @hilo/addon-live2d@2.0.0-alpha.9
 ```
 
 Rapier's declarations use explicit resource-management symbols. Keep strict checking enabled and
@@ -377,7 +381,7 @@ export async function createLive2DScene(
 
 <!-- /recipe -->
 
-## Audio (Unreleased)
+## Audio (alpha.9 candidate)
 
 The optional audio workspace requires the matching checkout core. See the
 [audio contract](./AUDIO.md) for autoplay, units, ownership and budgets. Stop ticking before Stage
@@ -394,7 +398,7 @@ import {
     type AudioVoice
 } from '@hilo/addon-audio';
 
-/** Unreleased audio recipe. The caller owns ticking/navigation; call enable from a user gesture. */
+/** The caller owns ticking/navigation; call enable from a user gesture. */
 export async function createAudioScene(container: HTMLElement): Promise<{
     stage: Stage;
     emitter: Node;

@@ -1,5 +1,9 @@
 # Unreleased
 
+# 2.0.0-alpha.9 (release candidate)
+
+This section describes the prepared release source; npm publication is pending.
+
 ### Features
 
 - Add the standalone Hilo Studio scene editor with a Blender-inspired workspace, shared-engine
@@ -66,6 +70,9 @@
   and lifecycle-safe teardown.
 
 ### Documentation
+
+- Extend the consumer game skill with exact-version audio, KTX2 residency and Live2D guidance. Check
+  synchronized package versions and skill regressions in ordinary CI preflight.
 
 - Separate current engineering/rendering contracts and the roadmap from archived implementation
   plans. Correct prerelease installation, exposure, temporal, material ABI and SRP guidance.
