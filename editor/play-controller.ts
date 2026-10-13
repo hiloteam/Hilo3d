@@ -70,6 +70,14 @@ export class PlayController {
     get elapsedTime(): number {
         return this.time;
     }
+    /** User playback intent, including pause requests still waiting for a step to finish. */
+    get playbackRequested(): boolean {
+        return (
+            this.session !== null &&
+            !this.session.pauseRequested &&
+            (this.stateValue === 'starting' || this.stateValue === 'playing')
+        );
+    }
 
     async play(): Promise<void> {
         if (this.stateValue === 'starting' && this.session) {
@@ -77,9 +85,10 @@ export class PlayController {
             await this.session.starting;
             return;
         }
-        if (this.stateValue === 'paused') {
+        if (this.session && (this.stateValue === 'paused' || this.session.pauseRequested)) {
             try {
-                this.session?.components?.resume?.();
+                this.session.pauseRequested = false;
+                this.session.components?.resume?.();
                 this.changeState('playing');
                 this.schedule();
             } catch (error) {
@@ -149,30 +158,43 @@ export class PlayController {
         }
     }
 
+    /** Stop scheduling immediately; publish paused only after the in-flight step has committed. */
     pause(): void {
-        if (this.stateValue === 'starting' && this.session) {
-            this.session.pauseRequested = true;
+        const session = this.session;
+        if (!session) return;
+        if (this.stateValue === 'starting') {
+            session.pauseRequested = true;
             return;
         }
-        if (this.stateValue !== 'playing') return;
+        if (this.stateValue !== 'playing' || session.pauseRequested) return;
+        session.pauseRequested = true;
         ++this.clockGeneration;
         cancelAnimationFrame(this.frame);
         try {
-            this.session?.components?.pause?.();
-            this.changeState('paused');
+            // Silence audio immediately, including commands arriving with the pending script result.
+            session.components?.pause?.();
+            this.finishPause(session);
         } catch (error) {
             this.fail(error);
         }
     }
 
+    private finishPause(session: PlaySession): void {
+        if (
+            this.isCurrent(session) &&
+            session.pauseRequested &&
+            !session.advancing &&
+            this.stateValue === 'playing'
+        )
+            this.changeState('paused');
+    }
+
     async step(): Promise<void> {
-        if (this.stateValue === 'stopped') {
-            await this.play();
-            this.pause();
-        }
-        if (this.stateValue === 'playing') this.pause();
+        if (this.stateValue === 'stopped') await this.play();
         const session = this.session;
-        if (this.stateValue !== 'paused' || !session) return;
+        if (!session) return;
+        this.pause();
+        await session.starting;
         await session.advancing;
         if (!this.isCurrent(session) || this.state !== 'paused') return;
         await this.advance(session, FIXED_STEP);
@@ -227,7 +249,7 @@ export class PlayController {
     }
 
     async reset(): Promise<void> {
-        const paused = this.stateValue === 'paused';
+        const paused = this.stateValue === 'paused' || this.session?.pauseRequested === true;
         this.stop();
         await this.waitForStop();
         await this.play();
@@ -292,25 +314,28 @@ export class PlayController {
             await advance;
         } finally {
             if (session.advancing === advance) session.advancing = null;
+            try {
+                this.finishPause(session);
+            } catch (error) {
+                if (this.isCurrent(session)) this.fail(error);
+            }
         }
     }
 
     private async advanceSession(session: PlaySession, dt: number): Promise<void> {
         try {
-            session.time += dt;
-            this.time = session.time;
-            const animated = this.sampleAnimation(session);
-            const changes = await session.script.step(session.scene, dt, session.time);
+            const time = session.time + dt;
+            const animated = this.sampleAnimation(session, time);
+            const changes = await session.script.step(session.scene, dt, time);
             if (!this.isCurrent(session)) return;
             this.accept(session, { ...animated, ...changes });
             this.executeCommands(session);
-            const componentChanges = await session.components?.step(
-                dt,
-                session.time,
-                session.scene
-            );
+            const componentChanges = await session.components?.step(dt, time, session.scene);
             if (!this.isCurrent(session)) return;
             if (componentChanges) this.accept(session, componentChanges);
+            // Exposed time describes the same completed step as component diagnostics and poses.
+            session.time = time;
+            this.time = time;
             this.options.onState(this.stateValue, this.time);
         } catch (error) {
             if (this.isCurrent(session)) this.fail(error);
@@ -325,10 +350,10 @@ export class PlayController {
         session.components.executeCommands(commands);
     }
 
-    private sampleAnimation(session: PlaySession): Transforms {
+    private sampleAnimation(session: PlaySession, time = session.time): Transforms {
         const changes: Transforms = {};
         if (!session.clip) return changes;
-        const sample = evaluateClip(session.clip, session.authored, session.time);
+        const sample = evaluateClip(session.clip, session.authored, time);
         for (const track of session.clip.tracks) {
             const [property, axis] = track.property.split('.');
             const target = session.scene.nodes[track.nodeId];

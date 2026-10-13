@@ -213,7 +213,7 @@ window.addEventListener('blur', clearInput);
 
 function suspend(): void {
     suspended = true;
-    resumeVisible ||= controller?.state === 'playing' || controller?.state === 'starting';
+    resumeVisible ||= controller?.playbackRequested ?? false;
     clearInput();
     controller?.pause();
     viewport?.stopRendering();
@@ -222,8 +222,7 @@ function resume(): void {
     if (destroyed || document.hidden) return;
     suspended = false;
     viewport?.startRendering();
-    if (resumeVisible && (controller?.state === 'paused' || controller?.state === 'starting'))
-        void controller.play().catch(report);
+    if (resumeVisible && controller?.active) void controller.play().catch(report);
     resumeVisible = false;
 }
 document.addEventListener('visibilitychange', () => {

@@ -53,6 +53,29 @@ function fixture(overrides: Partial<PlayControllerOptions> = {}): {
     return { controller, options, project, script };
 }
 
+/** Drive playback callbacks without advancing unrelated browser frames or substituting simulation time. */
+function frameClock(): { advance(time: number): void; pending(): number } {
+    const frames = new Map<number, FrameRequestCallback>();
+    let serial = 0;
+    vi.spyOn(performance, 'now').mockReturnValue(1000);
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+        frames.set(++serial, callback);
+        return serial;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => {
+        frames.delete(id);
+    });
+    return {
+        advance(time) {
+            const first = frames.entries().next().value;
+            if (!first) throw new Error('Missing scheduled playback frame');
+            frames.delete(first[0]);
+            first[1](time);
+        },
+        pending: () => frames.size
+    };
+}
+
 describe('shared fixed-step scene playback', () => {
     it('awaits assets before scripts and components and cancels a late component factory before restore', async () => {
         const assets = deferred<undefined>();
@@ -204,7 +227,9 @@ describe('shared fixed-step scene playback', () => {
         const { controller } = fixture({ createComponents: factory });
         const starting = controller.play();
         await expect.poll(() => factory.mock.calls.length).toBe(1);
+        expect(controller.playbackRequested).toBe(true);
         controller.pause();
+        expect(controller.playbackRequested).toBe(false);
         pending.resolve({ step: () => ({}), pause: paused, resume: resumed, stop: vi.fn() });
         await starting;
         expect(controller.state).toBe('paused');
@@ -214,7 +239,9 @@ describe('shared fixed-step scene playback', () => {
         await controller.play();
         expect(controller.state).toBe('playing');
         expect(resumed).toHaveBeenCalledOnce();
+        expect(controller.playbackRequested).toBe(true);
         await controller.dispose();
+        expect(controller.playbackRequested).toBe(false);
 
         const preparation = deferred<undefined>();
         const next = fixture({ beforeStart: () => preparation.promise }).controller;
@@ -227,22 +254,7 @@ describe('shared fixed-step scene playback', () => {
     });
 
     it('keeps one RAF chain when paused and resumed during an in-flight script step', async () => {
-        const frames = new Map<number, FrameRequestCallback>();
-        let serial = 0;
-        vi.spyOn(performance, 'now').mockReturnValue(1000);
-        vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
-            frames.set(++serial, callback);
-            return serial;
-        });
-        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(id => {
-            frames.delete(id);
-        });
-        const nextFrame = (time: number): void => {
-            const first = frames.entries().next().value;
-            if (!first) throw new Error('Missing scheduled playback frame');
-            frames.delete(first[0]);
-            first[1](time);
-        };
+        const frames = frameClock();
         const waiting = deferred<Record<string, never>>();
         const simulated = vi.fn(() => ({}));
         const { controller, script } = fixture({
@@ -250,16 +262,203 @@ describe('shared fixed-step scene playback', () => {
         });
         script.step.mockImplementationOnce(() => waiting.promise);
         await controller.play();
-        nextFrame(1100);
+        frames.advance(1100);
         await expect.poll(() => script.step.mock.calls.length).toBe(1);
         controller.pause();
+        expect(controller.state).toBe('playing');
+        expect(controller.playbackRequested).toBe(false);
         await controller.play();
-        nextFrame(1200);
+        expect(controller.playbackRequested).toBe(true);
+        frames.advance(1200);
         waiting.resolve({});
         await expect.poll(() => simulated.mock.calls.length).toBe(4);
-        await expect.poll(() => frames.size).toBe(1);
+        await expect.poll(() => frames.pending()).toBe(1);
         expect(controller.elapsedTime).toBeCloseTo(4 / 60);
         await controller.dispose();
-        expect(frames.size).toBe(0);
+        expect(frames.pending()).toBe(0);
+    });
+
+    for (const phase of ['worker', 'component'] as const) {
+        it(`publishes paused only after the delayed ${phase} step commits time, physics and transforms together`, async () => {
+            const frames = frameClock();
+            const entered = deferred<undefined>();
+            const release = deferred<Record<string, never>>();
+            const paused = deferred<undefined>();
+            let simulatedSteps = 0;
+            let visibleY = 0;
+            const snapshots: { time: number; simulatedSteps: number; visibleY: number }[] = [];
+            const pauseComponents = vi.fn();
+            const { controller, script, options } = fixture({
+                createComponents: () =>
+                    Promise.resolve({
+                        pause: pauseComponents,
+                        stop: vi.fn(),
+                        step: (_dt, _time, scene) => {
+                            const commit = (): Record<
+                                string,
+                                (typeof scene.nodes)[string]['transform']
+                            > => {
+                                simulatedSteps++;
+                                const node = scene.nodes['hero-sphere'];
+                                if (!node) throw new Error('Missing fixture node');
+                                const transform = structuredClone(node.transform);
+                                transform.position.y = simulatedSteps;
+                                return { 'hero-sphere': transform };
+                            };
+                            if (phase === 'component' && simulatedSteps === 0) {
+                                entered.resolve(undefined);
+                                return release.promise.then(commit);
+                            }
+                            return commit();
+                        }
+                    }),
+                onTransforms: transforms => {
+                    const transform = transforms['hero-sphere'];
+                    if (transform) visibleY = transform.position.y;
+                },
+                onState: (state, time) => {
+                    if (state === 'paused') {
+                        snapshots.push({ time, simulatedSteps, visibleY });
+                        paused.resolve(undefined);
+                    }
+                }
+            });
+            if (phase === 'worker')
+                script.step.mockImplementationOnce(() => {
+                    entered.resolve(undefined);
+                    return release.promise;
+                });
+            try {
+                await controller.play();
+                frames.advance(1017);
+                await entered.promise;
+                controller.pause();
+                expect(controller.state).toBe('playing');
+                expect(controller.playbackRequested).toBe(false);
+                expect(controller.elapsedTime).toBe(0);
+                expect(simulatedSteps).toBe(0);
+                expect(snapshots).toEqual([]);
+                expect(pauseComponents).toHaveBeenCalledOnce();
+                expect(frames.pending()).toBe(0);
+                release.resolve({});
+                await paused.promise;
+                expect(controller.state).toBe('paused');
+                expect(snapshots).toEqual([{ time: 1 / 60, simulatedSteps: 1, visibleY: 1 }]);
+                const time = controller.elapsedTime;
+                const steps = simulatedSteps;
+                await controller.step();
+                expect(controller.elapsedTime - time).toBeCloseTo(1 / 60, 12);
+                expect(simulatedSteps - steps).toBe(1);
+                expect(visibleY).toBe(2);
+                expect(frames.pending()).toBe(0);
+                expect(options.onError).not.toHaveBeenCalled();
+            } finally {
+                release.resolve({});
+            }
+        });
+    }
+
+    it('queues one manual step after the current paused request finishes, without dropping it', async () => {
+        const frames = frameClock();
+        const entered = deferred<undefined>();
+        const release = deferred<Record<string, never>>();
+        const simulated = vi.fn(() => ({}));
+        const snapshots: { time: number; steps: number }[] = [];
+        const { controller, script } = fixture({
+            createComponents: () => Promise.resolve({ step: simulated, stop: vi.fn() }),
+            onState: (state, time) => {
+                if (state === 'paused')
+                    snapshots.push({ time, steps: simulated.mock.calls.length });
+            }
+        });
+        script.step.mockImplementationOnce(() => {
+            entered.resolve(undefined);
+            return release.promise;
+        });
+        try {
+            await controller.play();
+            frames.advance(1017);
+            await entered.promise;
+            controller.pause();
+            const stepping = controller.step();
+            expect(controller.state).toBe('playing');
+            release.resolve({});
+            await stepping;
+            expect(snapshots).toEqual([
+                { time: 1 / 60, steps: 1 },
+                { time: 2 / 60, steps: 2 }
+            ]);
+            expect(controller.state).toBe('paused');
+            expect(controller.elapsedTime).toBe(2 / 60);
+            expect(frames.pending()).toBe(0);
+        } finally {
+            release.resolve({});
+        }
+    });
+
+    it('cancels a pending pause when stopping and never publishes its late component completion', async () => {
+        const frames = frameClock();
+        const entered = deferred<undefined>();
+        const release = deferred<Record<string, never>>();
+        const componentStop = vi.fn();
+        const { controller, options } = fixture({
+            createComponents: () =>
+                Promise.resolve({
+                    step: () => {
+                        entered.resolve(undefined);
+                        return release.promise;
+                    },
+                    stop: componentStop
+                })
+        });
+        try {
+            await controller.play();
+            frames.advance(1017);
+            await entered.promise;
+            controller.pause();
+            expect(controller.state).toBe('playing');
+            controller.stop();
+            expect(controller.state).toBe('stopped');
+            const transforms = vi.mocked(options.onTransforms).mock.calls.length;
+            release.resolve({});
+            await controller.waitForStop();
+            expect(controller.elapsedTime).toBe(0);
+            expect(options.onTransforms).toHaveBeenCalledTimes(transforms);
+            expect(options.onState).not.toHaveBeenCalledWith('paused', expect.anything());
+            expect(componentStop).toHaveBeenCalledOnce();
+            expect(frames.pending()).toBe(0);
+        } finally {
+            release.resolve({});
+        }
+    });
+
+    it('retains the requested pause across reset even while its final worker step is pending', async () => {
+        const frames = frameClock();
+        const entered = deferred<undefined>();
+        const release = deferred<Record<string, never>>();
+        const { controller, script, options } = fixture();
+        script.step.mockImplementationOnce(() => {
+            entered.resolve(undefined);
+            return release.promise;
+        });
+        try {
+            await controller.play();
+            frames.advance(1017);
+            await entered.promise;
+            controller.pause();
+            expect(controller.state).toBe('playing');
+            expect(controller.playbackRequested).toBe(false);
+            const resetting = controller.reset();
+            expect(controller.state).toBe('stopped');
+            release.resolve({});
+            await resetting;
+            expect(controller.state).toBe('paused');
+            expect(controller.elapsedTime).toBe(0);
+            expect(controller.playbackRequested).toBe(false);
+            expect(frames.pending()).toBe(0);
+            expect(options.onRestore).toHaveBeenCalledOnce();
+        } finally {
+            release.resolve({});
+        }
     });
 });

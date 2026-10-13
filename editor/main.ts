@@ -1573,8 +1573,7 @@ projectController.onProject = (_project, message) => {
 window.addEventListener('pagehide', event => {
     pageSuspended = true;
     if (event.persisted) {
-        resumeAfterPageShow =
-            playController.state === 'playing' || playController.state === 'starting';
+        resumeAfterPageShow = playController.playbackRequested;
         runtimeKeys.clear();
         runtimePointer = { ...runtimePointer, buttons: 0 };
         updateRuntimeInput();

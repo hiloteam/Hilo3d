@@ -15,6 +15,8 @@
   advances and restores each imported GLB instance's first animation clip.
 - Share bounded response consumption between website export and collaboration: audit byte limits
   before native body completion, and cancel both stream branches on errors or cancellation.
+- Publish paused playback only after the current script/component step commits, keeping elapsed
+  time, physics and single-step diagnostics aligned while preserving explicit pause/resume intent.
 
 These additions describe the current source. E9 local production export/deployment acceptance passed
 on Chromium with WebGL2 and WebGPU; see the dated checks in `documentation/PLAYER.md`. The full

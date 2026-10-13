@@ -149,7 +149,9 @@ burst.
 
 Each imported GLB instance plays its first embedded clip when Play starts; a separate GLB clip
 selector is not part of this component format. Mixers stay off the global animation ticker and
-advance only with the playback clock. Pause freezes simulation and model animation, Step advances
+advance only with the playback clock. Pause stops scheduling and silences audio immediately, then
+publishes the paused state after any in-flight script/component step has fully committed. The
+published elapsed time and physics state therefore describe the same completed step. Step advances
 one fixed step while remaining paused, and Stop restores authored transforms and model reference
 poses. The selected timeline's keyed channels are sampled before scripts, giving scripts the last
 transform update before physics ownership is applied.
@@ -212,7 +214,7 @@ This evidence covers the changed source, not a published npm version or remote C
 
 | Check                                                          | Executed result                                                                                                                                                                                                                                                                                                |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Editor document, authoring, script/controller and export tests | 22 files, 185 tests passed.                                                                                                                                                                                                                                                                                    |
+| Editor document, authoring, script/controller and export tests | 22 files, 190 tests passed, including delayed-step pause/resume/reset regressions.                                                                                                                                                                                                                             |
 | Editor GPU/resource suite                                      | 25 tests passed, including dual-backend Player cameras, GLB animation, Rapier, particle pixels, PCM/audio lifecycle and cancellation.                                                                                                                                                                          |
 | Collaboration service/client suite                             | 17 tests passed, including bounded-response cancellation and typed HTTP failures.                                                                                                                                                                                                                              |
 | Existing editor UI                                             | Seven cases passed across the authoring run and the post-fix collaboration rerun, on their declared backends.                                                                                                                                                                                                  |

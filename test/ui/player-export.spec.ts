@@ -357,6 +357,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                         .poll(async () => (await snapshot(page)).time)
                         .toBeGreaterThan(0.35);
                     await page.getByRole('button', { name: 'Pause', exact: true }).click();
+                    await expect(page.locator('#player')).toHaveAttribute('data-state', 'paused');
                     const paused = await snapshot(page);
                     expect(paused.transforms['ball']?.y).toBeLessThan(2.9);
                     expect(paused.transforms['beacon']?.x).toBeGreaterThan(-2);
@@ -418,6 +419,7 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                     await page.getByRole('button', { name: 'Restart', exact: true }).click();
                     await expect(page.locator('#player')).toHaveAttribute('data-state', 'playing');
                     await page.getByRole('button', { name: 'Pause', exact: true }).click();
+                    await expect(page.locator('#player')).toHaveAttribute('data-state', 'paused');
                     expect((await snapshot(page)).transforms['ball']?.x).toBeCloseTo(0, 4);
                     await assertStableInstrumentationHealth(backend, 'Published Player', {
                         waitForStableAnimationFrames: () => waitForStableAnimationFrames(page),
