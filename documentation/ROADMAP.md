@@ -90,6 +90,95 @@ measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before t
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
 
+### Rendering acceptance, 2026-10-13
+
+Feature source: `86723c2177e1d9faec52053bfc39ecc20c53e3f5` on `codex/rendering-production`. The
+reviewed contracts are [dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md),
+[volumetrics](./VOLUMETRIC_LIGHTING.md), [decals](./PBR_DECALS.md) and
+[transparency](./TRANSPARENCY.md). Combined pixels, interactivity and post-teardown error
+observation are exercised by `test/ui/rendering-production.spec.ts`; the corresponding renderer
+tests cover resource transactions, actual backend pixels, shader translation and device/context
+recovery.
+
+| Capability            | Implementation                                                                                                                       | Executable coverage                                                                                                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GI assets             | [Scene collection](../src/render/gi/RayTracingScene.ts), [texture atlas](../src/render/gi/SceneTextureAtlas.ts)                      | [Asset transport](../test/spec/renderer/DynamicGlobalIlluminationAssets.test.ts), [HDR/BC1 transport and recovery](../test/spec/renderer/DynamicGIEncodedTextureTransport.test.ts), [source identity and import transactions](../test/spec/renderer/DynamicGITextureSourceIdentity.test.ts) |
+| Volumetric shadows    | [Froxel lighting](../src/render/postprocessing/VolumetricLighting.ts), [caster bounds](../src/render/renderer/ShadowCasterBounds.ts) | [Volume/shadow pixels](../test/spec/renderer/VolumetricLighting.test.ts), [deformed bounds](../test/spec/renderer/ShadowCasterBounds.test.ts)                                                                                                                                               |
+| Decals                | [Projector](../src/render/decals/DecalProjector.ts), [material binding](../src/render/decals/DecalMaterialBinding.ts)                | [Dual-backend decals](../test/spec/renderer/PBRDecals.test.ts)                                                                                                                                                                                                                              |
+| Weighted transparency | [Shared controller](../src/render/pipeline/WeightedBlendedTransparency.ts)                                                           | [Composition/lifecycle](../test/spec/renderer/WeightedBlendedTransparency.test.ts), [HDR and faint layers](../test/spec/renderer/WeightedBlendedPrecision.test.ts)                                                                                                                          |
+| SSR correction        | [Production filters](../src/render/postprocessing/ScreenSpaceReflections.ts)                                                         | [Coverage and energy](../test/spec/renderer/ScreenSpaceReflectionSpatialFilter.test.ts), [unchanged browser gates](../test/ui/screen-space-reflections.spec.ts)                                                                                                                             |
+
+Executed on the macOS development rig with npm 10.9.4:
+
+- Four serial `vitest run --coverage --maxWorkers=1 --shard=N/4` runs and the normal
+  `vitest --merge-reports=reports/vitest-final --coverage` gate on final source `d49daf14`: **279
+  files / 2,529 tests passed**. Statements 84.01%, branches 73.94%, functions 88.73%, lines 85.70%;
+  unchanged global thresholds. No `GITHUB_ACTIONS` substitution was used, so the local shader/pixel
+  cases remained active.
+- `test:webgpu:native`: **13 passed**, including the 110k-object workload, Sponza camera tour,
+  volumetric lighting, Atelier GI and the combined production fixture. This is physical-GPU
+  correctness evidence, not benchmark timing evidence.
+- Final `CI=true npm run test:webgpu` on the SSR-corrected source: **26 passed** in 10.5 minutes.
+  `reports/rendering-final-webgpu.log` retains the complete aggregate run; no assertion, retry or
+  threshold was relaxed.
+- `test:ui:contract`: **6 files / 34 tests passed**. UI grouping still schedules all 123 WebGL2
+  cases exactly once.
+- `build` including addons, `examples:build`, `typecheck`, `lint:built`, `format:check`,
+  `docs:check:built`, `test:types`, `api:update` then `api:check`, `check:modernity`, `test:skill`
+  and the UI grouping check passed. The generated API report also records the new reserved uniform
+  bindings 11/12 and the custom-binding start at 13.
+
+SSR follow-up source: `6bc7bd57263e28bf776948a7ad474ac00436df38`. The initial full WebGPU run passed
+25 cases and reproduced the inherited rapid-orbit failure (`1.129689578714 > 1`). It was traced to
+spatial confidence reconstruction, not reprojection: disabling either SSR or TAA history
+independently still reproduced it. The correction includes valid miss pixels in the coverage kernel
+and preserves confidence-premultiplied energy. All four unchanged Afterimage browser tests then
+passed on software WebGPU and native Metal, including the original rapid-orbit threshold. Three new
+real-GPU production-filter regressions and the four existing trace/history/miss cases passed;
+TypeScript, focused lint/format, fresh package builds, API and documentation checks also passed. The
+interrupted intermediate attempt is not acceptance evidence.
+
+Compressed-source recovery follow-up: `d49daf14520632287d621bafd2a782a60ec62223`. Real RGBA16F and
+BC1-sRGB transport comparisons exposed a software-WebGPU cold-recovery failure: the restored source
+texture was correct but direct compressed compute sampling left the atlas empty. A shared raster
+normalization into RGBA32F resolves this while retaining the original recovery assertions. The final
+source passed **67 related software-GPU/controller checks across eight files**, plus **four
+encoded-texture/directional/recovery checks on a verified non-fallback Metal adapter**. These
+include both raster backends' asymmetric image rows, HDR energy equivalence, sRGB negative controls,
+GI-off isolation, stable zero-pass behavior and discard/retry. Fresh build, API, installed package
+consumers, TypeScript, focused lint/format and TypeDoc checks passed after this change.
+`reports/rendering-gi-normalization-final-checks.txt` indexes the exact commands and logs. Earlier
+failed diagnostic attempts remain retained, and no failing case was moved out of the software lane.
+
+The final `test:rhi` run passed 217 portable checks and three native-RHI checks; its optional
+`shader-f16` compute case was skipped because the software adapter lacks that feature.
+`test:package:built` passed publishing/type resolution checks, installed-tarball recipe compilation,
+audio and Live2D consumers, and asset-worker/WASM pixels plus recovery on both backends. These
+checks used the fresh build after the SSR correction.
+
+The complete affected `csm`, `post-processing` and `chromatic` UI groups passed on both WebGL2 and
+WebGPU: **3 + 8 + 2 cases per backend, 26 total**. WebGL2 used
+`CI=true HILO3D_UI_GROUP=<group> npm run test:ui:webgl2:ci`; WebGPU used the same group filters and
+CI browser configuration with the corresponding Playwright files. Original screenshot thresholds,
+interaction checks and group membership were preserved. Each group's result, elapsed time and
+retained artifacts remain separate under `reports/rendering-ui-*`.
+
+A final seven-case browser selection also passed after the SSR correction: model replacement,
+layered PBR lobe switches and Khronos material asset switches on both backends, plus the complete
+high-end transparent/particle/recovery fixture. Its source files were `runtime-parity.spec.ts` and
+`webgpu.spec.ts`; `reports/rendering-final-material-parity.log` retains the exact selected titles.
+
+The complete project `validate`/`validate:ci` and every catalog/editor/physics/visual browser lane
+were not rerun as a release matrix for this rendering change; the executed lanes above are the
+acceptance record. Broader compressed/HDR format combinations and additional physical devices still
+need their own format/device matrix; source capability support is not that evidence.
+
+Local command logs and retained native/portable screenshots live under ignored `reports/`; they are
+not immutable benchmark snapshots. A failed earlier monolithic coverage attempt disconnected its
+browser; only the complete merged four-shard result above closes that coverage gate. Formal DDGI
+candidate collection still requires confirmed GPU isolation and independent review; no existing
+benchmark baseline was overwritten or enrolled by these functional runs.
+
 ## Editor development
 
 Hilo Studio targets a local-first, self-hostable browser 3D scene editor for small production teams,
