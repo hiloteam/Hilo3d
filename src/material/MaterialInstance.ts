@@ -94,6 +94,9 @@ function snapshotCompositing(value: MaterialCompositing | undefined): MaterialCo
     if (value === undefined || value.mode === 'opaque') {
         return Object.freeze({ mode: 'opaque' });
     }
+    if (value.mode === 'weighted-blended') {
+        return Object.freeze({ mode: 'weighted-blended' });
+    }
     if (value.mode === 'alpha-blend') {
         return Object.freeze({ mode: 'alpha-blend', premultiplied: value.premultiplied });
     }
@@ -119,7 +122,10 @@ function coverageEqual(left: MaterialCoverage, right: MaterialCoverage): boolean
 
 function compositingEqual(left: MaterialCompositing, right: MaterialCompositing): boolean {
     if (left.mode !== right.mode) return false;
-    if (left.mode === 'opaque' || left.mode === 'additive') return true;
+    if (left.mode === 'opaque' || left.mode === 'weighted-blended') return true;
+    if (left.mode === 'additive') {
+        return right.mode === 'additive' && left.premultiplied === right.premultiplied;
+    }
     if (left.mode === 'alpha-blend') {
         return right.mode === 'alpha-blend' && left.premultiplied === right.premultiplied;
     }
@@ -189,6 +195,36 @@ export class MaterialInstance {
         this.userData = parameters.userData ?? null;
         this.coverage = snapshotCoverage(parameters.coverage ?? definition.coverage);
         this.compositing = snapshotCompositing(parameters.compositing ?? definition.compositing);
+        if (this.compositing.mode === 'weighted-blended') {
+            const state = definition.getPass('forward')?.state;
+            if (this.coverage.mode === 'alpha-to-coverage') {
+                throw new TypeError(
+                    'Weighted transparency cannot use multisample alpha-to-coverage'
+                );
+            }
+            if (
+                state?.stencil !== undefined ||
+                state?.wireframe === true ||
+                state?.depthTest === false ||
+                (state !== undefined &&
+                    (state.depthCompare !== 'less-equal' ||
+                        state.depthRange[0] !== 0 ||
+                        state.depthRange[1] !== 1))
+            ) {
+                throw new TypeError(
+                    'Weighted transparency requires standard depth testing/range without wireframe or custom stencil'
+                );
+            }
+        }
+        if (
+            this.compositing.mode === 'weighted-blended' &&
+            (definition.staticFeatures['HAS_TRANSMISSION'] === 1 ||
+                (definition.family !== 'basic' && definition.family !== 'pbr'))
+        ) {
+            throw new TypeError(
+                'Weighted-blended transparency supports Basic/PBR surfaces without transmission'
+            );
+        }
         if (
             !definition.instanceOverrides.coverage &&
             !coverageEqual(this.coverage, definition.coverage)
@@ -285,6 +321,13 @@ export class MaterialInstance {
      */
     get forwardQueue(): 'opaque' | 'transparent' {
         return this.isTransparent || this.requiresOpaqueSceneTexture ? 'transparent' : 'opaque';
+    }
+
+    /** Explicit composition class; transmission always keeps its sorted refraction contract. */
+    get transparencyClass():
+        'opaque' | 'sorted-alpha' | 'additive' | 'transmission' | 'weighted-blended' | 'custom' {
+        if (this.requiresOpaqueSceneTexture) return 'transmission';
+        return this.compositing.mode === 'alpha-blend' ? 'sorted-alpha' : this.compositing.mode;
     }
 
     get lightType(): string {

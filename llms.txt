@@ -35,6 +35,8 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
 - [Animation](./documentation/ANIMATION_SYSTEM.md): Clip/layer mixing, events and time units.
 - [PBR and effects](./documentation/PBR_AND_POST_PROCESSING.md): Materials, linear HDR, Bloom,
   filmic and WebGPU auto exposure.
+- [Projected decals](./documentation/PBR_DECALS.md): Unreleased world-space PBR surface projection.
+- [Transparency](./documentation/TRANSPARENCY.md): Sorted/refraction and opt-in weighted OIT.
 - [Particles](./documentation/PARTICLE_SYSTEM.md): Optional addon, CPU/GPU/stateless plans and
   authoring contracts.
 - [Audio](./documentation/AUDIO.md): Optional spatial sound (alpha.9 candidate), bounded voices,

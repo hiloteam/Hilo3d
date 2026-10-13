@@ -68,6 +68,7 @@ function policySignature(coverage: MaterialCoverage, compositing: MaterialCompos
         coverage.mode === 'opaque' ? 'opaque' : `${coverage.mode}:${String(coverage.cutoff)}`;
     switch (compositing.mode) {
         case 'opaque':
+        case 'weighted-blended':
             return `${coverageKey}|${compositing.mode}`;
         case 'additive':
             return `${coverageKey}|additive:${compositing.premultiplied ? 'premultiplied' : 'straight'}`;
@@ -80,7 +81,8 @@ function policySignature(coverage: MaterialCoverage, compositing: MaterialCompos
 
 function buildPasses(
     family: Exclude<MaterialFamily, 'custom'>,
-    forwardState: Readonly<MaterialPipelineState>
+    forwardState: Readonly<MaterialPipelineState>,
+    weighted: boolean
 ): readonly Readonly<MaterialPassDefinition>[] {
     const module = Object.freeze({ kind: 'builtin' as const, family });
     const unblendedState: Readonly<MaterialPipelineState> = Object.freeze({
@@ -112,6 +114,34 @@ function buildPasses(
         ...motionVectorState
     });
     return Object.freeze([
+        ...(weighted
+            ? (['weighted-accumulation', 'weighted-revealage'] as const).map(role =>
+                  Object.freeze({
+                      role,
+                      shader: module,
+                      fragmentOutput: 'color' as const,
+                      state: Object.freeze({
+                          ...unblendedState,
+                          depthTest: true,
+                          depthWrite: false,
+                          alphaToCoverage: false,
+                          blend: Object.freeze({
+                              color: Object.freeze({
+                                  operation: 'add' as const,
+                                  srcFactor: 'one' as const,
+                                  dstFactor: 'one' as const
+                              }),
+                              alpha: Object.freeze({
+                                  operation: 'add' as const,
+                                  srcFactor: 'one' as const,
+                                  dstFactor: 'one' as const
+                              })
+                          })
+                      }),
+                      fallback: 'required' as const
+                  })
+              )
+            : []),
         Object.freeze({
             role: 'forward' as const,
             shader: module,
@@ -233,7 +263,7 @@ export function getBuiltInMaterialDefinition(
         coverage,
         compositing,
         textureSlots: slots,
-        passes: buildPasses(request.family, state),
+        passes: buildPasses(request.family, state, compositing.mode === 'weighted-blended'),
         profiles
     });
     definitions.set(id, definition);

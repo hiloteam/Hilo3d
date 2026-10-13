@@ -8,6 +8,11 @@ texture 和内置后处理的生产合同。实现仍遵循唯一共享路径：
 WebGPU 和 WebGL 2 不维护两套材质或后处理算法；全部 raster shader 仍以 GLSL ES
 3.00 为唯一人工源码，WebGPU 产物经 Naga 生成。
 
+Unreleased 扩展：[PBR decals](./PBR_DECALS.md)
+将世界投影的颜色、法线和粗糙度同时应用到lighting/attributes；[透明质量](./TRANSPARENCY.md)
+为兼容 Basic/PBR 提供显式 weighted OIT，保持 glass 的排序折射合同。版本边界见
+[VERSIONS](./VERSIONS.md)。
+
 ## 旧效果不稳定的原因
 
 旧 PBR 的主要问题并不是某一个参数，而是照明、颜色空间和帧编排没有形成完整链路：

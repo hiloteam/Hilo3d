@@ -144,3 +144,37 @@ transparent pass. They receive the current pipeline/culling context, respect hie
 and camera layers, and request split rendering only while active. Nested asynchronous record results
 are rejected. Commit/discard callbacks are deduplicated per application frame across views. This
 backend-neutral hook is separate from storage/compute-specific GPU scene contributions.
+
+## Graph textures in storage-aware scene passes
+
+`SceneStorageShaderVariant.textures` adds named `SceneStorageTextureBinding` records to the same
+reserved group-three ABI as its readonly storage buffers. Each record supplies an exact shader
+sampler name, a graph texture/view handle, and an immutable `ComputeSampler`.
+`SceneRenderPass.setup` declares every texture read; preparation resolves graph views and
+recovery-aware samplers into the frame-owned bind group. Material/mesh groups retain their normal
+preparation and resource tracking.
+
+Every per-mesh shader must match the canonical group-three buffer and texture/sampler locations,
+kinds and sampled texture types. Missing/duplicate names, wrong comparison samplers, unsupported
+sampling capabilities, feedback and ABI mismatches fail rather than binding placeholders. Deferred
+sampled resource slots are explicitly represented and accepted only in a declared deferred group.
+
+Clustered direct PBR places its frame/light/probe buffers at bindings 0–4, GTAO at 8/9 and cloud
+visibility at 10/11. This allows deformed and decal-bearing PBR receivers to combine DDGI, GTAO and
+atmosphere/cloud shadows in the shared direct path. It uses the same surface evaluation and graph
+history as the bucket path; no second backend feature implementation is introduced.
+
+Planner-instanced direct PBR receivers use the shared per-mesh storage draw decomposition, retaining
+individual transforms while sharing the same lighting/graph inputs. They are not rejected merely
+because DDGI or a decal moves them outside a rigid GPU Scene bucket. Material variant manifests warm
+the actual weighted pass roles and enabled opaque GTAO/cloud variants against the same budget.
+
+## Pass-owned uniform blocks
+
+`SceneRenderPassParameters.uniformBlocks` binds registered std140 buffers by exact block name for
+one scene pass. Camera, frame, scene, light, material and object blocks remain engine-owned and
+cannot be replaced through this channel. The reserved weighted-transparency normalization block is
+explicitly allowed; custom names must already be registered. Buffer layouts/sizes pass the same
+shared reflection and RHI checks as material uniforms. The caller keeps bytes stable until
+submission/discard and uses per-invocation parameter-pool slots for values that differ between
+views. The existing upload transaction and submission resource tracker own their backend lifetime.

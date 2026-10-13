@@ -110,6 +110,8 @@ interface TransformHistoryRecord {
 interface MotionParticipationRecord {
     committedSubmission: number;
     pendingFrame: number;
+    committedMaterial: Material | null;
+    pendingMaterial: Material | null;
 }
 
 type OwnedBufferRegistration =
@@ -551,6 +553,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         this.commitTransformRecords(this.stagedMorphs);
         for (const record of this.stagedMotionParticipation) {
             record.committedSubmission = committedSubmission;
+            record.committedMaterial = record.pendingMaterial;
+            record.pendingMaterial = null;
             record.pendingFrame = -1;
         }
         this.submissionIndex = committedSubmission;
@@ -562,7 +566,10 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         for (const record of this.stagedModels) record.pendingFrame = -1;
         for (const record of this.stagedSkinning) record.pendingFrame = -1;
         for (const record of this.stagedMorphs) record.pendingFrame = -1;
-        for (const record of this.stagedMotionParticipation) record.pendingFrame = -1;
+        for (const record of this.stagedMotionParticipation) {
+            record.pendingFrame = -1;
+            record.pendingMaterial = null;
+        }
         this.clearStagedHistory();
     }
 
@@ -575,11 +582,17 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     markMotionVectorParticipation(mesh: Mesh): void {
         let record = this.motionParticipation.get(mesh);
         if (record === undefined) {
-            record = { committedSubmission: -1, pendingFrame: -1 };
+            record = {
+                committedSubmission: -1,
+                pendingFrame: -1,
+                committedMaterial: null,
+                pendingMaterial: null
+            };
             this.motionParticipation.set(mesh, record);
         }
         if (record.pendingFrame === this.frameIndex) return;
         record.pendingFrame = this.frameIndex;
+        record.pendingMaterial = mesh.material;
         this.stagedMotionParticipation.push(record);
     }
 
@@ -1301,7 +1314,11 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
     }
 
     private hasConsecutiveMotionParticipation(mesh: Mesh): boolean {
-        return this.motionParticipation.get(mesh)?.committedSubmission === this.submissionIndex;
+        const record = this.motionParticipation.get(mesh);
+        return (
+            record?.committedSubmission === this.submissionIndex &&
+            record.committedMaterial === mesh.material
+        );
     }
 
     private clearStagedHistory(): void {

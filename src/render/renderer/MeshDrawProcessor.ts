@@ -112,7 +112,7 @@ interface MutableSampledBindingResources {
 }
 
 interface MeshSampledBindingScratch {
-    resources: MutableSampledBindingResources[];
+    resources: (MutableSampledBindingResources | null)[];
     sources: Texture<unknown>[];
 }
 
@@ -167,6 +167,12 @@ function requireMaterialPassState(
     material: Material,
     role: MaterialPassRole
 ): Readonly<MaterialPipelineState> {
+    if (
+        (role === 'weighted-accumulation' || role === 'weighted-revealage') &&
+        material.transparencyClass !== 'weighted-blended'
+    ) {
+        throw new TypeError('Weighted transparency passes require weighted-blended materials');
+    }
     const state = resolveMaterialPassState(material, role);
     if (state === null) {
         throw new TypeError(`Material definition ${material.definition.id} has no ${role} pass`);
@@ -178,6 +184,22 @@ function validateMaterialPassTarget(
     role: MaterialPassRole,
     target: RHIMeshDrawTargetDescriptor
 ): void {
+    if (role === 'weighted-accumulation' || role === 'weighted-revealage') {
+        if (
+            target.sampleCount !== 1 ||
+            target.colorFormats.length !== (role === 'weighted-accumulation' ? 3 : 1) ||
+            target.colorFormats.some(
+                format => format !== (role === 'weighted-accumulation' ? 'rgba16float' : 'r16float')
+            ) ||
+            target.depthStencilFormat === undefined ||
+            target.depthStencilFormat === null
+        ) {
+            throw new TypeError(
+                'Weighted transparency requires single-sample HDR accumulation/revealage and opaque depth'
+            );
+        }
+        return;
+    }
     if (role !== 'motion-vector' && role !== 'material-attributes') return;
     const motionTargetValid =
         role === 'motion-vector' &&
@@ -677,7 +699,8 @@ export class MeshDrawProcessor {
         materialOverride: Material | null = null,
         sceneTexturePreparation: SceneTexturePreparationState | null = null,
         materialPass?: MaterialPassRole,
-        plannerInstancedFallback = false
+        plannerInstancedFallback = false,
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
@@ -763,7 +786,8 @@ export class MeshDrawProcessor {
             material,
             pipeline,
             context,
-            null
+            null,
+            passUniformBlocks
         );
         const sampledResources = this.prepareSampledResources(mesh, mesh, material, pipeline);
         const deferSceneTexture =
@@ -880,7 +904,9 @@ export class MeshDrawProcessor {
         storagePipelines: GPUDrivenPipelineResourceCache,
         preparationState: StorageScenePreparationState,
         materialOverride: Material | null = null,
-        plannerInstancedFallback = false
+        plannerInstancedFallback = false,
+        materialPass: MaterialPassRole = 'forward',
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
@@ -904,7 +930,8 @@ export class MeshDrawProcessor {
         if (!geometry || !material) {
             throw new Error(`Mesh ${mesh.id} requires geometry and material`);
         }
-        const materialState = requireMaterialPassState(material, 'forward');
+        const materialState = requireMaterialPassState(material, materialPass);
+        validateMaterialPassTarget(materialPass, target);
         if (
             shader.bindings.some(
                 binding => binding.kind === 'uniform-buffer' && binding.name === 'LightBlock'
@@ -956,9 +983,10 @@ export class MeshDrawProcessor {
             material,
             pipeline,
             context,
-            null
+            null,
+            passUniformBlocks
         );
-        const sampledResources = this.prepareSampledResources(mesh, mesh, material, pipeline);
+        const sampledResources = this.prepareSampledResources(mesh, mesh, material, pipeline, true);
         const bindingSet = this.bindGroups.prepare(
             mesh,
             pipeline.bindingLayoutToken,
@@ -999,6 +1027,7 @@ export class MeshDrawProcessor {
             // change without changing this reusable mesh packet; the fixed layout remains part of
             // the shader/pipeline identity above.
             resourceBindings: bindingSet.token,
+            materialPass,
             vertexLayoutIdentity: vertexPlan,
             target,
             deviceGeneration: this.registry.generation
@@ -1215,7 +1244,8 @@ export class MeshDrawProcessor {
         target: RHIMeshDrawTargetDescriptor,
         materialOverride: Material | null = null,
         sceneTexturePreparation: SceneTexturePreparationState | null = null,
-        materialPass?: MaterialPassRole
+        materialPass?: MaterialPassRole,
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
     ): PreparedDraw {
         this.assertAlive();
         const context = this.requireSemanticContext();
@@ -1374,7 +1404,8 @@ export class MeshDrawProcessor {
             material,
             pipeline,
             context,
-            instanceBlock
+            instanceBlock,
+            passUniformBlocks
         );
         const sampledResources = this.prepareSampledResources(
             owner,
@@ -1793,6 +1824,13 @@ export class MeshDrawProcessor {
                     `Scene uniform binding ${binding.name} cannot use dynamic offsets`
                 );
             }
+            if (
+                binding.group === SCENE_STORAGE_BIND_GROUP &&
+                (binding.kind === 'sampled-texture' ||
+                    binding.kind === 'sampler' ||
+                    binding.kind === 'comparison-sampler')
+            )
+                continue;
             if (binding.group >= SCENE_STORAGE_BIND_GROUP) {
                 throw new TypeError(
                     `Scene ${binding.kind} binding ${binding.name} conflicts with reserved pass-global group ${String(SCENE_STORAGE_BIND_GROUP)}`
@@ -2129,7 +2167,8 @@ export class MeshDrawProcessor {
         material: Material,
         pipeline: Readonly<MeshBindingPipelineRecord>,
         context: RenderGraphFrameContext,
-        instanceBlock: UniformBuffer | null
+        instanceBlock: UniformBuffer | null,
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
     ): readonly ResourceRegistryHandle<RHIBuffer>[] {
         const semanticFrame = this.#passSemanticFrame ?? context.semantic;
         const blocks = pipeline.bindingPlan.uniformBlocks;
@@ -2142,7 +2181,8 @@ export class MeshDrawProcessor {
             const block = blocks[index];
             if (block === undefined) continue;
             const uniform =
-                block.name === 'InstanceBlock'
+                passUniformBlocks?.[block.name] ??
+                (block.name === 'InstanceBlock'
                     ? instanceBlock
                     : this.uniformBlocks.resolveUniformBlock(
                           block.name,
@@ -2150,7 +2190,7 @@ export class MeshDrawProcessor {
                           material,
                           semanticFrame.camera,
                           semanticFrame
-                      );
+                      ));
             if (uniform === null) {
                 throw new Error('Instanced WebGPU shader requires a compiled InstanceBlock');
             }
@@ -2164,24 +2204,30 @@ export class MeshDrawProcessor {
         owner: object,
         mesh: Mesh,
         material: Material,
-        pipeline: Readonly<MeshBindingPipelineRecord>
-    ): readonly ShaderSampledBindingResources[] {
+        pipeline: Readonly<MeshBindingPipelineRecord>,
+        deferPassGlobal = false
+    ): readonly (ShaderSampledBindingResources | null)[] {
         const bindings = pipeline.bindingPlan.sampledBindings;
         if (bindings.length === 0) return EMPTY_SAMPLED_RESOURCES;
         let scratch = this.#sampledScratch.get(owner);
         if (scratch?.resources.length !== bindings.length) {
             scratch = {
-                resources: new Array<MutableSampledBindingResources>(bindings.length),
+                resources: new Array<MutableSampledBindingResources | null>(bindings.length),
                 sources: new Array<Texture<unknown>>(bindings.length)
             };
             this.#sampledScratch.set(owner, scratch);
         }
         let resolvedName: string | null = null;
         let resolvedValue: unknown;
+        scratch.sources.length = 0;
         try {
             for (let index = 0; index < bindings.length; index += 1) {
                 const binding = bindings[index];
                 if (binding === undefined) continue;
+                if (deferPassGlobal && binding.group === SCENE_STORAGE_BIND_GROUP) {
+                    scratch.resources[index] = null;
+                    continue;
+                }
                 if (binding.name !== resolvedName) {
                     resolvedName = binding.name;
                     this.#programBindingInfo.textureIndex = binding.arrayIndex;
@@ -2221,7 +2267,7 @@ export class MeshDrawProcessor {
                     );
                 }
                 let resources = scratch.resources[index];
-                if (resources === undefined) {
+                if (resources === undefined || resources === null) {
                     resources = {
                         textureView,
                         sampler
@@ -2231,7 +2277,7 @@ export class MeshDrawProcessor {
                     resources.textureView = textureView;
                     resources.sampler = sampler;
                 }
-                scratch.sources[index] = source;
+                scratch.sources.push(source);
                 if (external !== undefined) {
                     const dependency = externalTextureBindingRegistry.graphDependency(source);
                     if (
@@ -2284,7 +2330,7 @@ export class MeshDrawProcessor {
 
     private requireSampledScratchSources(
         owner: object,
-        resources: readonly ShaderSampledBindingResources[]
+        resources: readonly (ShaderSampledBindingResources | null)[]
     ): readonly Texture<unknown>[] {
         if (resources.length === 0) return EMPTY_TEXTURE_SOURCES;
         const scratch = this.#sampledScratch.get(owner);

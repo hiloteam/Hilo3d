@@ -31,7 +31,7 @@ capability gates; they are not unconditional compute requirements.
 | `ComputeRenderPass`     | Graph-declared inputs/outputs and direct or indirect dispatch.                                  |
 | `StorageGraphicsShader` | Validated readonly storage graphics source and resources.                                       |
 | `GPUDrivenRenderPass`   | Prepared graphics bindings and vertex/index input, direct/indirect procedural or indexed draws. |
-| `SceneRenderPass`       | Shared scene list with optional pass-global readonly storage at group 3.                        |
+| `SceneRenderPass`       | Shared scene list with pass-global readonly storage and named graph textures at group 3.        |
 
 Import public APIs from the `hilo3d` root. Exact types are in the installed declarations; repository
 definitions are [StorageBuffer](../src/render/StorageBuffer.ts), [compute](../src/render/compute/),

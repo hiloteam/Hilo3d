@@ -509,6 +509,21 @@ smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 1
 
 ## 唯一验收入口
 
+本地完整 coverage 若因长寿命 Chromium 的 RPC 连接中断而未完成，可使用与 CI 相同的四分片协议，每片以独立进程、单 GPU
+worker 运行：
+
+```sh
+npx vitest run --coverage --maxWorkers=1 --shard=1/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-1.json
+npx vitest run --coverage --maxWorkers=1 --shard=2/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-2.json
+npx vitest run --coverage --maxWorkers=1 --shard=3/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-3.json
+npx vitest run --coverage --maxWorkers=1 --shard=4/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-4.json
+npx vitest --merge-reports=reports/vitest --coverage
+```
+
+只对分片运行延后全局 coverage threshold；不带 `--shard`
+的合并仍执行原来的全部阈值。必须确认四片没有失败/未处理错误且并集完整，不能只凭某一片通过宣称完整验收。本地不设置
+`GITHUB_ACTIONS`，保留本机能够执行的全部真实 GPU 用例。常规 `validate` 入口及无分片的检查不变。
+
 ```sh
 npm ci
 npx playwright install chromium

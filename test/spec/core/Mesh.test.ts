@@ -13,12 +13,15 @@ describe('Mesh', () => {
     it('clone', () => {
         const mesh = new Mesh({
             geometry: new Hilo3d.BoxGeometry(),
-            material: new Hilo3d.BasicMaterial()
+            material: new Hilo3d.BasicMaterial(),
+            contributeToGlobalIllumination: false
         });
 
         const clonedMesh = mesh.clone();
         expect(clonedMesh.geometry).toBe(mesh.geometry);
         expect(clonedMesh.material).toBe(mesh.material);
+        expect(clonedMesh.contributeToGlobalIllumination).toBe(false);
+        expect(new Mesh().contributeToGlobalIllumination).toBe(true);
     });
 
     it('raycast', () => {

@@ -19,6 +19,8 @@ const pipeline = new Hilo3d.ClusteredForwardPlusPipelineFactory({
         raysPerProbe: 128,
         maxProbesPerFrame: 48,
         maxTriangles: 65_536,
+        maxMeshes: 1_024,
+        maxTextureTexels: 1_048_576,
         maxLights: 32,
         hysteresis: 0.9,
         bounceStrength: 0.7
@@ -42,30 +44,110 @@ invalid sizes, non-finite numbers and scene/light budget overflow fail clearly.
 
 The internal scene compiler traverses visible scene nodes and camera layers, independent of the
 camera frustum and Hi-Z visibility. It extracts indexed or non-indexed rigid triangle geometry,
-including normalized, interleaved and quantized positions. Shared local geometry is cached. Exact
-matrix, attribute and material snapshots detect changes; unchanged scenes retain snapshot identity
-and avoid triangle allocations. Geometry membership changes rebuild a deterministic median BVH;
-count-preserving geometry changes and rigid transforms refit the existing topology. Immutable
-triangle/BVH dirty byte ranges allow material and rigid edits to upload only changed records. A
-skipped CPU revision falls back to a complete upload; rejected submissions retry the same ranges.
-Failed updates leave the previous snapshot valid.
+including normalized, interleaved and quantized positions and canonical built-in skin/morph poses.
+Shared local geometry is cached. Exact matrix, attribute and material snapshots detect changes;
+unchanged scenes retain snapshot identity and avoid triangle allocations. Geometry membership
+changes rebuild a deterministic median BVH; count-preserving geometry changes and rigid transforms
+refit the existing topology. Immutable triangle/BVH dirty byte ranges allow material and rigid edits
+to upload only changed records. A skipped CPU revision falls back to a complete upload; rejected
+submissions retry the same ranges. Failed updates leave the previous snapshot valid.
 
-Triangle records occupy 128 bytes and carry world positions, transformed shading normals, diffuse
-reflectance, emission, sidedness and object layer. BVH nodes occupy 32 bytes and use explicit
-integer child/leaf indices. The balanced tree has bounded traversal depth. GPU ray queries use
-nearest-hit triangles and light visibility rays; they do not read visibility back to the CPU.
+Triangle records occupy 320 bytes and carry world positions, transformed shading normals, legacy
+factor diagnostics, sidedness, object layer, both logical UV sets, vertex RGBA and tangent frames.
+Separate bounded material records describe the exact transport slots and world-space decals. BVH
+nodes occupy 32 bytes and use explicit integer child/leaf indices. The balanced tree has bounded
+traversal depth. GPU ray queries use nearest-hit triangles and light visibility rays; they do not
+read visibility back to the CPU.
 
-First-release transport covers opaque, static or rigid PBR surfaces and point, spot and directional
-lights. Per-object light layers also apply to ray-hit lighting. Unsupported deformed, instanced,
-masked, transmitting or custom-material geometry fails by default. Area lights and authored
-cookie/IES spot profiles likewise require an explicit exclusion policy. `unsupported: 'exclude'`
-provides a deliberate opt-out with coverage diagnostics; it does not imply those surfaces can
-occlude rays correctly.
+The default `texturePolicy: 'sample'` evaluates actual uploaded texture values for base color,
+emission, metallic (separate and combined metallic-roughness), specular-glossiness, opacity, tangent
+normal and RGBD light maps. UV0/UV1 selection, normalized/interleaved attributes, both quantization
+decode matrices, per-slot transforms, color encoding and channel swizzles are retained. Color
+encoding is applied after filtering and before channel swizzling, matching the shared material
+shader. Vertex RGBA multiplies base color and coverage. Alpha masks use the same cutoff comparison
+for primary rays and light-visibility rays, so masked leaves and cutouts do not become solid ray
+occluders. Scalar opacity is replaced by the opacity map's red channel when that slot is present, as
+in the canonical raster coverage shader.
 
-Texture-valued surfaces fail by default. `texturePolicy: 'material-factor'` explicitly uses their
-constant material factors as a coarse ray-scene approximation; `'exclude'` omits them. These choices
-are observable and are not described as texture-accurate transport. The maintained atelier uses
-original factor-only materials so its rendered and ray-traced diffuse colors agree.
+A renderer-owned float RGBA atlas is prepared by compute from engine-managed textures through the
+existing upload/cache and graph dependencies. This keeps compressed textures, images, partial
+updates, released CPU images and HDR values on the ordinary resource/recovery path. It does not
+extract pixels with a canvas or require CPU texture readback. The atlas holds the full level-zero
+image without resolution reduction, uses the authored magnification filter and repeat/mirror/clamp
+addressing, and is bounded by `maxTextureTexels` (sum of unique texture widths × heights). Ray
+transport deliberately samples level zero: no screen derivatives, anisotropic footprint or ray-cone
+mip selection is claimed. Updates to texture content, upload descriptors, sampler state, UV
+transforms, channels or encoding invalidate the appropriate scene/atlas revisions. Automatic video
+texture updates require explicit revisioned texture snapshots; unrevisioned `autoUpdate` textures
+fail clearly. Unsupported texture formats/dimensions fail through graph validation.
+
+Atlas invalidation follows the shared texture cache's effective upload source: image identity,
+complete `mipmaps` array identity, content revision, upload/shape properties and sampler settings.
+Retained recovery backing takes precedence after public image release; extraction never reads the
+released `image` getter. Replacing an entire mip chain therefore refreshes transport even when
+`updateRevision` is unchanged. Sampler changes can also force a source allocation/upload, so a
+changed recipe is prepared before its synchronized external-image width/height enter atlas packing.
+Stable sources perform neither repeated upload-recipe preparation nor atlas-copy passes.
+
+As with ordinary raster texture uploads, editing pixels or replacing an entry/data field inside the
+same mip-array object requires `texture.needUpdate = true`, or a supported `setSubTexture()` update.
+The ray scene does not hash image bytes or silently add a stronger mutation contract. Managed
+textures may be imported before the first scene/compute/fullscreen pass; those imports share one
+frame upload transaction. Failed frames preserve committed data and retry without prematurely
+releasing CPU recovery sources.
+
+Standard rigid `Mesh.useInstanced` batches retain each mesh's world transform and shared local
+geometry in the ray scene. Built-in `MorphGeometry` and `SkinnedMesh` also contribute current poses:
+CPU extraction follows decoded positions → active morph slots → the same weighted joint matrices
+used by the raster shader. Pose and stream snapshots are exact; unchanged poses retain snapshots,
+while changed poses refit the bounded BVH without changing leaf identity. Joint indices, affine
+matrices, complete target streams and finite nonnegative weights with a positive sum are validated.
+Skin positions divide the composed matrix by that sum, matching final homogeneous clip geometry and
+accepting ordinary UNORM weight rounding. Shading normals are subsequently normalized; this does not
+change the raster shader's raw homogeneous varying convention. The canonical
+128-joint/eight-morph-slot limits apply. This is CPU pose extraction, not a second GPU skinning
+renderer. Large animated scenes must budget their triangle count and measure CPU refit cost.
+Arbitrary custom GPU deformation and custom `instanceCount` vertex streams have no shared ray
+deformation ABI and still fail by default.
+
+World-space PBR decals modify ray-hit diffuse color and shading normals using the same atlas,
+projector volume, layer masks, overlap order, tint, opacity, edge and angular fades. Decal mask
+alpha controls surface paint, not geometric ray coverage. Camera-distance fade is a raster
+presentation LOD and is intentionally absent from camera-independent transport. Roughness and
+specular-only maps do not affect the Lambertian diffuse transport model; this does not claim glossy
+BRDF path tracing or layered-specular transport.
+
+Blended/transmitting surfaces, alpha-to-coverage, parallax/custom materials and custom overrides of
+transport position/material bindings, area lights and authored cookie/IES spot profiles continue to
+require an explicit exclusion policy. `unsupported: 'exclude'` counts deliberate omissions; omitted
+geometry cannot occlude rays. An individual effect or receiver can set
+`mesh.contributeToGlobalIllumination = false` to opt out of ray geometry while retaining
+`unsupported: 'error'` for the rest of the scene. Submitted diagnostics count these cases in
+`exclusions.disabled`; its children retain their own participation settings. This flag controls ray
+contribution and occlusion only: supported PBR materials can still receive probe illumination.
+Smoke/weighted particles should opt out explicitly because they are not solid ray blockers.
+
+The legacy `texturePolicy: 'material-factor'` is an explicit coarse approximation which ignores
+surface maps and decals for transport; `'exclude'` omits textured meshes and `'error'` rejects them.
+Neither is described as texture-accurate transport. Exact runtime diagnostics report
+encountered/excluded meshes, CPU upload bytes and persistent allocation bytes.
+
+## Resource budgets
+
+Persistent buffers are created during pipeline initialization, with explicit fixed caps. They do not
+allocate/grow in the Render Graph record phase. Defaults are 65,536 triangles, 1,024 mesh/material
+records and 1,048,576 unique level-zero texels. Triangle + BVH caps reserve 24 MiB; the complete
+material/decal table reserves about 2.09 MiB; the float RGBA atlas reserves 16 MiB. Probe histories,
+lights and parameters add their separately determined sizes. `residentBytes` reports the actual
+owned storage-buffer sizes, including both probe histories. Image and uniform caches are counted
+separately by the shared renderer; temporary retirement behind a GPU fence is not a second logical
+allocation. Exceeding any cap fails before commands rather than dropping assets.
+
+For a small room, set `maxTriangles: 4096`, `maxMeshes: 64`, and `maxTextureTexels: 262144` when its
+unique transport maps fit 262,144 texels. Those caps reserve roughly 5.63 MiB for triangles, BVH,
+materials and the atlas, plus the selected probe histories. A single 1024×1024 texture already needs
+1,048,576 texels; sharing a texture between slots/meshes consumes its pixels only once. The caps are
+not resident texture-streaming targets, and no automatic transport downsampling is performed.
 
 ## Probe transport and visibility
 
@@ -130,8 +212,11 @@ separately and retried after failure.
 
 A persistent graph history marker tracks device-generation validity. Device loss recreates neutral
 resources, invalidates old probe history and resumes bounded convergence; CPU-shadow scene recipes
-restore uploaded geometry. Destruction uses renderer-owned, submission-aware storage resources. No
-native device or command encoder crosses the RHI boundary.
+restore uploaded geometry and material records. The atlas is GPU-written and reinitialized from
+managed-image recipes before any ray reads after recovery. A rejected atlas update marks the atlas
+suspect until a successful submission; reverting a candidate scene therefore cannot reuse partially
+overwritten ranges. Destruction uses renderer-owned, submission-aware storage resources. No native
+device or command encoder crosses the RHI boundary.
 
 ## Original indoor showcase
 
@@ -187,18 +272,39 @@ Wall pigment comparisons include the unpainted white furniture:
 
 ## Validation and evidence
 
-- CPU oracle tests cover nearest-hit BVH traversal, topology refits, immutable snapshots, geometry
-  decoding, light layers, budget failure and explicit coverage policies.
+- CPU oracle tests cover nearest-hit BVH traversal and masked continuation, topology/pose refits,
+  immutable snapshots, vertex/UV decoding, texture budgets, light layers and explicit exclusions.
+  Textured CPU oracle calls require the actual atlas readback; they never silently replace textures
+  with factors.
 - Controller tests cover validated options, strict update budgets, commit/discard, history
   invalidation, destruction and all three ray-count shader variants through Naga and actual WebGPU
   compute pipeline creation.
 - Production rendering tests use offscreen colored emitters, material changes, moving occluders and
   dynamic lights. Both clustered PBR lanes and hybrid SSGI require real submitted pixels.
+- Asset transport tests sample asymmetric UV1 emissive images, direct texture transforms, changing
+  base-color/metallic/normal texels, alpha masks, joint and morph occluders, decal pigment/normals,
+  explicit receiver masks and GPU-resource release/rebuild. GI-disabled controls isolate transport
+  from direct receiver shading. Compressed/HDR atlas sources use the existing shared texture path;
+  these new asset pixel fixtures use RGBA8 sources and do not constitute a compressed-format matrix.
+- Texture-source regressions cover whole-chain RGBA mip replacement without a revision increment,
+  canvas content/size changes accompanying sampler changes, retained recovery backing, and
+  compressed/hardware-sRGB metadata. Real transport pixels and per-frame pass counts require a
+  changed source to refresh once and stable sources to record no atlas copies. Pure first-pass
+  two-texture imports also verify initialization, rollback and resource recovery on both backends.
 - Browser acceptance checks the authored room, GI on/off pixels, interactions after captures,
   instrumentation health and errors after teardown.
 
 The repository's existing frozen RHI baseline remains immutable. Functional/pixel browser tests and
 local timings do not substitute for an enrolled physical-GPU cross-commit DDGI performance baseline.
+
+## Asset coverage validation recorded on 2026-10-13
+
+The six focused DDGI files passed 71 tests in the Chromium software-WebGPU lane: scene extraction,
+controller/Naga/real compute pipelines, asset transport pixels, existing transport/rendering and
+hybrid SSGI. An additional texture-source identity file passed nine tests, including real WebGPU
+transport and WebGL2/WebGPU import transactions. TypeScript and focused ESLint checks passed. This
+evidence does not claim a physical-GPU performance baseline, every device/driver combination, or the
+complete release/browser matrix.
 
 ## Validation recorded on 2026-09-20
 

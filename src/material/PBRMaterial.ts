@@ -23,10 +23,13 @@ import { MaterialTextureSemantic, MaterialUniformSemantic } from './MaterialSema
 import type { ShaderOptions } from '../render/types';
 import type { ReflectionProbe } from '../render/reflections/ReflectionProbe';
 import { ReflectionProbeMaterialBinding } from '../render/reflections/ReflectionProbeMaterialBinding';
+import { DecalMaterialBinding, type PBRDecalOptions } from '../render/decals/DecalMaterialBinding';
 
 export type PBRMaterialTextureInput = Texture<unknown> | MaterialTextureSlotInput | null;
 
 export interface PBRMaterialParameters extends MaterialInstanceParameters {
+    /** Bounded world-space surface decals; opaque and alpha-masked receivers only. */
+    readonly decals?: Readonly<PBRDecalOptions>;
     /** One or two local specular volumes, blended per pixel with the environment fallback. */
     readonly reflectionProbes?: readonly ReflectionProbe[];
     /** Compile the standard surface without lighting. */
@@ -189,6 +192,8 @@ function slot(
 }
 
 function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
+    const decals =
+        parameters.decals === undefined ? null : new DecalMaterialBinding(parameters.decals);
     const probes =
         parameters.reflectionProbes === undefined
             ? null
@@ -232,6 +237,17 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
         ...(parameters.cullMode === undefined ? {} : { cullMode: parameters.cullMode }),
         ...(parameters.state === undefined ? {} : { state: parameters.state }),
         staticFeatures: {
+            ...(decals === null
+                ? {}
+                : {
+                      DECALS: decals.options.projectors.length,
+                      NEED_WORLD_NORMAL: 1,
+                      ...(decals.options.normalAtlas === undefined ? {} : { DECAL_NORMAL: 1 }),
+                      ...(decals.options.roughnessAtlas === undefined
+                          ? {}
+                          : { DECAL_ROUGHNESS: 1 }),
+                      ...(decals.options.baseColorEncoding === 'srgb' ? { DECAL_SRGB: 1 } : {})
+                  }),
             ...(probes === null
                 ? {}
                 : {
@@ -378,6 +394,8 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
 
 /** Physically based standard-surface material with immutable shader topology. */
 class PBRMaterial extends MaterialInstance {
+    /** Immutable decal atlas/membership configuration, or null when no decals are enabled. */
+    readonly decals: Readonly<PBRDecalOptions> | null;
     /** Immutable membership of this material's local reflection volumes. */
     readonly reflectionProbes: readonly ReflectionProbe[];
     readonly isPBRMaterial = true;
@@ -437,12 +455,37 @@ class PBRMaterial extends MaterialInstance {
                 // Dynamic reflection changes have no geometric velocity. Conservatively reject their
                 // material history until a finer spatial reactive contract is provided.
                 temporalReactiveFactor:
+                    params.decals !== undefined ||
                     params.reflectionProbes?.some(probe => probe.dynamic) === true
                         ? 1
                         : (params.temporalReactiveFactor ?? 0)
             },
             false
         );
+        this.decals = null;
+        if (params.decals !== undefined) {
+            if (
+                params.unlit === true ||
+                this.forwardQueue !== 'opaque' ||
+                this.requiresOpaqueSceneTexture
+            )
+                throw new TypeError('PBR decals require a lit opaque or alpha-masked receiver');
+            if (params.uniformBlocks?.['DecalBlock'] !== undefined)
+                throw new TypeError('DecalBlock is owned by PBR decals');
+            const binding = new DecalMaterialBinding(params.decals);
+            this.decals = binding.options;
+            Object.defineProperty(this.uniformBlocks, 'DecalBlock', {
+                enumerable: true,
+                get: () => binding.buffer
+            });
+            this.uniforms['u_decalBaseColorAtlas'] = { get: () => binding.options.baseColorAtlas };
+            if (binding.options.normalAtlas !== undefined)
+                this.uniforms['u_decalNormalAtlas'] = { get: () => binding.options.normalAtlas };
+            if (binding.options.roughnessAtlas !== undefined)
+                this.uniforms['u_decalRoughnessAtlas'] = {
+                    get: () => binding.options.roughnessAtlas
+                };
+        }
         this.reflectionProbes = Object.freeze([...(params.reflectionProbes ?? [])]);
         if (this.reflectionProbes.length > 0) {
             if (params.unlit === true)

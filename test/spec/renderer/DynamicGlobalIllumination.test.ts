@@ -1,4 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import Mesh from '../../../src/core/Mesh';
+import BoxGeometry from '../../../src/geometry/BoxGeometry';
+import PBRMaterial from '../../../src/material/PBRMaterial';
+import Texture from '../../../src/texture/Texture';
+import { createSceneTextureAtlasShader } from '../../../src/render/gi/SceneTextureAtlas';
 import Color from '../../../src/math/Color';
 import Vector3 from '../../../src/math/Vector3';
 import PointLight from '../../../src/light/PointLight';
@@ -29,7 +34,10 @@ import {
     acquireRenderPassParameters,
     type RenderPassParameterPool
 } from '../../../src/render/pipeline/RenderPassParameterPool';
-import type { RenderGraphBufferHandle } from '../../../src/render/pipeline/ScriptableRenderGraph';
+import type {
+    RenderGraphBufferHandle,
+    RenderGraphTextureHandle
+} from '../../../src/render/pipeline/ScriptableRenderGraph';
 
 class TestStorage implements StorageBuffer {
     readonly backend = 'webgpu';
@@ -67,10 +75,12 @@ class TestStorage implements StorageBuffer {
 function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOptions>[0] = {}): {
     readonly controller: DynamicGlobalIlluminationController;
     readonly buffers: TestStorage[];
+    readonly passes: { frameIndex: number; name: string }[];
     readonly scene: RayTracingSceneSnapshot;
     readonly context: (frameIndex: number, valid?: boolean) => RenderPipelineContext;
 } {
     const buffers: TestStorage[] = [];
+    const passes: { frameIndex: number; name: string }[] = [];
     const owner = {};
     const handles = new Map<StorageBuffer, RenderGraphBufferHandle>();
     const createContext = {
@@ -91,6 +101,7 @@ function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOpt
     return {
         controller,
         buffers,
+        passes,
         scene: new RayTracingScene().update(new Node()),
         context(frameIndex: number, valid = true): RenderPipelineContext {
             return {
@@ -114,8 +125,11 @@ function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOpt
                         if (handle === undefined) throw new Error('Missing imported storage');
                         return handle;
                     },
-                    addPass(): void {
-                        void 0;
+                    importTexture(): RenderGraphTextureHandle {
+                        return 101 as RenderGraphTextureHandle;
+                    },
+                    addPass(pass: { name: string }): void {
+                        passes.push({ frameIndex, name: pass.name });
                     }
                 }
             } as unknown as RenderPipelineContext;
@@ -205,6 +219,7 @@ describe('DDGI settings and submission lifecycle', () => {
             ...scene,
             revision: scene.revision + 1,
             baseRevision: scene.revision,
+            materialDirtyRanges: [],
             triangleDirtyRanges: [{ byteOffset: 32, byteLength: 16 }],
             nodeDirtyRanges: []
         };
@@ -230,8 +245,89 @@ describe('DDGI settings and submission lifecycle', () => {
         expect(buffers[2]?.writes.at(-1)?.byteLength).toBe(scene.nodes.byteLength);
         controller.frameSubmitted(4);
         expect(controller.getDiagnostics().sceneUploadedBytes).toBe(
-            scene.triangles.byteLength + scene.nodes.byteLength
+            scene.triangles.byteLength + scene.nodes.byteLength + scene.materials.byteLength
         );
+        controller.destroy();
+    });
+
+    it('keeps allocations bounded by explicit caps and releases partial constructor failures', () => {
+        const { controller, buffers } = fixture({
+            maxTriangles: 128,
+            maxMeshes: 4,
+            maxTextureTexels: 16
+        });
+        expect(controller.getDiagnostics().residentBytes).toBe(
+            buffers.reduce((sum, buffer) => sum + buffer.byteLength, 0)
+        );
+        expect(controller.getDiagnostics().residentBytes).toBeLessThan(100_000);
+        controller.destroy();
+        const allocated: TestStorage[] = [];
+        const settings = snapshotDynamicGlobalIlluminationOptions({
+            probeCounts: [2, 2, 2],
+            maxMeshes: 4,
+            maxTextureTexels: 16
+        });
+        expect(
+            () =>
+                new DynamicGlobalIlluminationController(settings, {
+                    createStorageBuffer(
+                        descriptor: Readonly<StorageBufferDescriptor>
+                    ): StorageBuffer {
+                        if (allocated.length === 6) throw new Error('injected allocation failure');
+                        const buffer = new TestStorage(descriptor);
+                        allocated.push(buffer);
+                        return buffer;
+                    }
+                } as unknown as RenderPipelineCreateContext)
+        ).toThrow(/injected allocation/);
+        expect(allocated.every(buffer => buffer.isDestroyed)).toBe(true);
+    });
+
+    it('rebuilds suspect atlas ranges after discarded relocation and recovery before publishing diagnostics', () => {
+        const { controller, context, passes } = fixture({ maxTextureTexels: 8 });
+        const texture = new Texture({
+            image: new Uint8Array([255, 0, 0, 255]),
+            width: 1,
+            height: 1
+        });
+        const mesh = new Mesh({
+            geometry: new BoxGeometry().setAllRectUV([
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 1]
+            ]),
+            material: new PBRMaterial({ metallic: 0, baseColorMap: texture })
+        });
+        mesh.updateMatrixWorld();
+        const scene = new RayTracingScene().update(mesh);
+        const atlasCopies = (frame: number): number =>
+            passes.filter(
+                pass =>
+                    pass.frameIndex === frame && pass.name === 'DDGI texture transport atlas upload'
+            ).length;
+        controller.record(context(1, false), { scene, lights: [] });
+        expect(atlasCopies(1)).toBe(1);
+        controller.frameSubmitted(1);
+        controller.record(context(2), { scene, lights: [] });
+        expect(atlasCopies(2)).toBe(0);
+        controller.frameSubmitted(2);
+        const moved: RayTracingSceneSnapshot = {
+            ...scene,
+            revision: scene.revision + 1,
+            baseRevision: scene.revision,
+            textures: scene.textures.map(source => ({ ...source, offset: 1 }))
+        };
+        controller.record(context(3), { scene: moved, lights: [] });
+        expect(atlasCopies(3)).toBe(1);
+        controller.frameDiscarded(3);
+        controller.record(context(4), { scene, lights: [] });
+        expect(atlasCopies(4)).toBe(1);
+        controller.frameSubmitted(4);
+        controller.record(context(5, false), { scene, lights: [] });
+        expect(atlasCopies(5)).toBe(1);
+        controller.frameSubmitted(5);
+        expect(controller.getDiagnostics().submittedFrameCount).toBe(4);
         controller.destroy();
     });
 
@@ -289,7 +385,7 @@ describe('DDGI settings and submission lifecycle', () => {
         expect(buffers[0]?.writes.at(-1)?.[21]).toBe(3);
         expect(buffers[0]?.writes.at(-1)?.[23]).toBe(0);
         expect(controller.settings.environment).toEqual({ r: 1, g: 2, b: 3 });
-        expect(buffers).toHaveLength(6);
+        expect(buffers).toHaveLength(8);
         controller.destroy();
     });
 
@@ -494,6 +590,28 @@ describe('DDGI real shader contracts', () => {
     beforeAll(async () => {
         await compiler.initialize();
     });
+
+    it('validates the managed-image atlas upload through Naga and an actual compute pipeline', async () => {
+        const shader = createSceneTextureAtlasShader();
+        compiler.compile(shader);
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error('DDGI atlas coverage requires WebGPU');
+        const device = await adapter.requestDevice();
+        try {
+            const module = device.createShaderModule({ code: shader.source });
+            const info = await module.getCompilationInfo();
+            expect(info.messages.filter(message => message.type === 'error')).toEqual([]);
+            expect(
+                await device.createComputePipelineAsync({
+                    layout: 'auto',
+                    compute: { module, entryPoint: 'main' }
+                })
+            ).toBeDefined();
+        } finally {
+            device.destroy();
+        }
+    });
+
     it.each([64, 128, 256] as const)(
         'validates the %i-ray BVH traversal and directional probe update through Naga and WebGPU',
         async raysPerProbe => {

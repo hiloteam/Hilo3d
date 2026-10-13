@@ -1,5 +1,31 @@
 # Unreleased
 
+### Rendering
+
+- Extend dynamic diffuse GI with bounded, GPU-sampled asset textures, independent UV sets and
+  transforms, vertex colors, alpha-mask ray visibility, projected decal color/normal transport, and
+  canonical skin/morph pose snapshots. Bound transport storage with explicit mesh/triangle/texel
+  limits and preserve submitted revisions across failed frames and device recovery.
+- Add `Mesh.contributeToGlobalIllumination` for explicit ray-scene opt-out without weakening strict
+  validation of other assets or disabling supported PBR reception of indirect illumination.
+- Make froxel lighting consume the shared directional, spot and point shadow atlas. Include
+  offscreen casters in shared directional depth fitting and reject stale volume history when lights,
+  media or atlas contents change.
+- Add portable `DecalProjector` and `PBRMaterial.decals`: bounded atlas-backed world projection,
+  stable overlap order, material receiver masks, angle/distance filtering and consistent PBR,
+  normal/roughness attributes and conservative temporal rejection.
+- Add opt-in `weightedBlendedTransparency` to Forward and Clustered pipelines, explicit material
+  transparency classification and portable HDR accumulation/revealage. Keep transmission on its
+  sorted, opaque-color refraction contract and include transparent-only depth regions in clustered
+  light allocation.
+- Reserve `DecalBlock` at shared uniform binding 11 (WebGPU material-group binding 65) and the
+  16-byte `WeightedTransparencyBlock` at binding 12 (WebGPU global-group binding 4). Automatically
+  assigned custom uniform bindings now start at 13; explicit custom bindings 11/12 must move.
+- Bound weighted HDR accumulation with three additive FP16 numeric segments, explicit primitive and
+  pixel budgets, and a pooled pass uniform instead of shader variants. Accumulate optical depth so
+  faint layers retain coverage. Validate three MRTs/24 bytes per sample and preserve sampler
+  retirement across failed prepare through the submission resource tracker.
+
 # 2.0.0-alpha.9 (release candidate)
 
 This section describes the prepared release source; npm publication is pending.

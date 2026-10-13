@@ -1,3 +1,6 @@
+import { RAY_TRIANGLE_FLOATS } from './scene/SceneGeometry';
+import { RAY_MATERIAL_BYTES, sameRayTexture, type RaySceneTexture } from './scene/SceneMaterials';
+import { SceneTextureAtlas } from './SceneTextureAtlas';
 import Color from '../../math/Color';
 import Vector3 from '../../math/Vector3';
 import DirectionalLight from '../../light/DirectionalLight';
@@ -68,8 +71,12 @@ export interface DynamicGlobalIlluminationOptions {
     readonly maxLights?: number;
     /** Unsupported geometry/material handling. Defaults to error. */
     readonly unsupported?: 'error' | 'exclude';
-    /** Texture handling for ray-hit diffuse/emissive factors. Defaults to error. */
-    readonly texturePolicy?: 'error' | 'exclude' | 'material-factor';
+    /** Texture handling for ray-hit surfaces. Defaults to sample, which evaluates actual uploaded texels. */
+    readonly texturePolicy?: 'sample' | 'error' | 'exclude' | 'material-factor';
+    /** Maximum ray-scene objects/material records, including shared-geometry rigid instances. Defaults to 1024. */
+    readonly maxMeshes?: number;
+    /** Sum of unique transport texture level-zero texels. A float RGBA atlas preserves HDR values. Defaults to 1048576. */
+    readonly maxTextureTexels?: number;
 }
 
 /** @internal Validated immutable DDGI settings, including exact allocation requirements. */
@@ -93,7 +100,9 @@ export interface DynamicGlobalIlluminationSettings {
     readonly maxTriangles: number;
     readonly maxLights: number;
     readonly unsupported: 'error' | 'exclude';
-    readonly texturePolicy: 'error' | 'exclude' | 'material-factor';
+    readonly texturePolicy: 'sample' | 'error' | 'exclude' | 'material-factor';
+    readonly maxMeshes: number;
+    readonly maxTextureTexels: number;
 }
 
 /** CPU-known counts for the last submitted DDGI frame; no implicit GPU readback. */
@@ -110,17 +119,30 @@ export interface DynamicGlobalIlluminationDiagnostics {
     readonly sceneNodeCount: number;
     /** Unsupported scene meshes deliberately omitted under the selected policy. */
     readonly excludedMeshCount: number;
+    /** Submitted explicit opt-outs and unsupported surface counts, categorized without GPU readback. */
+    readonly exclusions: Readonly<
+        Record<
+            | 'disabled'
+            | 'material'
+            | 'deformation'
+            | 'topology'
+            | 'instances'
+            | 'vertex-colors'
+            | 'surface-texture',
+            number
+        >
+    >;
     /** Textured meshes encountered during extraction; texturePolicy and excludedMeshCount describe their treatment. */
     readonly texturedMeshCount: number;
     /** Meshes changed during the last extraction. */
     readonly changedMeshCount: number;
     /** Last CPU scene update operation. */
     readonly sceneUpdate: 'rebuild' | 'refit' | 'material';
-    /** Allocated persistent buffer bytes, including both probe-history slots. */
+    /** Allocated DDGI storage-buffer bytes, including both probe histories; shared image and uniform caches are separate. */
     readonly residentBytes: number;
-    /** CPU bytes uploaded by the last successful frame, including parameters and lights. */
+    /** CPU storage-buffer bytes queued by the last successful frame; shared image and uniform uploads are separate. */
     readonly uploadedBytes: number;
-    /** Subset of uploadedBytes used for changed triangles and BVH nodes. */
+    /** Subset of uploadedBytes used for changed triangles, BVH nodes and material records. */
     readonly sceneUploadedBytes: number;
     /** Number of successful probe-update submissions. */
     readonly submittedFrameCount: number;
@@ -192,13 +214,14 @@ export function snapshotDynamicGlobalIlluminationOptions(
     const unsupported: string = input.unsupported ?? 'error';
     if (unsupported !== 'error' && unsupported !== 'exclude')
         throw new TypeError('DDGI unsupported must be error or exclude');
-    const texturePolicy: string = input.texturePolicy ?? 'error';
+    const texturePolicy: string = input.texturePolicy ?? 'sample';
     if (
+        texturePolicy !== 'sample' &&
         texturePolicy !== 'error' &&
         texturePolicy !== 'exclude' &&
         texturePolicy !== 'material-factor'
     )
-        throw new TypeError('DDGI texturePolicy must be error, exclude or material-factor');
+        throw new TypeError('DDGI texturePolicy must be sample, error, exclude or material-factor');
     const spacing = vector(input.spacing ?? new Vector3(1, 1, 1), 'spacing', 0.001);
     return Object.freeze({
         origin: vector(input.origin ?? new Vector3(-4, 0, -4), 'origin', -1_000_000),
@@ -237,6 +260,13 @@ export function snapshotDynamicGlobalIlluminationOptions(
         maxRayRadiance: finiteRange(input.maxRayRadiance ?? 32, 0.001, 100_000, 'maxRayRadiance'),
         relocation,
         maxTriangles: integer(input.maxTriangles ?? 65_536, 1, 262_144, 'maxTriangles'),
+        maxMeshes: integer(input.maxMeshes ?? 1024, 1, 1048576, 'maxMeshes'),
+        maxTextureTexels: integer(
+            input.maxTextureTexels ?? 1048576,
+            1,
+            16777216,
+            'maxTextureTexels'
+        ),
         maxLights: integer(input.maxLights ?? 32, 1, 128, 'maxLights'),
         unsupported,
         texturePolicy
@@ -247,7 +277,7 @@ interface MutableBufferBinding {
     buffer: RenderGraphBufferHandle;
 }
 class ProbePassParameters implements ComputeRenderPassParameters {
-    readonly buffers: MutableBufferBinding[] = Array.from({ length: 6 }, () => ({
+    readonly buffers: MutableBufferBinding[] = Array.from({ length: 8 }, () => ({
         buffer: 0 as RenderGraphBufferHandle
     }));
     readonly textures = [{ texture: 0 as RenderGraphTextureHandle }];
@@ -295,6 +325,12 @@ export class DynamicGlobalIlluminationController {
     readonly #triangles: StorageBuffer;
     readonly #nodes: StorageBuffer;
     readonly #lights: StorageBuffer;
+    readonly #materials: StorageBuffer;
+    readonly #texels: StorageBuffer;
+    readonly #atlas = new SceneTextureAtlas();
+    #committedTextures: readonly RaySceneTexture[] = [];
+    #pendingTextures: readonly RaySceneTexture[] = [];
+    #atlasInvalid = true;
     readonly #probes: readonly [StorageBuffer, StorageBuffer];
     readonly #pass: ComputeRenderPass;
     readonly #pool = new RenderPassParameterPool(() => new ProbePassParameters());
@@ -332,6 +368,15 @@ export class DynamicGlobalIlluminationController {
     #pendingSceneUploadedBytes = 0;
     #pendingUploadedBytes = 0;
     #pendingExcludedMeshCount = 0;
+    #pendingExclusions: RayTracingSceneSnapshot['diagnostics']['exclusions'] = Object.freeze({
+        disabled: 0,
+        material: 0,
+        deformation: 0,
+        topology: 0,
+        instances: 0,
+        'vertex-colors': 0,
+        'surface-texture': 0
+    });
     #pendingTexturedMeshCount = 0;
     #pendingChangedMeshCount = 0;
     #pendingSceneUpdate: 'rebuild' | 'refit' | 'material' = 'rebuild';
@@ -360,7 +405,10 @@ export class DynamicGlobalIlluminationController {
         };
         try {
             this.#params = create('DDGI volume and update parameters', 128);
-            this.#triangles = create('DDGI offscreen world triangles', settings.maxTriangles * 128);
+            this.#triangles = create(
+                'DDGI offscreen world triangles',
+                settings.maxTriangles * RAY_TRIANGLE_FLOATS * 4
+            );
             this.#nodes = create('DDGI offscreen world BVH', settings.maxTriangles * 2 * 32);
             this.#lights = create('DDGI world-space ray-hit lights', settings.maxLights * 80);
             this.#probes = Object.freeze([
@@ -371,6 +419,15 @@ export class DynamicGlobalIlluminationController {
                 ),
                 create('DDGI directional irradiance and moments B', settings.probeBufferBytes, true)
             ]);
+            this.#materials = create(
+                'DDGI texture-aware material records',
+                settings.maxMeshes * RAY_MATERIAL_BYTES
+            );
+            this.#texels = create(
+                'DDGI linear-float texture transport atlas',
+                settings.maxTextureTexels * 16,
+                true
+            );
             this.#pass = new ComputeRenderPass(
                 new ComputeKernel({ shader: createDynamicGlobalIlluminationShader(settings) })
             );
@@ -402,6 +459,7 @@ export class DynamicGlobalIlluminationController {
             sceneTriangleCount: 0,
             sceneNodeCount: 0,
             excludedMeshCount: 0,
+            exclusions: this.#pendingExclusions,
             texturedMeshCount: 0,
             changedMeshCount: 0,
             sceneUpdate: 'rebuild',
@@ -431,7 +489,9 @@ export class DynamicGlobalIlluminationController {
         const scene = inputs.scene;
         if (
             scene.triangleCount > settings.maxTriangles ||
-            scene.nodeCount > settings.maxTriangles * 2
+            scene.nodeCount > settings.maxTriangles * 2 ||
+            scene.materials.byteLength > settings.maxMeshes * RAY_MATERIAL_BYTES ||
+            scene.textureTexelCount > settings.maxTextureTexels
         )
             throw new RangeError('DDGI ray scene exceeds its configured triangle/BVH budget');
         let lightCount = 0;
@@ -575,10 +635,34 @@ export class DynamicGlobalIlluminationController {
             );
             sceneUploadedBytes += this.uploadSceneBuffer(
                 context,
+                this.#materials,
+                scene.materials,
+                partial ? scene.materialDirtyRanges : null
+            );
+            sceneUploadedBytes += this.uploadSceneBuffer(
+                context,
                 this.#nodes,
                 scene.nodes,
                 partial ? scene.nodeDirtyRanges : null
             );
+        }
+        const atlas = context.graph.importStorageBuffer(this.#texels);
+        if (!marker.valid) {
+            const initialization = context.acquirePassParameters(this.#historyInitializationPool);
+            initialization.buffer = atlas;
+            context.graph.addPass(this.#historyInitializationPass, initialization);
+        }
+        const atlasInvalid = this.#atlasInvalid || !marker.valid;
+        for (let index = 0; index < scene.textures.length; index++) {
+            const texture = scene.textures[index];
+            if (!texture) continue;
+            const previous = this.#committedTextures[index];
+            if (atlasInvalid || !previous || !sameRayTexture(previous, texture)) {
+                // A rejected command stream may already have overwritten a shared atlas range.
+                // Treat the whole atlas as suspect until this scene successfully submits.
+                this.#atlasInvalid = true;
+                this.#atlas.record(context, atlas, texture);
+            }
         }
         const parameters = context.acquirePassParameters(this.#pool);
         const outputIndex = 1 - this.#probeIndex;
@@ -588,7 +672,9 @@ export class DynamicGlobalIlluminationController {
             this.#nodes,
             this.#lights,
             this.#probes[this.#probeIndex === 0 ? 0 : 1],
-            this.#probes[outputIndex === 0 ? 0 : 1]
+            this.#probes[outputIndex === 0 ? 0 : 1],
+            this.#materials,
+            this.#texels
         ];
         for (let i = 0; i < buffers.length; i++) {
             const binding = parameters.buffers[i];
@@ -617,6 +703,7 @@ export class DynamicGlobalIlluminationController {
         this.#pendingFrame = context.frameIndex;
         this.#pendingInvalidationRevision = invalidationRevision;
         this.#pendingSceneRevision = scene.revision;
+        this.#pendingTextures = scene.textures;
         this.#pendingLightCount = lightCount;
         this.#pendingLightRevision = lightRevision;
         this.#pendingExcludedLightCount = excludedLightCount;
@@ -625,6 +712,7 @@ export class DynamicGlobalIlluminationController {
         this.#pendingSceneUploadedBytes = sceneUploadedBytes;
         this.#pendingUploadedBytes = 128 + Math.max(1, lightCount) * 80 + sceneUploadedBytes;
         this.#pendingExcludedMeshCount = scene.diagnostics.excludedMeshCount;
+        this.#pendingExclusions = scene.diagnostics.exclusions;
         this.#pendingTexturedMeshCount = scene.diagnostics.texturedMeshCount;
         this.#pendingChangedMeshCount =
             scene.revision !== this.#sceneRevision ? scene.diagnostics.changedMeshCount : 0;
@@ -639,6 +727,9 @@ export class DynamicGlobalIlluminationController {
         this.#probeIndex = 1 - this.#probeIndex;
         this.#cursor = this.#pendingCursor;
         this.#sceneRevision = this.#pendingSceneRevision;
+        this.#committedTextures = this.#pendingTextures;
+        this.#atlasInvalid = false;
+        this.#pendingTextures = [];
         this.#lightRevision = this.#pendingLightRevision;
         this.#committedLightCount = this.#pendingLightCount;
         this.#committedLightUInts.set(this.#lightUInts.subarray(0, this.#pendingLightCount * 20));
@@ -652,6 +743,7 @@ export class DynamicGlobalIlluminationController {
             sceneTriangleCount: this.#pendingTriangleCount,
             sceneNodeCount: this.#pendingNodeCount,
             excludedMeshCount: this.#pendingExcludedMeshCount,
+            exclusions: this.#pendingExclusions,
             texturedMeshCount: this.#pendingTexturedMeshCount,
             changedMeshCount: this.#pendingChangedMeshCount,
             sceneUpdate: this.#pendingSceneUpdate,
@@ -671,6 +763,7 @@ export class DynamicGlobalIlluminationController {
 
     frameDiscarded(frameIndex: number): void {
         if (frameIndex !== this.#pendingFrame) return;
+        this.#pendingTextures = [];
         this.#pendingFrame = -1;
         this.#pendingOutput = null;
     }
@@ -706,12 +799,16 @@ export class DynamicGlobalIlluminationController {
     destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
+        this.#committedTextures = [];
+        this.#pendingTextures = [];
         const failures: unknown[] = [];
         for (const buffer of [
             this.#params,
             this.#triangles,
             this.#nodes,
             this.#lights,
+            this.#materials,
+            this.#texels,
             ...this.#probes
         ]) {
             try {

@@ -256,6 +256,9 @@ export {
 } from './render/Renderer';
 export type { RenderGraphFramePlan } from './render/RenderGraphFramePlan';
 export * from './render/pipeline';
+export { DecalProjector, type DecalProjectorOptions } from './render/decals/DecalProjector';
+export type { PBRDecalOptions } from './render/decals/DecalMaterialBinding';
+export type { WeightedBlendedTransparencyOptions } from './render/pipeline/WeightedBlendedTransparency';
 export {
     ReflectionProbe,
     type ReflectionProbeOptions,

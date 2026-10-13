@@ -690,7 +690,7 @@ export interface BrowserFeatures {
 }
 
 // @public (undocumented)
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 11;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 13;
 
 // @public (undocumented)
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
@@ -902,6 +902,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly variantManifest?: Readonly<ClusteredMaterialVariantManifest>;
     readonly virtualShadows?: Readonly<VirtualShadowMapOptions> | false;
     readonly volumetricLighting?: Readonly<VolumetricLightingOptions> | false;
+    readonly weightedBlendedTransparency?: boolean | Readonly<WeightedBlendedTransparencyOptions>;
     readonly zSlices?: number;
 }
 
@@ -1896,6 +1897,33 @@ export interface DataTextureParameters extends Omit<TextureParameters<TypedArray
 }
 
 // @public
+export class DecalProjector {
+    constructor(options?: Readonly<DecalProjectorOptions>);
+    getTransform(target: Matrix4): Matrix4;
+    get revision(): number;
+    update(options: Readonly<DecalProjectorOptions>): void;
+}
+
+// @public
+export interface DecalProjectorOptions {
+    readonly affectsRoughness?: boolean;
+    readonly atlasRect?: readonly [number, number, number, number];
+    readonly color?: Readonly<Color>;
+    readonly distanceFade?: number;
+    readonly edgeFade?: number;
+    readonly enabled?: boolean;
+    readonly layer?: number;
+    readonly maxDistance?: number;
+    readonly normalFade?: number;
+    readonly normalScale?: number;
+    readonly normalThreshold?: number;
+    readonly opacity?: number;
+    readonly order?: number;
+    readonly roughness?: number;
+    readonly transform?: Readonly<Matrix4>;
+}
+
+// @public
 export const DEFAULT_2D_LAYER: number;
 
 // @public (undocumented)
@@ -1985,6 +2013,7 @@ export interface DynamicGlobalIlluminationDiagnostics {
     readonly changedMeshCount: number;
     readonly excludedLightCount: number;
     readonly excludedMeshCount: number;
+    readonly exclusions: Readonly<Record<'disabled' | 'material' | 'deformation' | 'topology' | 'instances' | 'vertex-colors' | 'surface-texture', number>>;
     readonly lightCount: number;
     readonly probeCount: number;
     readonly residentBytes: number;
@@ -2007,9 +2036,11 @@ export interface DynamicGlobalIlluminationOptions {
     readonly hysteresis?: number;
     readonly intensity?: number;
     readonly maxLights?: number;
+    readonly maxMeshes?: number;
     readonly maxProbesPerFrame?: number;
     readonly maxRayDistance?: number;
     readonly maxRayRadiance?: number;
+    readonly maxTextureTexels?: number;
     readonly maxTriangles?: number;
     readonly normalBias?: number;
     readonly origin?: Readonly<Vector3>;
@@ -2017,7 +2048,7 @@ export interface DynamicGlobalIlluminationOptions {
     readonly raysPerProbe?: 64 | 128 | 256;
     readonly relocation?: boolean;
     readonly spacing?: Readonly<Vector3>;
-    readonly texturePolicy?: 'error' | 'exclude' | 'material-factor';
+    readonly texturePolicy?: 'sample' | 'error' | 'exclude' | 'material-factor';
     readonly unsupported?: 'error' | 'exclude';
     readonly viewBias?: number;
 }
@@ -2214,6 +2245,7 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     readonly opaqueTexture: boolean;
     readonly requirements: Readonly<RenderPipelineRequirements>;
     readonly sceneColorFormat: RenderTargetColorFormat | null;
+    readonly weightedBlendedTransparency: Readonly<WeightedBlendedTransparencyOptions> | null;
 }
 
 // @public
@@ -2221,6 +2253,7 @@ export interface ForwardRenderPipelineFactoryOptions {
     readonly features?: readonly ForwardRenderPipelineFeature[];
     readonly opaqueTexture?: boolean;
     readonly sceneColorFormat?: RenderTargetColorFormat;
+    readonly weightedBlendedTransparency?: boolean | Readonly<WeightedBlendedTransparencyOptions>;
 }
 
 // @public
@@ -4215,6 +4248,10 @@ export interface MaterialCompileRequest {
 // @public
 export type MaterialCompositing = Readonly<{
     mode: 'opaque';
+}>
+/** Approximate order-independent transparency; requires explicit pipeline opt-in. */
+| Readonly<{
+    mode: 'weighted-blended';
 }> | Readonly<{
     mode: 'alpha-blend';
     premultiplied: boolean;
@@ -4386,6 +4423,7 @@ export class MaterialInstance {
     setTextureSlot(name: string, value: Texture<unknown> | MaterialTextureSlotInput | null): void;
     get temporalReactiveFactor(): number;
     set temporalReactiveFactor(value: number);
+    get transparencyClass(): 'opaque' | 'sorted-alpha' | 'additive' | 'transmission' | 'weighted-blended' | 'custom';
     // (undocumented)
     readonly uniformBlocks: Record<string, UniformBuffer>;
     // (undocumented)
@@ -4436,7 +4474,7 @@ export interface MaterialPassDefinition {
 export type MaterialPassFallback = 'required' | 'safe-fallback' | 'skip';
 
 // @public
-export type MaterialPassRole = 'forward' | 'depth-only' | 'shadow-caster' | 'motion-vector' | 'material-attributes' | 'picking' | `user:${string}`;
+export type MaterialPassRole = 'forward' | 'depth-only' | 'shadow-caster' | 'motion-vector' | 'material-attributes' | 'weighted-accumulation' | 'weighted-revealage' | 'picking' | `user:${string}`;
 
 // @public
 export interface MaterialPipelineState {
@@ -4932,6 +4970,7 @@ export class Mesh extends Node_2 {
     // (undocumented)
     className: string;
     clone(isChild?: boolean): Mesh;
+    contributeToGlobalIllumination: boolean;
     destroy(renderer?: Renderer, needDestroyTextures?: boolean): this;
     frustumTest: boolean;
     // (undocumented)
@@ -4958,6 +4997,7 @@ export class Mesh extends Node_2 {
 export interface MeshParameters extends NodeParameters {
     // (undocumented)
     castShadows?: boolean;
+    contributeToGlobalIllumination?: boolean;
     // (undocumented)
     frustumTest?: boolean;
     // (undocumented)
@@ -5439,6 +5479,16 @@ export interface OrthographicCameraParameters extends CameraParameters {
 export function parseRadianceHDR(input: ArrayBuffer | Uint8Array): RadianceHDRImage;
 
 // @public
+export interface PBRDecalOptions {
+    readonly baseColorAtlas: Texture<unknown>;
+    readonly baseColorEncoding?: 'linear' | 'srgb';
+    readonly normalAtlas?: Texture<unknown>;
+    readonly projectors: readonly DecalProjector[];
+    readonly receiverMask?: number;
+    readonly roughnessAtlas?: Texture<unknown>;
+}
+
+// @public
 export class PBRMaterial extends MaterialInstance {
     constructor(params?: Readonly<PBRMaterialParameters>);
     // (undocumented)
@@ -5477,6 +5527,7 @@ export class PBRMaterial extends MaterialInstance {
     set clearcoatRoughnessFactor(value: number);
     // (undocumented)
     readonly clearcoatRoughnessMap: Texture<unknown> | null;
+    readonly decals: Readonly<PBRDecalOptions> | null;
     // (undocumented)
     get diffuseEnvIntensity(): number;
     set diffuseEnvIntensity(value: number);
@@ -5602,6 +5653,7 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly clearcoatRoughnessMap?: PBRMaterialTextureInput;
     // (undocumented)
     readonly cullMode?: MaterialCullMode;
+    readonly decals?: Readonly<PBRDecalOptions>;
     // (undocumented)
     readonly diffuseEnvIntensity?: number;
     // (undocumented)
@@ -6383,6 +6435,7 @@ export interface RendererListDescriptor {
     readonly overrideMaterial?: MaterialInstance;
     readonly queue: RendererListQueue;
     readonly sorting: RendererListSorting;
+    readonly transparency?: 'weighted-blended' | 'sorted';
 }
 
 // @public
@@ -6747,6 +6800,7 @@ export interface RenderPipelineLimits {
     readonly maxBindGroups: number;
     readonly maxBindingsPerBindGroup: number;
     readonly maxBufferSize: number;
+    readonly maxColorAttachmentBytesPerSample?: number;
     readonly maxColorAttachments: number;
     readonly maxComputeInvocationsPerWorkgroup?: number;
     readonly maxComputeWorkgroupSizeX?: number;
@@ -6913,7 +6967,7 @@ export interface RenderPipelineTextureRequirement {
 }
 
 // @public
-export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'depth-stencil-attachment' | 'storage' | 'copy-source' | 'copy-destination';
+export type RenderPipelineTextureUse = 'sampled' | 'filterable-sampled' | 'color-attachment' | 'blendable-color-attachment' | 'depth-stencil-attachment' | 'storage' | 'copy-source' | 'copy-destination';
 
 // @public
 export interface RenderPipelineTextureViewDescriptor {
@@ -7151,6 +7205,7 @@ export interface SceneRenderPassParameters {
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
     readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
+    readonly uniformBlocks?: Readonly<Record<string, UniformBuffer>>;
     readonly viewport?: RendererViewport;
 }
 
@@ -7166,6 +7221,14 @@ export interface SceneStorageShaderVariant {
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
     readonly shader: StorageGraphicsShader;
     readonly shaderByMesh?: ReadonlyMap<Mesh, StorageGraphicsShader>;
+    readonly textures?: readonly Readonly<SceneStorageTextureBinding>[];
+}
+
+// @public
+export interface SceneStorageTextureBinding {
+    readonly name: string;
+    readonly sampler: ComputeSampler;
+    readonly texture: RenderGraphTextureAccessHandle;
 }
 
 // @public
@@ -9344,6 +9407,8 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
     readonly MorphBlock: 8;
     readonly MaterialTextureBlock: 9;
     readonly ReflectionProbeBlock: 10;
+    readonly DecalBlock: 11;
+    readonly WeightedTransparencyBlock: 12;
 }>;
 
 // @public
@@ -10359,6 +10424,12 @@ export namespace webglExtensionConstants {
 export const WebGLSupport: {
     readonly get: () => boolean;
 };
+
+// @public
+export interface WeightedBlendedTransparencyOptions {
+    readonly maxFragmentCount?: number;
+    readonly maxPixelCount?: number;
+}
 
 // @public (undocumented)
 export interface XYZObject {

@@ -1,3 +1,5 @@
+import { RAY_TRIANGLE_FLOATS } from './scene/SceneGeometry';
+import { RAY_MATERIAL_FLOATS, RAY_MATERIAL_BYTES, RAY_DECAL_OFFSET } from './scene/SceneMaterials';
 import ComputeShader from '../compute/ComputeShader';
 import ddgiRasterSource from '../../shader/chunk/dynamicGlobalIllumination.frag';
 import type { DynamicGlobalIlluminationSettings } from './DynamicGlobalIllumination';
@@ -95,14 +97,116 @@ export function createDynamicGlobalIlluminationShader(
 @group(0) @binding(3) var<storage, read> lights: array<vec4<f32>>;
 @group(0) @binding(4) var<storage, read> previous: array<vec4<f32>>;
 @group(0) @binding(5) var<storage, read_write> current: array<vec4<f32>>;
+@group(0) @binding(7) var<storage, read> materials: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read> texels: array<vec4<f32>>;
 @group(0) @binding(6) var historyMarker: texture_storage_2d<r32float, write>;
 const RAY_COUNT: u32 = ${String(raysPerProbe)}u;
+const TRIANGLE_STRIDE: u32 = ${String(RAY_TRIANGLE_FLOATS / 4)}u;
+const DECAL_OFFSET: u32 = ${String(RAY_DECAL_OFFSET / 4)}u;
+const MATERIAL_STRIDE: u32 = ${String(RAY_MATERIAL_FLOATS / 4)}u;
 const PI: f32 = 3.14159265359;
 var<workgroup> raySamples: array<vec4<f32>, ${String(raysPerProbe)}>;
 var<workgroup> rayDirections: array<vec4<f32>, ${String(raysPerProbe)}>;
 var<workgroup> probeState: vec4<f32>;
 var<workgroup> probeMetadata: vec4<f32>;
 ${WGSL_LOOKUP}
+
+fn rayUV(base: u32, bary: vec3<f32>, uvSet: f32) -> vec2<f32> {
+    let uv = triangles[base + 8u] * bary.x + triangles[base + 9u] * bary.y + triangles[base + 10u] * bary.z;
+    return select(uv.xy, uv.zw, uvSet > 0.5);
+}
+fn atlasAddress(value: i32, size: i32, mode: u32) -> u32 {
+    if (mode == 0u) { return u32(clamp(value, 0, size - 1)); }
+    if (mode == 1u) { return u32(((value % size) + size) % size); }
+    let repeatSize = size * 2;
+    let wrapped = ((value % repeatSize) + repeatSize) % repeatSize;
+    return u32(select(wrapped, repeatSize - 1 - wrapped, wrapped >= size));
+}
+fn atlasTexel(descriptor: vec4<f32>, samplerInfo: vec4<f32>, coordinate: vec2<i32>) -> vec4<f32> {
+    let x = atlasAddress(coordinate.x, i32(descriptor.y), u32(samplerInfo.x));
+    let y = atlasAddress(coordinate.y, i32(descriptor.z), u32(samplerInfo.y));
+    return texels[u32(descriptor.x) + y * u32(descriptor.y) + x];
+}
+fn materialChannel(value: vec4<f32>, channel: f32) -> f32 {
+    if (channel < 4.0) { return value[u32(channel)]; }
+    return select(0.0, 1.0, channel > 4.5);
+}
+fn sampleTexture(record: u32, logicalUV: vec2<f32>) -> vec4<f32> {
+    let descriptor = materials[record];
+    if (descriptor.w < 0.5) { return vec4<f32>(1.0); }
+    let row0 = materials[record + 1u];
+    let row1 = materials[record + 2u];
+    let uv = vec3<f32>(logicalUV, 1.0);
+    let coordinate = vec2<f32>(dot(row0.xyz, uv), dot(row1.xyz, uv)) * descriptor.yz;
+    let samplerInfo = materials[record + 4u];
+    var value = vec4<f32>(0.0);
+    if (samplerInfo.z < 0.5) { value = atlasTexel(descriptor, samplerInfo, vec2<i32>(floor(coordinate))); }
+    else {
+        let pixel = coordinate - vec2<f32>(0.5);
+        let lo = vec2<i32>(floor(pixel));
+        let fraction = fract(pixel);
+        value = mix(mix(atlasTexel(descriptor, samplerInfo, lo), atlasTexel(descriptor, samplerInfo, lo + vec2<i32>(1, 0)), fraction.x),
+            mix(atlasTexel(descriptor, samplerInfo, lo + vec2<i32>(0, 1)), atlasTexel(descriptor, samplerInfo, lo + vec2<i32>(1, 1)), fraction.x), fraction.y);
+    }
+    if (row1.w > 0.5) {
+        value = vec4<f32>(select(pow(max(value.rgb, vec3<f32>(0.0)) * 0.9478672986 + vec3<f32>(0.0521327014), vec3<f32>(2.4)), value.rgb * 0.0773993808, value.rgb <= vec3<f32>(0.04045)), value.a);
+    }
+    let channels = materials[record + 3u];
+    return vec4<f32>(materialChannel(value, channels.x), materialChannel(value, channels.y), materialChannel(value, channels.z), materialChannel(value, channels.w));
+}
+fn materialSample(material: u32, slot: u32, base: u32, bary: vec3<f32>) -> vec4<f32> {
+    let record = material + 4u + slot * 5u;
+    return sampleTexture(record, rayUV(base, bary, materials[record + 1u].w));
+}
+fn decalSample(material: u32, slot: u32, localUV: vec2<f32>, rectangle: vec4<f32>) -> vec4<f32> {
+    let record = material + 4u + slot * 5u;
+    let inset = min(vec2<f32>(0.5) / materials[record].yz, rectangle.zw * 0.5);
+    return sampleTexture(record, clamp(rectangle.xy + localUV * rectangle.zw, rectangle.xy + inset, rectangle.xy + rectangle.zw - inset));
+}
+struct DecalSurface { color: vec3<f32>, normal: vec3<f32>, }
+fn applyRayDecals(material: u32, position: vec3<f32>, color: vec3<f32>, normal: vec3<f32>) -> DecalSurface {
+    var result = DecalSurface(color, normal);
+    for (var index = 0u; index < u32(materials[material + 3u].w); index++) {
+        let record = material + DECAL_OFFSET + index * 10u;
+        let worldToLocal = mat4x4<f32>(materials[record], materials[record + 1u], materials[record + 2u], materials[record + 3u]);
+        let local = (worldToLocal * vec4<f32>(position, 1.0)).xyz;
+        let outward = materials[record + 6u];
+        let tangent = materials[record + 7u];
+        let surface = materials[record + 8u];
+        let facing = dot(normal, outward.xyz);
+        let tint = materials[record + 5u];
+        if (tint.a <= 0.0 || any(abs(local) > vec3<f32>(0.5)) || facing <= outward.w) { continue; }
+        let uv = vec2<f32>(local.x + 0.5, 0.5 - local.y);
+        let sampled = decalSample(material, 8u, uv, materials[record + 4u]);
+        var alpha = tint.a * sampled.a;
+        alpha *= smoothstep(0.0, max(surface.y, 0.000001), min(0.5 - abs(local.x), 0.5 - abs(local.y)));
+        alpha *= smoothstep(0.0, max(tangent.w, 0.000001), facing - outward.w);
+        result.color = mix(result.color, sampled.rgb * tint.rgb, alpha);
+        if (materials[material + 49u].w > 0.5) {
+            let projected = tangent.xyz - result.normal * dot(result.normal, tangent.xyz);
+            if (dot(projected, projected) > 0.0000000001) {
+                let t = normalize(projected);
+                let b = normalize(cross(result.normal, t)) * surface.z;
+                var mapped = decalSample(material, 9u, uv, materials[record + 4u]).xyz * 2.0 - vec3<f32>(1.0);
+                mapped = vec3<f32>(mapped.xy * surface.x, max(mapped.z, 0.0001));
+                result.normal = normalize(mix(result.normal, normalize(t * mapped.x + b * mapped.y + result.normal * mapped.z), alpha));
+            }
+        }
+    }
+    return result;
+}
+fn vertexColor(base: u32, bary: vec3<f32>) -> vec4<f32> {
+    return triangles[base + 11u] * bary.x + triangles[base + 12u] * bary.y + triangles[base + 13u] * bary.z;
+}
+fn surfaceCovered(base: u32, bary: vec3<f32>) -> bool {
+    let material = u32(triangles[base + 7u].w) * MATERIAL_STRIDE;
+    let cutoff = materials[material + 3u].x;
+    if (cutoff < 0.0) { return true; }
+    let alpha = materials[material].a * materialSample(material, 0u, base, bary).a * vertexColor(base, bary).a;
+    let opacity = select(materials[material + 1u].w, materialSample(material, 5u, base, bary).r, materials[material + 29u].w > 0.5);
+    return alpha * opacity >= cutoff;
+}
+
 struct RayHit { distance: f32, triangle: u32, barycentric: vec2<f32>, backface: bool, }
 fn intersectsBounds(origin: vec3<f32>, direction: vec3<f32>, minimum: vec3<f32>, maximum: vec3<f32>, limit: f32) -> bool {
     let safeDirection = select(select(vec3<f32>(-0.00000001), vec3<f32>(0.00000001), direction >= vec3<f32>(0.0)), direction, abs(direction) > vec3<f32>(0.00000001));
@@ -135,7 +239,7 @@ fn trace(origin: vec3<f32>, direction: vec3<f32>, limit: f32, anyHit: bool) -> R
         let count = right & 0x7fffffffu;
         for (var offset = 0u; offset < count; offset++) {
             let index = left + offset;
-            let base = index * 8u;
+            let base = index * TRIANGLE_STRIDE;
             let p0 = triangles[base].xyz;
             let edge1 = triangles[base + 1u].xyz - p0;
             let edge2 = triangles[base + 2u].xyz - p0;
@@ -151,6 +255,7 @@ fn trace(origin: vec3<f32>, direction: vec3<f32>, limit: f32, anyHit: bool) -> R
             if (v < 0.0 || u + v > 1.0) { continue; }
             let distance = dot(edge2, q) * inverse;
             if (distance <= 0.0001 || distance >= hit.distance) { continue; }
+            if (!surfaceCovered(base, vec3<f32>(1.0 - u - v, u, v))) { continue; }
             hit = RayHit(distance, index, vec2<f32>(u, v), determinant < 0.0);
             if (anyHit) { return hit; }
         }
@@ -159,7 +264,7 @@ fn trace(origin: vec3<f32>, direction: vec3<f32>, limit: f32, anyHit: bool) -> R
 }
 fn radianceAtHit(origin: vec3<f32>, direction: vec3<f32>, hit: RayHit) -> vec3<f32> {
     if (hit.triangle == 0xffffffffu) { return params[7].rgb; }
-    let base = hit.triangle * 8u;
+    let base = hit.triangle * TRIANGLE_STRIDE;
     let doubleSided = (u32(triangles[base + 6u].w) & 1u) != 0u;
     if (hit.backface && !doubleSided) { return vec3<f32>(0.0); }
     let bary = vec3<f32>(1.0 - hit.barycentric.x - hit.barycentric.y, hit.barycentric);
@@ -167,9 +272,27 @@ fn radianceAtHit(origin: vec3<f32>, direction: vec3<f32>, hit: RayHit) -> vec3<f
     let interpolatedNormal = triangles[base + 3u].xyz * bary.x + triangles[base + 4u].xyz * bary.y + triangles[base + 5u].xyz * bary.z;
     var normal = geometric;
     if (dot(interpolatedNormal, interpolatedNormal) > 0.000000000001) { normal = normalize(interpolatedNormal); }
+    let material = u32(triangles[base + 7u].w) * MATERIAL_STRIDE;
+    if (materials[material + 34u].w > 0.5) {
+        let uvSet = materials[material + 35u].w;
+        let tangentBase = base + select(14u, 17u, uvSet > 0.5);
+        let tangent = triangles[tangentBase] * bary.x + triangles[tangentBase + 1u] * bary.y + triangles[tangentBase + 2u] * bary.z;
+        let orthogonal = tangent.xyz - normal * dot(normal, tangent.xyz);
+        if (dot(orthogonal, orthogonal) > 0.000000000001) {
+            let t = normalize(orthogonal);
+            let b = cross(normal, t) * tangent.w;
+            var sampled = materialSample(material, 6u, base, bary).rgb * 2.0 - vec3<f32>(1.0);
+            sampled = vec3<f32>(sampled.xy * materials[material + 3u].z, sampled.z);
+            let transformed = t * sampled.x + b * sampled.y + normal * sampled.z;
+            if (dot(transformed, transformed) > 0.000000000001) { normal = normalize(transformed); }
+        }
+    }
     if (dot(normal, geometric) < 0.0) { normal = -normal; }
     if (hit.backface) { normal = -normal; geometric = -geometric; }
     let position = origin + direction * hit.distance;
+    let baseColor = materials[material].rgb * materialSample(material, 0u, base, bary).rgb * vertexColor(base, bary).rgb;
+    let painted = applyRayDecals(material, position, baseColor, normal);
+    normal = painted.normal;
     let bias = max(0.0005, min(params[1].w * 0.05, 0.01));
     let shadowOrigin = position + geometric * bias;
     var irradiance = vec3<f32>(0.0);
@@ -201,7 +324,18 @@ fn radianceAtHit(origin: vec3<f32>, direction: vec3<f32>, hit: RayHit) -> vec3<f
         if (blocker.triangle == 0xffffffffu) { irradiance += colorType.rgb * (cosine * attenuation / PI); }
     }
     irradiance += historyIrradiance(position, normal) * params[7].w;
-    return triangles[base + 7u].rgb + triangles[base + 6u].rgb * irradiance;
+    var diffuseWeight = 1.0 - clamp(materials[material + 2u].x * materialSample(material, 2u, base, bary).r * materialSample(material, 3u, base, bary).b, 0.0, 1.0);
+    if (materials[material + 3u].y > 0.5) {
+        let specular = materials[material + 2u].yzw * materialSample(material, 4u, base, bary).rgb;
+        diffuseWeight = 1.0 - max(max(specular.r, specular.g), specular.b);
+    }
+    let emission = materials[material + 1u].rgb * materialSample(material, 1u, base, bary).rgb;
+    var baked = vec3<f32>(0.0);
+    if (materials[material + 39u].w > 0.5) {
+        let lightmap = materialSample(material, 7u, base, bary);
+        baked = painted.color * lightmap.rgb / max(lightmap.a, 0.000001);
+    }
+    return emission + baked + painted.color * max(diffuseWeight, 0.0) * irradiance;
 }
 fn rayDirection(index: u32, phase: f32) -> vec3<f32> {
     let y = 1.0 - 2.0 * (f32(index) + 0.5) / f32(RAY_COUNT);
@@ -242,7 +376,7 @@ fn main(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index
         let peak = max(color.x, max(color.y, color.z));
         let limited = color * min(1.0, params[4].w / max(peak, 0.00001));
         var distance = hit.distance;
-        if (hit.backface && hit.triangle != 0xffffffffu && (u32(triangles[hit.triangle * 8u + 6u].w) & 1u) == 0u) { distance = -distance; }
+        if (hit.backface && hit.triangle != 0xffffffffu && (u32(triangles[hit.triangle * TRIANGLE_STRIDE + 6u].w) & 1u) == 0u) { distance = -distance; }
         raySamples[ray] = vec4<f32>(limited, distance);
         rayDirections[ray] = vec4<f32>(direction, 0.0);
     }
@@ -318,7 +452,7 @@ fn main(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index
                 group: 0,
                 binding: 1,
                 kind: 'read-only-storage-buffer',
-                minBindingSize: 128
+                minBindingSize: RAY_TRIANGLE_FLOATS * 4
             },
             {
                 name: 'nodes',
@@ -356,6 +490,20 @@ fn main(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index
                 kind: 'storage-texture',
                 access: 'write-only',
                 format: 'r32float'
+            },
+            {
+                name: 'materials',
+                group: 0,
+                binding: 7,
+                kind: 'read-only-storage-buffer',
+                minBindingSize: RAY_MATERIAL_BYTES
+            },
+            {
+                name: 'texels',
+                group: 0,
+                binding: 8,
+                kind: 'read-only-storage-buffer',
+                minBindingSize: 16
             }
         ]
     });

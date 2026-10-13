@@ -49,6 +49,13 @@ import { depthClearValue } from '../renderer/DepthConvention';
 import type { RenderGraphTimelineSnapshot } from '../graph/RenderGraphTimeline';
 import { addonGPUOpaqueSceneFeature, addonGPUSceneFeature } from './AddonGPUSceneFeature';
 import { addonRasterSceneFeature } from './AddonRasterSceneFeature';
+import {
+    WeightedBlendedTransparency,
+    WEIGHTED_BLENDED_TRANSPARENCY_REQUIREMENTS,
+    type WeightedBlendedTransparencyOptions,
+    hasVisibleWeightedTransparency,
+    snapshotWeightedBlendedTransparencyOptions
+} from './WeightedBlendedTransparency';
 
 /** Stable stages at which a forward feature may synchronously record graph work. */
 export type ForwardRenderInjectionPoint =
@@ -182,6 +189,8 @@ export interface ForwardRenderPipelineFactoryOptions {
      * materials as `u_opaqueTexture`.
      */
     readonly opaqueTexture?: boolean;
+    /** Opt in compatible materials to bounded, portable weighted-blended transparency. */
+    readonly weightedBlendedTransparency?: boolean | Readonly<WeightedBlendedTransparencyOptions>;
 }
 
 interface FeatureSnapshot extends ForwardRenderPipelineFeature {
@@ -201,6 +210,7 @@ interface MutableRelativeExtent {
 
 interface MutableRendererListDescriptor extends RendererListDescriptor {
     cullingResults: CullingResultsHandle;
+    transparency?: 'weighted-blended' | 'sorted';
 }
 
 interface MutableColorAttachment extends RenderPipelineColorAttachment {
@@ -955,6 +965,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #splitScene: boolean;
     readonly #sceneColorFormat: RenderTargetColorFormat | null;
     readonly #opaqueTextureEnabled: boolean;
+    readonly #weightedTransparency: WeightedBlendedTransparency | null;
     readonly #minimumSceneScale: number;
     #sceneScale: number;
     #frameRequiresSampledDepth = false;
@@ -968,6 +979,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             sceneColorFormat: RenderTargetColorFormat | null;
             opaqueTexture: boolean;
             sceneScale: number;
+            weightedBlendedTransparency: Readonly<WeightedBlendedTransparencyOptions> | null;
         }>
     ) {
         const compiled: CompiledFeature[] = [];
@@ -1009,6 +1021,16 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }
         this.#sceneColorFormat = options.sceneColorFormat;
         this.#opaqueTextureEnabled = options.opaqueTexture;
+        this.#weightedTransparency =
+            options.weightedBlendedTransparency === null
+                ? null
+                : new WeightedBlendedTransparency(options.weightedBlendedTransparency);
+        if (this.#weightedTransparency !== null) {
+            this.#transparentListDescriptor.transparency = 'sorted';
+            sampledColor = true;
+            splitScene = true;
+            samplesBetweenQueues = true;
+        }
         this.#minimumSceneScale = options.sceneScale;
         this.#sceneScale = options.sceneScale;
         this.#sceneExtent = {
@@ -1118,6 +1140,27 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 if (this.#featureState.currentColorEncoding !== 'linear') {
                     throw new Error('Forward transparent rendering requires linear scene color');
                 }
+                if (
+                    this.#weightedTransparency !== null &&
+                    hasVisibleWeightedTransparency(context)
+                ) {
+                    const color = this.#featureState.currentColor;
+                    const currentDepth = this.#featureState.currentDepth;
+                    if (color === null || currentDepth === null) {
+                        throw new Error(
+                            'Weighted transparency requires linear HDR scene color and opaque depth'
+                        );
+                    }
+                    this.#weightedTransparency.record(context, {
+                        cullingResults: culling,
+                        color,
+                        depth: currentDepth,
+                        hasStencil: renderTargetFormatHasStencil(
+                            context.output.depthStencilFormat ?? 'depth24plus'
+                        ),
+                        scale: currentDepth === depth ? this.#sceneScale : 1
+                    });
+                }
                 const transparent = context.createRendererList(this.#transparentListDescriptor);
                 this.recordScenePass(
                     context,
@@ -1166,6 +1209,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
+        this.#weightedTransparency?.destroy();
         const failures: unknown[] = [];
         for (let index = this.#compiledFeatures.length - 1; index >= 0; index -= 1) {
             try {
@@ -1262,7 +1306,12 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 'Forward features requiring intermediate depth cannot preserve the selected RenderTarget depth/stencil attachment; use a custom RenderPipeline'
             );
         }
-        if (outputFormat === null && !this.#frameRequiresSampledDepth) return null;
+        if (
+            outputFormat === null &&
+            !this.#frameRequiresSampledDepth &&
+            this.#weightedTransparency === null
+        )
+            return null;
         this.#depthDescriptor.format = outputFormat ?? 'depth24plus';
         this.#depthDescriptor.sampleCount = sampleCount;
         return context.graph.createTexture('forward scene depth', this.#depthDescriptor);
@@ -1552,6 +1601,8 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
     readonly sceneColorFormat: RenderTargetColorFormat | null;
     /** Whether the forward pipeline captures opaque scene color for transparent materials. */
     readonly opaqueTexture: boolean;
+    /** Explicit weighted-blended transparency configuration, or null when disabled. */
+    readonly weightedBlendedTransparency: Readonly<WeightedBlendedTransparencyOptions> | null;
     readonly #sceneScale: number;
 
     constructor(options: ForwardRenderPipelineFactoryOptions = {}) {
@@ -1578,7 +1629,12 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             throw new Error('Forward render features request conflicting sub-native scene scales');
         }
         this.#sceneScale = requestedSceneScales.values().next().value ?? 1;
-        const sceneColorFormat: unknown = options.sceneColorFormat ?? null;
+        this.weightedBlendedTransparency = snapshotWeightedBlendedTransparencyOptions(
+            options.weightedBlendedTransparency
+        );
+        const sceneColorFormat: unknown =
+            options.sceneColorFormat ??
+            (this.weightedBlendedTransparency === null ? null : 'rgba16float');
         if (
             sceneColorFormat !== null &&
             sceneColorFormat !== 'rgba8unorm' &&
@@ -1591,6 +1647,9 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             throw new RangeError(`Unsupported forward scene color format ${formatLabel}`);
         }
         this.sceneColorFormat = sceneColorFormat;
+        if (this.weightedBlendedTransparency !== null && sceneColorFormat !== 'rgba16float') {
+            throw new TypeError('Weighted transparency requires rgba16float linear scene color');
+        }
         this.opaqueTexture = options.opaqueTexture ?? false;
         if (typeof this.opaqueTexture !== 'boolean') {
             throw new TypeError('Forward opaqueTexture must be a boolean');
@@ -1601,8 +1660,31 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
                 ? featureRequirements
                 : snapshotRenderPipelineRequirements({
                       ...featureRequirements,
+                      ...(this.weightedBlendedTransparency === null
+                          ? {}
+                          : {
+                                requiredLimits: {
+                                    ...featureRequirements.requiredLimits,
+                                    maxColorAttachments: Math.max(
+                                        3,
+                                        featureRequirements.requiredLimits?.[
+                                            'maxColorAttachments'
+                                        ] ?? 0
+                                    ),
+                                    maxColorAttachmentBytesPerSample: Math.max(
+                                        24,
+                                        featureRequirements.requiredLimits?.[
+                                            'maxColorAttachmentBytesPerSample'
+                                        ] ?? 0
+                                    )
+                                }
+                            }),
                       requiredTextureFormats: [
                           ...(featureRequirements.requiredTextureFormats ?? []),
+                          ...(this.weightedBlendedTransparency === null
+                              ? []
+                              : (WEIGHTED_BLENDED_TRANSPARENCY_REQUIREMENTS.requiredTextureFormats ??
+                                [])),
                           { format: this.sceneColorFormat, use: 'color-attachment' },
                           { format: this.sceneColorFormat, use: 'filterable-sampled' }
                       ]
@@ -1665,7 +1747,8 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             return new ScriptableForwardRenderPipeline(features, runtimes, {
                 sceneColorFormat: this.sceneColorFormat,
                 opaqueTexture: this.opaqueTexture,
-                sceneScale: this.#sceneScale
+                sceneScale: this.#sceneScale,
+                weightedBlendedTransparency: this.weightedBlendedTransparency
             });
         } catch (creationError) {
             const failures: unknown[] = [creationError];

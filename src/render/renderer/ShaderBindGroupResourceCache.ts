@@ -33,7 +33,7 @@ interface ShaderBindGroupRecord {
     readonly layoutToken: number;
     readonly layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[];
     readonly uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[];
-    readonly sampledResources: readonly Readonly<ShaderSampledBindingResources>[];
+    readonly sampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[];
     readonly deferredGroupIndices: readonly number[];
     readonly handles: Readonly<ShaderBindGroupHandleSet>;
 }
@@ -82,8 +82,8 @@ function sameHandleIdentities<T extends RHIDeviceOwnedDestroyable>(
 }
 
 function sameSampledHandleIdentities(
-    cached: readonly Readonly<ShaderSampledBindingResources>[],
-    incoming: readonly Readonly<ShaderSampledBindingResources>[]
+    cached: readonly (Readonly<ShaderSampledBindingResources> | null)[],
+    incoming: readonly (Readonly<ShaderSampledBindingResources> | null)[]
 ): boolean {
     if (cached.length !== incoming.length) return false;
     for (let index = 0; index < cached.length; index += 1) {
@@ -91,6 +91,10 @@ function sameSampledHandleIdentities(
         const incomingResource = incoming[index];
         if (cachedResource === undefined) return false;
         if (incomingResource === undefined) return false;
+        if (cachedResource === null || incomingResource === null) {
+            if (cachedResource !== incomingResource) return false;
+            continue;
+        }
         if (
             cachedResource.textureView !== incomingResource.textureView ||
             cachedResource.sampler !== incomingResource.sampler
@@ -134,7 +138,7 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        sampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[],
         deferredGroupIndices: readonly number[] = EMPTY_DEFERRED_GROUPS
     ): Readonly<ShaderBindGroupHandleSet> {
         this.assertAlive();
@@ -225,7 +229,7 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        sampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[],
         deferredGroupIndices: readonly number[]
     ): void {
         const descriptors = plan.bindGroupLayoutDescriptors;
@@ -242,6 +246,16 @@ export class ShaderBindGroupResourceCache {
             throw new RangeError(
                 'Uniform buffer handles must match ShaderBindingLayoutPlan.uniformBlocks order and count'
             );
+        }
+        for (const [index, resources] of sampledResources.entries()) {
+            if (
+                resources === null &&
+                !deferredGroupIndices.includes(sampledBindings[index]?.group ?? -1)
+            ) {
+                throw new TypeError(
+                    'Null sampled resources require an explicitly deferred bind group'
+                );
+            }
         }
         if (sampledResources.length !== sampledBindings.length) {
             throw new RangeError(
@@ -317,17 +331,16 @@ export class ShaderBindGroupResourceCache {
             }
             const bindings = bindingsByGroup.get(group);
             const kinds = bindings === undefined ? [] : [...bindings.values()];
-            const storageOnly =
-                kinds.length !== 0 && kinds.every(kind => kind === 'read-only-storage-buffer');
-            const sampledOnly =
+            const supported =
                 kinds.length !== 0 &&
                 kinds.every(
                     kind =>
+                        kind === 'read-only-storage-buffer' ||
                         kind === 'sampled-texture' ||
                         kind === 'sampler' ||
                         kind === 'comparison-sampler'
                 );
-            if (bindings === undefined || (!storageOnly && !sampledOnly)) {
+            if (bindings === undefined || !supported) {
                 throw new TypeError(
                     `Deferred shader bind group ${String(group)} must contain only readonly storage buffers or sampled textures`
                 );
@@ -477,11 +490,12 @@ export class ShaderBindGroupResourceCache {
     private validateHandles(
         layoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         uniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[]
+        sampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[]
     ): void {
         for (const handle of layoutHandles) this.registry.resolve(handle);
         for (const handle of uniformBufferHandles) this.registry.resolve(handle);
         for (const resources of sampledResources) {
+            if (resources === null) continue;
             this.registry.resolve(resources.textureView);
             this.registry.resolve(resources.sampler);
         }
@@ -492,7 +506,7 @@ export class ShaderBindGroupResourceCache {
         plan: Readonly<ShaderBindingLayoutPlan>,
         incomingLayoutHandles: readonly ResourceRegistryHandle<RHIBindGroupLayout>[],
         incomingUniformBufferHandles: readonly ResourceRegistryHandle<RHIBuffer>[],
-        incomingSampledResources: readonly Readonly<ShaderSampledBindingResources>[],
+        incomingSampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[],
         incomingDeferredGroupIndices: readonly number[]
     ): ShaderBindGroupRecord {
         const token = this.allocateToken();
@@ -500,10 +514,12 @@ export class ShaderBindGroupResourceCache {
         const uniformBufferHandles = Object.freeze([...incomingUniformBufferHandles]);
         const sampledResources = Object.freeze(
             incomingSampledResources.map(resources =>
-                Object.freeze({
-                    textureView: resources.textureView,
-                    sampler: resources.sampler
-                })
+                resources === null
+                    ? null
+                    : Object.freeze({
+                          textureView: resources.textureView,
+                          sampler: resources.sampler
+                      })
             )
         );
         const deferredGroupIndices = Object.freeze([...incomingDeferredGroupIndices]);
@@ -558,7 +574,7 @@ export class ShaderBindGroupResourceCache {
         blocks: readonly Readonly<ShaderUniformBlockBindingPlan>[],
         buffers: readonly ResourceRegistryHandle<RHIBuffer>[],
         sampledBindings: readonly Readonly<ShaderSampledBindingPlan>[],
-        sampledResources: readonly Readonly<ShaderSampledBindingResources>[]
+        sampledResources: readonly (Readonly<ShaderSampledBindingResources> | null)[]
     ): readonly Readonly<BindingRecipe>[] {
         const recipes: BindingRecipe[] = [];
         for (let index = 0; index < blocks.length; index += 1) {
@@ -574,7 +590,7 @@ export class ShaderBindGroupResourceCache {
             const sampled = sampledBindings[index];
             if (sampled?.group !== group) continue;
             const resources = sampledResources[index];
-            if (resources === undefined) {
+            if (resources === undefined || resources === null) {
                 throw new Error(`Sampled binding ${sampled.name} lost its resource handles`);
             }
             recipes.push({

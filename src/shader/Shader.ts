@@ -322,7 +322,9 @@ class Shader {
         }
 
         const options: Record<string, number> = { ...this.commonOptions };
-        if (role === 'forward' && lightType && lightType !== 'NONE') {
+        const shadedColorRole =
+            role === 'forward' || role === 'weighted-accumulation' || role === 'weighted-revealage';
+        if (shadedColorRole && lightType && lightType !== 'NONE') {
             lightManager.getRenderOption(options);
             const limits: readonly (readonly [string, number])[] = [
                 ['DIRECTIONAL_LIGHTS', MAX_DIRECTIONAL_LIGHTS],
@@ -341,8 +343,8 @@ class Shader {
         }
         material.getRenderOption(options);
         mesh.getRenderOption(options);
-        if (role === 'forward' && mesh.receiveShadows) options['RECEIVE_SHADOWS'] = 1;
-        if (role === 'forward' && fog) {
+        if (shadedColorRole && mesh.receiveShadows) options['RECEIVE_SHADOWS'] = 1;
+        if (shadedColorRole && fog) {
             options['HAS_FOG'] = 1;
             fog.getRenderOption(options);
         }

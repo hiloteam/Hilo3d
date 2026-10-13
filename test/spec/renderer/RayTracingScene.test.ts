@@ -1,11 +1,24 @@
+import { NEAREST, MIRRORED_REPEAT } from '../../../src/constants/webgl';
 import { describe, expect, it } from 'vitest';
 import Mesh from '../../../src/core/Mesh';
+import SkinnedMesh from '../../../src/core/SkinnedMesh';
+import Skeleton from '../../../src/core/Skeleton';
+import MorphGeometry from '../../../src/geometry/MorphGeometry';
+import Matrix4 from '../../../src/math/Matrix4';
 import Node from '../../../src/core/Node';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
+import { DecalProjector } from '../../../src/render/decals/DecalProjector';
+import Vector3 from '../../../src/math/Vector3';
+import Matrix3 from '../../../src/math/Matrix3';
+import {
+    RAY_MATERIAL_BYTES,
+    RAY_DECAL_OFFSET,
+    sampleRayMaterial
+} from '../../../src/render/gi/scene/SceneMaterials';
 import Color from '../../../src/math/Color';
 import { requireNumber } from '../../../src/math/numberArray';
 import Texture from '../../../src/texture/Texture';
@@ -59,7 +72,7 @@ describe('RayTracingScene', () => {
         const mesh = triangle();
         mesh.updateMatrixWorld();
         const snapshot = new RayTracingScene().update(mesh);
-        expect(snapshot.triangles.byteLength).toBe(128);
+        expect(snapshot.triangles.byteLength).toBe(RAY_TRIANGLE_FLOATS * 4);
         expect(snapshot.nodes.byteLength).toBe(32);
         expect(snapshot.diagnostics).toMatchObject({
             meshCount: 1,
@@ -239,7 +252,7 @@ describe('RayTracingScene', () => {
         const colored = scene.update(root);
         expect(colored.baseRevision).toBe(initial.revision);
         expect(colored.triangleDirtyRanges.reduce((sum, range) => sum + range.byteLength, 0)).toBe(
-            128
+            RAY_TRIANGLE_FLOATS * 4
         );
         expect(colored.nodeDirtyRanges).toEqual([]);
         expect(
@@ -250,7 +263,7 @@ describe('RayTracingScene', () => {
         const moved = scene.update(root);
         expect(moved.baseRevision).toBe(colored.revision);
         expect(moved.triangleDirtyRanges.reduce((sum, range) => sum + range.byteLength, 0)).toBe(
-            128
+            RAY_TRIANGLE_FLOATS * 4
         );
         const nodeUploadBytes = moved.nodeDirtyRanges.reduce(
             (sum, range) => sum + range.byteLength,
@@ -391,7 +404,9 @@ describe('RayTracingScene', () => {
         const textured = triangle();
         textured.material = new PBRMaterial({ baseColorMap: new Texture(), metallic: 0 });
         textured.updateMatrixWorld();
-        expect(() => new RayTracingScene().update(textured)).toThrow(/explicit texture policy/);
+        expect(() => new RayTracingScene({ texturePolicy: 'error' }).update(textured)).toThrow(
+            /explicit texture policy/
+        );
         expect(
             new RayTracingScene({ texturePolicy: 'exclude' }).update(textured).diagnostics
         ).toMatchObject({
@@ -456,5 +471,427 @@ describe('RayTracingScene', () => {
                 minDistance: -1
             })
         ).toThrow(/interval/);
+    });
+});
+
+describe('RayTracingScene asset transport', () => {
+    function texturedTriangle(): Mesh {
+        const mesh = triangle();
+        const geometry = mesh.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.uvs = new GeometryData(new Float32Array([0, 0, 1, 0, 0.5, 1]), 2);
+        geometry.uvs1 = new GeometryData(new Float32Array([0.75, 0.25, 0.75, 0.25, 0.75, 0.25]), 2);
+        return mesh;
+    }
+
+    it('compiles true texels by default, sharing atlas allocation and tracking direct UV-transform edits', () => {
+        const mesh = texturedTriangle();
+        const texture = new Texture({ image: new Uint8Array(16).fill(255), width: 2, height: 2 });
+        const transform = new Matrix3();
+        mesh.material = new PBRMaterial({
+            metallic: 0.2,
+            baseColorMap: { texture, uvSet: 1, transform },
+            emission: texture
+        });
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene();
+        const first = compiler.update(mesh);
+        expect(first.textureTexelCount).toBe(4);
+        expect(first.textures).toHaveLength(1);
+        expect(first.materials[16 + 7]).toBe(1);
+        expect(compiler.update(mesh)).toBe(first);
+        transform.elements[6] = 0.25;
+        const moved = compiler.update(mesh);
+        expect(moved.revision).toBe(first.revision + 1);
+        expect(moved.nodes).toBe(first.nodes);
+        expect(moved.materialDirtyRanges).toEqual([
+            { byteOffset: 0, byteLength: RAY_MATERIAL_BYTES }
+        ]);
+        expect(moved.materials[22]).toBe(0.25);
+        expect(first.materials[22]).toBe(0);
+        texture.needUpdate = true;
+        const changed = compiler.update(mesh);
+        expect(changed.revision).toBe(moved.revision + 1);
+        expect(changed.triangleDirtyRanges).toEqual([]);
+        expect(changed.materialDirtyRanges).toEqual([]);
+        expect(changed.textures[0]?.revision).toBeGreaterThan(moved.textures[0]?.revision ?? -1);
+    });
+
+    it('rejects missing UVs, automatic media and atlas overflow without publishing a partial scene', () => {
+        const mesh = texturedTriangle();
+        const texture = new Texture({ image: new Uint8Array(16).fill(255), width: 2, height: 2 });
+        mesh.material = new PBRMaterial({ metallic: 0, baseColorMap: texture });
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene({ maxTextureTexels: 4 });
+        const first = compiler.update(mesh);
+        texture.width = 3;
+        expect(() => compiler.update(mesh)).toThrow(/budget/);
+        texture.width = 2;
+        expect(compiler.update(mesh)).toBe(first);
+        texture.autoUpdate = true;
+        expect(() => compiler.update(mesh)).toThrow(/revisioned 2D/);
+        texture.autoUpdate = false;
+        const geometry = mesh.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.uvs = null;
+        expect(() => compiler.update(mesh)).toThrow(/UV0/);
+    });
+
+    it('interpolates normalized vertex alpha and samples mask coverage before selecting the nearest triangle', () => {
+        const root = new Node();
+        const front = texturedTriangle();
+        const texture = new Texture({
+            image: new Uint8Array([255, 255, 255, 0]),
+            width: 1,
+            height: 1
+        });
+        front.material = new PBRMaterial({
+            metallic: 0,
+            baseColorMap: texture,
+            coverage: { mode: 'mask', cutoff: 0.5 }
+        });
+        const geometry = front.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.colors = new GeometryData(
+            new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 0]),
+            4,
+            { normalized: true }
+        );
+        front.z = 1;
+        front.addTo(root);
+        const back = triangle().addTo(root);
+        root.updateMatrixWorld();
+        const snapshot = new RayTracingScene().update(root);
+        const ray = { origin: [0, 0, 2] as const, direction: [0, 0, -1] as const };
+        expect(() => traceRayTracingScene(snapshot, ray)).toThrow(/atlas readback/);
+        expect(traceRayTracingScene(snapshot, ray, new Float32Array([1, 1, 1, 0]))?.distance).toBe(
+            2
+        );
+        expect(traceRayTracingScene(snapshot, ray, new Float32Array([1, 1, 1, 1]))?.distance).toBe(
+            1
+        );
+        expect(
+            traceRayTracingScene(
+                snapshot,
+                { origin: [0, 0.9, 2], direction: [0, 0, -1] },
+                new Float32Array([1, 1, 1, 1])
+            )?.distance
+        ).toBe(2);
+        expect(back.geometry).toBeDefined();
+    });
+
+    it('keeps shared-geometry rigid batching instances as separate full-scene ray objects', () => {
+        const root = new Node();
+        const first = texturedTriangle();
+        first.useInstanced = true;
+        first.addTo(root);
+        const second = new Mesh({
+            geometry: first.geometry,
+            material: first.material,
+            useInstanced: true,
+            x: 4
+        }).addTo(root);
+        root.updateMatrixWorld();
+        const compiler = new RayTracingScene();
+        const snapshot = compiler.update(root);
+        expect(snapshot.diagnostics).toMatchObject({
+            meshCount: 2,
+            triangleCount: 2,
+            excludedMeshCount: 0
+        });
+        expect(
+            traceRayTracingScene(snapshot, { origin: [4, 0, 2], direction: [0, 0, -1] })?.meshIndex
+        ).toBe(1);
+        second.x = 5;
+        root.updateMatrixWorld();
+        expect(compiler.update(root).diagnostics.update).toBe('refit');
+        second.instanceCount = 2;
+        expect(() => new RayTracingScene({ unsupported: 'error' }).update(root)).toThrow(
+            /instances/
+        );
+    });
+});
+
+describe('RayTracingScene canonical deformation', () => {
+    it('refits current joint poses, tracks skin-stream revisions and preserves failed snapshots', () => {
+        const root = new Node();
+        const joint = new Node().addTo(root);
+        const base = triangle();
+        const geometry = base.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.skinIndices = new GeometryData(new Uint8Array(12), 4);
+        geometry.skinWeights = new GeometryData(
+            new Uint8Array([255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0]),
+            4,
+            { normalized: true }
+        );
+        const mesh = new SkinnedMesh({
+            geometry,
+            material: base.material,
+            skeleton: new Skeleton({ jointNodeList: [joint], inverseBindMatrices: [new Matrix4()] })
+        }).addTo(root);
+        root.updateMatrixWorld();
+        const compiler = new RayTracingScene({ unsupported: 'error' });
+        const first = compiler.update(root);
+        expect(
+            traceRayTracingScene(first, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(2);
+        expect(compiler.update(root)).toBe(first);
+        joint.z = 1;
+        root.updateMatrixWorld();
+        const posed = compiler.update(root);
+        expect(posed.diagnostics.update).toBe('refit');
+        expect(
+            traceRayTracingScene(posed, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(1);
+        expect(
+            traceRayTracingScene(first, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(2);
+        geometry.skinIndices.setSubData(0, new Uint8Array([1]));
+        expect(() => compiler.update(root)).toThrow(/joint index/);
+        geometry.skinIndices.setSubData(0, new Uint8Array([0]));
+        const repaired = compiler.update(root);
+        expect(
+            traceRayTracingScene(repaired, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(1);
+        mesh.skeleton = null;
+        expect(() => compiler.update(root)).toThrow(/skeleton/);
+    });
+
+    it('uses active morph slot remapping and current weights before joint deformation', () => {
+        const base = triangle();
+        if (!base.geometry) throw new Error('Missing geometry');
+        const up = new GeometryData(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3);
+        const down = new GeometryData(new Float32Array([0, 0, -1, 0, 0, -1, 0, 0, -1]), 3);
+        const geometry = new MorphGeometry({
+            vertices: base.geometry.vertices,
+            normals: base.geometry.normals,
+            weights: [0, 0],
+            targets: { vertices: [up, down] }
+        });
+        const mesh = new Mesh({ geometry, material: base.material });
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene({ unsupported: 'error' });
+        const first = compiler.update(mesh);
+        geometry.weights[0] = 0.5;
+        const raised = compiler.update(mesh);
+        expect(raised.diagnostics.update).toBe('refit');
+        expect(
+            traceRayTracingScene(raised, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(1.5);
+        expect(
+            traceRayTracingScene(first, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(2);
+        geometry.update([0.5, 0], [1, 0]);
+        const lowered = compiler.update(mesh);
+        expect(
+            traceRayTracingScene(lowered, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(2.5);
+        expect(compiler.update(mesh)).toBe(lowered);
+        const binding = mesh.material?.attributes['a_morphPosition0'];
+        if (!mesh.material || !binding) throw new Error('Missing morph position semantic');
+        mesh.material.attributes['a_morphPosition0'] = { get: () => up };
+        expect(() => compiler.update(mesh)).toThrow(/unsupported: deformation/);
+        mesh.material.attributes['a_morphPosition0'] = binding;
+        geometry.weights[0] = Number.NaN;
+        expect(() => compiler.update(mesh)).toThrow(/finite weights/);
+    });
+});
+
+describe('DDGI material atlas oracle', () => {
+    it('decodes before channel remapping and observes repeated, mirrored and filtered texels', () => {
+        const mesh = triangle();
+        if (!mesh.geometry) throw new Error('Missing geometry');
+        mesh.geometry.uvs = new GeometryData(new Float32Array([0, 0, 1, 0, 0.5, 1]), 2);
+        const texture = new Texture({
+            image: new Uint8Array(8),
+            width: 2,
+            height: 1,
+            magFilter: NEAREST,
+            minFilter: NEAREST
+        });
+        mesh.material = new PBRMaterial({
+            metallic: 0,
+            baseColorMap: { texture, channels: ['b', 'r', 'g', 'a'] }
+        });
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene();
+        const first = compiler.update(mesh);
+        const atlas = new Float32Array([0.5, 0.25, 1, 0.2, 0, 1, 0, 0.8]);
+        const sampled = sampleRayMaterial(first.materials, 0, 0, [0.25, 0.5, 0, 0], atlas);
+        expect(sampled[0]).toBe(1);
+        expect(sampled[1]).toBeCloseTo(0.214041, 5);
+        expect(sampled[2]).toBeCloseTo(0.050876, 5);
+        expect(sampled[3]).toBeCloseTo(0.2);
+        expect(sampleRayMaterial(first.materials, 0, 0, [-0.25, 0.5, 0, 0], atlas)[3]).toBeCloseTo(
+            0.8
+        );
+        texture.wrapS = MIRRORED_REPEAT;
+        const mirrored = compiler.update(mesh);
+        expect(
+            sampleRayMaterial(mirrored.materials, 0, 0, [-0.25, 0.5, 0, 0], atlas)[3]
+        ).toBeCloseTo(0.2);
+        expect(first.materials[16 + 16]).toBe(1);
+        expect(mirrored.materials[16 + 16]).toBe(2);
+    });
+});
+
+describe('DDGI decal records', () => {
+    it('retains mirrored projector handedness, masks and exact revision changes for world-space paint', () => {
+        const mesh = triangle();
+        const atlas = new Texture({ image: new Uint8Array([255, 0, 0, 255]), width: 1, height: 1 });
+        const projector = new DecalProjector({
+            transform: new Matrix4().fromScaling(new Vector3(2, -2, 1))
+        });
+        mesh.material = new PBRMaterial({
+            metallic: 0,
+            decals: { projectors: [projector], baseColorAtlas: atlas }
+        });
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene();
+        const mirrored = compiler.update(mesh);
+        expect(mirrored.materials[RAY_DECAL_OFFSET + 34]).toBe(-1);
+        expect(mirrored.materials[RAY_DECAL_OFFSET + 23]).toBe(1);
+        expect(mirrored.textureTexelCount).toBe(1);
+        projector.update({ layer: 0 });
+        const masked = compiler.update(mesh);
+        expect(masked.nodes).toBe(mirrored.nodes);
+        expect(masked.materials[RAY_DECAL_OFFSET + 23]).toBe(0);
+        expect(mirrored.materials[RAY_DECAL_OFFSET + 23]).toBe(1);
+        projector.update({ layer: 0xffffffff, transform: new Matrix4() });
+        expect(compiler.update(mesh).materials[RAY_DECAL_OFFSET + 34]).toBe(1);
+    });
+});
+
+describe('DDGI custom binding boundaries', () => {
+    it('rejects custom uniform and vertex binding callbacks instead of tracing stale canonical factors', () => {
+        const mesh = triangle();
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene({ unsupported: 'error' });
+        const first = compiler.update(mesh);
+        const material = mesh.material;
+        if (!material) throw new Error('Missing material');
+        const previous = material.uniforms['u_baseColor'];
+        if (!previous) throw new Error('Missing base-color semantic');
+        material.uniforms['u_baseColor'] = { get: () => new Color(0, 1, 0) };
+        expect(() => compiler.update(mesh)).toThrow(/unsupported: material/);
+        material.uniforms['u_baseColor'] = previous;
+        expect(compiler.update(mesh)).toBe(first);
+        material.attributes['a_position'] = { get: () => mesh.geometry?.vertices };
+        expect(() => compiler.update(mesh)).toThrow(/unsupported: material/);
+    });
+});
+
+describe('DDGI explicit ray participation', () => {
+    it('excludes only authored opt-outs under strict mode and preserves child participation', () => {
+        const root = new Node();
+        const particle = new Mesh({
+            geometry: new BoxGeometry(),
+            material: new BasicMaterial(),
+            contributeToGlobalIllumination: false
+        }).addTo(root);
+        const child = triangle().addTo(particle);
+        root.updateMatrixWorld();
+        const compiler = new RayTracingScene({ unsupported: 'error' });
+        const first = compiler.update(root);
+        expect(first.diagnostics).toMatchObject({
+            triangleCount: 1,
+            meshCount: 1,
+            excludedMeshCount: 1,
+            exclusions: { disabled: 1, material: 0 }
+        });
+        expect(
+            traceRayTracingScene(first, { origin: [0, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBe(2);
+        particle.contributeToGlobalIllumination = true;
+        expect(() => compiler.update(root)).toThrow(/unsupported: material/);
+        particle.contributeToGlobalIllumination = false;
+        expect(compiler.update(root)).toBe(first);
+        child.contributeToGlobalIllumination = false;
+        const omitted = compiler.update(root);
+        expect(omitted.diagnostics).toMatchObject({
+            triangleCount: 0,
+            excludedMeshCount: 2,
+            exclusions: { disabled: 2 }
+        });
+    });
+});
+
+describe('DDGI portable UV decoding', () => {
+    it('decodes normalized interleaved UV0 and independent UV1 matrices before material transforms', () => {
+        const mesh = triangle();
+        const geometry = mesh.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.uvs = new GeometryData(
+            new Uint16Array([0, 0, 999, 65535, 0, 999, 32768, 65535, 999]),
+            2,
+            { normalized: true, stride: 6 }
+        );
+        geometry.uvs1 = new GeometryData(new Float32Array([10, 20, 10, 20, 10, 20]), 2);
+        geometry.uvDecodeMat = [2, 0, 0, 0, 3, 0, 0.25, 0.5, 1];
+        geometry.uv1DecodeMat = [0.01, 0, 0, 0, 0.02, 0, 0.1, 0.2, 1];
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene();
+        const first = compiler.update(mesh);
+        expect(first.triangles[32]).toBeCloseTo(0.25);
+        expect(first.triangles[33]).toBeCloseTo(0.5);
+        expect(first.triangles[34]).toBeCloseTo(0.2);
+        expect(first.triangles[35]).toBeCloseTo(0.6);
+        expect(first.triangles[36]).toBeCloseTo(2.25);
+        geometry.uv1DecodeMat[6] = 0.4;
+        const changed = compiler.update(mesh);
+        expect(changed.triangles[34]).toBeCloseTo(0.5);
+        expect(first.triangles[34]).toBeCloseTo(0.2);
+    });
+});
+
+describe('DDGI quantized skin weights', () => {
+    it('matches homogeneous clip positions for rounded UNORM weights and rejects zero total weight', () => {
+        const source = triangle();
+        const geometry = source.geometry;
+        if (!geometry) throw new Error('Missing geometry');
+        geometry.skinIndices = new GeometryData(
+            new Uint8Array([0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0]),
+            4
+        );
+        geometry.skinWeights = new GeometryData(
+            new Uint16Array([32767, 32767, 0, 0, 32767, 32767, 0, 0, 32767, 32767, 0, 0]),
+            4,
+            { normalized: true }
+        );
+        const firstJoint = new Node();
+        const secondJoint = new Node({ z: 2 });
+        const mesh = new SkinnedMesh({
+            geometry,
+            material: source.material,
+            x: 4,
+            skeleton: new Skeleton({
+                jointNodeList: [firstJoint, secondJoint],
+                inverseBindMatrices: [new Matrix4(), new Matrix4()]
+            })
+        });
+        firstJoint.addTo(mesh);
+        secondJoint.addTo(mesh);
+        mesh.updateMatrixWorld();
+        const compiler = new RayTracingScene({ unsupported: 'error' });
+        const snapshot = compiler.update(mesh);
+        expect(
+            traceRayTracingScene(snapshot, { origin: [4, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBeCloseTo(1, 6);
+        geometry.skinWeights = new GeometryData(
+            new Float32Array([2, 2, 0, 0, 2, 2, 0, 0, 2, 2, 0, 0]),
+            4
+        );
+        expect(
+            traceRayTracingScene(compiler.update(mesh), {
+                origin: [4, 0, 2],
+                direction: [0, 0, -1]
+            })?.distance
+        ).toBeCloseTo(1, 6);
+        geometry.skinWeights.setSubData(0, new Float32Array(4));
+        expect(() => compiler.update(mesh)).toThrow(/positive sum/);
+        expect(
+            traceRayTracingScene(snapshot, { origin: [4, 0, 2], direction: [0, 0, -1] })?.distance
+        ).toBeCloseTo(1, 6);
     });
 });

@@ -1,4 +1,8 @@
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
+import OrthographicCamera from '../../../src/camera/OrthographicCamera';
+import Mesh from '../../../src/core/Mesh';
+import BoxGeometry from '../../../src/geometry/BoxGeometry';
+import PBRMaterial from '../../../src/material/PBRMaterial';
 import DirectionalLight from '../../../src/light/DirectionalLight';
 import LightManager from '../../../src/light/LightManager';
 import PointLight from '../../../src/light/PointLight';
@@ -44,6 +48,109 @@ describe.each([
     ['WebGL capabilities', () => new FakeWebGLRHIBackend()],
     ['WebGPU capabilities', () => new FakeWebGPURHIBackend()]
 ] as const)('ShadowAtlasSceneAdapter with %s', (_name, createBackend) => {
+    it('extends only receiver-overlapping caster depth and refreshes moved or edited bounds during cascade cadence', () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const light = new DirectionalLight({
+            direction: new Vector3(-1, 0, 0),
+            shadow: { cascadeCount: 4 }
+        });
+        const manager = new LightManager();
+        manager.addLight(light);
+        const adapter = new ShadowAtlasSceneAdapter();
+        const camera = new PerspectiveCamera({ near: 0.1, far: 8, aspect: 1, fov: 40 });
+        camera.setPosition(0, 0, 4).lookAt(new Vector3(0, 0, 0));
+        const caster = new Mesh({
+            geometry: new BoxGeometry(),
+            material: new PBRMaterial(),
+            x: 4,
+            z: 3,
+            castShadows: true
+        });
+        caster.updateMatrixWorld();
+        const options = {
+            width: 128,
+            height: 128,
+            frameIndex: 0,
+            cascadeUpdateIntervals: [8, 8, 8, 8],
+            casterMeshes: [] as Mesh[]
+        };
+        const original = adapter.prepare(manager, camera, device.capabilities, options);
+        const first = original.slices[0]?.camera;
+        if (!(first instanceof OrthographicCamera))
+            throw new Error('Expected orthographic cascade');
+        const receiverBounds = [first.left, first.right, first.bottom, first.top, first.far];
+        const originalNear = first.near;
+        options.casterMeshes.push(caster);
+        options.frameIndex = 1;
+        const fitted = adapter.prepare(manager, camera, device.capabilities, options).slices[0]
+            ?.camera;
+        if (!(fitted instanceof OrthographicCamera)) throw new Error('Expected fitted cascade');
+        expect(fitted.near).toBeLessThan(originalNear - 1);
+        expectNumbers(
+            [fitted.left, fitted.right, fitted.bottom, fitted.top, fitted.far],
+            receiverBounds
+        );
+        const fittedNear = fitted.near;
+        caster.x = 8;
+        caster.updateMatrixWorld();
+        options.frameIndex = 2;
+        const moved = adapter.prepare(manager, camera, device.capabilities, options).slices[0]
+            ?.camera;
+        if (!(moved instanceof OrthographicCamera)) throw new Error('Expected moved cascade');
+        expect(moved.near).toBeLessThan(fittedNear - 3);
+        const movedNear = moved.near;
+        caster.geometry?.vertices?.set(0, new Vector3(6, 0, 0));
+        options.frameIndex = 3;
+        const edited = adapter.prepare(manager, camera, device.capabilities, options).slices[0]
+            ?.camera;
+        if (!(edited instanceof OrthographicCamera)) throw new Error('Expected edited cascade');
+        expect(edited.near).toBeLessThan(movedNear - 4);
+        caster.y = 100;
+        caster.updateMatrixWorld();
+        options.frameIndex = 8;
+        const disjoint = adapter.prepare(manager, camera, device.capabilities, options).slices[0]
+            ?.camera;
+        if (!(disjoint instanceof OrthographicCamera)) throw new Error('Expected disjoint cascade');
+        expect(disjoint.near).toBeCloseTo(originalNear);
+        adapter.destroy();
+        backend.destroy();
+    });
+
+    it('copies reversed depth and raster projections consistently for CPU and GPU shadow casters', () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const camera = mainCamera();
+        camera.depthMode = 'reversed';
+        const manager = new LightManager();
+        manager.addLight(
+            new DirectionalLight({ direction: new Vector3(-1, -1, 0), shadow: { cascadeCount: 4 } })
+        );
+        manager.addLight(new SpotLight({ direction: new Vector3(0, -1, 0.1), shadow: {} }));
+        manager.addLight(new PointLight({ shadow: {} }));
+        const adapter = new ShadowAtlasSceneAdapter();
+        for (let frameIndex = 0; frameIndex < 2; frameIndex++) {
+            const result = adapter.prepare(manager, camera, device.capabilities, {
+                width: 32,
+                height: 32,
+                frameIndex,
+                cascadeUpdateIntervals: [8, 8, 8, 8]
+            });
+            expect(result.slices).toHaveLength(11);
+            for (const slice of result.slices) {
+                expect(slice.camera.depthMode).toBe('reversed');
+                expect(
+                    slice.camera.jitteredProjectionMatrix.equals(slice.camera.projectionMatrix)
+                ).toBe(true);
+                expect(
+                    slice.camera.jitteredViewProjectionMatrix.equals(slice.viewProjectionMatrix)
+                ).toBe(true);
+            }
+        }
+        adapter.destroy();
+        backend.destroy();
+    });
+
     it('preserves a reversed directional shadow projection axis', () => {
         const backend = createBackend();
         const device = backend.createDevice();

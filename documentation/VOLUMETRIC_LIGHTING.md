@@ -44,7 +44,8 @@ resolution 和 screen-space visibility budget 提供固定默认值。`resolutio
 
 1. GPU Scene/ordinary fallback 共用 depth prepass；
 2. local light 的全视锥 3D cluster count → prefix → bounded index write；
-3. directional、point、spot light 与 global/local density 注入 camera-aligned froxel；
+3. directional、point、spot light 读取同帧 shared shadow atlas，并与 global/local
+   density 注入 camera-aligned froxel；
 4. 每个 XY froxel column 沿对数 Z slice 只做一次 cumulative radiative-transfer integration；
 5. 根据 opaque scene depth 以常数次 atlas 读取重建当前像素的 radiance/transmittance；
 6. previous view-projection reprojection、scene-depth rejection、3×3 neighborhood clamp 与 reactive
@@ -100,11 +101,39 @@ lighting 使用精确 LTC，但当前 froxel 模型没有定义矩形面积光�
 type 跳过它，同时保持共享 light-record
 stride 和后续 local-light 索引不变；它不会退化成点光源制造错误光束。
 
-`shadowSteps` 对 froxel-to-light segment 执行 bounded screen-space depth
-visibility。它能让当前 Camera 可见的动态遮挡物切断方向光和局部光束，并随质量档控制成本；离屏或被当前 Camera 完全遮住的 caster 不在这个 screen-space 合同内，确定性按可见处理。当前 Clustered
-surface path 已消费 shared shadow atlas；体积路径仍只使用上述 bounded screen-space
-visibility，不会谎称已消费 atlas。后续 volumetric atlas/virtual-shadow 接入必须增加明确的 atlas
-resource、matrix/index ABI 和独立像素证据，不能暗中替换这里的 screen-space visibility。
+投影灯光的体积遮挡直接消费共享 `RenderPipelineShadowResources.atlas` 与 Clustered frame
+buffer 中已有的 shadow ABI；注入 pass 将真实 atlas 声明为 sampled
+depth 输入，因此图编译器保证 CPU/GPU caster 的写入先于散射读取。没有 shadow light 时使用不含 atlas
+binding 的 shader variant，不导入占位纹理。无论 `shadowSteps` 是否为零，投影灯光都执行 atlas 遮挡。
+
+- directional 使用与表面相同的四个固定逻辑 cascade slot、view-depth splits、过渡带与
+  `shadowStrength`；
+- spot 使用自己的 view-space-to-shadow-clip matrix 与固定 atlas slot；
+- point 从六个规范 face matrix 中选择覆盖当前 froxel 的面，再使用该面的独立 atlas rect；
+- clip XY 只做一次 Y 翻转进入 top-left atlas；包括负 scale 的 atlas rect 都按其实际边界夹取；
+- 每次投影最多九次 point depth comparison，PCF 不跨 tile，且遵守 standard/reversed depth
+  convention；介质没有表面法线，因此只使用 light 的 `minBias`，不套用 surface slope bias。
+
+离屏墙、门、动态 mesh 和 alpha-mask caster 通过同一个 shared shadow
+pass 遮挡空气。共享前端在主相机 frustum cull 前保留 camera
+layer 中的完整 caster。自动方向光保持 receiver 的紧凑 XY 与 far plane，只对 light-space
+XY 相交的 caster 向光源方向扩展 near plane。缓存的 position 与 morph delta bounds 随 vertex
+data/layout/geometry revision 刷新；position decode、active morph
+slot 和正负权重构成保守区间，skin 使用有效 joint 变换这些区间的并集。skin 要求最多 128 个 affine
+joint、非负且总和大于零的权重（最终 clip 齐次除法会归一化量化舍入误差）；非法 index/weight 与非有限数据在提交前拒绝。每个 mesh 每次 prepare 只合成一次动态 bounds，不逐帧扫描三角形，cascade
+cadence 复用时也检查姿势变化。投影变化进入原有 atlas content/cache submission 合同。Shadow
+camera 副本同时保留 depth mode 和 stable/raster 投影，保证 CPU skin/morph 与 GPU indirect
+caster 在 reversed atlas 中使用同一深度映射。
+
+覆盖范围仍受 shadow camera/cascade 限制。显式 `cameraInfo` 的完整覆盖由应用负责；超出 shadow
+coverage 的空气按可见处理，需要远距离雾阴影时应配置足够的 `cascadeMaxDistance` 和 shadow
+bounds。启用虚拟阴影时，体积仍消费 shared stable
+CSM，不读取仅由表面 receiver 请求的虚拟页，以免空中 froxel 遭遇缺页。任意自定义 vertex
+displacement 不属于上述 built-in deformation bounds 合同。
+
+`shadowSteps` 仍控制没有 atlas shadow 的灯光所使用的 bounded screen-space depth
+visibility；这是可关闭的接触遮挡近似，离屏 caster 不在它的合同内。要获得离屏遮挡，应显式配置该灯光的
+`shadow`。AreaLight 的散射、半透明彩色透射阴影和多次散射不在当前单次散射模型中。
 
 ## 时域与生命周期
 
@@ -114,9 +143,14 @@ view-projection 重投影；previous/current scene depth 负责 disocclusion
 reject，当前 3×3 邻域限制旧 radiance，光照或透射突变会降低 history weight。
 
 首次启用、Camera identity/revision cut、resize、history descriptor 改变和 device
-generation 变化都会重新初始化。history current slot、CPU previous Camera
-state、diagnostics 与 persistent buffer
-revision 只在有效 submission 后提交；record/compile/prepare/execute/submit 失败会回滚，旧 history 留给下一次合法帧重试。
+generation 变化都会重新初始化。世界空间 light transform、颜色/强度、范围/衰减、spot
+cone、directional direction/strength 或 ambient 改变时，体积 history 当帧硬拒绝；只移动相机或 TAA
+jitter 不会被误认为 light 改变。每帧按精确数值比较局部 fog center/extent/density/albedo，并在 shared
+atlas 实际更新 page 时拒绝旧散射，以防动态 caster 拖影。这是保守的全屏拒绝，连续运动的 light/caster/medium 可能减少 history
+reuse，成本与细粒度时域复用属于后续可测量的优化。
+
+history current slot、CPU previous Camera state、diagnostics 与 persistent buffer
+revision，以及 light/medium 的比较快照，只在有效 submission 后提交；record/compile/prepare/execute/submit 失败会回滚，旧 history 留给下一次合法帧重试。
 
 ## 质量与诊断
 
@@ -138,6 +172,13 @@ limit 与体积质量作为一组预算，并通过 overflow diagnostics 验证�
 
 ## 上线证据
 
+- `test/spec/renderer/ShadowCasterBounds.test.ts`：normalized/interleaved/decode、stream
+  revision、morph 负权重与目标重映射、有效 skin joint pose 和非法 influence 拒绝；
+- `test/spec/renderer/ShadowAtlasSceneAdapter.test.ts`：receiver XY 保持、离屏 caster
+  depth 拟合、transform/vertex revision 与 cadence 更新，双后端 capability 合同；
+- `test/spec/renderer/VolumetricLighting.test.ts`：真实 WebGPU 离屏非对称 blocker，四级 CSM 与 standard/reversed
+  depth，spot/point atlas，组合 skin+morph 离屏动态遮挡，light/medium history
+  rejection，提交失败回滚及真实 device-loss recovery；
 - `test/spec/renderer/ClusteredForwardPlus.test.ts`：option、limit、format、local volume、完整 3D
   cluster contract，以及真实 WebGPU 的 compute/storage/history/HDR pass 链；
 - `documentation/RENDERING_ARCHITECTURE.md`：生产帧顺序、fallback 与生命周期总合同；

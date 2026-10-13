@@ -152,11 +152,17 @@ cut 和 motion pause；测试模式固定 output 640×360，并以 `renderScale=
 
 ## 明确保留到后续版本
 
+Unreleased 的 projected
+Decal 当前对整个 receiver 写 reactive，覆盖 projector 离开后的旧区域。共享 motion
+participation 同时提交材质 identity；换掉材质（包括移除所有 Decal）会让上一表面 history 失效，失败帧不发布候选 identity。Weighted
+OIT 在 opaque resolve 后合成，并进入 Clustered 独立 transparent short history；见
+[Decal](./PBR_DECALS.md) 和 [透明合同](./TRANSPARENCY.md)。
+
 - 更广的 authored spatial reactive
   mask 与透明材质/粒子适用面；当前 Clustered 已有 transparent/transmission/GPU-particle 独立 short
   history、coverage/depth rejection 与有界 resurrection，不能再把这组首版能力列为未实现；
 - exposure-compensated history 与 content-aware quality controller；
-- normal/material ID rejection、velocity dilation 和专用 thin-feature reconstruction；
+- per-pixel normal/material ID rejection、velocity dilation 和专用 thin-feature reconstruction；
 - memory-constrained quality tier 与 history format packing。
 
 这些是功能路线，不是当前实现的隐藏缺陷；在各自 ABI、质量和性能证据完成前不得以无测试开关并入当前生产路径。

@@ -20,12 +20,14 @@ describe('WebGPUBindingLayout', () => {
         expect(WEBGPU_BIND_GROUPS).toEqual({ GLOBAL: 0, MATERIAL: 1, OBJECT: 2, CUSTOM: 3 });
         expect(WEBGPU_UNIFORM_BLOCK_BINDINGS).toEqual({
             FrameBlock: { group: 0, binding: 0 },
+            WeightedTransparencyBlock: { group: 0, binding: 4 },
             CameraBlock: { group: 0, binding: 1 },
             SceneBlock: { group: 0, binding: 2 },
             LightBlock: { group: 0, binding: 3 },
             MaterialBlock: { group: 1, binding: 0 },
             MaterialTextureBlock: { group: 1, binding: 1 },
             ReflectionProbeBlock: { group: 1, binding: 64 },
+            DecalBlock: { group: 1, binding: 65 },
             ModelBlock: { group: 2, binding: 0 },
             GeometryBlock: { group: 2, binding: 1 },
             SkinningBlock: { group: 2, binding: 2 },

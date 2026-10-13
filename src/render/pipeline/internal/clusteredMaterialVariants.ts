@@ -32,8 +32,7 @@ export function clusteredTransparentMaterial(mesh: Mesh): PBRMaterial | null {
         material.lightType !== 'PBR' ||
         !material.isTransparent ||
         material.requiresOpaqueSceneTexture ||
-        material.forwardQueue !== 'transparent' ||
-        mesh.useInstanced
+        material.forwardQueue !== 'transparent'
     ) {
         return null;
     }
@@ -47,8 +46,7 @@ export function clusteredOpaqueMaterial(mesh: Mesh): PBRMaterial | null {
         mesh.geometry === null ||
         material.lightType !== 'PBR' ||
         material.forwardQueue !== 'opaque' ||
-        material.requiresOpaqueSceneTexture ||
-        mesh.useInstanced
+        material.requiresOpaqueSceneTexture
     ) {
         return null;
     }
@@ -85,11 +83,14 @@ export interface PBRMaterialVariant {
 }
 
 export function bucketMaterialIssue(material: PBRMaterial): string | null {
+    if (material.decals !== null)
+        return 'uses projected decals (shared clustered direct path required)';
+    if (material.isTransparent) return 'must be opaque and unblended';
     if (material.reflectionProbes.length > 0)
         return 'uses local reflection probes (shared clustered direct path required)';
     const state = resolveMaterialPassState(material, 'forward');
     if (state === null) return 'has no forward pass';
-    if (material.isTransparent || state.blend !== undefined) {
+    if (state.blend !== undefined) {
         return 'must be opaque and unblended';
     }
     if (

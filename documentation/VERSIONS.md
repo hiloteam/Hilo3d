@@ -7,6 +7,11 @@ DDGI, local reflection probes, auxiliary SRP views, and the new Live2D, assets a
 Publication is pending; these APIs are absent from the alpha.8 tarballs. Verify the registry before
 installing the candidate.
 
+The October 2026 rendering expansion is **Unreleased source**, separate from the prepared alpha.9
+feature list: texture/deformation-aware DDGI, atlas-shadowed volumetrics, `DecalProjector`,
+`PBRMaterial.decals` and weighted-blended transparency. New recipes are checked against the packed
+checkout; this does not assert availability in any published npm version.
+
 ## Install a matching release
 
 For Hilo3D 2.0 alpha, use `npm install --save-exact hilo3d@next`. Resolve and pin the concrete

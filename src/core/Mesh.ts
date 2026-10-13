@@ -19,6 +19,8 @@ export interface MeshParameters extends NodeParameters {
     renderOrder?: number;
     castShadows?: boolean;
     receiveShadows?: boolean;
+    /** Include this mesh in world-space diffuse GI transport and ray occlusion. Defaults to true. */
+    contributeToGlobalIllumination?: boolean;
     /** Active direct-draw instances when geometry supplies per-instance vertex streams. */
     instanceCount?: number;
 }
@@ -58,6 +60,11 @@ class Mesh extends Node {
     castShadows = true;
     /** Whether forward shading consumes scene shadow data for this object. */
     receiveShadows = true;
+    /**
+     * Include this surface in the diffuse GI ray scene. Disable explicitly for smoke or other
+     * unsupported transport surfaces; this does not disable supported PBR reception of indirect light.
+     */
+    contributeToGlobalIllumination = true;
     private _instanceCount = 1;
     /**
      * Active direct-draw instance count.
@@ -97,6 +104,7 @@ class Mesh extends Node {
             geometry:
                 this.geometry instanceof MorphGeometry ? this.geometry.clone() : this.geometry,
             material: this.material,
+            contributeToGlobalIllumination: this.contributeToGlobalIllumination,
             instanceCount: this.instanceCount
         });
         if (!isChild) {

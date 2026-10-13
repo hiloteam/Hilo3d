@@ -102,6 +102,7 @@ const PUBLIC_TEXTURE_USES: readonly RenderPipelineTextureUse[] = Object.freeze([
     'sampled',
     'filterable-sampled',
     'color-attachment',
+    'blendable-color-attachment',
     'depth-stencil-attachment',
     'storage',
     'copy-source',
@@ -114,6 +115,7 @@ interface PublicTextureFormatSnapshot {
     readonly sampled: boolean;
     readonly filterable: boolean;
     readonly renderable: boolean;
+    readonly blendable: boolean;
     readonly storage: boolean;
     readonly sampleCounts: readonly number[];
 }
@@ -127,6 +129,8 @@ function publicPipelineLimit(
             return limits.maxTextureDimension2D;
         case 'maxColorAttachments':
             return limits.maxColorAttachments;
+        case 'maxColorAttachmentBytesPerSample':
+            return limits.maxColorAttachmentBytesPerSample;
         case 'maxSampledTexturesPerShaderStage':
             return limits.maxSampledTexturesPerShaderStage;
         case 'maxSamplersPerShaderStage':
@@ -179,6 +183,12 @@ export function createRenderPipelineCapabilities(
     const limits: Readonly<RenderPipelineLimits> = Object.freeze({
         maxTextureDimension2D: capabilities.limits.maxTextureDimension2D,
         maxColorAttachments: capabilities.limits.maxColorAttachments,
+        ...(capabilities.limits.maxColorAttachmentBytesPerSample === undefined
+            ? {}
+            : {
+                  maxColorAttachmentBytesPerSample:
+                      capabilities.limits.maxColorAttachmentBytesPerSample
+              }),
         maxSampledTexturesPerShaderStage: capabilities.limits.maxSampledTexturesPerShaderStage,
         maxSamplersPerShaderStage: capabilities.limits.maxSamplersPerShaderStage,
         maxBindGroups: capabilities.limits.maxBindGroups,
@@ -266,6 +276,7 @@ export function createRenderPipelineCapabilities(
             sampled: source.sampled,
             filterable: source.filterable,
             renderable: source.renderable,
+            blendable: source.blendable,
             storage: source.storage,
             sampleCounts: Object.freeze([...source.sampleCounts])
         });
@@ -331,6 +342,13 @@ export function createRenderPipelineCapabilities(
                         formatCapabilities.renderable &&
                         formatCapabilities.sampleCounts.includes(sampleCount)
                     );
+                case 'blendable-color-attachment':
+                    return (
+                        !depthStencil &&
+                        formatCapabilities.renderable &&
+                        formatCapabilities.blendable &&
+                        formatCapabilities.sampleCounts.includes(sampleCount)
+                    );
                 case 'depth-stencil-attachment':
                     return (
                         depthStencil &&
@@ -369,6 +387,7 @@ export function validateRenderPipelineCapabilitySuperset(
         throw new Error('Replacement RHI device reduces render pipeline public limits');
     }
     for (const name of [
+        'maxColorAttachmentBytesPerSample',
         'maxStorageBuffersPerShaderStage',
         'maxStorageTexturesPerShaderStage',
         'maxStorageBufferBindingSize',

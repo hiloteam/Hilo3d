@@ -117,6 +117,19 @@ render ordering to hide incorrect depth or blend configuration. Transparent Spri
 merge adjacent compatible items after semantic sorting; use atlases to reduce the resulting texture
 boundaries.
 
+Current **Unreleased source** adds explicit `compositing: { mode: 'weighted-blended' }` for
+supported Basic/PBR smoke-like layers, together with `weightedBlendedTransparency` on the selected
+Forward or Clustered pipeline. Both material classification and pipeline opt-in are required. Keep
+glass on the separate sorted transmission path; weighted blending is not exact layered refraction.
+Match installed declarations before using these APIs. The maintained contract is
+[transparency](../../../documentation/TRANSPARENCY.md).
+
+For opaque surface detail, Unreleased `PBRMaterial.decals` binds at most eight world-space
+`DecalProjector` objects and shared atlas channels. Color, normal and roughness agree with the
+material-attributes pass. Projectors do not add alpha silhouette or transparent receiver support;
+see [PBR decals](../../../documentation/PBR_DECALS.md). Mutate a projector with `update()` rather
+than replacing its material every frame.
+
 ## Use render targets and post-processing only when needed
 
 For offscreen rendering:

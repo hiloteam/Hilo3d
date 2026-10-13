@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" href="data:," />
+        <title>Rendering composition acceptance</title>
+        <style>
+            body {
+                margin: 0;
+                background: #10151b;
+                color: white;
+                font: 14px system-ui;
+            }
+            canvas {
+                display: block;
+            }
+            button {
+                margin: 8px;
+                padding: 8px 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="surface"></div>
+        <button id="decal" type="button">Toggle decal</button>
+        <button id="smoke" type="button">Toggle smoke</button>
+        <script type="module" src="./rendering-production.ts"></script>
+    </body>
+</html>

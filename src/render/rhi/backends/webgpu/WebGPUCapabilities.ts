@@ -320,6 +320,11 @@ function createLimits(
             256
         ),
         maxColorAttachments: nativeLimit(native, 'maxColorAttachments', 8),
+        maxColorAttachmentBytesPerSample: nativeLimit(
+            native,
+            'maxColorAttachmentBytesPerSample',
+            32
+        ),
         maxStorageBuffersPerShaderStage,
         maxStorageTexturesPerShaderStage,
         maxStorageBufferBindingSize: nativeLimit(

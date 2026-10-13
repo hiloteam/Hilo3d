@@ -1,5 +1,8 @@
 import type Camera from '../../camera/Camera';
 import Color from '../../math/Color';
+import type Light from '../../light/Light';
+import DirectionalLight from '../../light/DirectionalLight';
+import SpotLight from '../../light/SpotLight';
 import Matrix4 from '../../math/Matrix4';
 import Vector3 from '../../math/Vector3';
 import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
@@ -10,7 +13,8 @@ import ComputeShader from '../compute/ComputeShader';
 import type { StorageBuffer } from '../StorageBuffer';
 import type {
     RenderPipelineContext,
-    RenderPipelineCreateContext
+    RenderPipelineCreateContext,
+    RenderPipelineShadowResources
 } from '../pipeline/RenderPipeline';
 import { RenderPassParameterPool } from '../pipeline/RenderPassParameterPool';
 import {
@@ -28,6 +32,9 @@ import type {
     RenderPipelineHistoryTextureDescriptor,
     RenderPipelineTextureDescriptor
 } from '../pipeline/ScriptableRenderGraph';
+
+import { FRAME_BASE_VEC4_COUNT, FRAME_RECORD_BYTES } from '../pipeline/internal/clusteredLayout';
+import { VOLUMETRIC_SHADOW_SAMPLING_WGSL } from './VolumetricShadowSampling';
 
 const INVALID_BUFFER = 0 as RenderGraphBufferHandle;
 const INVALID_TEXTURE = 0 as RenderGraphTextureHandle;
@@ -84,7 +91,7 @@ export interface VolumetricLightingOptions {
     readonly quality?: VolumetricLightingQuality;
     /** Froxel XY and reconstruction resolution relative to the internal scene. Defaults to the preset. */
     readonly resolutionScale?: number;
-    /** Depth-aware screen-space light visibility samples in [0, 8]. Defaults to the preset. */
+    /** Screen-space visibility samples for lights without atlas shadows, in [0, 8]. Defaults to the preset. */
     readonly shadowSteps?: number;
     /** Global extinction density in inverse world units. Defaults to 0.025. */
     readonly density?: number;
@@ -328,6 +335,8 @@ struct FrameData {
     budgets: vec4<u32>,
     directional: vec4<u32>,
     ambient: vec4<f32>,
+    outputMapping: vec4<f32>,
+    shadows: array<vec4<f32>, ${String(FRAME_RECORD_BYTES / 16 - FRAME_BASE_VEC4_COUNT)}>,
 };
 struct VolumetricFrameData {
     inverseView: mat4x4<f32>,
@@ -358,7 +367,8 @@ function computePass(shader: ComputeShader): ComputeRenderPass {
 
 function injectionPass(
     settings: Readonly<VolumetricLightingSettings>,
-    withCloudShadow: boolean
+    withCloudShadow: boolean,
+    withShadows: boolean
 ): ComputeRenderPass {
     const shadowSteps = settings.shadowSteps;
     const screenSpaceVisibility =
@@ -407,6 +417,8 @@ function injectionPass(
 @group(0) @binding(6) var sceneDepth: texture_depth_2d;
 @group(0) @binding(7) var froxelOutput: texture_storage_2d<rgba16float, write>;
 ${withCloudShadow ? '@group(0) @binding(8) var cloudShadowTexture: texture_2d<f32>;' : ''}
+${withShadows ? '@group(0) @binding(9) var shadowAtlas: texture_depth_2d;' : ''}
+${withShadows ? VOLUMETRIC_SHADOW_SAMPLING_WGSL : ''}
 
 const HILO_PI: f32 = 3.141592653589793;
 
@@ -486,7 +498,14 @@ fn evaluateLight(light: LightRecord, viewPosition: vec3<f32>, viewDirection: vec
         }
     }
     if (max(max(radiance.r, radiance.g), radiance.b) <= 0.00001) { return vec3<f32>(0.0); }
-    let visibility = screenSpaceVisibility(viewPosition, shadowVector);
+    var visibility = 1.0;
+    ${
+        withShadows
+            ? `if (light.shadowMetadata.x > 0.5) {
+        visibility = sharedShadowVisibility(light.shadowMetadata, viewPosition);
+    } else { visibility = screenSpaceVisibility(viewPosition, shadowVector); }`
+            : 'visibility = screenSpaceVisibility(viewPosition, shadowVector);'
+    }
     // lightDirection points from the medium toward the light, while the physical incident ray
     // travels in the opposite direction. Positive anisotropy therefore emphasizes forward
     // scattering when the incident ray continues toward the camera.
@@ -619,6 +638,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                               binding: 8,
                               kind: 'sampled-texture' as const,
                               sampleType: 'float' as const
+                          }
+                      ] as const)
+                    : []),
+                ...(withShadows
+                    ? ([
+                          {
+                              name: 'shadowAtlas',
+                              group: 0,
+                              binding: 9,
+                              kind: 'sampled-texture',
+                              sampleType: 'depth'
                           }
                       ] as const)
                     : [])
@@ -1171,6 +1201,12 @@ export interface VolumetricLightingResources {
     readonly zSlices: number;
     readonly sceneScale: number;
     readonly historyValid: boolean;
+    /** Exact shared atlas and its frame-scoped content updates, or null when no light casts shadows. */
+    readonly shadows: Readonly<RenderPipelineShadowResources> | null;
+    /** Collected scene lights, compared in world space so camera motion does not reset history. */
+    readonly lightSources: readonly Light[];
+    /** Existing packed Clustered frame, including linear ambient RGB at words 124–126. */
+    readonly frameValues: Float32Array;
 }
 
 /** @internal Renderer-local froxel injection, integration, temporal resolve, and HDR composition. */
@@ -1186,6 +1222,7 @@ export class VolumetricLightingController {
     readonly #volumeByteView: Uint8Array;
     readonly #inverseView = new Matrix4();
     readonly #injectionPass: ComputeRenderPass;
+    readonly #shadowInjectionPass: ComputeRenderPass;
     readonly #withCloudShadow: boolean;
     readonly #compositePass: FullscreenRenderPass;
     readonly #colorHistoryKey = Object.freeze({});
@@ -1205,6 +1242,8 @@ export class VolumetricLightingController {
     readonly #depthHistoryDescriptor: RenderPipelineHistoryTextureDescriptor;
     readonly #compositeDescriptor: RenderPipelineTextureDescriptor;
     readonly #injectionPool: RenderPassParameterPool<MutableComputeParameters>;
+    readonly #shadowInjectionPool: RenderPassParameterPool<MutableComputeParameters>;
+    readonly #committedVolumeFloats: Float32Array;
     readonly #lineIntegrationPool = new RenderPassParameterPool(
         () => new MutableComputeParameters(2, 2, 0)
     );
@@ -1229,6 +1268,10 @@ export class VolumetricLightingController {
     #pendingFroxelCount = 0;
     #historyUsed = false;
     #froxelCount = 0;
+    readonly #committedLightState: number[] = [];
+    readonly #pendingLightState: number[] = [];
+    #committedShadowed = false;
+    #pendingShadowed = false;
 
     constructor(
         settings: Readonly<VolumetricLightingSettings>,
@@ -1238,9 +1281,13 @@ export class VolumetricLightingController {
     ) {
         this.#settings = settings;
         this.#withCloudShadow = withCloudShadow;
-        this.#injectionPass = injectionPass(settings, withCloudShadow);
+        this.#injectionPass = injectionPass(settings, withCloudShadow, false);
+        this.#shadowInjectionPass = injectionPass(settings, withCloudShadow, true);
         this.#injectionPool = new RenderPassParameterPool(
             () => new MutableComputeParameters(6, withCloudShadow ? 3 : 2, 0)
+        );
+        this.#shadowInjectionPool = new RenderPassParameterPool(
+            () => new MutableComputeParameters(6, withCloudShadow ? 4 : 3, 0)
         );
         this.#compositePass = compositePass(settings.debugView);
         this.#frameBuffer = context.createStorageBuffer({
@@ -1252,6 +1299,7 @@ export class VolumetricLightingController {
         this.#volumeFloats = new Float32Array(
             (Math.max(1, settings.localVolumes.length) * LOCAL_VOLUME_RECORD_BYTES) / 4
         );
+        this.#committedVolumeFloats = new Float32Array(this.#volumeFloats.length);
         this.#volumeByteView = new Uint8Array(
             this.#volumeFloats.buffer,
             this.#volumeFloats.byteOffset,
@@ -1351,7 +1399,10 @@ export class VolumetricLightingController {
             'Volumetric lighting froxel scattering and extinction atlas',
             this.#froxelDescriptor
         );
-        const injection = context.acquirePassParameters(this.#injectionPool);
+        const withShadows = resources.shadows !== null;
+        const injection = context.acquirePassParameters(
+            withShadows ? this.#shadowInjectionPool : this.#injectionPool
+        );
         injection.setBuffer(0, resources.frameBuffer);
         injection.setBuffer(1, volumetricFrame);
         injection.setBuffer(2, resources.lights);
@@ -1366,12 +1417,18 @@ export class VolumetricLightingController {
             }
             injection.setTexture(2, resources.cloudShadow);
         }
+        if (resources.shadows !== null) {
+            injection.setTexture(this.#withCloudShadow ? 3 : 2, resources.shadows.atlas);
+        }
         injection.setDispatch(
             Math.max(1, Math.ceil(froxelTilesX / INJECTION_WORKGROUP_SIZE)),
             Math.max(1, Math.ceil(froxelTilesY / INJECTION_WORKGROUP_SIZE)),
             resources.zSlices
         );
-        context.graph.addPass(this.#injectionPass, injection);
+        context.graph.addPass(
+            withShadows ? this.#shadowInjectionPass : this.#injectionPass,
+            injection
+        );
 
         const integratedFroxel = context.graph.createTexture(
             'Volumetric lighting cumulative froxel scattering and transmittance atlas',
@@ -1414,7 +1471,15 @@ export class VolumetricLightingController {
         );
         context.graph.addPass(INTEGRATION_PASS, integration);
 
-        if (!resources.historyValid) {
+        const lightingStable =
+            this.packLightState(resources) &&
+            this.#committedShadowed === withShadows &&
+            (resources.shadows === null || resources.shadows.pageRegions.length === 0);
+        const mediumStable = this.#volumeFloats.every(
+            (value, index) => value === this.#committedVolumeFloats[index]
+        );
+        const historyValid = resources.historyValid && lightingStable && mediumStable;
+        if (!historyValid) {
             context.graph.invalidateHistoryTexture(this.#colorHistoryKey);
             context.graph.invalidateHistoryTexture(this.#depthHistoryKey);
         }
@@ -1432,7 +1497,7 @@ export class VolumetricLightingController {
         ) {
             throw new Error('Volumetric lighting history generations diverged');
         }
-        const historyUsable = resources.historyValid && colorHistory.valid;
+        const historyUsable = historyValid && colorHistory.valid;
         if (historyUsable) {
             const resolve = context.acquirePassParameters(this.#resolvePool);
             resolve.setBuffer(0, resources.frameBuffer);
@@ -1477,6 +1542,7 @@ export class VolumetricLightingController {
             clearValue: { r: 0, g: 0, b: 0, a: 0 }
         };
         context.graph.addPass(this.#compositePass, composite);
+        this.#pendingShadowed = withShadows;
         this.#pendingFrame = context.frameIndex;
         this.#pendingHistoryUsed = historyUsable;
         return composited;
@@ -1484,6 +1550,12 @@ export class VolumetricLightingController {
 
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#pendingFrame) return;
+        this.#committedLightState.length = this.#pendingLightState.length;
+        for (let index = 0; index < this.#pendingLightState.length; index += 1) {
+            this.#committedLightState[index] = this.#pendingLightState[index] ?? 0;
+        }
+        this.#committedShadowed = this.#pendingShadowed;
+        this.#committedVolumeFloats.set(this.#volumeFloats);
         this.#historyUsed = this.#pendingHistoryUsed;
         this.#froxelCount = this.#pendingFroxelCount;
         this.#pendingFrame = -1;
@@ -1509,6 +1581,44 @@ export class VolumetricLightingController {
         if (failures.length !== 0) {
             throw new AggregateError(failures, 'Volumetric lighting resource destruction failed');
         }
+    }
+
+    private packLightState(resources: Readonly<VolumetricLightingResources>): boolean {
+        const target = this.#pendingLightState;
+        target.length = 0;
+        target.push(
+            resources.frameValues[124] ?? 0,
+            resources.frameValues[125] ?? 0,
+            resources.frameValues[126] ?? 0
+        );
+        for (const light of resources.lightSources) {
+            const color = light.getRealColor();
+            target.push(
+                color.r,
+                color.g,
+                color.b,
+                light.range,
+                light.constantAttenuation,
+                light.linearAttenuation,
+                light.quadraticAttenuation,
+                light.isDirectionalLight ? 1 : light.isSpotLight ? 2 : light.isAreaLight ? 3 : 0,
+                light.shadow?.minBias ?? 0,
+                light.shadow?.maxBias ?? 0
+            );
+            const elements = light.worldMatrix.elements;
+            for (let index = 0; index < 16; index += 1) target.push(elements[index] ?? 0);
+            if (light instanceof DirectionalLight || light instanceof SpotLight) {
+                target.push(light.direction.x, light.direction.y, light.direction.z);
+            }
+            if (light instanceof DirectionalLight) {
+                target.push(light.shadow?.shadowStrength ?? 1, light.shadow?.cascadeBlend ?? 0.1);
+            }
+            if (light instanceof SpotLight) target.push(light.cutoffCos, light.outerCutoffCos);
+        }
+        return (
+            target.length === this.#committedLightState.length &&
+            target.every((value, index) => value === this.#committedLightState[index])
+        );
     }
 
     private packFrame(camera: Camera, frameIndex: number): void {

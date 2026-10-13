@@ -53,6 +53,8 @@ export interface RendererListDescriptor {
     readonly materialPass?: MaterialPassRole;
     /** Include only meshes whose effective material casts shadows. */
     readonly castShadowsOnly?: boolean;
+    /** Select the opt-in weighted queue or the remaining sorted transparent surfaces. */
+    readonly transparency?: 'weighted-blended' | 'sorted';
     /**
      * Mesh identities omitted from this list after culling. This supports hybrid pipelines that
      * draw a GPU-managed subset separately while retaining the shared Forward path as a fallback.

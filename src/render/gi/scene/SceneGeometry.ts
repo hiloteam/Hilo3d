@@ -5,11 +5,11 @@ import { requireNumber } from '../../../math/numberArray';
 
 const EMPTY_NUMBERS: readonly number[] = [];
 
-export const RAY_TRIANGLE_FLOATS = 32;
+export const RAY_TRIANGLE_FLOATS = 80;
 export const RAY_BVH_NODE_FLOATS = 8;
 export const RAY_BVH_LEAF_FLAG = 0x80000000;
 
-interface StreamStamp {
+export interface StreamStamp {
     readonly stream: GeometryData;
     readonly data: GeometryData['data'];
     readonly revision: number;
@@ -23,15 +23,19 @@ interface StreamStamp {
 export interface SceneGeometry {
     readonly geometry: Geometry;
     readonly revision: number;
-    readonly streams: readonly StreamStamp[];
+    readonly streams: readonly (StreamStamp | null)[];
+    readonly uvDecode: readonly number[];
+    readonly uv1Decode: readonly number[];
+    readonly indices: Uint32Array;
+    readonly tangentMask: number;
     readonly positionDecode: readonly number[];
     readonly normalDecode: readonly number[];
-    /** Six vec4 records per local triangle: three positions followed by three normals. */
+    /** Eighteen local vec4s: positions, normals, UV0/UV1, RGBA and two tangent sets. */
     readonly vertices: Float32Array;
     readonly triangleCount: number;
 }
 
-function stamp(stream: GeometryData): StreamStamp {
+export function stamp(stream: GeometryData): StreamStamp {
     return {
         stream,
         data: stream.data,
@@ -44,7 +48,11 @@ function stamp(stream: GeometryData): StreamStamp {
     };
 }
 
-function matchesStream(previous: StreamStamp | undefined, stream: GeometryData | null): boolean {
+export function matchesStream(
+    previous: StreamStamp | null | undefined,
+    stream: GeometryData | null
+): boolean {
+    if (stream === null) return previous === null;
     return (
         previous?.stream === stream &&
         previous.data === stream.data &&
@@ -66,22 +74,38 @@ export function numbersEqual(a: ArrayLike<number>, b: ArrayLike<number>): boolea
 }
 
 /** GeometryData layout changes are public and do not necessarily advance its data revision. */
-export function matchesGeometry(previous: SceneGeometry, geometry: Geometry): boolean {
+export function matchesGeometry(
+    previous: SceneGeometry,
+    geometry: Geometry,
+    tangentMask = 0
+): boolean {
     const normals = geometry.normals;
     return (
         previous.geometry === geometry &&
+        (previous.tangentMask & tangentMask) === tangentMask &&
         previous.revision === geometry.revision &&
         matchesStream(previous.streams[0], geometry.vertices) &&
         matchesStream(previous.streams[1], normals) &&
-        (geometry.indices === null
-            ? previous.streams.length === 2
-            : matchesStream(previous.streams[2], geometry.indices)) &&
+        matchesStream(previous.streams[2], geometry.indices) &&
+        matchesStream(previous.streams[3], geometry.uvs) &&
+        matchesStream(previous.streams[4], geometry.uvs1) &&
+        matchesStream(previous.streams[5], geometry.colors) &&
+        matchesStream(
+            previous.streams[6],
+            (previous.tangentMask & 1) !== 0 ? geometry.tangents : null
+        ) &&
+        matchesStream(
+            previous.streams[7],
+            (previous.tangentMask & 2) !== 0 ? geometry.tangents1 : null
+        ) &&
+        numbersEqual(previous.uvDecode, geometry.uvDecodeMat ?? EMPTY_NUMBERS) &&
+        numbersEqual(previous.uv1Decode, geometry.uv1DecodeMat ?? EMPTY_NUMBERS) &&
         numbersEqual(previous.positionDecode, geometry.positionDecodeMat ?? EMPTY_NUMBERS) &&
         numbersEqual(previous.normalDecode, geometry.normalDecodeMat ?? EMPTY_NUMBERS)
     );
 }
 
-function countStream(stream: GeometryData, size: number): number {
+export function countStream(stream: GeometryData, size: number): number {
     const bytes = stream.data.BYTES_PER_ELEMENT;
     const stride = stream.stride === 0 ? stream.size : stream.stride / bytes;
     const offset = stream.offset / bytes;
@@ -99,7 +123,7 @@ function countStream(stream: GeometryData, size: number): number {
     return Math.floor((stream.data.length - offset - size) / stride) + 1;
 }
 
-function readComponent(stream: GeometryData, vertex: number, component: number): number {
+export function readComponent(stream: GeometryData, vertex: number, component: number): number {
     const stride =
         stream.stride === 0 ? stream.size : stream.stride / stream.data.BYTES_PER_ELEMENT;
     const offset = stream.offset / stream.data.BYTES_PER_ELEMENT + vertex * stride + component;
@@ -152,7 +176,11 @@ function copyDecode(input: ArrayLike<number> | null): readonly number[] {
 }
 
 /** Validates CPU-readable static triangle data before publishing a reusable local snapshot. */
-export function extractGeometry(geometry: Geometry, maxTriangles: number): SceneGeometry {
+export function extractGeometry(
+    geometry: Geometry,
+    maxTriangles: number,
+    tangentMask = 0
+): SceneGeometry {
     if (geometry.mode !== TRIANGLES || geometry.vertices === null) {
         throw new TypeError('DDGI requires triangle-list geometry with vertex positions');
     }
@@ -188,14 +216,75 @@ export function extractGeometry(geometry: Geometry, maxTriangles: number): Scene
     }
     const positionDecode = copyDecode(geometry.positionDecodeMat);
     const normalDecode = copyDecode(geometry.normalDecodeMat);
-    const vertices = new Float32Array(triangleCount * 24);
+    const attributes = [
+        geometry.uvs,
+        geometry.uvs1,
+        geometry.colors,
+        (tangentMask & 1) !== 0 ? geometry.tangents : null,
+        (tangentMask & 2) !== 0 ? geometry.tangents1 : null
+    ];
+    for (let index = 0; index < attributes.length; index++) {
+        const stream = attributes[index];
+        if (
+            stream &&
+            ((index === 2 && stream.size !== 3 && stream.size !== 4) ||
+                countStream(stream, index < 2 ? 2 : index === 2 ? stream.size : 4) < vertexCount)
+        )
+            throw new RangeError('DDGI requires complete UV/color/tangent vertex streams');
+    }
+    const uvDecode = Array.from(geometry.uvDecodeMat ?? []);
+    if (
+        uvDecode.length !== 0 &&
+        (uvDecode.length !== 9 || uvDecode.some(value => !Number.isFinite(value)))
+    )
+        throw new RangeError('DDGI UV decode matrix must contain nine finite values');
+    const uv1Decode = Array.from(geometry.uv1DecodeMat ?? []);
+    if (
+        uv1Decode.length !== 0 &&
+        (uv1Decode.length !== 9 || uv1Decode.some(value => !Number.isFinite(value)))
+    )
+        throw new RangeError('DDGI UV1 decode matrix must contain nine finite values');
+    const sourceIndices = new Uint32Array(triangleCount * 3);
+    const vertices = new Float32Array(triangleCount * 72);
     for (let triangle = 0; triangle < triangleCount; triangle++) {
         for (let corner = 0; corner < 3; corner++) {
             const index = indices
                 ? readComponent(indices, triangle * 3 + corner, 0)
                 : triangle * 3 + corner;
-            decodeVertex(vertices, triangle * 24 + corner * 4, positions, index, positionDecode);
-            decodeVertex(vertices, triangle * 24 + 12 + corner * 4, normals, index, normalDecode);
+            sourceIndices[triangle * 3 + corner] = index;
+            decodeVertex(vertices, triangle * 72 + corner * 4, positions, index, positionDecode);
+            decodeVertex(vertices, triangle * 72 + 12 + corner * 4, normals, index, normalDecode);
+            for (let set = 0; set < 2; set++) {
+                const stream = attributes[set];
+                if (!stream) continue;
+                const u = readComponent(stream, index, 0),
+                    v = readComponent(stream, index, 1);
+                const out = triangle * 72 + 24 + corner * 4 + set * 2;
+                const decode = set === 0 ? uvDecode : uv1Decode;
+                vertices[out] = decode.length
+                    ? u * requireNumber(decode, 0) +
+                      v * requireNumber(decode, 3) +
+                      requireNumber(decode, 6)
+                    : u;
+                vertices[out + 1] = decode.length
+                    ? u * requireNumber(decode, 1) +
+                      v * requireNumber(decode, 4) +
+                      requireNumber(decode, 7)
+                    : v;
+            }
+            const colors = geometry.colors;
+            for (let component = 0; component < 4; component++)
+                vertices[triangle * 72 + 36 + corner * 4 + component] =
+                    colors && component < colors.size ? readComponent(colors, index, component) : 1;
+            for (let set = 0; set < 2; set++) {
+                const tangent = attributes[3 + set];
+                for (let component = 0; component < 4; component++)
+                    vertices[triangle * 72 + 48 + set * 12 + corner * 4 + component] = tangent
+                        ? readComponent(tangent, index, component)
+                        : component === 0 || component === 3
+                          ? 1
+                          : 0;
+            }
         }
     }
     if (vertices.some(value => !Number.isFinite(value))) {
@@ -204,9 +293,13 @@ export function extractGeometry(geometry: Geometry, maxTriangles: number): Scene
     return {
         geometry,
         revision: geometry.revision,
-        streams: indices
-            ? [stamp(positions), stamp(normals), stamp(indices)]
-            : [stamp(positions), stamp(normals)],
+        streams: [positions, normals, indices, ...attributes].map(stream =>
+            stream ? stamp(stream) : null
+        ),
+        uvDecode,
+        uv1Decode,
+        indices: sourceIndices,
+        tangentMask,
         positionDecode,
         normalDecode,
         vertices,
@@ -271,7 +364,7 @@ export function writeWorldTriangles(
         metadata[output + 3] = layerMask;
         for (let corner = 0; corner < 3; corner++) {
             const localCorner = reverseWinding && corner > 0 ? 3 - corner : corner;
-            const input = triangle * 24 + localCorner * 4;
+            const input = triangle * 72 + localCorner * 4;
             const x = requireNumber(local, input),
                 y = requireNumber(local, input + 1),
                 z = requireNumber(local, input + 2);
@@ -303,6 +396,39 @@ export function writeWorldTriangles(
             for (let axis = 0; axis < 3; axis++) {
                 const normalIndex = output + 12 + corner * 4 + axis;
                 target[normalIndex] = requireNumber(target, normalIndex) * scale;
+            }
+        }
+        for (let corner = 0; corner < 3; corner++) {
+            const localCorner = reverseWinding && corner > 0 ? 3 - corner : corner;
+            for (let component = 0; component < 4; component++) {
+                target[output + 32 + corner * 4 + component] = requireNumber(
+                    local,
+                    triangle * 72 + 24 + localCorner * 4 + component
+                );
+                target[output + 44 + corner * 4 + component] = requireNumber(
+                    local,
+                    triangle * 72 + 36 + localCorner * 4 + component
+                );
+            }
+            for (let set = 0; set < 2; set++) {
+                const offset = triangle * 72 + 48 + set * 12 + localCorner * 4;
+                const nx = requireNumber(local, offset),
+                    ny = requireNumber(local, offset + 1),
+                    nz = requireNumber(local, offset + 2);
+                const out = output + 56 + set * 12 + corner * 4;
+                let length = 0;
+                for (let axis = 0; axis < 3; axis++) {
+                    const value =
+                        nx * requireNumber(normalMatrix, axis) +
+                        ny * requireNumber(normalMatrix, axis + 3) +
+                        nz * requireNumber(normalMatrix, axis + 6);
+                    target[out + axis] = value;
+                    length += value * value;
+                }
+                for (let axis = 0; axis < 3; axis++)
+                    target[out + axis] =
+                        length > 1e-20 ? requireNumber(target, out + axis) / Math.sqrt(length) : 0;
+                target[out + 3] = requireNumber(local, offset + 3);
             }
         }
         target.set(material, output + 24);

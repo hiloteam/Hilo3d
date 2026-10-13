@@ -47,6 +47,13 @@ flowchart LR
 `renderOrder`
 和阴影参与属于对象；coverage、compositing 和固定功能状态属于材质；输出色彩变换属于 renderer/post-process。三者不得重新混入一个可变材质对象。
 
+Unreleased 的 `Mesh.contributeToGlobalIllumination` 同样属于对象：它只控制 diffuse ray
+scene 贡献，不改变材质是否接收 GI。`PBRMaterial.decals` 则是不可变 atlas/membership
+topology 加可更新 projector 数据，复用同一 PBR/material-attributes surface；见
+[PBR decals](./PBR_DECALS.md)。 `weighted-blended` compositing 显式选择 weighted
+accumulation/revealage 语义 role，由 pipeline 负责附件、排序与合成，不允许当作 ordinary forward
+blend 静默绘制；见 [transparency](./TRANSPARENCY.md)。
+
 ## 3. 公共对象模型
 
 ### 3.1 MaterialDefinition

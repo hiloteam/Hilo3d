@@ -1,9 +1,24 @@
 import { TRIANGLES } from '../../constants/webgl';
+import SkinnedMesh from '../../core/SkinnedMesh';
+import MorphGeometry from '../../geometry/MorphGeometry';
+import { deformSceneGeometry, type SceneDeformation } from './scene/SceneDeformation';
 import Mesh from '../../core/Mesh';
 import Node from '../../core/Node';
 import type Geometry from '../../geometry/Geometry';
 import PBRMaterial from '../../material/PBRMaterial';
+import {
+    MaterialAttributeSemantic,
+    MaterialUniformSemantic,
+    MaterialTextureSemantic
+} from '../../material/MaterialSemantics';
 import { requireNumber } from '../../math/numberArray';
+import {
+    RAY_MATERIAL_FLOATS,
+    SceneMaterialBuilder,
+    sampleRayMaterial,
+    sameRayTexture,
+    type RaySceneTexture
+} from './scene/SceneMaterials';
 import { buildSceneBVH, refitSceneBVH, type SceneBVH } from './scene/SceneBVH';
 import {
     extractGeometry,
@@ -20,7 +35,13 @@ import {
 export { RAY_TRIANGLE_FLOATS, RAY_BVH_NODE_FLOATS, RAY_BVH_LEAF_FLAG };
 
 export type RayTracingSceneExclusion =
-    'material' | 'deformation' | 'topology' | 'instances' | 'vertex-colors' | 'surface-texture';
+    | 'material'
+    | 'deformation'
+    | 'topology'
+    | 'instances'
+    | 'vertex-colors'
+    | 'surface-texture'
+    | 'disabled';
 
 export interface RayTracingSceneOptions {
     readonly maxTriangles?: number;
@@ -28,7 +49,8 @@ export interface RayTracingSceneOptions {
     /** Unsupported surface/deformation classes are counted or fail before graph execution. */
     readonly unsupported?: 'exclude' | 'error';
     /** Approximation is opt-in: material-factor ignores surface maps only for ray transport. */
-    readonly texturePolicy?: 'material-factor' | 'exclude' | 'error';
+    readonly texturePolicy?: 'sample' | 'material-factor' | 'exclude' | 'error';
+    readonly maxTextureTexels?: number;
 }
 
 export interface RayTracingSceneDiagnostics {
@@ -41,6 +63,7 @@ export interface RayTracingSceneDiagnostics {
     readonly texturedMeshCount: number;
     readonly update: 'rebuild' | 'refit' | 'material';
     readonly changedMeshCount: number;
+    /** Active packed geometry/material/atlas footprint; controller residency reports reserved storage capacity. */
     readonly bytes: number;
 }
 
@@ -83,9 +106,11 @@ function coalesceDirtyRanges(
  * A renderer commits its uploaded revision only after submission; a failed graph can retry this
  * same snapshot without losing dirty data.
  *
- * Triangle ABI (32 floats): p0,p1,p2,n0,n1,n2,diffuse,emissive as eight vec4s. Position/normal W is
+ * Triangle ABI (80 floats): p0,p1,p2,n0,n1,n2,diffuse,emissive as eight vec4s. Position/normal W is
  * reserved zero, except p0.w which stores bitcast u32(mesh.layer). Diffuse.xyz is linear baseColor * (1-metallic); diffuse.w stores numeric flags
  * (bit 0: double sided). Emissive.xyz is linear radiance and emissive.w is the scene mesh ordinal.
+ * Additional records carry per-corner UV0/UV1, RGBA vertex color and both tangent sets. The
+ * scene material table supplies texture descriptors, factors and world-space decal projectors.
  * BVH ABI (8 floats): min.xyz + bitcast u32(left/first), max.xyz + bitcast u32(right/leafCount).
  * A high bit in leafCount marks a leaf; its remaining bits are 1..4. Root is node zero.
  */
@@ -94,6 +119,10 @@ export interface RayTracingSceneSnapshot {
     /** Delta ranges apply only to this prior CPU revision; skipped revisions require full upload. */
     readonly baseRevision: number;
     readonly triangles: Float32Array;
+    readonly materials: Float32Array;
+    readonly materialDirtyRanges: readonly RayTracingSceneDirtyRange[];
+    readonly textures: readonly RaySceneTexture[];
+    readonly textureTexelCount: number;
     readonly nodes: Float32Array;
     readonly triangleDirtyRanges: readonly RayTracingSceneDirtyRange[];
     readonly nodeDirtyRanges: readonly RayTracingSceneDirtyRange[];
@@ -105,10 +134,12 @@ export interface RayTracingSceneSnapshot {
 interface MeshRecord {
     readonly mesh: Mesh;
     readonly geometry: SceneGeometry;
+    readonly deformation: SceneDeformation | null;
     readonly matrix: readonly number[];
     readonly normalMatrix: readonly number[];
     readonly material: PBRMaterial;
     readonly materialRevision: number;
+    readonly surface: Float32Array;
     readonly factors: readonly number[];
     readonly triangleOffset: number;
     readonly objectIndex: number;
@@ -126,6 +157,7 @@ function limit(value: number, name: string, maximum: number): number {
 function emptyExclusions(): Record<RayTracingSceneExclusion, number> {
     return {
         material: 0,
+        disabled: 0,
         deformation: 0,
         topology: 0,
         instances: 0,
@@ -134,6 +166,59 @@ function emptyExclusions(): Record<RayTracingSceneExclusion, number> {
     };
 }
 
+const RAY_UNIFORMS = Object.freeze(
+    Object.entries({
+        u_modelMatrix: MaterialUniformSemantic.MODEL,
+        u_normalWorldMatrix: MaterialUniformSemantic.MODEL_NORMAL,
+        u_baseColor: MaterialUniformSemantic.BASE_COLOR,
+        u_emissionFactor: MaterialUniformSemantic.EMISSION_FACTOR,
+        u_metallic: MaterialUniformSemantic.METALLIC,
+        u_specularColor: MaterialUniformSemantic.SPECULAR_COLOR,
+        u_jointMat: MaterialUniformSemantic.JOINT_MATRIX,
+        u_morphWeights: MaterialUniformSemantic.MORPH_WEIGHTS,
+        u_positionDecodeMat: MaterialUniformSemantic.POSITION_DECODE_MATRIX,
+        u_normalDecodeMat: MaterialUniformSemantic.NORMAL_DECODE_MATRIX,
+        u_uvDecodeMat: MaterialUniformSemantic.UV_DECODE_MATRIX,
+        u_uv1DecodeMat: MaterialUniformSemantic.UV1_DECODE_MATRIX,
+        u_normalMapScale: MaterialUniformSemantic.NORMAL_MAP_SCALE,
+        u_transparencyFactor: MaterialUniformSemantic.OPACITY,
+        u_alphaCutoff: MaterialUniformSemantic.ALPHA_CUTOFF,
+        u_normalMap: MaterialTextureSemantic.NORMAL_MAP,
+        u_transparency: MaterialTextureSemantic.OPACITY,
+        u_emission: MaterialTextureSemantic.EMISSION,
+        u_baseColorMap: MaterialTextureSemantic.BASE_COLOR_MAP,
+        u_metallicMap: MaterialTextureSemantic.METALLIC_MAP,
+        u_metallicRoughnessMap: MaterialTextureSemantic.METALLIC_ROUGHNESS_MAP,
+        u_specularGlossinessMap: MaterialTextureSemantic.SPECULAR_GLOSSINESS_MAP,
+        u_lightMap: MaterialTextureSemantic.LIGHT_MAP
+    })
+);
+const RAY_ATTRIBUTES = Object.freeze(
+    Object.entries({
+        a_position: MaterialAttributeSemantic.POSITION,
+        a_normal: MaterialAttributeSemantic.NORMAL,
+        a_tangent: MaterialAttributeSemantic.TANGENT,
+        a_texcoord0: MaterialAttributeSemantic.TEXCOORD_0,
+        a_texcoord1: MaterialAttributeSemantic.TEXCOORD_1,
+        a_color: MaterialAttributeSemantic.COLOR_0,
+        a_skinIndices: MaterialAttributeSemantic.SKIN_INDICES,
+        a_skinWeights: MaterialAttributeSemantic.SKIN_WEIGHTS
+    })
+);
+
+const RAY_MORPH_ATTRIBUTES = Object.freeze(
+    ['Position', 'Normal', 'Tangent'].flatMap(kind =>
+        Array.from(
+            { length: 8 },
+            (_value, index) =>
+                [
+                    `a_morph${kind}${String(index)}`,
+                    `MORPH${kind.toUpperCase()}${String(index)}`
+                ] as const
+        )
+    )
+);
+
 function unsupportedMesh(mesh: Mesh): RayTracingSceneExclusion | null {
     const geometry = mesh.geometry;
     const material = mesh.material;
@@ -141,14 +226,19 @@ function unsupportedMesh(mesh: Mesh): RayTracingSceneExclusion | null {
         !(material instanceof PBRMaterial) ||
         material.lightType !== 'PBR' ||
         material.forwardQueue !== 'opaque' ||
-        material.coverage.mode !== 'opaque'
+        (material.coverage.mode !== 'opaque' && material.coverage.mode !== 'mask') ||
+        material.transmissionFactor > 0 ||
+        material.getTextureSlot('parallax') !== null ||
+        RAY_UNIFORMS.some(([name, semantic]) => material.uniforms[name] !== semantic) ||
+        RAY_ATTRIBUTES.some(([name, semantic]) => material.attributes[name] !== semantic)
     )
         return 'material';
     if (
-        mesh.isSkinnedMesh ||
-        geometry?.isMorphGeometry ||
-        geometry?.skinIndices ||
-        geometry?.skinWeights
+        (mesh.isSkinnedMesh && !(mesh instanceof SkinnedMesh)) ||
+        (geometry?.isMorphGeometry && !(geometry instanceof MorphGeometry)) ||
+        ((geometry?.skinIndices || geometry?.skinWeights) && !(mesh instanceof SkinnedMesh)) ||
+        (geometry instanceof MorphGeometry &&
+            RAY_MORPH_ATTRIBUTES.some(([name, semantic]) => material.attributes[name] !== semantic))
     )
         return 'deformation';
     if (
@@ -158,11 +248,11 @@ function unsupportedMesh(mesh: Mesh): RayTracingSceneExclusion | null {
     )
         return 'topology';
     if (mesh.instanceCount !== 1 || geometry.vertices.stepMode !== 'vertex') return 'instances';
-    if (geometry.colors) return 'vertex-colors';
     return null;
 }
 
 function hasSurfaceTexture(material: PBRMaterial): boolean {
+    if (material.decals !== null) return true;
     for (const slot of material.definition.textureSlots) {
         if (
             slot.name === 'diffuseEnvironment' ||
@@ -197,7 +287,8 @@ export class RayTracingScene {
     private readonly maxTriangles: number;
     private readonly maxMeshes: number;
     private readonly unsupported: 'exclude' | 'error';
-    private readonly texturePolicy: 'material-factor' | 'exclude' | 'error';
+    private readonly texturePolicy: 'sample' | 'material-factor' | 'exclude' | 'error';
+    private readonly maxTextureTexels: number;
     private geometryCache = new WeakMap<Geometry, SceneGeometry>();
     private records = new Map<Mesh, MeshRecord>();
     private readonly stagedRecords: MeshRecord[] = [];
@@ -208,12 +299,18 @@ export class RayTracingScene {
 
     constructor(options: RayTracingSceneOptions = {}) {
         this.maxTriangles = limit(options.maxTriangles ?? 65536, 'maxTriangles', 1048576);
-        this.maxMeshes = limit(options.maxMeshes ?? 16384, 'maxMeshes', 1048576);
+        this.maxMeshes = limit(options.maxMeshes ?? 1024, 'maxMeshes', 1048576);
+        this.maxTextureTexels = limit(
+            options.maxTextureTexels ?? 1048576,
+            'maxTextureTexels',
+            16777216
+        );
         const unsupported: unknown = options.unsupported ?? 'exclude';
-        const texturePolicy: unknown = options.texturePolicy ?? 'error';
+        const texturePolicy: unknown = options.texturePolicy ?? 'sample';
         if (unsupported !== 'exclude' && unsupported !== 'error')
             throw new TypeError('Unknown DDGI unsupported surface policy');
         if (
+            texturePolicy !== 'sample' &&
             texturePolicy !== 'material-factor' &&
             texturePolicy !== 'exclude' &&
             texturePolicy !== 'error'
@@ -234,6 +331,10 @@ export class RayTracingScene {
             throw new RangeError('DDGI scene layerMask must be a 32-bit mask');
         this.stagedRecords.length = 0;
         const stagedGeometry = new Map<Geometry, SceneGeometry>();
+        const materialBuilder = new SceneMaterialBuilder(
+            this.maxTextureTexels,
+            this.current?.textures
+        );
         const exclusions = emptyExclusions();
         let triangleCount = 0;
         let changedMeshCount = 0;
@@ -244,6 +345,11 @@ export class RayTracingScene {
             if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
             if (!(node instanceof Mesh) || (node.layer & layerMask) === 0 || node.isDestroyed)
                 return Node.TRAVERSE_STOP_NONE;
+            if (!node.contributeToGlobalIllumination) {
+                exclusions.disabled++;
+                excludedMeshCount++;
+                return Node.TRAVERSE_STOP_NONE;
+            }
             let reason = unsupportedMesh(node);
             const material = node.material;
             if (reason === null && material instanceof PBRMaterial && hasSurfaceTexture(material)) {
@@ -269,14 +375,32 @@ export class RayTracingScene {
             const objectIndex = this.stagedRecords.length;
             if (objectIndex >= this.maxMeshes)
                 throw new RangeError('DDGI scene mesh budget exceeded');
+            const normalSlot =
+                this.texturePolicy === 'sample' ? material.getTextureSlot('normal') : null;
+            const tangentMask = normalSlot ? 1 << normalSlot.uvSet : 0;
             let local = stagedGeometry.get(geometry) ?? this.geometryCache.get(geometry);
-            if (!local || !matchesGeometry(local, geometry)) {
-                local = extractGeometry(geometry, this.maxTriangles);
+            if (!local || !matchesGeometry(local, geometry, tangentMask)) {
+                local = extractGeometry(
+                    geometry,
+                    this.maxTriangles,
+                    (local?.tangentMask ?? 0) | tangentMask
+                );
                 stagedGeometry.set(geometry, local);
             }
+            const deformation = deformSceneGeometry(
+                node,
+                local,
+                this.records.get(node)?.deformation ?? null
+            );
+            local = deformation?.result ?? local;
             if (triangleCount + local.triangleCount > this.maxTriangles)
                 throw new RangeError('DDGI scene triangle budget exceeded');
             materialFactors(material, this.factors);
+            const surface = materialBuilder.material(
+                material,
+                geometry,
+                this.texturePolicy === 'sample'
+            );
             const previous = this.records.get(node);
             const matrix = node.worldMatrix.elements;
             const sameTransform = previous !== undefined && numbersEqual(previous.matrix, matrix);
@@ -286,7 +410,8 @@ export class RayTracingScene {
             const sameMaterial =
                 previous?.material === material &&
                 previous.materialRevision === material.revision &&
-                numbersEqual(previous.factors, this.factors);
+                numbersEqual(previous.factors, this.factors) &&
+                numbersEqual(previous.surface, surface);
             let record: MeshRecord;
             if (
                 previous &&
@@ -304,10 +429,12 @@ export class RayTracingScene {
                 record = {
                     mesh: node,
                     geometry: local,
+                    deformation,
                     matrix: sameTransform ? previous.matrix : Array.from(matrix),
                     normalMatrix,
                     material,
                     materialRevision: material.revision,
+                    surface: sameMaterial ? previous.surface : surface.slice(),
                     factors: this.factors.slice(),
                     triangleOffset: triangleCount,
                     objectIndex,
@@ -330,6 +457,13 @@ export class RayTracingScene {
         changes.topology ||=
             this.records.size !== this.stagedRecords.length ||
             this.current?.triangleCount !== triangleCount;
+        const previousTextures = this.current?.textures;
+        const texturesChanged =
+            previousTextures?.length !== materialBuilder.textures.length ||
+            materialBuilder.textures.some((texture, index) => {
+                const previous = previousTextures[index];
+                return !previous || !sameRayTexture(previous, texture);
+            });
         const previousDiagnostics = this.current?.diagnostics;
         const diagnosticsChanged =
             previousDiagnostics?.texturedMeshCount !== texturedMeshCount ||
@@ -339,7 +473,13 @@ export class RayTracingScene {
                     exclusions[key as RayTracingSceneExclusion] !==
                     previousDiagnostics.exclusions[key as RayTracingSceneExclusion]
             );
-        if (this.current && !changes.topology && changedMeshCount === 0 && !diagnosticsChanged)
+        if (
+            this.current &&
+            !changes.topology &&
+            changedMeshCount === 0 &&
+            !diagnosticsChanged &&
+            !texturesChanged
+        )
             return this.current;
 
         // All mutable buffers belong to this candidate. An extraction/validation error cannot
@@ -411,6 +551,18 @@ export class RayTracingScene {
             nextBVH = { ...this.bvh, triangles, nodes };
         } else nextBVH = this.bvh;
 
+        const materials = new Float32Array(
+            Math.max(1, this.stagedRecords.length) * RAY_MATERIAL_FLOATS
+        );
+        const dirtyMaterials: number[] = [];
+        for (const record of this.stagedRecords) {
+            materials.set(record.surface, record.objectIndex * RAY_MATERIAL_FLOATS);
+            if (changes.topology || this.records.get(record.mesh)?.surface !== record.surface)
+                dirtyMaterials.push(record.objectIndex);
+        }
+        const materialDirtyRanges = changes.topology
+            ? Object.freeze([Object.freeze({ byteOffset: 0, byteLength: materials.byteLength })])
+            : coalesceDirtyRanges(dirtyMaterials, RAY_MATERIAL_FLOATS * 4);
         const diagnostics: RayTracingSceneDiagnostics = Object.freeze({
             meshCount: this.stagedRecords.length,
             triangleCount,
@@ -421,12 +573,20 @@ export class RayTracingScene {
             texturedMeshCount,
             update,
             changedMeshCount,
-            bytes: nextBVH.triangles.byteLength + nextBVH.nodes.byteLength
+            bytes:
+                nextBVH.triangles.byteLength +
+                nextBVH.nodes.byteLength +
+                materials.byteLength +
+                materialBuilder.texelCount * 16
         });
         const snapshot: RayTracingSceneSnapshot = Object.freeze({
             revision: this.revision + 1,
             baseRevision: this.revision,
             triangles: nextBVH.triangles,
+            materials,
+            materialDirtyRanges,
+            textures: Object.freeze(materialBuilder.textures),
+            textureTexelCount: materialBuilder.texelCount,
             nodes: nextBVH.nodes,
             triangleDirtyRanges,
             nodeDirtyRanges,
@@ -473,7 +633,8 @@ export interface RayTracingSceneHit {
 /** CPU oracle with the same double-sided Möller–Trumbore and slab contracts as compute. */
 export function traceRayTracingScene(
     snapshot: RayTracingSceneSnapshot,
-    ray: RayTracingSceneRay
+    ray: RayTracingSceneRay,
+    textureAtlas?: Float32Array
 ): RayTracingSceneHit | null {
     const { origin, direction } = ray;
     if (
@@ -550,6 +711,36 @@ export function traceRayTracingScene(
             if (v < 0 || u + v > 1) continue;
             const distance = (e2x * qx + e2y * qy + e2z * qz) / determinant;
             if (distance <= minimum || distance >= closest) continue;
+            const materialIndex = requireNumber(values, base + 31);
+            const materialOffset = materialIndex * RAY_MATERIAL_FLOATS;
+            const cutoff = requireNumber(snapshot.materials, materialOffset + 12);
+            if (cutoff >= 0) {
+                const uv: [number, number, number, number] = [0, 0, 0, 0];
+                for (let component = 0; component < 4; component++)
+                    uv[component] =
+                        requireNumber(values, base + 32 + component) * (1 - u - v) +
+                        requireNumber(values, base + 36 + component) * u +
+                        requireNumber(values, base + 40 + component) * v;
+                const colorAlpha =
+                    requireNumber(values, base + 47) * (1 - u - v) +
+                    requireNumber(values, base + 51) * u +
+                    requireNumber(values, base + 55) * v;
+                const alpha =
+                    requireNumber(snapshot.materials, materialOffset + 3) *
+                    sampleRayMaterial(snapshot.materials, materialIndex, 0, uv, textureAtlas)[3] *
+                    colorAlpha;
+                const opacity =
+                    requireNumber(snapshot.materials, materialOffset + 16 + 5 * 20 + 3) > 0.5
+                        ? sampleRayMaterial(
+                              snapshot.materials,
+                              materialIndex,
+                              5,
+                              uv,
+                              textureAtlas
+                          )[0]
+                        : requireNumber(snapshot.materials, materialOffset + 7);
+                if (alpha * opacity < cutoff) continue;
+            }
             const normal: [number, number, number] = [0, 0, 0];
             for (let axis = 0; axis < 3; axis++)
                 normal[axis] =

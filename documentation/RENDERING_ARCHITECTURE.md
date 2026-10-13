@@ -15,13 +15,19 @@ API 换成另一组接口，而是把场景遍历、可见性判断、排序与�
 ![Hilo3d 当前渲染流程](./assets/hilo3d-rendering-pipeline.png)
 
 动态漫反射 GI 作为 `ClusteredForwardPlusPipelineFactory.dynamicGlobalIllumination` 的 opt-in
-feature 接入同一生产链路。共享 CPU ray scene 构建相机视锥之外的刚体三角形 BVH；WebGPU
+feature 接入同一生产链路。共享 CPU ray scene 构建相机视锥之外的三角形 BVH，支持刚体、内置 skin/morph
+pose、顶点色、真实贴图、alpha-mask 和世界空间 Decal；WebGPU
 compute 在固定预算内更新方向性辐照度/距离矩探针，indirect bucket 与 clustered direct
 PBR 通过 GLSL→Naga storage raster ABI 消费同一双缓冲结果。与 SSGI 同时开启时，独立双 MRT surface
 pass 输出 probe diffuse baseline 与 diffuse reflectance，以 signed
 correction 替换重叠贡献。上传 revision、探针索引和更新游标只随有效 submission 提交，设备恢复由 graph
 history marker 失效。能力范围、材质排除和完整生命周期见
 [`DYNAMIC_GLOBAL_ILLUMINATION.md`](./DYNAMIC_GLOBAL_ILLUMINATION.md)。
+
+材质纹理通过同一 graph/RHI 上传并采样到有界 float RGBA ray atlas，UV
+set、transform、encoding 与 channel
+mapping 在命中点求值。`Mesh.contributeToGlobalIllumination = false`
+显式排除烟雾等不参与实体射线传输的表面，其他资产仍按严格合同验证。材质/三角形/atlas 容量在初始化时由明确上限分配；提交失败不发布新探针或纹理 revision。
 
 ## 1. 一帧是怎样完成的
 
@@ -94,6 +100,18 @@ depth 上选择 cascade，并在 `cascadeBlend` 区间同时采样相邻两级�
 shader 中强化或减弱部分覆盖半影，而不增加 backend 分支。显式 `cameraInfo`
 仍服务单级兼容路径，与多级 cascade 组合会在 graph/RHI frame 开始前失败。
 
+Shadow caster 列表在主相机 frustum cull 前由同一次 scene/layer traversal 保留，CPU 与 GPU
+caster 共享这份完整输入。自动方向光保持 receiver 的紧凑 XY 与 far plane，只对 light-space
+XY 相交的 caster 向光源方向扩展 near plane，避免离屏墙体被 shadow camera 提前裁掉。geometry vertex
+data/layout/revision 变化会刷新缓存 position/morph delta bounds；position decode、active
+morph 权重和有效 skin
+joint 的保守并集覆盖变形姿势，每个 mesh 每次 prepare 只合成一次，避免逐帧三角形扫描。cascade
+cadence 复用也检查 caster depth extent。投影变化进入原有内容 cache 的 matrix key，因此 atlas
+writes、失败回滚与 device recovery 继续共用已有 submission 合同；显式 `cameraInfo`
+的覆盖范围仍由应用决定。Shadow camera 的 committed/cadence 副本同步 depth
+mode、稳定投影与 raster/jittered 投影，因此 CPU skin/morph 与 GPU indirect caster 在 reversed
+atlas 中始终使用相同深度映射。
+
 LightBlock 为每个方向光保留 4 个稳定的逻辑 matrix/rect slot，Spot 与 Point 的 ABI
 base 不随当前 cascade 数变化；物理 atlas 只创建实际启用的 slice。这样运行时从 4 级改为 2 级不会改变其他灯光的 shader 索引，也不需要 backend 分支。扩展后的 LightBlock 为 16,288
 bytes，仍低于 WebGL 2 保证的 16,384-byte minimum uniform-block
@@ -156,6 +174,16 @@ Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 Ren
 相关代码：[`SharedRendererDriver.ts`](../src/render/internal/SharedRendererDriver.ts)、[`RenderGraphFramePlan.ts`](../src/render/RenderGraphFramePlan.ts)、[`RenderList.ts`](../src/render/RenderList.ts)、[`MeshDrawListPlanner.ts`](../src/render/renderer/MeshDrawListPlanner.ts)、[`ForwardRenderer.ts`](../src/render/renderer/ForwardRenderer.ts)。
 
 ### 1.2.1 材质前端与语义 Pass
+
+`PBRMaterial.decals` 在同一 surface
+evaluator 中处理最多八个 atlas 世界投影，颜色、法线、粗糙度同时进入 PBR 和 material-attributes。镜像/非均匀缩放保持投影切线方向；移动投影通过整 receiver
+reactive 拒绝旧 history，替换材质则通过提交感知 material identity 使 motion history 失效。完整约束见
+[`PBR_DECALS.md`](./PBR_DECALS.md)。
+
+透明合成显式区分 sorted
+alpha、additive、transmission 与 weighted-blended。后者需要材质和 pipeline 双重 opt-in，以共享 GLSL 的 accumulation/revealage 两个单附件 pass 合成到线性 HDR。它在 opaque
+TAA/TAAU 之后、sorted/refraction 之前执行，透明独立 history 再消费最终合成。没有可见 weighted
+mesh 时不分配专用附件；近似范围、像素预算和恢复见 [`TRANSPARENCY.md`](./TRANSPARENCY.md)。
 
 `Mesh.material` 引用 `MaterialInstance`。实例持有不可变
 `MaterialDefinition`，Definition 固定 family、Shader topology、static features、texture-slot
@@ -357,9 +385,14 @@ controller 与普通 Forward 相同。可选 `screenSpaceReflections` 在 opaque
 cone、使用 current RG32F min/max Hi-Z hierarchical trace，经过 motion/depth temporal
 rejection 后在线性 HDR 合成。可选 `volumetricLighting` 随后让 local-light
 cluster 覆盖完整相机体积，把 directional/point/spot light、height fog 与 sphere/box local
-fog 注入 tiled froxel atlas；每个 froxel column 只做一次 cumulative radiative
-integration，再以 opaque depth 常数次重建 radiance/transmittance，经 previous-view
-reprojection 与 depth/reactive temporal resolve 后，以 `scene * transmittance + scattering`
+fog 注入 tiled froxel atlas。投影灯光从同帧 shared
+atlas 读取 CSM/spot/point 深度遮挡，使用 canonical frame matrix/rect ABI、tile-clamped 9-tap
+PCF 和 standard/reversed depth comparison；注入 pass 声明实际 atlas 的 sampled
+dependency。世界空间光照、局部介质或 atlas
+page 更新会硬拒绝旧体积 history，比较快照只在有效 submission 后提交。每个 froxel
+column 只做一次 cumulative radiative integration，再以 opaque
+depth 常数次重建 radiance/transmittance，经 previous-view reprojection 与 depth/reactive temporal
+resolve 后，以 `scene * transmittance + scattering`
 在线性 HDR 合成。SSGI、SSR 与体积光都在 TAA/TAAU 和 transparent 之前完成；完整合同见
 [`SCREEN_SPACE_REFLECTIONS.md`](./SCREEN_SPACE_REFLECTIONS.md) 与
 [`VOLUMETRIC_LIGHTING.md`](./VOLUMETRIC_LIGHTING.md)。WebGPU 不支持 multi-draw-indirect-count，因此 runtime 对每个固定 LOD

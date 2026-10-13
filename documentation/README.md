@@ -27,6 +27,8 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 | [Scriptable Render Pipeline](./SCRIPTABLE_RENDER_PIPELINE.md)  | Factories, contexts, scene lists, features, passes and transactions.                   |
 | [Compute and storage](./COMPUTE_AND_STORAGE.md)                | Direct WGSL compute, readonly storage raster, graph hazards and recovery.              |
 | [Material system](./MATERIAL_SYSTEM.md)                        | Definition/Instance, semantic roles, texture slots, UBO/storage layouts.               |
+| [PBR decals](./PBR_DECALS.md)                                  | World projectors, atlases, surface attributes, masks and temporal boundaries.          |
+| [Transparency](./TRANSPARENCY.md)                              | Sorted/refraction classes, bounded weighted OIT and HDR composition.                   |
 | [Temporal rendering](./TEMPORAL_RENDERING.md)                  | Motion ABI, TAA/TAAU, reactive and transparent/particle histories.                     |
 | [GTAO](./GROUND_TRUTH_AMBIENT_OCCLUSION.md)                    | Horizon AO, bent normals, integration and quality boundaries.                          |
 | [SSR](./SCREEN_SPACE_REFLECTIONS.md)                           | Hi-Z reflection tracing, material response, rejection and fallback.                    |

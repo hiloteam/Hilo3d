@@ -1,3 +1,4 @@
+import type UniformBuffer from '../UniformBuffer';
 import Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
 import type Light from '../../light/Light';
@@ -264,6 +265,7 @@ class CullingSlot {
     readonly planner = new RenderGraphFramePlanner();
     readonly renderList = new RenderList();
     readonly visibleMeshes: Mesh[] = [];
+    meshes: readonly Mesh[] = EMPTY_MESHES;
     readonly #collectVisible = (mesh: Mesh): void => {
         this.visibleMeshes.push(mesh);
     };
@@ -298,6 +300,7 @@ class CullingSlot {
             frustumCulling
         );
         this.lights = plan.lights;
+        this.meshes = plan.meshes;
         this.visibleMeshes.length = 0;
         this.renderList.traverse(this.#collectVisible);
     }
@@ -322,6 +325,7 @@ class CullingSlot {
         this.camera = null;
         this.scene = null;
         this.lights = EMPTY_LIGHTS;
+        this.meshes = EMPTY_MESHES;
         this.frameIndex = -1;
         this.used = false;
     }
@@ -347,6 +351,19 @@ class RendererListSlot {
     ): void {
         const queue: unknown = descriptor.queue;
         const sorting: unknown = descriptor.sorting;
+        const transparency: unknown = descriptor.transparency;
+        if (
+            transparency !== undefined &&
+            transparency !== 'weighted-blended' &&
+            transparency !== 'sorted'
+        ) {
+            throw new TypeError('Unsupported renderer-list transparency selection');
+        }
+        if (transparency !== undefined && queue !== 'transparent') {
+            throw new TypeError(
+                'Renderer-list transparency selection requires the transparent queue'
+            );
+        }
         if (queue !== 'opaque' && queue !== 'transparent' && queue !== 'all') {
             throw new TypeError(`Unsupported renderer-list queue ${String(queue)}`);
         }
@@ -398,6 +415,13 @@ class RendererListSlot {
             if (descriptor.castShadowsOnly === true && !mesh.castShadows) continue;
             if (queue === 'opaque' && material.forwardQueue !== 'opaque') continue;
             if (queue === 'transparent' && material.forwardQueue !== 'transparent') continue;
+            if (
+                transparency === 'weighted-blended' &&
+                material.transparencyClass !== 'weighted-blended'
+            )
+                continue;
+            if (transparency === 'sorted' && material.transparencyClass === 'weighted-blended')
+                continue;
             selected.push(mesh);
         }
         this.plan = this.planner.build(
@@ -1417,12 +1441,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             }
         }
         this.#shadowDrawMeshes.length = 0;
-        for (const mesh of culling.visibleMeshes) {
+        for (const mesh of culling.meshes) {
             if (!this.#shadowExcludedMeshes.has(mesh)) this.#shadowDrawMeshes.push(mesh);
         }
         const shadowBuild = this.services.recordScriptableShadows(
             this.#shadowDrawMeshes,
-            culling.visibleMeshes,
+            culling.meshes,
             camera,
             this.rhiViewport,
             this.#outputState.width,
@@ -1707,6 +1731,15 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         }
         const existing = this.#sampledTextureBySource.get(texture);
         if (existing !== undefined) return existing.handle;
+        // Imports may precede the first scene, compute, or fullscreen pass. Start the shared
+        // upload transaction here rather than depending on an unrelated draw to initialize it.
+        this.services.beginScriptableResourcePass(
+            this.services.createScriptableFrameContext(
+                this.camera,
+                this.rhiViewport,
+                this.frameIndex
+            )
+        );
         const processor = this.services.getScriptableMeshProcessor();
         const handles = processor.textures.prepare(texture);
         const resource = processor.registry.resolve(handles.texture);
@@ -2198,7 +2231,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         target: RHIMeshDrawTargetDescriptor,
         storageVariant: Readonly<SceneStorageShaderVariant> | null,
         storagePreparation: StorageScenePreparationState,
-        sceneTexturePreparation: SceneTexturePreparationState | null
+        sceneTexturePreparation: SceneTexturePreparationState | null,
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
     ): void {
         const list = this.requireRendererList(handle);
         const culling = list.culling;
@@ -2231,7 +2265,12 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.services.beginScriptableMeshPass(context);
         const processor = this.services.getScriptableMeshProcessor();
         const storagePipelines = this.services.getScriptableGPUDrivenPipelineResources();
-        if (storageVariant !== null && list.materialPass !== 'forward') {
+        if (
+            storageVariant !== null &&
+            list.materialPass !== 'forward' &&
+            list.materialPass !== 'weighted-accumulation' &&
+            list.materialPass !== 'weighted-revealage'
+        ) {
             throw new TypeError(
                 `Storage scene draws do not support material pass ${list.materialPass}`
             );
@@ -2254,7 +2293,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                                   list.overrideMaterial,
                                   sceneTexturePreparation,
                                   list.materialPass,
-                                  list.ordered
+                                  list.ordered,
+                                  passUniformBlocks
                               )
                             : processor.prepareStorageScene(
                                   item,
@@ -2263,7 +2303,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                                   storagePipelines,
                                   storagePreparation,
                                   list.overrideMaterial,
-                                  list.ordered
+                                  list.ordered || item.useInstanced,
+                                  list.materialPass,
+                                  passUniformBlocks
                               )
                     );
                     continue;
@@ -2276,7 +2318,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                             target,
                             list.overrideMaterial,
                             sceneTexturePreparation,
-                            list.materialPass
+                            list.materialPass,
+                            passUniformBlocks
                         )
                     );
                     continue;
@@ -2290,7 +2333,9 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                             storagePipelines,
                             storagePreparation,
                             list.overrideMaterial,
-                            true
+                            true,
+                            list.materialPass,
+                            passUniformBlocks
                         )
                     );
                 }

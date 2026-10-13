@@ -136,17 +136,17 @@ export function clusteredTransparentShader(
     fog: Fog | null,
     withShadows: boolean,
     withDynamicGlobalIllumination = false,
-    giSurface = false
+    giSurface = false,
+    role: 'forward' | 'weighted-accumulation' | 'weighted-revealage' = 'forward',
+    withGroundTruthAmbientOcclusion = false,
+    withCloudShadow = false
 ): StorageGraphicsShader {
-    let header = Shader.getHeader(
-        mesh,
-        material,
-        CLUSTERED_SCENE_LIGHT_MANAGER,
-        fog,
-        false,
-        'forward'
-    );
+    let header = Shader.getHeader(mesh, material, CLUSTERED_SCENE_LIGHT_MANAGER, fog, false, role);
     header += '#define HILO_CLUSTERED_FORWARD 1\n';
+    if (withGroundTruthAmbientOcclusion) header += '#define HILO_GTAO 1\n';
+    if (withCloudShadow) header += '#define HILO_CLUSTERED_CLOUD_SHADOW 1\n';
+    if (role !== 'forward')
+        header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').toUpperCase()} 1\n`;
     if (withDynamicGlobalIllumination) header += '#define HILO_DYNAMIC_GI 1\n';
     if (giSurface) header += '#define HILO_DDGI_SURFACE 1\n';
     if (withShadows && mesh.receiveShadows) {
@@ -159,7 +159,17 @@ export function clusteredTransparentShader(
         baseShader.vs,
         baseShader.fs,
         getWebGPUUniformBlockBinding,
-        { resolveSamplerBinding: getWebGPUSceneTextureBinding }
+        {
+            resolveSamplerBinding: (name, arrayIndex) => {
+                if (name === 'u_gtaoTexture' || name === 'u_cloudShadowTexture') {
+                    if (arrayIndex !== 0)
+                        throw new TypeError('Clustered graph samplers must be scalar');
+                    const binding = name === 'u_gtaoTexture' ? 8 : 10;
+                    return { group: 3, textureBinding: binding, samplerBinding: binding + 1 };
+                }
+                return getWebGPUSceneTextureBinding(name, arrayIndex);
+            }
+        }
     );
     const bindings: ShaderReadBinding[] = prepared.uniformBlocks.map(block => ({
         name: block.name,
