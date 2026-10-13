@@ -317,6 +317,13 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Test WebGPU component and startup lifecycle
+        run: >-
+          npx playwright test test/ui/editor-components.spec.ts --project=chromium --grep @webgpu
+          --output=test-results/editor-components
+        env:
+          CI: 'true'
+
       - name: Test the production editor at root and project-subpath URLs
         run: npm run test:editor:pages
         env:
@@ -337,6 +344,7 @@ jobs:
           path: |
             .vitest-attachments
             test/editor-render/__screenshots__
+            test-results/editor-components
             test-results/editor-pages
             test-results/player-export
           if-no-files-found: ignore

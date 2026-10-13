@@ -54,6 +54,11 @@ presentation，使用完整 Chromium compositor。必需的 macOS editor job 串
 package job 构建的自包含 `site/editor`
 artifact，不重新构建受测发布文件；instrumented 引擎覆盖率不承担这条 GPU 生命周期测试。
 
+新增的编辑器组件回归中，WebGL
+2 用例进入普通 UI 工作组；WebGPU 音频所有权和初始化期间 pagehide 的三个用例由同一个必需的 macOS
+editor job 独立串行执行，失败产物保留在
+`test-results/editor-components`。这组源码交互测试与后续构建产物验收分别执行，不替代 Pages 或独立 Player 的发布路径检查。
+
 `npm run editor:build` 先执行
 `npm run player:build`，再将经过 SHA-256 清单校验的独立 Player 模板复制进
 `dist-editor/editor/player-template/`。`dist-player/`
