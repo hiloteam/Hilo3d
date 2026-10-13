@@ -1953,7 +1953,8 @@ fn main(
     );
 }
 
-function spatialFilterPass(
+/** @internal Production SSR filter shared by coverage regression fixtures. */
+export function createScreenSpaceReflectionSpatialFilterPass(
     settings: Readonly<ScreenSpaceReflectionsSettings>,
     stage: 'reconstruction' | 'stability' | 'cleanup'
 ): ComputeRenderPass {
@@ -1982,81 +1983,86 @@ function spatialFilterPass(
         );
         let neighbor = textureLoad(sourceReflection, neighborCoordinate, 0);
         let neighborConfidence = historyConfidence(neighbor.a);
-        if (neighborConfidence > 0.0001) {
-            let neighborUv = (vec2<f32>(neighborCoordinate) + vec2<f32>(0.5)) /
-                vec2<f32>(outputSize);
-            let neighborAttributes = textureLoad(
-                materialAttributes,
-                pixelFor(materialAttributes, neighborUv),
+        let neighborUv = (vec2<f32>(neighborCoordinate) + vec2<f32>(0.5)) /
+            vec2<f32>(outputSize);
+        let neighborAttributes = textureLoad(
+            materialAttributes,
+            pixelFor(materialAttributes, neighborUv),
+            0
+        );
+        let neighborResponseState = textureLoad(
+            responseHistory,
+            pixelFor(responseHistory, neighborUv),
+            0
+        );
+        let neighborPacked = u32(clamp(round(neighborAttributes.w * 255.0), 0.0, 255.0));
+        if (
+            (neighborPacked & 1u) != 0u &&
+            neighborAttributes.z < ${String(settings.roughnessCutoff)}
+        ) {
+            let neighborNormal = decodeOctahedralNormal(neighborAttributes.xy);
+            let neighborLogDepth = textureLoad(
+                motionDepth,
+                pixelFor(motionDepth, neighborUv),
                 0
+            ).w;
+            let normalWeight = pow(max(dot(centerNormal, neighborNormal), 0.0), 24.0);
+            let depthWeight = exp2(-abs(centerLogDepth - neighborLogDepth) * 24.0);
+            let roughnessWeight = exp2(
+                -abs(centerAttributes.z - neighborAttributes.z) * 16.0
             );
-            let neighborResponseState = textureLoad(
-                responseHistory,
-                pixelFor(responseHistory, neighborUv),
+            let materialWeight = select(0.0, 1.0, centerPacked == neighborPacked);
+            let responseScale = max(
+                max(length(centerResponseState.rgb), length(neighborResponseState.rgb)),
+                0.05
+            );
+            let responseWeight = exp2(
+                -length(centerResponseState.rgb - neighborResponseState.rgb) *
+                    6.0 / responseScale
+            );
+            let neighborHitDepth = textureLoad(
+                stateHistory,
+                pixelFor(stateHistory, neighborUv),
                 0
+            ).w;
+            let hitDepthContinuity = select(
+                0.45,
+                exp2(-abs(centerHitDepth - neighborHitDepth) * 4.0),
+                centerHitDepth > 0.0 && neighborHitDepth > 0.0
             );
-            let neighborPacked = u32(clamp(round(neighborAttributes.w * 255.0), 0.0, 255.0));
-            if (
-                (neighborPacked & 1u) != 0u &&
-                neighborAttributes.z < ${String(settings.roughnessCutoff)}
-            ) {
-                let neighborNormal = decodeOctahedralNormal(neighborAttributes.xy);
-                let neighborLogDepth = textureLoad(
-                    motionDepth,
-                    pixelFor(motionDepth, neighborUv),
-                    0
-                ).w;
-                let normalWeight = pow(max(dot(centerNormal, neighborNormal), 0.0), 24.0);
-                let depthWeight = exp2(-abs(centerLogDepth - neighborLogDepth) * 24.0);
-                let roughnessWeight = exp2(
-                    -abs(centerAttributes.z - neighborAttributes.z) * 16.0
-                );
-                let materialWeight = select(0.0, 1.0, centerPacked == neighborPacked);
-                let responseScale = max(
-                    max(length(centerResponseState.rgb), length(neighborResponseState.rgb)),
-                    0.05
-                );
-                let responseWeight = exp2(
-                    -length(centerResponseState.rgb - neighborResponseState.rgb) *
-                        6.0 / responseScale
-                );
-                let neighborHitDepth = textureLoad(
-                    stateHistory,
-                    pixelFor(stateHistory, neighborUv),
-                    0
-                ).w;
-                let hitDepthContinuity = select(
-                    0.45,
-                    exp2(-abs(centerHitDepth - neighborHitDepth) * 4.0),
-                    centerHitDepth > 0.0 && neighborHitDepth > 0.0
-                );
-                let hitDepthWeight = mix(
-                    hitDepthContinuity,
-                    1.0,
-                    spatialDenoiseStrength * 0.85
-                );
-                let centerLuminance = dot(
-                    center.rgb,
-                    vec3<f32>(0.2126, 0.7152, 0.0722)
-                );
-                let neighborLuminance = dot(
-                    neighbor.rgb,
-                    vec3<f32>(0.2126, 0.7152, 0.0722)
-                );
-                let luminanceWeight = exp2(
-                    -abs(neighborLuminance - centerLuminance) /
-                        max(
-                            0.05 + max(centerLuminance, neighborLuminance) *
-                                mix(0.3, 0.8, spatialDenoiseStrength),
-                            0.05
-                        )
-                );
-                let confidenceWeight = clamp(0.25 + neighborConfidence, 0.0, 1.0);
-                let weight = ${String(weight)}.0 * normalWeight * depthWeight *
-                    roughnessWeight * materialWeight * responseWeight * hitDepthWeight *
+            let hitDepthWeight = mix(
+                hitDepthContinuity,
+                1.0,
+                spatialDenoiseStrength * 0.85
+            );
+            let centerLuminance = dot(
+                center.rgb,
+                vec3<f32>(0.2126, 0.7152, 0.0722)
+            );
+            let neighborLuminance = dot(
+                neighbor.rgb,
+                vec3<f32>(0.2126, 0.7152, 0.0722)
+            );
+            let luminanceWeight = exp2(
+                -abs(neighborLuminance - centerLuminance) /
+                    max(
+                        0.05 + max(centerLuminance, neighborLuminance) *
+                            mix(0.3, 0.8, spatialDenoiseStrength),
+                        0.05
+                    )
+            );
+            let confidenceWeight = clamp(0.25 + neighborConfidence, 0.0, 1.0);
+            let geometryWeight = ${String(weight)}.0 * normalWeight * depthWeight *
+                roughnessWeight * materialWeight * responseWeight;
+            // A valid receiver with no hit still belongs to the filter footprint.
+            // Omitting it makes one stochastic hit claim full coverage everywhere.
+            coverageWeight += geometryWeight;
+            confidenceAccumulation += neighborConfidence * geometryWeight;
+            if (neighborConfidence > 0.0001) {
+                let weight = geometryWeight * hitDepthWeight *
                     luminanceWeight * confidenceWeight;
                 accumulation += neighbor.rgb * weight;
-                confidenceAccumulation += neighborConfidence * weight;
+                hitConfidenceAccumulation += neighborConfidence * weight;
                 totalWeight += weight;
             }
         }
@@ -2184,19 +2190,23 @@ fn main(
         historyMaturity
     );
     var accumulation = center.rgb * centerConfidence * centerWeight;
-    var confidenceAccumulation = centerConfidence * centerConfidence * centerWeight;
+    var hitConfidenceAccumulation = centerConfidence * centerConfidence * centerWeight;
+    var confidenceAccumulation = centerConfidence * centerWeight;
+    var coverageWeight = centerWeight;
     var totalWeight = centerConfidence * centerWeight;
 ${tapSource}
-    if (totalWeight > 0.0001) {
+    if (totalWeight > 0.0001 && hitConfidenceAccumulation > 0.0) {
+        let coverage = confidenceAccumulation / coverageWeight;
+        // Trace and temporal RGB are confidence-premultiplied. Reconstruct straight
+        // radiance from the hit-weighted mean, then premultiply by the full footprint
+        // coverage so SSR replacement and fallback removal retain equal energy.
+        let radiance = accumulation * (coverage / hitConfidenceAccumulation);
         textureStore(
             destination,
             pixel,
             vec4<f32>(
-                accumulation / totalWeight,
-                packHistoryState(
-                    historySampleCount(center.a),
-                    confidenceAccumulation / totalWeight
-                )
+                radiance,
+                packHistoryState(historySampleCount(center.a), coverage)
             )
         );
     } else {
@@ -2540,9 +2550,18 @@ export class ScreenSpaceReflectionsController {
         this.#tileClassificationPass = tileClassificationPass(settings);
         this.#tracePass = computePass(traceShader(settings, this.#traceHiZLevelCount));
         this.#temporalResolvePass = temporalResolvePass(settings);
-        this.#spatialReconstructionPass = spatialFilterPass(settings, 'reconstruction');
-        this.#spatialStabilityPass = spatialFilterPass(settings, 'stability');
-        this.#spatialCleanupPass = spatialFilterPass(settings, 'cleanup');
+        this.#spatialReconstructionPass = createScreenSpaceReflectionSpatialFilterPass(
+            settings,
+            'reconstruction'
+        );
+        this.#spatialStabilityPass = createScreenSpaceReflectionSpatialFilterPass(
+            settings,
+            'stability'
+        );
+        this.#spatialCleanupPass = createScreenSpaceReflectionSpatialFilterPass(
+            settings,
+            'cleanup'
+        );
         this.#compositePass = compositePass(settings.intensity);
         this.#tracePool = new RenderPassParameterPool(
             () =>

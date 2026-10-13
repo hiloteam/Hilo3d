@@ -26,6 +26,10 @@
   faint layers retain coverage. Validate three MRTs/24 bytes per sample and preserve sampler
   retirement across failed prepare through the submission resource tracker.
 
+- Fix SSR spatial confidence reconstruction so isolated stochastic hits cannot expand into block
+  artifacts during camera motion. Include valid receiver misses in the coverage kernel and preserve
+  confidence-premultiplied radiance, avoiding added energy when replacing the same fallback.
+
 # 2.0.0-alpha.9 (release candidate)
 
 This section describes the prepared release source; npm publication is pending.
