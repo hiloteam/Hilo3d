@@ -1,3 +1,5 @@
+import { validateNodeComponents, validateSceneComponents, type NodeComponents } from './components';
+
 /** Editable vector components; positions use meters and rotations use degrees. */
 export interface Vec3 {
     x: number;
@@ -27,6 +29,7 @@ export interface SceneNode {
     locked?: boolean;
     asset?: string;
     scripts?: string[];
+    components?: NodeComponents;
     camera?: { fov: number; near: number; far: number };
     transform: {
         position: Vec3;
@@ -45,7 +48,7 @@ export interface SceneNode {
 /** Versioned scene source, designed for focused human and AI edits and readable Git diffs. */
 export interface SceneDocument {
     format: 'hilo3d-scene';
-    version: 2;
+    version: 3;
     name: string;
     units: 'meters';
     environment: {
@@ -186,7 +189,8 @@ function node(value: unknown, path: string): SceneNode {
         'locked',
         'asset',
         'scripts',
-        'camera'
+        'camera',
+        'components'
     ]);
     const kind = input['type'];
     if (
@@ -220,6 +224,8 @@ function node(value: unknown, path: string): SceneNode {
         if (new Set(result.scripts).size !== result.scripts.length)
             invalid(`${path}.scripts`, 'duplicate script ID');
     }
+    if (input['components'] !== undefined)
+        result.components = validateNodeComponents(input['components'], `${path}.components`);
     if (kind === 'model') {
         result.asset = identifier(input['asset'], `${path}.asset`);
         if (input['material'] !== undefined)
@@ -283,8 +289,8 @@ function validate(value: unknown): SceneDocument {
         'nodes'
     ]);
     if (input['format'] !== 'hilo3d-scene') invalid('scene.format', 'expected hilo3d-scene');
-    if (input['version'] !== 1 && input['version'] !== 2)
-        invalid('scene.version', 'only versions 1 and 2 are supported');
+    if (input['version'] !== 1 && input['version'] !== 2 && input['version'] !== 3)
+        invalid('scene.version', 'only versions 1, 2 and 3 are supported');
     if (input['units'] !== 'meters') invalid('scene.units', 'expected meters');
     const environment = record(input['environment'], 'scene.environment');
     fields(environment, 'scene.environment', ['background', 'ambientIntensity']);
@@ -319,6 +325,11 @@ function validate(value: unknown): SceneDocument {
             )
                 invalid(`scene.nodes.${id}.type`, 'this node type requires scene version 2');
         }
+    }
+    if (input['version'] !== 3) {
+        for (const [id, entry] of Object.entries(inputNodes))
+            if (Object.hasOwn(record(entry, `scene.nodes.${id}`), 'components'))
+                invalid(`scene.nodes.${id}.components`, 'components require scene version 3');
     }
     const materialIds = Object.keys(inputMaterials).sort();
     const nodeIds = Object.keys(inputNodes).sort();
@@ -360,9 +371,10 @@ function validate(value: unknown): SceneDocument {
             parent = ancestor.parent;
         }
     }
+    validateSceneComponents({ nodes });
     const result: SceneDocument = {
         format: 'hilo3d-scene',
-        version: 2,
+        version: 3,
         name: text(input['name'], 'scene.name'),
         units: 'meters',
         environment: {
@@ -442,7 +454,7 @@ export function createDefaultScene(): SceneDocument {
     });
     return cloneScene({
         format: 'hilo3d-scene',
-        version: 2,
+        version: 3,
         name: 'Terracotta Study',
         units: 'meters',
         environment: { background: '#343639', ambientIntensity: 0.8 },

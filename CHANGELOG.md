@@ -1,5 +1,27 @@
 # Unreleased
 
+### Features
+
+- Add Studio **Publish website** and a self-contained static Player ZIP with per-scene camera and
+  animation settings, relative resource URLs, the bundled project, local runtime/WASM resources and
+  license notices. Player and Studio Play share scene loading, rendering and isolated scripts.
+- Add scene version 3 physics, particle and audio components with inspector authoring, validated
+  persistence, prefab/asset references and migration from scene versions 1/2. Integrate Rapier 3D
+  primitive colliders, seeded portable CPU particles and imported PCM WAV sources on the shared
+  fixed-step playback clock, including pause, step, stop and deterministic restart of particle
+  state.
+- Add bounded script commands for impulses, particle bursts and audio playback; enforce dynamic-body
+  transform ownership and await script/component cleanup before Player scene replacement. Play also
+  advances and restores each imported GLB instance's first animation clip.
+- Share bounded response consumption between website export and collaboration: audit byte limits
+  before native body completion, and cancel both stream branches on errors or cancellation.
+- Publish paused playback only after the current script/component step commits, keeping elapsed
+  time, physics and single-step diagnostics aligned while preserving explicit pause/resume intent.
+
+These additions describe the current source. E9 local production export/deployment acceptance passed
+on Chromium with WebGL2 and WebGPU; see the dated checks in `documentation/PLAYER.md`. The full
+engine release and physical-device performance matrices remain separate, unrun gates.
+
 # 2.0.0-alpha.9 (release candidate)
 
 This section describes the prepared release source; npm publication is pending.

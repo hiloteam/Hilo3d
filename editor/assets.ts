@@ -2,8 +2,8 @@
 export interface ProjectAsset {
     id: string;
     name: string;
-    kind: 'model' | 'texture';
-    mimeType: 'model/gltf-binary' | 'image/png' | 'image/jpeg' | 'image/webp';
+    kind: 'model' | 'texture' | 'audio';
+    mimeType: 'model/gltf-binary' | 'image/png' | 'image/jpeg' | 'image/webp' | 'audio/wav';
     size: number;
     hash: string;
     source: {
@@ -573,10 +573,75 @@ function glb(bytes: Uint8Array): EmbeddedImage[] {
     return imageData;
 }
 
+/** Inspect canonical uncompressed PCM WAV without instantiating an audio context. */
+export function validateWAV(bytes: Uint8Array): {
+    channels: number;
+    sampleRate: number;
+    frames: number;
+} {
+    if (
+        bytes.length < 44 ||
+        bytes.length > MAX_ASSET_BYTES ||
+        fourCC(bytes, 0) !== 'RIFF' ||
+        fourCC(bytes, 8) !== 'WAVE'
+    )
+        throw new Error('Audio must be a RIFF PCM WAV file within 16 MiB');
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (view.getUint32(4, true) + 8 !== bytes.length) throw new Error('WAV RIFF length mismatch');
+    let format: { channels: number; sampleRate: number; align: number } | null = null;
+    let dataSize = 0;
+    let hasData = false;
+    let offset = 12;
+    while (offset < bytes.length) {
+        if (offset + 8 > bytes.length) throw new Error('Truncated WAV chunk');
+        const kind = fourCC(bytes, offset);
+        const size = view.getUint32(offset + 4, true);
+        const start = offset + 8;
+        const end = start + size;
+        if (end + (size % 2) > bytes.length) throw new Error('Truncated WAV chunk payload');
+        if (kind === 'fmt ') {
+            if (format || hasData || (size !== 16 && size !== 18))
+                throw new Error('WAV requires one PCM format chunk before data');
+            const encoding = view.getUint16(start, true);
+            const channels = view.getUint16(start + 2, true);
+            const sampleRate = view.getUint32(start + 4, true);
+            const rate = view.getUint32(start + 8, true);
+            const align = view.getUint16(start + 12, true);
+            const bits = view.getUint16(start + 14, true);
+            if (
+                encoding !== 1 ||
+                (channels !== 1 && channels !== 2) ||
+                ![8, 16, 24, 32].includes(bits) ||
+                sampleRate < 8000 ||
+                sampleRate > 192000 ||
+                align !== (channels * bits) / 8 ||
+                rate !== sampleRate * align ||
+                (size === 18 && view.getUint16(start + 16, true) !== 0)
+            )
+                throw new Error('WAV supports mono/stereo integer PCM, 8/16/24/32 bits, 8–192 kHz');
+            format = { channels, sampleRate, align };
+        } else if (kind === 'data') {
+            if (!format || hasData || size < format.align || size % format.align !== 0)
+                throw new Error('WAV data must contain complete PCM frames after its format chunk');
+            hasData = true;
+            dataSize = size;
+        }
+        offset = end + (size % 2);
+    }
+    if (!format || !hasData) throw new Error('WAV is missing PCM format or data');
+    const frames = dataSize / format.align;
+    if (frames / format.sampleRate > 300) throw new Error('WAV duration exceeds 300 seconds');
+    return { channels: format.channels, sampleRate: format.sampleRate, frames };
+}
+
 function validateBytes(bytes: Uint8Array, mime: ProjectAsset['mimeType']): EmbeddedImage[] {
     if (bytes.length < 1 || bytes.length > MAX_ASSET_BYTES)
         throw new Error('Assets must contain 1 byte to 16 MiB');
     if (mime === 'model/gltf-binary') return glb(bytes);
+    if (mime === 'audio/wav') {
+        validateWAV(bytes);
+        return [];
+    }
     imageDimensions(bytes, mime);
     return [{ bytes, mime, copies: 1 }];
 }
@@ -606,10 +671,12 @@ export function validateAsset(value: unknown): ProjectAsset {
         mimeType !== 'model/gltf-binary' &&
         mimeType !== 'image/png' &&
         mimeType !== 'image/jpeg' &&
-        mimeType !== 'image/webp'
+        mimeType !== 'image/webp' &&
+        mimeType !== 'audio/wav'
     )
         throw new Error('Unsupported asset MIME type');
-    const kind = mimeType === 'model/gltf-binary' ? 'model' : 'texture';
+    const kind =
+        mimeType === 'model/gltf-binary' ? 'model' : mimeType === 'audio/wav' ? 'audio' : 'texture';
     if (input['kind'] !== kind || typeof input['data'] !== 'string')
         throw new Error('Asset kind or data is invalid');
     const cached = verifiedPayloads.get(hash);
@@ -785,8 +852,10 @@ export async function importAsset(file: File): Promise<ProjectAsset> {
                 ? 'image/jpeg'
                 : extension === 'webp'
                   ? 'image/webp'
-                  : null;
-    if (!mimeType) throw new Error('Import a GLB, PNG, JPEG, or WebP file');
+                  : extension === 'wav'
+                    ? 'audio/wav'
+                    : null;
+    if (!mimeType) throw new Error('Import a GLB, PNG, JPEG, WebP, or PCM WAV file');
     const bytes = new Uint8Array(await file.arrayBuffer());
     validateBytes(bytes, mimeType);
     const hash = assetHash(bytes);
@@ -802,7 +871,12 @@ export async function importAsset(file: File): Promise<ProjectAsset> {
     const asset = validateAsset({
         id: `${stem}-${hash.slice(0, 12)}`,
         name: file.name.slice(0, 120),
-        kind: mimeType === 'model/gltf-binary' ? 'model' : 'texture',
+        kind:
+            mimeType === 'model/gltf-binary'
+                ? 'model'
+                : mimeType === 'audio/wav'
+                  ? 'audio'
+                  : 'texture',
         mimeType,
         size: bytes.length,
         hash,
@@ -826,4 +900,9 @@ export function assetDecodedImageBytes(asset: ProjectAsset): number {
 export function assetURL(asset: ProjectAsset): string {
     const checked = validateAsset(asset);
     return URL.createObjectURL(new Blob([decode(checked.data)], { type: checked.mimeType }));
+}
+
+/** Return a detached copy of validated source bytes for local runtime decoding. */
+export function assetBytes(asset: ProjectAsset): Uint8Array<ArrayBuffer> {
+    return decode(validateAsset(asset).data);
 }

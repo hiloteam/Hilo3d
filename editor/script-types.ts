@@ -1,3 +1,5 @@
+import type { SceneDocument } from './scene';
+
 export interface ScriptDocument {
     id: string;
     name: string;
@@ -51,4 +53,74 @@ export function createScript(id: string, name = 'Rotate object'): ScriptDocument
   }
 })`
     });
+}
+
+/** Validated commands address the bound scene node, never native addon handles. */
+export type ScriptComponentCommand =
+    | { nodeId: string; type: 'applyImpulse'; x: number; y: number; z: number }
+    | { nodeId: string; type: 'emitParticles'; count: number }
+    | { nodeId: string; type: 'playAudio' | 'stopAudio' };
+
+/** Treat worker replies as untrusted even though the worker context exposes only bounded helpers. */
+export function validateScriptCommands(
+    value: unknown,
+    scene: SceneDocument,
+    allowedNodeIds: ReadonlySet<string>
+): ScriptComponentCommand[] {
+    if (!Array.isArray(value) || value.length > 128)
+        throw new Error('Scripts support at most 128 component commands per step.');
+    const result: ScriptComponentCommand[] = [];
+    for (const entry of value) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+            throw new Error('Invalid script component command.');
+        const command = entry as Record<string, unknown>;
+        const nodeId = command['nodeId'];
+        if (
+            typeof nodeId !== 'string' ||
+            !allowedNodeIds.has(nodeId) ||
+            !Object.hasOwn(scene.nodes, nodeId)
+        )
+            throw new Error('Script tried to command an unbound object.');
+        const components = scene.nodes[nodeId]?.components;
+        const type = command['type'];
+        const allowed =
+            type === 'applyImpulse'
+                ? ['nodeId', 'type', 'x', 'y', 'z']
+                : type === 'emitParticles'
+                  ? ['nodeId', 'type', 'count']
+                  : ['nodeId', 'type'];
+        if (Object.keys(command).some(key => !allowed.includes(key)))
+            throw new Error('Unknown script component command field.');
+        if (type === 'applyImpulse') {
+            if (components?.physics?.body !== 'dynamic')
+                throw new Error('applyImpulse requires a dynamic physics component.');
+            const x = command['x'];
+            const y = command['y'];
+            const z = command['z'];
+            if (
+                typeof x !== 'number' ||
+                typeof y !== 'number' ||
+                typeof z !== 'number' ||
+                ![x, y, z].every(number => Number.isFinite(number) && Math.abs(number) <= 1e6)
+            )
+                throw new Error('Script impulse must be finite and within ±1000000.');
+            result.push({ nodeId, type, x, y, z });
+        } else if (type === 'emitParticles') {
+            const count = command['count'];
+            if (!components?.particles)
+                throw new Error('emitParticles requires a particle component.');
+            if (
+                typeof count !== 'number' ||
+                !Number.isSafeInteger(count) ||
+                count < 1 ||
+                count > 4096
+            )
+                throw new Error('Script particle count must be between 1 and 4096.');
+            result.push({ nodeId, type, count });
+        } else if (type === 'playAudio' || type === 'stopAudio') {
+            if (!components?.audio) throw new Error(`${type} requires an audio component.`);
+            result.push({ nodeId, type });
+        } else throw new Error('Unknown script component command.');
+    }
+    return result;
 }

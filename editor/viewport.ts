@@ -23,6 +23,15 @@ export type { TransformGesture, TransformMode, TransformSpace };
 type Primitive = NonNullable<SceneNode['geometry']>;
 type View = 'perspective' | 'top' | 'front' | 'right';
 
+/** Shared scene adapter options for authoring and standalone playback. */
+export interface EditorViewportOptions {
+    mode?: 'editor' | 'player';
+    backend?: 'auto' | 'webgl2' | 'webgpu';
+    autoStart?: boolean;
+    /** Player owners stop scripts/components before destroying the Stage on page exit. */
+    managePageLifecycle?: boolean;
+}
+
 interface RuntimeNode {
     node: H.Node;
     kind: string;
@@ -196,7 +205,8 @@ export class EditorViewport {
     private readonly helpers = new H.Node({ name: 'Editor helpers' });
     private readonly grid = createGrid();
     private readonly selectionBox = createSelectionBox();
-    private readonly gizmo: TransformGizmo;
+    private readonly gizmo: TransformGizmo | null;
+    private renderingEnabled = true;
     private interactionEnabled = true;
     private authoringEnabled = true;
     private selectedIds: readonly string[] = [];
@@ -210,6 +220,7 @@ export class EditorViewport {
     private readonly textureLeases = new Map<string, TextureLease>();
     private readonly failedTextures = new Set<string>();
     private readonly modelBindings = new Map<string, ModelBinding>();
+    private readonly modelAnimations = new Set<H.Animation>();
     private viewedCamera: string | null = null;
     private focusedRadius: number | null = null;
     private readonly geometries = createEditorGeometries();
@@ -238,9 +249,11 @@ export class EditorViewport {
         container: HTMLElement,
         onSelect: (id: string | null) => void,
         onError: (message: string) => void,
-        onTransform?: (gesture: TransformGesture) => void
+        onTransform?: (gesture: TransformGesture) => void,
+        options: EditorViewportOptions = {}
     ): Promise<EditorViewport> {
-        const requested = new URL(location.href).searchParams.get('backend') ?? 'auto';
+        const requested =
+            options.backend ?? new URL(location.href).searchParams.get('backend') ?? 'auto';
         if (requested !== 'auto' && requested !== 'webgl2' && requested !== 'webgpu') {
             throw new TypeError(`Unsupported renderer backend: ${requested}`);
         }
@@ -267,7 +280,15 @@ export class EditorViewport {
             clearColor: color('#292b30')
         });
         try {
-            return new EditorViewport(stage, camera, container, onSelect, onError, onTransform);
+            return new EditorViewport(
+                stage,
+                camera,
+                container,
+                onSelect,
+                onError,
+                onTransform,
+                options
+            );
         } catch (cause) {
             stage.destroy();
             stage.canvas.remove();
@@ -281,9 +302,13 @@ export class EditorViewport {
         private readonly container: HTMLElement,
         private readonly onSelect: (id: string | null) => void,
         private readonly onError: (message: string) => void,
-        private readonly onTransform?: (gesture: TransformGesture) => void
+        private readonly onTransform: ((gesture: TransformGesture) => void) | undefined,
+        private readonly options: EditorViewportOptions
     ) {
         this.backend = stage.renderer.backend;
+        this.interactionEnabled = options.mode !== 'player';
+        this.authoringEnabled = options.mode !== 'player';
+        this.renderingEnabled = options.autoStart !== false;
         this.camera = camera;
         this.assetRuntime = new EditorAssetRuntime(stage.renderer);
         this.controls = new H.OrbitControls(stage, {
@@ -296,21 +321,29 @@ export class EditorViewport {
         });
         this.picker = new H.MeshPicker({ stage });
         this.sceneRoot.addTo(stage);
-        this.helpers.addTo(stage);
+        if (options.mode !== 'player') this.helpers.addTo(stage);
         this.grid.addTo(this.helpers);
         this.selectionBox.addTo(this.helpers);
-        this.gizmo = new TransformGizmo({
-            container,
-            camera,
-            onTransform: this.handleTransform,
-            onError,
-            onActiveChange: active => {
-                this.pointerStart = null;
-                if (active || !this.interactionEnabled || this.preview || this.viewedCamera)
-                    this.controls.disable();
-                else this.controls.enable();
-            }
-        });
+        this.gizmo =
+            options.mode === 'player'
+                ? null
+                : new TransformGizmo({
+                      container,
+                      camera,
+                      onTransform: this.handleTransform,
+                      onError,
+                      onActiveChange: active => {
+                          this.pointerStart = null;
+                          if (
+                              active ||
+                              !this.interactionEnabled ||
+                              this.preview ||
+                              this.viewedCamera
+                          )
+                              this.controls.disable();
+                          else this.controls.enable();
+                      }
+                  });
         this.controls.onChange = () => {
             if (this.focusedRadius !== null) {
                 const clipping = editorCameraClipRange(
@@ -322,13 +355,15 @@ export class EditorViewport {
                 this.camera.far = clipping.far;
                 this.syncShadowClipRange();
             }
-            this.gizmo.update();
+            this.gizmo?.update();
         };
         this.ambient.addTo(stage);
         stage.canvas.classList.add('scene-canvas');
         stage.canvas.setAttribute(
             'aria-label',
-            '3D scene viewport. Drag to orbit, Shift-drag to pan, scroll to zoom.'
+            options.mode === 'player'
+                ? 'Interactive 3D scene'
+                : '3D scene viewport. Drag to orbit, Shift-drag to pan, scroll to zoom.'
         );
         stage.canvas.addEventListener('pointerdown', this.handlePointerDown);
         stage.canvas.addEventListener('pointermove', this.handlePointerMove);
@@ -337,8 +372,10 @@ export class EditorViewport {
         stage.canvas.addEventListener('dblclick', this.handleDoubleClick);
         this.resizeObserver = new ResizeObserver(this.resize);
         this.resizeObserver.observe(container);
-        window.addEventListener('pagehide', this.handlePageHide);
-        window.addEventListener('pageshow', this.handlePageShow);
+        if (options.managePageLifecycle !== false) {
+            window.addEventListener('pagehide', this.handlePageHide);
+            window.addEventListener('pageshow', this.handlePageShow);
+        }
         document.addEventListener('visibilitychange', this.handleVisibilityChange);
         stage.renderer.on('rhiDeviceLost', this.handleDeviceLost);
         stage.renderer.on('rhiDeviceRestored', this.handleDeviceRestored);
@@ -357,11 +394,78 @@ export class EditorViewport {
                 window as Window & { __HILO3D_TEST_CAPTURE__?: TestFrameControl }
             ).__HILO3D_TEST_CAPTURE__ = this.testCapture;
         }
-        this.ticker.start();
+        this.updateInteraction();
+        this.startTicker();
+    }
+
+    /** The same Stage owns scene assets, rendering and optional runtime components. */
+    get runtimeStage(): H.Stage {
+        return this.stage;
+    }
+
+    get runtimeRoot(): H.Node {
+        return this.sceneRoot;
+    }
+
+    get runtimeCamera(): H.Camera {
+        return this.stage.camera ?? this.camera;
+    }
+
+    getRuntimeNode(id: string): H.Node | undefined {
+        return this.nodes.get(id)?.node;
+    }
+
+    /** Play the first embedded GLB clip on the shared fixed simulation clock. */
+    startModelAnimations(): void {
+        this.stopModelAnimations();
+        for (const binding of this.modelBindings.values()) {
+            binding.instance?.root.traverse(node => {
+                const animation = node.anim;
+                if (animation?.clips.length && !this.modelAnimations.has(animation)) {
+                    animation.play(animation.clips[0]?.name);
+                    animation.pause();
+                    animation.update(0);
+                    this.modelAnimations.add(animation);
+                }
+            });
+        }
+    }
+
+    stepModelAnimations(seconds: number): void {
+        for (const animation of this.modelAnimations) animation.update(seconds);
+    }
+
+    stopModelAnimations(): void {
+        for (const animation of this.modelAnimations) animation.stop(true);
+        this.modelAnimations.clear();
+    }
+
+    /** Explicit rendering ownership prevents visibility/recovery callbacks resuming a stopped player. */
+    startRendering(): void {
+        this.renderingEnabled = true;
+        this.startTicker();
+    }
+
+    stopRendering(): void {
+        this.renderingEnabled = false;
+        this.ticker.stop();
+    }
+
+    private startTicker(): void {
+        if (
+            this.renderingEnabled &&
+            !this.destroyed &&
+            !this.failed &&
+            !this.recovering &&
+            !this.suspended &&
+            !document.hidden
+        )
+            this.ticker.start();
     }
 
     setScene(scene: SceneDocument): void {
         if (this.destroyed) return;
+        this.stopModelAnimations();
         this.sceneRevision++;
         if (this.pendingPick) {
             this.queuedScene = scene;
@@ -451,11 +555,11 @@ export class EditorViewport {
         )
             this.setCamera(null);
         this.syncShadowClipRange();
-        this.gizmo.setScene(scene);
+        this.gizmo?.setScene(scene);
         this.updateSelection();
         if (this.failed) {
             this.failed = false;
-            if (!this.suspended && !document.hidden) this.ticker.start();
+            if (!this.suspended && !document.hidden) this.startTicker();
         }
     }
 
@@ -506,7 +610,8 @@ export class EditorViewport {
                         .concat([...this.modelBindings.values()].map(binding => binding.ready))
                 );
             } catch (cause) {
-                if (this.destroyed) return;
+                if (this.destroyed)
+                    throw new DOMException('Scene runtime was destroyed.', 'AbortError');
                 if (revision !== this.sceneRevision) continue;
                 throw cause;
             }
@@ -531,6 +636,7 @@ export class EditorViewport {
             }
             return;
         }
+        throw new DOMException('Scene runtime was destroyed.', 'AbortError');
     }
 
     /** Render through an authored camera; null restores the unchanged editor orbit camera. */
@@ -539,7 +645,7 @@ export class EditorViewport {
         const node = id === null ? this.camera : this.nodes.get(id)?.node;
         if (!(node instanceof H.PerspectiveCamera))
             throw new Error('Select an authored camera to view through.');
-        this.gizmo.cancel();
+        this.gizmo?.cancel();
         this.viewedCamera = id;
         this.stage.camera = node;
         node.aspect = this.stage.width / this.stage.height;
@@ -695,10 +801,14 @@ export class EditorViewport {
     }
 
     private updateInteraction(): void {
-        const editor = this.interactionEnabled && this.viewedCamera === null && !this.recovering;
+        const editor =
+            this.options.mode !== 'player' &&
+            this.interactionEnabled &&
+            this.viewedCamera === null &&
+            !this.recovering;
         this.helpers.visible = editor;
-        this.gizmo.setVisible(editor && this.authoringEnabled && this.preview === null);
-        if (editor && !this.preview && !this.gizmo.active) this.controls.enable();
+        this.gizmo?.setVisible(editor && this.authoringEnabled && this.preview === null);
+        if (editor && !this.preview && !this.gizmo?.active) this.controls.enable();
         else this.controls.disable();
     }
 
@@ -714,30 +824,30 @@ export class EditorViewport {
     select(id: string | null | readonly string[]): void {
         this.selectedIds = typeof id === 'string' ? [id] : (id ?? []);
         this.selectedId = this.selectedIds.at(-1) ?? null;
-        this.gizmo.select(this.selectedIds);
+        this.gizmo?.select(this.selectedIds);
         this.updateSelection();
     }
 
     setTransformMode(mode: TransformMode): void {
-        this.gizmo.setMode(mode);
+        this.gizmo?.setMode(mode);
     }
     setTransformSpace(space: TransformSpace): void {
-        this.gizmo.setSpace(space);
+        this.gizmo?.setSpace(space);
     }
     setTransformSnap(enabled: boolean): void {
-        this.gizmo.setSnap(enabled);
+        this.gizmo?.setSnap(enabled);
     }
     setInteractionEnabled(enabled: boolean): void {
-        this.interactionEnabled = enabled;
+        this.interactionEnabled = enabled && this.options.mode !== 'player';
         if (!enabled) this.pointerStart = null;
-        this.gizmo.setEnabled(enabled && this.authoringEnabled);
+        this.gizmo?.setEnabled(enabled && this.authoringEnabled);
         this.updateInteraction();
     }
 
     /** Disable transform authoring while retaining orbit navigation and object inspection. */
     setAuthoringEnabled(enabled: boolean): void {
         this.authoringEnabled = enabled;
-        this.gizmo.setEnabled(enabled && this.interactionEnabled);
+        this.gizmo?.setEnabled(enabled && this.interactionEnabled);
         this.updateInteraction();
     }
 
@@ -749,7 +859,7 @@ export class EditorViewport {
                 const descriptor = nodes[id];
                 if (descriptor) nodes[id] = { ...descriptor, transform };
             }
-            this.gizmo.setScene({ ...this.sceneDocument, nodes });
+            this.gizmo?.setScene({ ...this.sceneDocument, nodes });
         }
         this.updateSelection();
         this.onTransform?.(gesture);
@@ -773,7 +883,7 @@ export class EditorViewport {
     }
 
     setView(view: View): void {
-        if (this.destroyed) return;
+        if (this.destroyed || this.options.mode === 'player') return;
         if (this.viewedCamera) this.setCamera(null);
         const target = this.controls.target.clone();
         const radius = Math.max(this.camera.position.clone().subtract(target).length(), 3);
@@ -794,7 +904,8 @@ export class EditorViewport {
     }
 
     setPreview(enabled: boolean): void {
-        if (this.destroyed || enabled === (this.preview !== null)) return;
+        if (this.destroyed || this.options.mode === 'player' || enabled === (this.preview !== null))
+            return;
         if (enabled) {
             this.preview = {
                 position: this.camera.position.clone(),
@@ -816,7 +927,8 @@ export class EditorViewport {
         if (this.destroyed) return;
         this.destroyed = true;
         this.ticker.stop();
-        this.gizmo.destroy();
+        this.stopModelAnimations();
+        this.gizmo?.destroy();
         this.testCapture?.dispose();
         const captureWindow = window as Window & { __HILO3D_TEST_CAPTURE__?: TestFrameControl };
         if (captureWindow.__HILO3D_TEST_CAPTURE__ === this.testCapture)
@@ -853,6 +965,7 @@ export class EditorViewport {
             this.materials.clear();
             this.meshIds.clear();
         };
+        if (this.options.mode === 'player') this.helpers.destroy(this.stage.renderer);
         if (this.pendingPick) void this.pendingPick.then(release, release);
         else release();
     }
@@ -980,7 +1093,7 @@ export class EditorViewport {
                 );
             }
             this.stage.tick(deltaTime);
-            this.gizmo.update();
+            this.gizmo?.update();
         } catch (cause) {
             this.ticker.stop();
             // Native context loss can throw before the public loss event reaches its microtask.
@@ -1001,7 +1114,7 @@ export class EditorViewport {
         this.stage.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
         for (const runtime of this.nodes.values())
             if (runtime.node instanceof H.PerspectiveCamera) runtime.node.aspect = width / height;
-        this.gizmo.update();
+        this.gizmo?.update();
     };
 
     private readonly handlePointerDown = (event: PointerEvent): void => {
@@ -1010,7 +1123,7 @@ export class EditorViewport {
             event.shiftKey ||
             this.preview ||
             !this.interactionEnabled ||
-            this.gizmo.active ||
+            this.gizmo?.active ||
             this.viewedCamera
         )
             return;
@@ -1071,11 +1184,12 @@ export class EditorViewport {
     };
 
     private readonly handleDoubleClick = (): void => {
+        if (this.options.mode === 'player') return;
         this.focus();
     };
 
     private readonly handlePageHide = (event: PageTransitionEvent): void => {
-        this.gizmo.cancel();
+        this.gizmo?.cancel();
         this.ticker.stop();
         if (event.persisted) this.suspended = true;
         else this.destroy();
@@ -1085,21 +1199,21 @@ export class EditorViewport {
         if (event.persisted && !this.destroyed && !this.failed) {
             this.suspended = false;
             this.resize();
-            if (!document.hidden) this.ticker.start();
+            if (!document.hidden) this.startTicker();
         }
     };
 
     private readonly handleVisibilityChange = (): void => {
         if (document.hidden) this.ticker.stop();
         else if (!this.destroyed && !this.failed && !this.recovering && !this.suspended)
-            this.ticker.start();
+            this.startTicker();
     };
 
     private readonly handleDeviceLost = (): void => {
         if (this.destroyed) return;
         this.recovering = true;
         this.ticker.stop();
-        this.gizmo.cancel();
+        this.gizmo?.cancel();
         this.updateInteraction();
     };
 
@@ -1109,7 +1223,7 @@ export class EditorViewport {
         this.failed = false;
         this.resize();
         this.updateInteraction();
-        if (!this.suspended && !document.hidden) this.ticker.start();
+        if (!this.suspended && !document.hidden) this.startTicker();
     };
 
     private readonly handleDeviceRecoveryFailed = (event: H.DispatchEvent): void => {

@@ -17,6 +17,8 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 - [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md), [Live2D](./LIVE2D.md).
 - [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
 - [Web editor](./EDITOR.md): local scene authoring, validated JSON documents and current limits.
+- [Studio Player](./PLAYER.md): static website export, shared playback, physics, particles and
+  audio.
 - [AI documentation entry](../llms.txt): a short index; [maintenance](./AI_DOCUMENTATION.md).
 
 ## Current technical contracts

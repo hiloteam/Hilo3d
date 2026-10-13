@@ -21,3 +21,4 @@ test/spec/**/__screenshots__/
 examples/models/test/
 
 dist-editor/
+dist-player/

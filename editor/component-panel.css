@@ -1,0 +1,72 @@
+.component-panel {
+    border-top: 1px solid var(--border, #424548);
+    margin-top: 18px;
+    padding-top: 12px;
+}
+.component-panel h3 {
+    font-size: 12px;
+    margin: 0 0 12px;
+}
+.component-panel fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+.component-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.component-panel button {
+    font-size: 11px;
+    padding: 5px 8px;
+}
+.component-section {
+    margin-top: 12px;
+    border-top: 1px solid var(--border, #424548);
+    padding-top: 8px;
+}
+.component-section summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.component-fields {
+    display: grid;
+    gap: 8px;
+}
+.component-fields label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(70px, 45%);
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+}
+.component-fields input,
+.component-fields select {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.component-fields .component-check {
+    display: flex;
+}
+.component-check input {
+    width: auto;
+}
+.component-vector {
+    display: grid;
+    gap: 5px;
+    font-size: 11px;
+}
+.component-vector > span {
+    opacity: 0.7;
+}
+.component-hint {
+    font-size: 10px;
+    line-height: 1.5;
+    opacity: 0.7;
+    margin: 6px 0;
+}

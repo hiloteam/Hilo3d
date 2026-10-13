@@ -70,3 +70,79 @@ describe('isolated script execution', () => {
         await expect(runtime.step(scene, 0.1, 0.1)).rejects.toThrow('out-of-range');
     });
 });
+
+describe('bounded script component commands', () => {
+    it('returns owned commands without rewriting dynamic body transforms', async () => {
+        const { defaultPhysicsComponent, defaultParticleComponent, defaultAudioComponent } =
+            await import('../../../editor/components');
+        runtime = new ScriptRuntime();
+        const { scene, scripts } = setup(
+            '({ update(ctx) { ctx.applyImpulse(0, 2, 0); ctx.emitParticles(12); ctx.playAudio(); ctx.stopAudio(); } })'
+        );
+        const node = scene.nodes['hero-sphere'];
+        if (!node) throw new Error('Missing fixture');
+        node.components = {
+            physics: defaultPhysicsComponent(),
+            particles: defaultParticleComponent(),
+            audio: defaultAudioComponent('sound')
+        };
+        await runtime.start(scene, scripts);
+        expect(await runtime.step(scene, 1 / 60, 1 / 60)).toEqual({});
+        expect(runtime.takeCommands()).toEqual([
+            { nodeId: 'hero-sphere', type: 'applyImpulse', x: 0, y: 2, z: 0 },
+            { nodeId: 'hero-sphere', type: 'emitParticles', count: 12 },
+            { nodeId: 'hero-sphere', type: 'playAudio' },
+            { nodeId: 'hero-sphere', type: 'stopAudio' }
+        ]);
+        expect(runtime.takeCommands()).toEqual([]);
+    });
+
+    it('rejects component absence, excessive command batches and dynamic transform mutation', async () => {
+        const { defaultPhysicsComponent, defaultParticleComponent } =
+            await import('../../../editor/components');
+        for (const [source, expected] of [
+            ['({ update(ctx) { ctx.playAudio(); } })', 'requires an audio'],
+            ['({ update(ctx) { for(let i=0;i<129;i++) ctx.emitParticles(1); } })', '128 component'],
+            ['({ update(ctx) { ctx.translate(0,1,0); } })', 'simulation-owned']
+        ]) {
+            runtime = new ScriptRuntime();
+            const { scene, scripts } = setup(source);
+            const node = scene.nodes['hero-sphere'];
+            if (!node) throw new Error('Missing fixture');
+            node.components = {
+                physics: defaultPhysicsComponent(),
+                particles: defaultParticleComponent()
+            };
+            await runtime.start(scene, scripts);
+            await expect(runtime.step(scene, 1 / 60, 1 / 60)).rejects.toThrow(expected);
+            runtime.dispose();
+        }
+    });
+
+    it('validates untrusted command node IDs and finite payloads on the host', async () => {
+        const { validateScriptCommands } = await import('../../../editor/script-types');
+        const { defaultPhysicsComponent } = await import('../../../editor/components');
+        const scene = createDefaultScene();
+        const node = scene.nodes['hero-sphere'];
+        if (!node) throw new Error('Missing fixture');
+        node.components = { physics: defaultPhysicsComponent() };
+        const ids = new Set(['hero-sphere']);
+        expect(() =>
+            validateScriptCommands([{ nodeId: 'ground', type: 'stopAudio' }], scene, ids)
+        ).toThrow('unbound');
+        expect(() =>
+            validateScriptCommands(
+                [{ nodeId: 'hero-sphere', type: 'applyImpulse', x: Infinity, y: 0, z: 0 }],
+                scene,
+                ids
+            )
+        ).toThrow('finite');
+        expect(() =>
+            validateScriptCommands(
+                [{ nodeId: 'hero-sphere', type: 'applyImpulse', x: 0, y: 0, z: 0, handle: 2 }],
+                scene,
+                ids
+            )
+        ).toThrow('Unknown');
+    });
+});

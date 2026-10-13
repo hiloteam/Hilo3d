@@ -1,3 +1,4 @@
+import { validateSceneComponents } from './components';
 import { validateClip, validateClipTargets, type AnimationClip } from './animation';
 import { validatePrefab, type PrefabDefinition, type PrefabInstance } from './prefabs';
 import { validateScript, type ScriptDocument } from './script-types';
@@ -45,7 +46,7 @@ function definition(value: unknown): PrefabDefinition {
     const scene = parseScene(
         JSON.stringify({
             format: 'hilo3d-scene',
-            version: 2,
+            version: 3,
             name: input['name'],
             units: 'meters',
             environment: { background: '#222222', ambientIntensity: 1 },
@@ -101,6 +102,8 @@ export function validateAuthoring(
         for (const node of Object.values(scene.nodes)) {
             if (node.asset && assets[node.asset]?.kind !== 'model')
                 throw new Error(`Missing model asset ${node.asset}.`);
+            if (node.components?.audio && assets[node.components.audio.asset]?.kind !== 'audio')
+                throw new Error(`Missing audio asset ${node.components.audio.asset}.`);
             for (const script of node.scripts ?? [])
                 if (!Object.hasOwn(result.scripts, script))
                     throw new Error(`Missing script ${script}.`);
@@ -185,5 +188,10 @@ export function validateAuthoring(
         validateClipTargets(clip, scene);
         result.clips[key] = clip;
     }
+    for (const [sceneId, scene] of Object.entries(scenes))
+        validateSceneComponents(
+            scene,
+            Object.values(result.clips).filter(clip => clip.sceneId === sceneId)
+        );
     return result;
 }
