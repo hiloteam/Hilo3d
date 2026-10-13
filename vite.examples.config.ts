@@ -5,6 +5,7 @@ import packageJson from './package.json' with { type: 'json' };
 import { addonAliases, exampleManifestPlugin, shaderIncludePlugin } from './vite.config';
 import { assetRuntimePlugin } from './addon-assets/tools/vite-plugin';
 import { live2DExampleRuntimePlugin } from './addon-live2d/tools/vite-plugin';
+import { playerTemplatePlugin } from './scripts/player-template-plugin';
 
 function collectHtmlFiles(directory: string): string[] {
     return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -79,7 +80,8 @@ export default defineConfig({
         exampleManifestPlugin(),
         copyExampleAssets(),
         live2DExampleRuntimePlugin(true),
-        assetRuntimePlugin()
+        assetRuntimePlugin(),
+        playerTemplatePlugin(false)
     ],
     resolve: { alias: [...addonAliases] },
     worker: { format: 'es', plugins: () => [assetRuntimePlugin()] },

@@ -111,7 +111,7 @@ describe('editor scene source', () => {
 
     it('migrates legacy v1 and validates model, camera, texture and script references', () => {
         const scene = createDefaultScene();
-        expect(parseScene(JSON.stringify({ ...scene, version: 1 })).version).toBe(2);
+        expect(parseScene(JSON.stringify({ ...scene, version: 1 })).version).toBe(3);
         const model: SceneNode = {
             ...group(null),
             type: 'model',

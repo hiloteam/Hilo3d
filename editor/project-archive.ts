@@ -105,6 +105,7 @@ function assetBytes(asset: ProjectAsset): Uint8Array<ArrayBuffer> {
 }
 
 function extension(mime: ProjectAsset['mimeType']): string {
+    if (mime === 'audio/wav') return 'wav';
     return mime === 'model/gltf-binary'
         ? 'glb'
         : mime === 'image/jpeg'
@@ -116,7 +117,23 @@ function extension(mime: ProjectAsset['mimeType']): string {
 
 // Classic ZIP records follow PKWARE APPNOTE 6.3.10. No ZIP64, encryption or executable extraction stub.
 // https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
-function storedZip(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>): Blob {
+/** Deterministic ZIP writer shared by editable workspaces and self-contained web deployments. */
+export function createStoredArchive(
+    files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>,
+    limits: { entryBytes: number; expandedBytes: number } = {
+        entryBytes: MAX_ENTRY_BYTES,
+        expandedBytes: MAX_EXPANDED_BYTES
+    }
+): Blob {
+    if (
+        !Number.isSafeInteger(limits.entryBytes) ||
+        !Number.isSafeInteger(limits.expandedBytes) ||
+        limits.entryBytes < 1 ||
+        limits.expandedBytes < 1 ||
+        limits.entryBytes > MAX_ARCHIVE_BYTES ||
+        limits.expandedBytes > MAX_ARCHIVE_BYTES
+    )
+        throw new Error('Invalid archive size limits');
     if (!files.size || files.size > MAX_ENTRIES)
         throw new Error('Workspace archive supports 1–1024 entries');
     const order = [...files.keys()].sort((left, right) =>
@@ -131,7 +148,7 @@ function storedZip(files: ReadonlyMap<string, Uint8Array<ArrayBuffer>>): Blob {
         const data = files.get(name);
         if (!data) throw new Error('Missing workspace file');
         expanded += data.length;
-        if (data.length > MAX_ENTRY_BYTES || expanded > MAX_EXPANDED_BYTES)
+        if (data.length > limits.entryBytes || expanded > limits.expandedBytes)
             throw new Error('Workspace expanded data exceeds its size limit');
         const path = encoder.encode(name);
         const checksum = crc32(data);
@@ -257,7 +274,7 @@ export async function exportProjectArchive(project: ProjectDocument): Promise<Bl
             `# Hilo Studio editable workspace\n\nStart with project.hilo.json. It indexes every file by stable project IDs.\n\n- Edit scenes/*.scene.json to change objects, transforms, materials and lights. Positions use meters; local XYZ rotations use degrees.\n- Edit scripts/*.js as inert user-authored source. Import never executes these files; explicit Play runs enabled scripts through the editor runtime.\n- Animation clips and prefab documents are separate JSON files. Preserve IDs and references when editing.\n- Assets are original binary files. If replacing an asset, update its SHA-256, byte length and content-derived ID consistently, or import the new asset through the editor.\n- The JSON Schema files are offline authoring references. Scene documents reject unknown fields; do not add a $schema property to them.\n\nRepack this folder as a normal stored or Deflate ZIP and import it in Hilo Studio. A single enclosing folder is accepted. Encrypted, ZIP64, multi-disk, symbolic-link and path-traversal entries are rejected.\n`
         )
     );
-    return Promise.resolve(storedZip(files));
+    return Promise.resolve(createStoredArchive(files));
 }
 
 function bounds(bytes: Uint8Array, offset: number, length: number, end = bytes.length): void {
@@ -598,7 +615,7 @@ export async function importProjectArchive(file: Blob): Promise<ProjectDocument>
             'source',
             'path'
         ]);
-        const data = read(asset, /^assets\/[_a-z0-9-]+\.(glb|png|jpg|webp)$/u);
+        const data = read(asset, /^assets\/[_a-z0-9-]+\.(glb|png|jpg|webp|wav)$/u);
         assets[id] = {
             id: asset['id'],
             name: asset['name'],

@@ -1,5 +1,6 @@
 import type { SceneNode } from './scene';
 import type { ScriptInput } from './script-runtime';
+import type { ScriptComponentCommand } from './script-types';
 
 type TransformMap = Record<string, SceneNode['transform']>;
 type Vector = SceneNode['transform']['position'];
@@ -17,6 +18,7 @@ interface ScriptWorkerCommand {
     bindings: ScriptWorkerBinding[];
     transforms: TransformMap;
     names: Record<string, string>;
+    dynamicIds: string[];
     input: ScriptInput;
     dt: number;
     time: number;
@@ -26,6 +28,7 @@ interface ScriptWorkerResponse {
     id: number;
     transforms?: TransformMap;
     logs: string[];
+    commands?: ScriptComponentCommand[];
     error?: string;
 }
 
@@ -48,6 +51,10 @@ interface ScriptContext {
     setRotation(x: number, y: number, z: number): void;
     rotate(x: number, y: number, z: number): void;
     setScale(x: number, y?: number, z?: number): void;
+    applyImpulse(x: number, y: number, z: number): void;
+    emitParticles(count: number): void;
+    playAudio(): void;
+    stopAudio(): void;
     log(message: unknown): void;
 }
 
@@ -65,6 +72,9 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
     let transforms: TransformMap = {};
     let names: Record<string, string> = {};
     let logs: string[] = [];
+    let commands: ScriptComponentCommand[] = [];
+    let dynamicIds = new Set<string>();
+    let modified = new Set<string>();
     let input: ScriptInput = { keys: [], pointer: { x: 0, y: 0, buttons: 0 } };
 
     function finite(
@@ -89,6 +99,18 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
     function context(binding: RuntimeBinding, time: number): ScriptContext {
         const value = transforms[binding.nodeId];
         if (!value) throw new Error('Script target no longer exists');
+        function editTransform(): void {
+            if (dynamicIds.has(binding.nodeId))
+                throw new Error(
+                    'Dynamic physics transforms are simulation-owned; use applyImpulse instead.'
+                );
+            modified.add(binding.nodeId);
+        }
+        function enqueue(command: ScriptComponentCommand): void {
+            if (commands.length >= 128)
+                throw new Error('Scripts support at most 128 component commands per step.');
+            commands.push(command);
+        }
         return Object.freeze({
             id: binding.nodeId,
             name: names[binding.nodeId] ?? binding.name,
@@ -107,9 +129,11 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
                 pointer: Object.freeze({ ...input.pointer })
             }),
             setPosition(x: number, y: number, z: number): void {
+                editTransform();
                 value.position = finite([x, y, z], -10_000, 10_000);
             },
             translate(x: number, y: number, z: number): void {
+                editTransform();
                 value.position = finite(
                     [value.position.x + x, value.position.y + y, value.position.z + z],
                     -10_000,
@@ -117,9 +141,11 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
                 );
             },
             setRotation(x: number, y: number, z: number): void {
+                editTransform();
                 value.rotation = finite([x, y, z], -360_000, 360_000);
             },
             rotate(x: number, y: number, z: number): void {
+                editTransform();
                 value.rotation = finite(
                     [value.rotation.x + x, value.rotation.y + y, value.rotation.z + z],
                     -360_000,
@@ -127,7 +153,23 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
                 );
             },
             setScale(x: number, y = x, z = x): void {
+                editTransform();
                 value.scale = finite([x, y, z], 0.001, 10_000);
+            },
+            applyImpulse(x: number, y: number, z: number): void {
+                const impulse = finite([x, y, z], -1e6, 1e6);
+                enqueue({ nodeId: binding.nodeId, type: 'applyImpulse', ...impulse });
+            },
+            emitParticles(count: number): void {
+                if (!Number.isSafeInteger(count) || count < 1 || count > 4096)
+                    throw new Error('Script particle count must be between 1 and 4096.');
+                enqueue({ nodeId: binding.nodeId, type: 'emitParticles', count });
+            },
+            playAudio(): void {
+                enqueue({ nodeId: binding.nodeId, type: 'playAudio' });
+            },
+            stopAudio(): void {
+                enqueue({ nodeId: binding.nodeId, type: 'stopAudio' });
             },
             log(message: unknown): void {
                 if (logs.length < 32)
@@ -163,6 +205,9 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
     scope.onmessage = (event: MessageEvent<ScriptWorkerCommand>): void => {
         const command = event.data;
         logs = [];
+        commands = [];
+        modified = new Set();
+        dynamicIds = new Set(command.dynamicIds);
         try {
             transforms = command.transforms;
             names = command.names;
@@ -199,9 +244,9 @@ export function installScriptWorker(scope: ScriptWorkerScope): void {
             const output: TransformMap = {};
             for (const binding of bindings) {
                 const transform = transforms[binding.nodeId];
-                if (transform) output[binding.nodeId] = transform;
+                if (transform && modified.has(binding.nodeId)) output[binding.nodeId] = transform;
             }
-            scope.postMessage({ id: command.id, transforms: output, logs });
+            scope.postMessage({ id: command.id, transforms: output, logs, commands });
         } catch (error) {
             scope.postMessage({
                 id: command.id,

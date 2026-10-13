@@ -1,5 +1,10 @@
 import { cloneScene, validateTransform, type SceneDocument, type SceneNode } from './scene';
-import { validateScript, type ScriptDocument } from './script-types';
+import {
+    validateScript,
+    validateScriptCommands,
+    type ScriptDocument,
+    type ScriptComponentCommand
+} from './script-types';
 import { installScriptWorker, type ScriptWorkerBinding } from './script-worker';
 import { installScriptFrame } from './script-frame';
 
@@ -8,6 +13,7 @@ interface RuntimeResponse {
     id: number;
     transforms?: unknown;
     logs?: unknown;
+    commands?: unknown;
     error?: unknown;
 }
 interface Pending {
@@ -32,6 +38,7 @@ export class ScriptRuntime {
     private pending: Pending | null = null;
     private activeIds = new Set<string>();
     private baseline: SceneDocument | null = null;
+    private commands: ScriptComponentCommand[] = [];
     private readonly input: ScriptInput = { keys: [], pointer: { x: 0, y: 0, buttons: 0 } };
     constructor(
         private readonly onLog: (message: string) => void = () => {
@@ -59,6 +66,12 @@ export class ScriptRuntime {
         this.baseline = cloneScene(scene);
         await this.initialize();
         return this.command('start', scene, 0, 0, bindings);
+    }
+    /** Consume the validated commands belonging to the last completed lifecycle callback. */
+    takeCommands(): ScriptComponentCommand[] {
+        const commands = this.commands;
+        this.commands = [];
+        return commands;
     }
     setInput(value: ScriptInput): void {
         this.input.keys = value.keys
@@ -97,6 +110,7 @@ export class ScriptRuntime {
             window.setTimeout(() => {
                 frame.remove();
             }, 100);
+        this.commands = [];
         this.activeIds.clear();
         this.baseline = null;
     }
@@ -187,6 +201,9 @@ export class ScriptRuntime {
                 bindings,
                 transforms,
                 names,
+                dynamicIds: [...this.activeIds].filter(
+                    nodeId => scene.nodes[nodeId]?.components?.physics?.body === 'dynamic'
+                ),
                 input: this.input,
                 dt,
                 time
@@ -223,8 +240,17 @@ export class ScriptRuntime {
             for (const [id, transform] of Object.entries(response.transforms)) {
                 if (!this.activeIds.has(id) || !Object.hasOwn(this.baseline.nodes, id))
                     throw new Error('Script tried to mutate an unbound object.');
+                if (this.baseline.nodes[id]?.components?.physics?.body === 'dynamic')
+                    throw new Error(
+                        'Dynamic physics transforms are simulation-owned; use applyImpulse instead.'
+                    );
                 result[id] = validateTransform(transform, `script.transforms.${id}`);
             }
+            this.commands = validateScriptCommands(
+                response.commands ?? [],
+                this.baseline,
+                this.activeIds
+            );
             pending.resolve(result);
         } catch (error) {
             pending.reject(error instanceof Error ? error : new Error(String(error)));

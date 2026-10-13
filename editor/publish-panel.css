@@ -1,0 +1,53 @@
+.publish-dialog {
+    width: min(620px, calc(100vw - 32px));
+}
+.publish-body {
+    padding: 20px 24px;
+    max-height: 65vh;
+    overflow: auto;
+}
+.publish-body > p:first-child {
+    color: #b4b5bd;
+    margin: 0 0 22px;
+}
+.publish-body label {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 10px 0;
+}
+.publish-body label > input:not([type='checkbox']),
+.publish-body label > select {
+    margin-left: auto;
+    width: 65%;
+}
+.publish-checkbox {
+    font-size: 12px;
+}
+.publish-body h3 {
+    font-size: 12px;
+    margin-top: 24px;
+}
+.publish-body fieldset {
+    border: 1px solid #ffffff16;
+    border-radius: 6px;
+    margin: 12px 0;
+    padding: 10px 14px;
+}
+.publish-body legend {
+    padding: 0 6px;
+    color: #cfcbd1;
+    font-size: 12px;
+}
+.publish-note {
+    color: #989aa6;
+    font-size: 12px;
+    line-height: 1.7;
+}
+#publish-status {
+    color: #dbc09b;
+}
+#publish-error {
+    color: #f2a59e;
+    white-space: pre-wrap;
+}

@@ -24,6 +24,10 @@ import { PlayController } from './play-controller';
 import { duplicateSelection } from './selection';
 import { prefabOverrides } from './prefabs';
 import { CollaborationPanel } from './collaboration-panel';
+import { ComponentPanel } from './component-panel';
+import { ComponentAudioSession } from './component-runtime';
+import { createViewportPlayback, type ViewportPlayback } from './viewport-playback';
+import { PublishPanel } from './publish-panel';
 
 const STORAGE_KEY = 'hilo-studio.scene.v1';
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -58,6 +62,7 @@ let assetTab:
     'primitives' | 'materials' | 'console' | 'files' | 'prefabs' | 'timeline' | 'scripts' =
     'primitives';
 let viewportSync = 0;
+let viewportReady: Promise<void> = Promise.resolve();
 const collapsed = new Set<string>();
 const logs: string[] = [];
 let toastTimer = 0;
@@ -65,7 +70,19 @@ let logFrame = 0;
 const pendingLogs: string[] = [];
 let canEditShared = true;
 let applyingRemote = false;
+let pendingAudio: ComponentAudioSession | null = null;
+let componentPlayback: ViewportPlayback | undefined;
+let runtimeLocked = false;
+let resumeAfterPageShow = false;
+let closed = false;
+let pageSuspended = false;
 
+function isPageSuspended(): boolean {
+    return pageSuspended;
+}
+function isClosed(): boolean {
+    return closed;
+}
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
@@ -97,7 +114,7 @@ app.innerHTML = `
 <section class="projectbar">
     <div class="project-location">${icon('group')}<span>LOCAL PROJECT</span><span class="slash">/</span><button id="project-name" data-action="scene-settings"></button><span class="save-state" id="save-state"><i></i> Local scene</span></div>
     <div class="play-controls">${button('undo', 'undo', 'Undo (⌘ Z)', 'id="undo"')}${button('redo', 'redo', 'Redo (⌘ ⇧ Z)', 'id="redo"')}<span class="divider"></span><button id="play-button" data-action="play" aria-label="Play scene" title="Play scene">${icon('play')}Play</button>${button('pause-play', 'pause', 'Pause scene', 'id="pause-play" disabled')}${button('step-play', 'step', 'Step one frame', 'id="step-play"')}${button('stop-play', 'stop', 'Stop play mode', 'id="stop-play" disabled')}<select id="runtime-clip" aria-label="Play animation clip"><option value="">No animation</option></select><span id="play-time" hidden></span><button id="preview" data-action="preview" title="Orbit preview" aria-label="Orbit preview" aria-pressed="false">${icon('play')}<span>Preview</span></button></div>
-    <div class="file-controls"><button data-action="import">${icon('import')}<span>Open</span></button><button data-action="save">${icon('save')}<span>Save</span></button><button class="export-button" data-action="export">${icon('export')}Export scene</button></div>
+    <div class="file-controls"><button data-action="import">${icon('import')}<span>Open</span></button><button data-action="save">${icon('save')}<span>Save</span></button><button class="export-button" data-action="export">${icon('export')}Export scene</button><button class="export-button" data-action="publish">${icon('export')}Publish website</button></div>
 </section>
 <main class="workspace">
     <aside class="hierarchy panel" aria-label="Scene hierarchy">
@@ -105,7 +122,7 @@ app.innerHTML = `
         <label class="search-field">${icon('search')}<input id="hierarchy-search" placeholder="Search objects…" aria-label="Search objects"/><kbd>⌕</kbd></label>
         <div class="collection-label"><span>${icon('down')} ${icon('group')} Collection</span><span id="object-count"></span></div>
         <div id="hierarchy-tree" role="tree" aria-label="Scene objects"></div>
-        <div class="hierarchy-footer"><span><i class="status-dot"></i>Scene document</span><button data-action="source" title="Edit scene JSON">${icon('code')} v2</button></div>
+        <div class="hierarchy-footer"><span><i class="status-dot"></i>Scene document</span><button data-action="source" title="Edit scene JSON">${icon('code')} v3</button></div>
     </aside>
     <section class="center-workspace">
         <section class="viewport-panel panel" aria-label="3D scene viewport">
@@ -127,7 +144,7 @@ app.innerHTML = `
 <div id="add-menu" class="popover" hidden><span class="menu-title">CREATE OBJECT</span>${(['cube', 'sphere', 'cylinder', 'plane', 'group', 'light', 'camera'] as const).map(kind => `<button data-create="${kind}">${icon(kind)}${kind.charAt(0).toUpperCase()}${kind.slice(1)}<span>+</span></button>`).join('')}</div>
 <div id="toast" role="status" hidden></div>
 <input id="file-input" type="file" accept=".json,application/json" hidden />
-<dialog id="source-dialog" class="source-dialog"><div class="dialog-heading"><div>${icon('code')}<strong>Scene document</strong><span>JSON · v2</span></div>${button('close-dialog', 'close', 'Close dialog')}</div><div class="source-intro"><span>Stable IDs. Explicit units. Ready for your AI workflow.</span><a href="${schemaUrl}" target="_blank" rel="noreferrer">JSON Schema ↗</a></div><textarea id="scene-source" spellcheck="false" aria-label="Scene JSON"></textarea><div class="source-error" id="source-error" role="alert"></div><div class="dialog-footer"><span>Edits are validated before replacing the scene.</span><button data-action="copy-source">Copy JSON</button><button class="primary" data-action="apply-source">Apply scene</button></div></dialog>
+<dialog id="source-dialog" class="source-dialog"><div class="dialog-heading"><div>${icon('code')}<strong>Scene document</strong><span>JSON · v3</span></div>${button('close-dialog', 'close', 'Close dialog')}</div><div class="source-intro"><span>Stable IDs. Explicit units. Ready for your AI workflow.</span><a href="${schemaUrl}" target="_blank" rel="noreferrer">JSON Schema ↗</a></div><textarea id="scene-source" spellcheck="false" aria-label="Scene JSON"></textarea><div class="source-error" id="source-error" role="alert"></div><div class="dialog-footer"><span>Edits are validated before replacing the scene.</span><button data-action="copy-source">Copy JSON</button><button class="primary" data-action="apply-source">Apply scene</button></div></dialog>
 <dialog id="help-dialog" class="help-dialog"><div class="dialog-heading"><strong>Your space to create.</strong>${button('close-dialog', 'close', 'Close dialog')}</div><p>Build a scene, tune its materials, and take the document anywhere. Everything stays in this browser until you export it.</p><div class="shortcut-grid"><span>Save locally</span><kbd>⌘ / Ctrl S</kbd><span>Undo / Redo</span><kbd>⌘ Z / ⌘ ⇧ Z</kbd><span>Duplicate selection</span><kbd>⌘ / Ctrl D</kbd><span>Delete selection</span><kbd>Delete</kbd><span>Frame selection</span><kbd>F</kbd><span>Quick actions</span><kbd>⌘ / Ctrl K</kbd><span>Orbit / Pan</span><kbd>Drag / Shift drag</kbd></div><p class="help-note">Projects bundle scenes, GLB models, textures, prefabs, scripts and animation clips. Use W/E/R for transforms and Ctrl/⌘ click for multiple objects. Play runs isolated scripts; Stop restores authored state. AI can edit the exported JSON against its schema; no hosted AI service is connected.</p><div class="dialog-footer"><button data-action="reset">Restore sample scene</button><button class="primary" data-action="close-dialog">Let's create</button></div></dialog>
 <dialog id="command-dialog" class="command-dialog"><div class="command-input">${icon('search')}<input id="command-search" aria-label="Search actions" placeholder="What would you like to do?"/>${button('close-dialog', 'close', 'Close dialog')}</div><div id="command-list"></div></dialog>
 `;
@@ -182,29 +199,35 @@ function persist(announce = false): void {
 }
 function syncViewport(): void {
     const current = viewport;
-    if (!current) return;
+    if (!current || isClosed()) return;
     const revision = ++viewportSync;
-    current.setScene(scene);
-    current.select([...selectedIds]);
-    element('#renderer-state').textContent = Object.keys(projectView.assets).length
+    const nextScene = scene;
+    const assets = projectView.assets;
+    const selection = [...selectedIds];
+    element('#renderer-state').textContent = Object.keys(assets).length
         ? 'Loading assets…'
         : 'Material preview';
-    void current
-        .setAssets(projectView.assets)
-        .then(() => {
-            if (revision !== viewportSync) return;
-            return current.waitForAssets().then(() => {
-                if (revision === viewportSync)
-                    element('#renderer-state').textContent = 'Material preview';
-            });
-        })
-        .catch((error: unknown) => {
-            if (revision === viewportSync) {
-                element('#renderer-state').textContent = 'Asset error · see Activity';
-                notify(errorMessage(error), true);
-            }
-        });
+    // Authored state may change immediately, but old scene nodes remain alive until script and
+    // component teardown completes. The latest revision alone can activate its new resources.
+    viewportReady = (async (): Promise<void> => {
+        await playController.waitForStop();
+        if (revision !== viewportSync || isClosed()) return;
+        current.setScene(nextScene);
+        current.select(selection);
+        await current.setAssets(assets);
+        if (revision !== viewportSync || isClosed()) return;
+        await current.waitForAssets();
+        if (revision === viewportSync && !isClosed())
+            element('#renderer-state').textContent = 'Material preview';
+    })();
+    void viewportReady.catch((error: unknown) => {
+        if (revision === viewportSync && !isClosed()) {
+            element('#renderer-state').textContent = 'Asset error · see Activity';
+            notify(errorMessage(error), true);
+        }
+    });
 }
+
 function commitProject(next: ProjectDocument, message: string, remote = false): void {
     if (!remote && !canEditShared)
         throw new Error('Viewer access: disconnect or keep a local copy to edit this project.');
@@ -449,7 +472,7 @@ function renderInspector(): void {
     const node = selected ? scene.nodes[selected] : undefined;
     if (!node) {
         element('#inspector-content').innerHTML =
-            `<div class="selection-header"><span class="object-symbol">${icon('group')}</span><div><strong>Scene settings</strong><span>Document & environment</span></div></div><section class="property-section"><h3>${icon('down')}Document</h3>${field('Name', `<input data-field="scene-name" aria-label="Scene name" value="${escapeHtml(scene.name)}" maxlength="120"/>`)}<div class="property-field"><span>Units</span><span class="value-text">Meters · rotation in degrees</span></div><div class="property-field"><span>Format</span><span class="value-text">hilo3d-scene · version 2</span></div></section><section class="property-section"><h3>${icon('down')}Environment</h3>${field('Background', `<input type="color" data-field="background" aria-label="Background color" value="${scene.environment.background}"/>`)}${field('Ambient light', numberInput('ambient', scene.environment.ambientIntensity, 'min="0" max="10"'))}</section><div class="inspector-note">${icon('info')}Select an object in the scene collection or viewport to edit its properties.</div>`;
+            `<div class="selection-header"><span class="object-symbol">${icon('group')}</span><div><strong>Scene settings</strong><span>Document & environment</span></div></div><section class="property-section"><h3>${icon('down')}Document</h3>${field('Name', `<input data-field="scene-name" aria-label="Scene name" value="${escapeHtml(scene.name)}" maxlength="120"/>`)}<div class="property-field"><span>Units</span><span class="value-text">Meters · rotation in degrees</span></div><div class="property-field"><span>Format</span><span class="value-text">hilo3d-scene · version 3</span></div></section><section class="property-section"><h3>${icon('down')}Environment</h3>${field('Background', `<input type="color" data-field="background" aria-label="Background color" value="${scene.environment.background}"/>`)}${field('Ambient light', numberInput('ambient', scene.environment.ambientIntensity, 'min="0" max="10"'))}</section><div class="inspector-note">${icon('info')}Select an object in the scene collection or viewport to edit its properties.</div>`;
         return;
     }
     const transform = (['position', 'rotation', 'scale'] as const)
@@ -562,6 +585,9 @@ function renderInspector(): void {
     }
     prefabPanel.renderInspector(element('#inspector-content'));
     scriptPanel.renderInspector(element('#inspector-content'));
+    const components = document.createElement('section');
+    element('#inspector-content').append(components);
+    componentPanel.render(components);
 }
 const primitives = [
     { kind: 'cube', title: 'Cube', sub: 'Box primitive' },
@@ -859,17 +885,20 @@ async function action(name: string, trigger?: HTMLElement): Promise<void> {
             element('#snap-button').setAttribute('aria-pressed', String(transformSnap));
             element('#snap-button').classList.toggle('active', transformSnap);
             break;
+        case 'publish':
+            publishPanel.open();
+            break;
         case 'play':
             timeline.stop();
             setPreview(false);
-            await playController.play();
+            await startRuntime(false);
             break;
         case 'pause-play':
             playController.pause();
             break;
         case 'step-play':
             timeline.stop();
-            await playController.step();
+            await startRuntime(true);
             break;
         case 'stop-play':
             playController.stop();
@@ -1276,17 +1305,45 @@ const authoringOptions = {
     onNotify: notify
 };
 const projectPanel = new ProjectPanel(app, { controller: projectController, ...authoringOptions });
+const publishPanel = new PublishPanel(app, authoringOptions);
+const componentPanel = new ComponentPanel({
+    ...authoringOptions,
+    getSelectedNode: () => selected,
+    canEdit: () => canEditShared && !playController.active
+});
 const assetPanel = new AssetPanel(authoringOptions);
 const prefabPanel = new PrefabPanel(authoringOptions);
 const scriptPanel = new ScriptPanel(app, authoringOptions);
 const playController = new PlayController({
     getProject: () => history.project,
     getClipId: () => element<HTMLSelectElement>('#runtime-clip').value || null,
+    beforeStart: async signal => {
+        if (!viewport) throw new Error('The scene renderer is not ready.');
+        await viewportReady;
+        await viewport.waitForAssets();
+        signal.throwIfAborted();
+        viewport.setCamera(element<HTMLSelectElement>('#authored-camera').value || null);
+    },
+    createComponents: async (runtimeScene, project, signal) => {
+        if (!viewport) throw new Error('The scene renderer is not ready.');
+        const audio = pendingAudio;
+        pendingAudio = null;
+        componentPlayback = await createViewportPlayback(
+            viewport,
+            runtimeScene,
+            project,
+            signal,
+            audio
+        );
+        return componentPlayback;
+    },
     onTransforms: transforms => {
         viewport?.applyTransforms(transforms);
         handleTransform({ phase: 'preview', transforms });
     },
     onRestore: () => {
+        componentPlayback = undefined;
+        if (isClosed()) return;
         viewport?.setCamera(null);
         element<HTMLSelectElement>('#authored-camera').value = '';
         viewport?.setScene(scene);
@@ -1294,6 +1351,10 @@ const playController = new PlayController({
     },
     onState: (state, time) => {
         const active = state !== 'stopped';
+        if (runtimeLocked !== active) {
+            runtimeLocked = active;
+            renderInspector();
+        }
         app.dataset['playState'] = state;
         element('#play-button').classList.toggle('active', active);
         element<HTMLButtonElement>('#pause-play').disabled = state !== 'playing';
@@ -1311,6 +1372,28 @@ const playController = new PlayController({
         notify(`Play mode stopped: ${message}`, true);
     }
 });
+async function startRuntime(step: boolean): Promise<void> {
+    const audio = playController.state === 'stopped' ? ComponentAudioSession.create(scene) : null;
+    if (audio) pendingAudio = audio;
+    void (
+        audio?.unlock() ??
+        (playController.state === 'paused'
+            ? componentPlayback?.runtime.unlockAudio()
+            : undefined) ??
+        Promise.resolve()
+    ).catch((cause: unknown) => {
+        notify(errorMessage(cause), true);
+    });
+    try {
+        if (step) await playController.step();
+        else await playController.play();
+    } finally {
+        if (pendingAudio === audio) {
+            pendingAudio = null;
+            await audio?.stop();
+        }
+    }
+}
 const runtimeKeys = new Set<string>();
 let runtimePointer = { x: 0, y: 0, buttons: 0 };
 function updateRuntimeInput(): void {
@@ -1488,17 +1571,31 @@ projectController.onProject = (_project, message) => {
     notify(message);
 };
 window.addEventListener('pagehide', event => {
+    pageSuspended = true;
     if (event.persisted) {
+        resumeAfterPageShow =
+            playController.state === 'playing' || playController.state === 'starting';
         runtimeKeys.clear();
         runtimePointer = { ...runtimePointer, buttons: 0 };
         updateRuntimeInput();
         playController.pause();
+        viewport?.stopRendering();
     }
     if (!event.persisted) {
         cancelAnimationFrame(logFrame);
         logFrame = 0;
-        viewport?.destroy();
-        playController.stop();
+        closed = true;
+        viewport?.stopRendering();
+        const currentViewport = viewport;
+        void Promise.all([playController.dispose(), pendingAudio?.stop()])
+            .finally(() => {
+                currentViewport?.destroy();
+            })
+            .catch((cause: unknown) => {
+                console.error(cause);
+            });
+        componentPanel.destroy();
+        publishPanel.destroy();
         scriptPanel.destroy();
         permissionObserver.disconnect();
         collaborationPanel.destroy();
@@ -1506,6 +1603,14 @@ window.addEventListener('pagehide', event => {
         projectPanel.destroy();
         assetPanel.destroy();
         timeline.destroy();
+    }
+});
+window.addEventListener('pageshow', event => {
+    pageSuspended = false;
+    if (event.persisted && !isClosed()) viewport?.startRendering();
+    if (event.persisted && resumeAfterPageShow && !isClosed()) {
+        resumeAfterPageShow = false;
+        void playController.play();
     }
 });
 render();
@@ -1518,15 +1623,25 @@ try {
         message => {
             notify(message, true);
         },
-        handleTransform
+        handleTransform,
+        { managePageLifecycle: false, autoStart: false }
     );
+    if (isClosed()) {
+        viewport.destroy();
+        throw new DOMException('Editor closed.', 'AbortError');
+    }
     await viewport.setAssets(projectView.assets);
+    if (isClosed()) {
+        viewport.destroy();
+        throw new DOMException('Editor closed.', 'AbortError');
+    }
     viewport.setScene(scene);
     viewport.select([...selectedIds]);
     viewport.setAuthoringEnabled(canEditShared);
     viewport.setTransformMode(transformMode);
     viewport.setTransformSnap(transformSnap);
     viewport.setGrid(gridVisible);
+    if (!isPageSuspended() && !document.hidden) viewport.startRendering();
     const currentView = element<HTMLSelectElement>('#camera-view').value;
     if (currentView === 'top' || currentView === 'front' || currentView === 'right')
         viewport.setView(currentView);
@@ -1541,7 +1656,9 @@ try {
     app.dataset['ready'] = 'true';
     notify(startupWarning || 'Workspace ready. Make something worth exploring.', !!startupWarning);
 } catch (error) {
-    element('#viewport-loading').textContent = `Renderer unavailable: ${errorMessage(error)}`;
-    element('#renderer-state').textContent = 'Renderer unavailable';
-    notify(errorMessage(error), true);
+    if (!isClosed()) {
+        element('#viewport-loading').textContent = `Renderer unavailable: ${errorMessage(error)}`;
+        element('#renderer-state').textContent = 'Renderer unavailable';
+        notify(errorMessage(error), true);
+    }
 }

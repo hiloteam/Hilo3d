@@ -21,11 +21,13 @@
     "vitest.rhi-native.config.ts",
     "examples/shared/catalog.ts",
     "vite.editor.config.ts",
+    "vite.player.config.ts",
     "vitest.editor-node.config.ts",
     "vitest.editor-render.config.ts",
     "test/ui/render-health.ts",
     "test/ui/stable-capture.ts",
-    "test/ui/example-paths.ts"
+    "test/ui/example-paths.ts",
+    "playwright.player.config.ts"
   ],
   "references": [
     {

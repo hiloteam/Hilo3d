@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" href="data:," />
+        <title>Hilo Player</title>
+    </head>
+    <body>
+        <main id="player" aria-label="Interactive 3D experience">
+            <div id="viewport" tabindex="0" aria-label="3D viewport"></div>
+            <header id="toolbar">
+                <strong id="title">Hilo Player</strong>
+                <select id="scene" aria-label="Scene"></select>
+                <button id="pause" disabled>Pause</button>
+                <button id="restart" disabled>Restart</button>
+                <button id="fullscreen">Full screen</button>
+                <span id="backend"></span>
+            </header>
+            <section id="welcome" aria-label="Player controls">
+                <span class="eyebrow">MADE WITH HILO STUDIO</span>
+                <h1 id="welcome-title">Opening experience</h1>
+                <p id="status" role="status">Loading scenes and assets…</p>
+                <button id="start" disabled>Start experience</button>
+            </section>
+            <p id="error" role="alert" hidden></p>
+        </main>
+        <script type="module" src="./main.ts"></script>
+    </body>
+</html>

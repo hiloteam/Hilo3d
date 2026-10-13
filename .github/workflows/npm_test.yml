@@ -322,6 +322,12 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Export and run complete standalone Players
+        run: npm run test:player
+        env:
+          CI: 'true'
+          HILO3D_PLAYER_EDITOR_ROOT: site
+
       - name: Upload editor failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
@@ -332,6 +338,7 @@ jobs:
             .vitest-attachments
             test/editor-render/__screenshots__
             test-results/editor-pages
+            test-results/player-export
           if-no-files-found: ignore
           retention-days: 14
 
