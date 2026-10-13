@@ -3,6 +3,7 @@ import Mesh from '../../../src/core/Mesh';
 import BoxGeometry from '../../../src/geometry/BoxGeometry';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import Texture from '../../../src/texture/Texture';
+import { COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT } from '../../../src/constants/webglExtensions';
 import { createSceneTextureAtlasShader } from '../../../src/render/gi/SceneTextureAtlas';
 import Color from '../../../src/math/Color';
 import Vector3 from '../../../src/math/Vector3';
@@ -36,7 +37,8 @@ import {
 } from '../../../src/render/pipeline/RenderPassParameterPool';
 import type {
     RenderGraphBufferHandle,
-    RenderGraphTextureHandle
+    RenderGraphTextureHandle,
+    RenderPipelineTextureDescriptor
 } from '../../../src/render/pipeline/ScriptableRenderGraph';
 
 class TestStorage implements StorageBuffer {
@@ -76,11 +78,23 @@ function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOpt
     readonly controller: DynamicGlobalIlluminationController;
     readonly buffers: TestStorage[];
     readonly passes: { frameIndex: number; name: string }[];
+    readonly normalizationTargets: {
+        frameIndex: number;
+        width: number;
+        height: number;
+        format: string;
+    }[];
     readonly scene: RayTracingSceneSnapshot;
     readonly context: (frameIndex: number, valid?: boolean) => RenderPipelineContext;
 } {
     const buffers: TestStorage[] = [];
     const passes: { frameIndex: number; name: string }[] = [];
+    const normalizationTargets: {
+        frameIndex: number;
+        width: number;
+        height: number;
+        format: string;
+    }[] = [];
     const owner = {};
     const handles = new Map<StorageBuffer, RenderGraphBufferHandle>();
     const createContext = {
@@ -102,6 +116,7 @@ function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOpt
         controller,
         buffers,
         passes,
+        normalizationTargets,
         scene: new RayTracingScene().update(new Node()),
         context(frameIndex: number, valid = true): RenderPipelineContext {
             return {
@@ -117,6 +132,20 @@ function fixture(options: Parameters<typeof snapshotDynamicGlobalIlluminationOpt
                     return acquireRenderPassParameters(pool, owner, frameIndex);
                 },
                 graph: {
+                    createTexture(
+                        _name: string,
+                        descriptor: RenderPipelineTextureDescriptor
+                    ): RenderGraphTextureHandle {
+                        if (!('width' in descriptor.extent))
+                            throw new Error('Expected absolute normalization extent');
+                        normalizationTargets.push({
+                            frameIndex,
+                            width: descriptor.extent.width,
+                            height: descriptor.extent.height,
+                            format: descriptor.format
+                        });
+                        return (102 + normalizationTargets.length) as RenderGraphTextureHandle;
+                    },
                     acquireHistoryTexture(): { valid: boolean; current: number } {
                         return { valid, current: 100 };
                     },
@@ -329,6 +358,62 @@ describe('DDGI settings and submission lifecycle', () => {
         controller.frameSubmitted(5);
         expect(controller.getDiagnostics().submittedFrameCount).toBe(4);
         controller.destroy();
+    });
+
+    it('bounds compressed normalization by changed texels, skips stable frames and retries failed frames', () => {
+        const { controller, context, passes, normalizationTargets } = fixture({
+            maxTextureTexels: 16
+        });
+        const texture = new Texture({
+            image: new Uint8Array([0, 128, 0, 0, 0, 0, 0, 0]),
+            width: 4,
+            height: 4,
+            compressed: true,
+            internalFormat: COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT
+        });
+        const mesh = new Mesh({
+            geometry: new BoxGeometry().setAllRectUV([
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 1]
+            ]),
+            material: new PBRMaterial({ metallic: 0, baseColorMap: texture })
+        });
+        mesh.updateMatrixWorld();
+        const rayScene = new RayTracingScene({ maxTextureTexels: 16 });
+        const scene = rayScene.update(mesh);
+        controller.record(context(1, false), { scene, lights: [] });
+        expect(normalizationTargets).toEqual([
+            { frameIndex: 1, width: 4, height: 4, format: 'rgba32float' }
+        ]);
+        expect(
+            normalizationTargets.reduce((sum, target) => sum + target.width * target.height * 16, 0)
+        ).toBe(16 * 16);
+        controller.frameSubmitted(1);
+        controller.record(context(2), { scene, lights: [] });
+        expect(normalizationTargets).toHaveLength(1);
+        expect(
+            passes.filter(
+                pass =>
+                    pass.frameIndex === 2 &&
+                    /texture (normalization|transport atlas upload)/u.test(pass.name)
+            )
+        ).toHaveLength(0);
+        controller.frameSubmitted(2);
+        texture.needUpdate = true;
+        const changed = rayScene.update(mesh);
+        controller.record(context(3), { scene: changed, lights: [] });
+        controller.frameDiscarded(3);
+        expect(controller.getDiagnostics().submittedFrameCount).toBe(2);
+        controller.record(context(4), { scene: changed, lights: [] });
+        expect(normalizationTargets.map(target => target.frameIndex)).toEqual([1, 3, 4]);
+        controller.frameSubmitted(4);
+        controller.record(context(5, false), { scene: changed, lights: [] });
+        expect(normalizationTargets.map(target => target.frameIndex)).toEqual([1, 3, 4, 5]);
+        controller.frameSubmitted(5);
+        controller.destroy();
+        texture.destroy();
     });
 
     it('invalidates GPU history on device generation changes and explicit resets', () => {

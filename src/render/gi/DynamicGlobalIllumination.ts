@@ -433,6 +433,11 @@ export class DynamicGlobalIlluminationController {
             );
         } catch (error) {
             const cleanupFailures: unknown[] = [];
+            try {
+                this.#atlas.destroy();
+            } catch (cleanupError) {
+                cleanupFailures.push(cleanupError);
+            }
             for (const buffer of allocated) {
                 try {
                     buffer.destroy();
@@ -802,6 +807,11 @@ export class DynamicGlobalIlluminationController {
         this.#committedTextures = [];
         this.#pendingTextures = [];
         const failures: unknown[] = [];
+        try {
+            this.#atlas.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
         for (const buffer of [
             this.#params,
             this.#triangles,

@@ -70,16 +70,23 @@ occluders. Scalar opacity is replaced by the opacity map's red channel when that
 in the canonical raster coverage shader.
 
 A renderer-owned float RGBA atlas is prepared by compute from engine-managed textures through the
-existing upload/cache and graph dependencies. This keeps compressed textures, images, partial
-updates, released CPU images and HDR values on the ordinary resource/recovery path. It does not
-extract pixels with a canvas or require CPU texture readback. The atlas holds the full level-zero
-image without resolution reduction, uses the authored magnification filter and repeat/mirror/clamp
-addressing, and is bounded by `maxTextureTexels` (sum of unique texture widths × heights). Ray
-transport deliberately samples level zero: no screen derivatives, anisotropic footprint or ray-cone
-mip selection is claimed. Updates to texture content, upload descriptors, sampler state, UV
-transforms, channels or encoding invalidate the appropriate scene/atlas revisions. Automatic video
-texture updates require explicit revisioned texture snapshots; unrevisioned `autoUpdate` textures
-fail clearly. Unsupported texture formats/dimensions fail through graph validation.
+existing upload/cache and graph dependencies. Compressed sources first use a shared portable raster
+pass to fetch exact level-zero texels into a linear `rgba32float` graph texture; compute then copies
+that normalized image into the atlas. This avoids compressed compute-read recovery failures observed
+on software WebGPU while preserving hardware-sRGB decoding, alpha and normal channels without an
+extra half-float quantization step. The raster shader generates logical top-left UVs and crosses the
+managed-image boundary once; directional fixtures cover both raster backends. Only changed or
+recovered compressed assets record this pass; stable frames record no normalization or atlas copy.
+This keeps compressed textures, images, partial updates, released CPU images and HDR values on the
+ordinary resource/recovery path. It does not extract pixels with a canvas or require CPU texture
+readback. The atlas holds the full level-zero image without resolution reduction, uses the authored
+magnification filter and repeat/mirror/clamp addressing, and is bounded by `maxTextureTexels` (sum
+of unique texture widths × heights). Ray transport deliberately samples level zero: no screen
+derivatives, anisotropic footprint or ray-cone mip selection is claimed. Updates to texture content,
+upload descriptors, sampler state, UV transforms, channels or encoding invalidate the appropriate
+scene/atlas revisions. Automatic video texture updates require explicit revisioned texture
+snapshots; unrevisioned `autoUpdate` textures fail clearly. Unsupported texture formats/dimensions
+fail through graph validation.
 
 Atlas invalidation follows the shared texture cache's effective upload source: image identity,
 complete `mipmaps` array identity, content revision, upload/shape properties and sampler settings.
@@ -142,6 +149,14 @@ lights and parameters add their separately determined sizes. `residentBytes` rep
 owned storage-buffer sizes, including both probe histories. Image and uniform caches are counted
 separately by the shared renderer; temporary retirement behind a GPU fence is not a second logical
 allocation. Exceeding any cap fails before commands rather than dropping assets.
+
+Compressed normalization adds at most `16 * maxTextureTexels` transient bytes in an invocation (16
+MiB at the default cap), proportional to the changed compressed pixels actually recorded.
+`rgba32float` must be renderable and loadable; blending and float32 filtering are not required.
+Graph validation rejects unavailable capabilities before submission. These attachments are not part
+of DDGI `residentBytes`; the shared Render Graph pool separately retains idle resources under its
+own budget (256 MiB by default). Normalization shader ownership is released on construction failure
+and controller destruction, and discarded frames never publish the new atlas revision.
 
 For a small room, set `maxTriangles: 4096`, `maxMeshes: 64`, and `maxTextureTexels: 262144` when its
 unique transport maps fit 262,144 texels. Those caps reserve roughly 5.63 MiB for triangles, BVH,
@@ -284,8 +299,10 @@ Wall pigment comparisons include the unpainted white furniture:
 - Asset transport tests sample asymmetric UV1 emissive images, direct texture transforms, changing
   base-color/metallic/normal texels, alpha masks, joint and morph occluders, decal pigment/normals,
   explicit receiver masks and GPU-resource release/rebuild. GI-disabled controls isolate transport
-  from direct receiver shading. Compressed/HDR atlas sources use the existing shared texture path;
-  these new asset pixel fixtures use RGBA8 sources and do not constitute a compressed-format matrix.
+  from direct receiver shading. Additional RGBA16F and native BC1-sRGB KTX fixtures compare actual
+  HDR energy and hardware decode against uncompressed references, with negative encoding/clamping
+  controls, asymmetric rows, released-image recovery and GI-off controls. These representative
+  formats do not constitute a complete compressed/HDR format matrix.
 - Texture-source regressions cover whole-chain RGBA mip replacement without a revision increment,
   canvas content/size changes accompanying sampler changes, retained recovery backing, and
   compressed/hardware-sRGB metadata. Real transport pixels and per-frame pass counts require a
@@ -305,6 +322,10 @@ hybrid SSGI. An additional texture-source identity file passed nine tests, inclu
 transport and WebGL2/WebGPU import transactions. TypeScript and focused ESLint checks passed. This
 evidence does not claim a physical-GPU performance baseline, every device/driver combination, or the
 complete release/browser matrix.
+
+The later SSR spatial-filter correction at `6bc7bd57` closed the historical rapid-orbit gate
+recorded below. The original four Afterimage tests passed unchanged on both software WebGPU and
+native Metal. Current combined rendering acceptance is recorded in the [roadmap](./ROADMAP.md).
 
 ## Validation recorded on 2026-09-20
 

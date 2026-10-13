@@ -30,6 +30,10 @@
   artifacts during camera motion. Include valid receiver misses in the coverage kernel and preserve
   confidence-premultiplied radiance, avoiding added energy when replacing the same fallback.
 
+- Normalize changed compressed GI textures through a bounded RGBA32F raster pass before atlas
+  population. Preserve exact rows, hardware-sRGB decoding and released-image recovery on native and
+  software WebGPU, with no normalization work on stable frames.
+
 # 2.0.0-alpha.9 (release candidate)
 
 This section describes the prepared release source; npm publication is pending.
