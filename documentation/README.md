@@ -53,9 +53,10 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 ## Showcase notes
 
 [CSM toy town](./CSM_TOY_SHOWCASE.md), [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md),
-[physics exhibits](./PHYSICS_EXAMPLES.md) and [example catalog](./EXAMPLE_CATALOG.md) preserve art
-direction, interaction and reviewed evidence. Asset licenses and immutable benchmark baselines
-remain source artifacts; their age alone is not a reason to remove them.
+[rain tea garden](./RAIN_TEA_GARDEN.md), [physics exhibits](./PHYSICS_EXAMPLES.md) and
+[example catalog](./EXAMPLE_CATALOG.md) preserve art direction, interaction and reviewed evidence.
+Asset licenses and immutable benchmark baselines remain source artifacts; their age alone is not a
+reason to remove them.
 
 ## Sources and maintenance
 

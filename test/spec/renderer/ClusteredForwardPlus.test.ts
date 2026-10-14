@@ -1201,13 +1201,15 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     .renderGraph?.passes.map(pass => pass.name);
                 expect(nativePasses).toContain('GPU Scene deformed and layered clustered PBR');
                 expect(nativePasses).toContain('Clustered Forward+ transparent PBR');
-                expect(nativePasses).toContain(
+                expect(nativePasses).not.toContain(
                     'Transparent transmission and particle temporal reactive coverage'
                 );
-                expect(nativePasses).toContain(
+                expect(nativePasses).not.toContain(
                     'Transparent transmission and particle resurrection'
                 );
-                expect(nativePasses).toContain('Transparent GPU particle temporal composition');
+                expect(nativePasses).not.toContain('Transparent GPU particle temporal composition');
+                expect(nativePasses).toContain('Stable transparent GPU Scene depth buckets');
+                expect(nativePasses).toContain('Stable transparent clustered frame');
                 expect(prepareStorageScene.mock.calls.slice(-2).map(call => call[0])).toEqual([
                     morphMesh,
                     skinned
@@ -1249,17 +1251,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     ...parameters: Parameters<FullscreenRenderPass['execute']>
                 ) => void;
                 let injectedFailure = false;
-                let resurrectionPassCount = 0;
                 const executeFailure = vi
                     .spyOn(FullscreenRenderPass.prototype, 'execute')
                     .mockImplementation(function (
                         this: FullscreenRenderPass,
                         ...parameters: Parameters<typeof originalFullscreenExecute>
                     ): void {
-                        if (this.name === 'Transparent transmission and particle resurrection') {
-                            resurrectionPassCount++;
-                        }
-                        if (!injectedFailure && resurrectionPassCount === 2) {
+                        // Fail after all stable transparent and particle work, before submission.
+                        if (!injectedFailure && this.name.endsWith('display transform')) {
                             injectedFailure = true;
                             throw new Error('injected clustered temporal submission failure');
                         }
@@ -1338,7 +1337,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(
                     rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
-                ).toContain('Transparent temporal history initialize');
+                ).toContain('Stable transparent GPU Scene depth buckets');
                 expect(await factory.readDiagnostics()).toMatchObject({
                     activeMaterialVariantCount: 4,
                     materialVariantBudgetExceededCount: 1

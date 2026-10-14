@@ -187,10 +187,10 @@ recovery 会让下一帧重新初始化，失败帧保留上一份已提交 hist
 Camera 同时维护 jittered raster projection 与 non-jittered CPU
 projection；frustum、picking、project/unproject 不读取 jitter。TAA/TAAU
 resolve 先处理 opaque 结果；TAAU 同时重建 full-resolution
-depth，供 transparent/transmission 在输出尺寸继续合成。Clustered high-end 随后用透明 motion/reactive
-coverage 和 depth agreement resolve 独立的 color/mask/depth 短 history；GPU
-particle 使用隔离的 output-resolution
-overlay 与短 history，最后 Bloom 消费完整线性 HDR 颜色。重建深度使用对应 internal
+depth。存在后续 transparent/transmission 或 GPU
+contribution 时，共享管线重建稳定 output 栅格上的 opaque
+depth，并以无 jitter 的相机快照绘制这些后续内容。透明像素不写回 opaque
+motion/reactive，不复活旧透明颜色，最后 Bloom 消费完整线性 HDR 颜色。重建深度使用对应 internal
 texel；带 stencil 的目标会在 TAAU 输出深度上把 stencil 清零，因此依赖 opaque
 stencil 值的透明自定义 pass 应保持 `renderScale=1`。
 
@@ -199,7 +199,7 @@ render/compute pass GPU duration，以 EWMA、迟滞、量化 `scaleStep`、warm
 `minScale`/`maxScale` 内调节；无可用、失败或饱和 sample 时保持当前比例，不回退到 CPU frame
 time。比例变化在下一帧同步更新 scene color/depth/motion/reactive、Hi-Z、cluster
 viewport、GTAO/SSGI/SSR、volumetric 与 atmosphere/cloud extent，并 fail
-closed 地重建尺寸相关 history。TAA color/depth history、transparent/particle 短 history、UI
+closed 地重建尺寸相关 history。TAA color/depth history、稳定 transparent/particle composition、UI
 composition 和 presentation 始终保持 output resolution。使用 dynamic resolution 的 Forward
 feature 可通过 `TemporalAA.readDynamicResolutionDiagnostics()`
 读取单 renderer 的当前比例与平滑 GPU 时间；Clustered 路径在 `readDiagnostics()` 返回相同字段。

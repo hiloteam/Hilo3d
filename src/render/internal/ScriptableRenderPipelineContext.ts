@@ -1,3 +1,5 @@
+import { resolveRasterViewport } from './RasterViewportScope';
+import { resolveRasterCamera } from './StableRasterCamera';
 import type UniformBuffer from '../UniformBuffer';
 import Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
@@ -794,12 +796,12 @@ class RenderPipelineContextLease implements RenderPipelineContext, ScriptableRen
 
     get camera(): Camera {
         this.#owner.assertLeaseActive(this.#lease);
-        return this.#owner.camera;
+        return resolveRasterCamera(this.#owner.camera);
     }
 
     get viewport(): RendererViewport {
         this.#owner.assertLeaseActive(this.#lease);
-        return this.#viewport;
+        return resolveRasterViewport(this, this.#viewport);
     }
 
     get clearColor(): Readonly<RenderTargetColor> {
@@ -993,6 +995,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
     readonly #rendererListSlots: RendererListSlot[] = [];
     readonly #rendererListByHandle = new Map<RendererListHandle, RendererListSlot>();
     readonly #textureRecords: TextureRecord[] = [];
+    readonly #sampledDepthViews = new Map<RenderGraphTextureAccessHandle, RGTextureAccessHandle>();
     readonly #textureByHandle = new Map<RenderGraphTextureHandle, TextureRecord>();
     readonly #textureViewRecords: TextureViewRecord[] = [];
     readonly #textureAccessByHandle = new Map<
@@ -1121,6 +1124,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#sampledDepthViews.clear();
         this.#textureAccessByHandle.clear();
         this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
@@ -1297,6 +1301,7 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         this.#cullingByHandle.clear();
         this.#rendererListByHandle.clear();
         this.#textureByHandle.clear();
+        this.#sampledDepthViews.clear();
         this.#textureAccessByHandle.clear();
         this.#historyFacadeByState.clear();
         this.#bufferByHandle.clear();
@@ -2133,7 +2138,23 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             } else record.writable = internal;
             return internal;
         }
-        return this.resolvePhysicalTexture(record, access);
+        const physical = this.resolvePhysicalTexture(record, access);
+        if (
+            access === 'sampled' &&
+            rhiTextureFormatHasDepth(record.format) &&
+            rhiTextureFormatHasStencil(record.format)
+        ) {
+            const cached = this.#sampledDepthViews.get(handle);
+            if (cached !== undefined) return cached;
+            const depthOnly = this.requireScope().graph.createTextureView(
+                `${record.name} sampled depth aspect`,
+                physical,
+                { aspect: 'depth-only' }
+            );
+            this.#sampledDepthViews.set(handle, depthOnly);
+            return depthOnly;
+        }
+        return physical;
     }
 
     private resolvePhysicalTexture(record: TextureRecord, access: TextureAccess): RGTextureHandle {

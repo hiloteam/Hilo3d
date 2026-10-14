@@ -29,6 +29,8 @@ import type { SemanticFrameState } from './frame/SemanticFrameState';
 import type { RHIUploadBatch, RHIUploadBatchParticipant } from './frame/RHIUploadBatch';
 import type { RHISubmission } from './rhi/core';
 import { getTransformHistoryRevision } from '../core/TransformHistory';
+import { getMaterialDecalHistoryRevision } from './decals/DecalMaterialBinding';
+import { DecalReceiverPose } from './decals/DecalReceiverPose';
 
 interface RendererSize {
     width: number;
@@ -70,6 +72,8 @@ interface FrameCachedBuffer {
 interface ModelFrameCachedBuffer extends FrameCachedBuffer {
     readonly normal: Matrix3;
     revision: number;
+    decalRevision: number;
+    decalPoseRevision: number;
 }
 
 interface MorphFrameCachedBuffer extends FrameCachedBuffer {
@@ -112,6 +116,11 @@ interface MotionParticipationRecord {
     pendingFrame: number;
     committedMaterial: Material | null;
     pendingMaterial: Material | null;
+    committedDecalRevision: number;
+    pendingDecalRevision: number;
+    decalPose: DecalReceiverPose | null;
+    committedDecalPoseRevision: number;
+    pendingDecalPoseRevision: number;
 }
 
 type OwnedBufferRegistration =
@@ -554,6 +563,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         for (const record of this.stagedMotionParticipation) {
             record.committedSubmission = committedSubmission;
             record.committedMaterial = record.pendingMaterial;
+            record.committedDecalRevision = record.pendingDecalRevision;
+            record.committedDecalPoseRevision = record.pendingDecalPoseRevision;
             record.pendingMaterial = null;
             record.pendingFrame = -1;
         }
@@ -580,19 +591,15 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
 
     /** @internal Record that a visible mesh emitted motion data in this submitted frame. */
     markMotionVectorParticipation(mesh: Mesh): void {
-        let record = this.motionParticipation.get(mesh);
-        if (record === undefined) {
-            record = {
-                committedSubmission: -1,
-                pendingFrame: -1,
-                committedMaterial: null,
-                pendingMaterial: null
-            };
-            this.motionParticipation.set(mesh, record);
-        }
+        const record = this.motionParticipationRecord(mesh);
         if (record.pendingFrame === this.frameIndex) return;
         record.pendingFrame = this.frameIndex;
         record.pendingMaterial = mesh.material;
+        record.pendingDecalRevision = getMaterialDecalHistoryRevision(mesh.material);
+        record.pendingDecalPoseRevision = this.decalReceiverPoseRevision(
+            mesh,
+            record.pendingDecalRevision
+        );
         this.stagedMotionParticipation.push(record);
     }
 
@@ -1016,11 +1023,20 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
                 }),
                 frameIndex: -1,
                 normal: new Matrix3(),
-                revision: -1
+                revision: -1,
+                decalRevision: -1,
+                decalPoseRevision: -1
             };
             this.modelBuffers.set(mesh, cached);
         }
-        if (cached.frameIndex !== this.frameIndex || cached.revision !== mesh.worldMatrixVersion) {
+        const decalRevision = getMaterialDecalHistoryRevision(mesh.material);
+        const decalPoseRevision = this.decalReceiverPoseRevision(mesh, decalRevision);
+        if (
+            cached.frameIndex !== this.frameIndex ||
+            cached.revision !== mesh.worldMatrixVersion ||
+            cached.decalRevision !== decalRevision ||
+            cached.decalPoseRevision !== decalPoseRevision
+        ) {
             const history = this.transformHistoryRecord(this.modelHistory, mesh, 16);
             const firstModelStage = history.pendingFrame !== this.frameIndex;
             copyRelativeMatrix(
@@ -1048,6 +1064,8 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             );
             cached.frameIndex = this.frameIndex;
             cached.revision = mesh.worldMatrixVersion;
+            cached.decalRevision = decalRevision;
+            cached.decalPoseRevision = decalPoseRevision;
         }
         return cached.buffer;
     }
@@ -1313,11 +1331,46 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
         }
     }
 
+    private motionParticipationRecord(mesh: Mesh): MotionParticipationRecord {
+        let record = this.motionParticipation.get(mesh);
+        if (record === undefined) {
+            record = {
+                committedSubmission: -1,
+                pendingFrame: -1,
+                committedMaterial: null,
+                pendingMaterial: null,
+                committedDecalRevision: -1,
+                pendingDecalRevision: -1,
+                decalPose: null,
+                committedDecalPoseRevision: -1,
+                pendingDecalPoseRevision: -1
+            };
+            this.motionParticipation.set(mesh, record);
+        }
+        return record;
+    }
+
+    private decalReceiverPoseRevision(mesh: Mesh, decalRevision: number): number {
+        if (decalRevision <= 0) {
+            const record = this.motionParticipation.get(mesh);
+            if (record !== undefined) record.decalPose = null;
+            return decalRevision;
+        }
+        const record = this.motionParticipationRecord(mesh);
+        record.decalPose ??= new DecalReceiverPose();
+        return record.decalPose.observe(mesh);
+    }
+
     private hasConsecutiveMotionParticipation(mesh: Mesh): boolean {
         const record = this.motionParticipation.get(mesh);
+        const decalRevision = getMaterialDecalHistoryRevision(mesh.material);
         return (
             record?.committedSubmission === this.submissionIndex &&
-            record.committedMaterial === mesh.material
+            record.committedMaterial === mesh.material &&
+            decalRevision >= 0 &&
+            record.committedDecalRevision === decalRevision &&
+            record.committedDecalPoseRevision ===
+                this.decalReceiverPoseRevision(mesh, decalRevision)
         );
     }
 

@@ -1,3 +1,4 @@
+import { resolveRasterCamera, markStableDepthComposition } from './StableRasterCamera';
 import Camera from '../../camera/Camera';
 import type Mesh from '../../core/Mesh';
 import type { DispatchEvent } from '../../core/EventDispatcher';
@@ -554,10 +555,13 @@ class SharedRendererDriver
         });
     }
 
+    #explicitCompositionFrame = false;
+
     override renderFrame(callback: RendererFrameCallback): void {
         this.assertReadyForRender();
         this.#pipelineHost.execute(() => {
             let facadeActive = true;
+            this.#explicitCompositionFrame = true;
             try {
                 invokeRendererFrameCallback(
                     callback,
@@ -565,6 +569,7 @@ class SharedRendererDriver
                 );
             } finally {
                 facadeActive = false;
+                this.#explicitCompositionFrame = false;
             }
         });
     }
@@ -766,7 +771,7 @@ class SharedRendererDriver
             this.#scriptablePipelineContexts.push(context);
         }
         this.#activeScriptablePipelineContext = context;
-        return context.begin(
+        const invocation = context.begin(
             scene,
             camera,
             target,
@@ -775,6 +780,9 @@ class SharedRendererDriver
             runtimeOwner,
             this.#pipelineHost.requireActiveScope()
         );
+        if (this.#explicitCompositionFrame && target === null)
+            markStableDepthComposition(invocation);
+        return invocation;
     }
 
     createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer {
@@ -949,7 +957,7 @@ class SharedRendererDriver
         viewport: Readonly<RHIViewport>,
         frameIndex: number
     ): RenderGraphFrameContext {
-        return this.createContext(camera, viewport, frameIndex);
+        return this.createContext(resolveRasterCamera(camera), viewport, frameIndex);
     }
 
     beginScriptableResourcePass(context: RenderGraphFrameContext): void {

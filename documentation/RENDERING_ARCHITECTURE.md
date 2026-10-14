@@ -176,14 +176,16 @@ Pass。后处理、显式 Present、离屏渲染和 Readback 也通过同一 Ren
 ### 1.2.1 材质前端与语义 Pass
 
 `PBRMaterial.decals` 在同一 surface
-evaluator 中处理最多八个 atlas 世界投影，颜色、法线、粗糙度同时进入 PBR 和 material-attributes。镜像/非均匀缩放保持投影切线方向；移动投影通过整 receiver
-reactive 拒绝旧 history，替换材质则通过提交感知 material identity 使 motion history 失效。完整约束见
-[`PBR_DECALS.md`](./PBR_DECALS.md)。
+evaluator 中处理最多八个 atlas 世界投影，颜色、法线、粗糙度同时进入 PBR 和 material-attributes。镜像/非均匀缩放保持投影切线方向；共享 motion
+participation 按 mesh 和 renderer 跟踪 projector/atlas
+revision，内容变化时拒绝整个 receiver 的旧 history，成功提交后恢复静态累积；失败帧不消费变化。替换材质同样通过提交感知 material
+identity 使 history 失效。完整约束见 [`PBR_DECALS.md`](./PBR_DECALS.md)。
 
 透明合成显式区分 sorted
 alpha、additive、transmission 与 weighted-blended。后者需要材质和 pipeline 双重 opt-in，以共享 GLSL 的 accumulation/revealage 两个单附件 pass 合成到线性 HDR。它在 opaque
-TAA/TAAU 之后、sorted/refraction 之前执行，透明独立 history 再消费最终合成。没有可见 weighted
-mesh 时不分配专用附件；近似范围、像素预算和恢复见 [`TRANSPARENCY.md`](./TRANSPARENCY.md)。
+TAA/TAAU 之后、sorted/refraction 之前执行；resolve 后的透明绘制使用独立稳定相机快照和匹配的 output-resolution
+opaque depth，不再随 opaque jitter 移位或把透明运动写回 opaque history。没有可见 weighted
+mesh 时不分配 weighted 专用附件；近似范围、像素预算和恢复见 [`TRANSPARENCY.md`](./TRANSPARENCY.md)。
 
 `Mesh.material` 引用 `MaterialInstance`。实例持有不可变
 `MaterialDefinition`，Definition 固定 family、Shader topology、static features、texture-slot
@@ -339,14 +341,16 @@ dilation，并与亮度 heuristic 取最大值抑制不稳定 shading 的 histor
 是原生分辨率 TAA；固定或动态 0.5–1 的 sub-native scale 会同步缩放 opaque
 color/depth/motion、Hi-Z 与 cluster viewport，用 Catmull-Rom 重建当前帧，并写 output-resolution
 color/depth history、resolved color 和供后续 scene pass 使用的 full-resolution depth。resolved
-opaque color 随后接受 transparent/transmission composition；Clustered
-Forward+ 再以透明 motion、reactive coverage 和当前深度驱动独立的 color/mask/depth
-history，使用深度一致性、衰减与 resurrection 抑制拖影。GPU
-particle 在输出分辨率独立合成并使用自己的短 history；opaque/masked particle 还保守写满 reactive
-coverage。UI 始终留在全部时域 resolve 之后。Clustered Forward+ opt-in TAA 时把 GPU Scene
-motion 融入 depth prepass，以前一已提交帧的 visibility buffer 拒绝重现物体的陈旧 history；fallback
-opaque/masked 在 opaque resolve 前补写同一 motion target。`dynamicResolution` 仅在 WebGPU
-`timestamp-query` 可用时创建：控制器异步消费逐 Graph pass
+opaque color 随后接受 transparent/transmission composition。存在后续透明或 GPU
+contribution 时，共享管线重建稳定栅格的 output-resolution opaque
+depth，并用缓存的无 jitter 相机快照记录透明与粒子组合；原相机、culling、shadow 和 opaque motion
+history 保持独立。Clustered GPU Scene 复用 compact/indirect depth 列表与小型稳定 frame-buffer
+copy，普通 receiver 复用 depth-only role。透明内容不再向 opaque
+reactive/motion 写入，也不通过短 history 复活已经移除的颜色；opaque/masked
+particle 仍保守拒绝缺失的历史信息。UI 始终留在全部时域 resolve 之后。Clustered Forward+ opt-in
+TAA 时把 GPU Scene motion 融入 depth prepass，以前一已提交帧的 visibility
+buffer 拒绝重现物体的陈旧 history；fallback opaque/masked 在 opaque resolve 前补写同一 motion
+target。`dynamicResolution` 仅在 WebGPU `timestamp-query` 可用时创建：控制器异步消费逐 Graph pass
 GPU 时间，使用 EWMA、迟滞、量化步进、warmup 与 settling window，在声明的 min/max 内调整 scene
 scale；比例变化会失效 TAA、Hi-Z、SSR、SSGI/GTAO、volumetric 与 atmosphere/cloud 的尺寸相关 history，但 UI/透明合成和最终 output 保持原生分辨率。之后
 `Bloom` 在 tone mapping 前记录 soft-knee/Karis prefilter、13-tap downsample pyramid、tent

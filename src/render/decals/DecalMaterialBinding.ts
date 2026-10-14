@@ -1,4 +1,5 @@
-import Texture from '../../texture/Texture';
+import Texture, { getTextureRecoveryBacking, type TextureMipmap } from '../../texture/Texture';
+import type Material from '../../material/MaterialInstance';
 import { TEXTURE_2D } from '../../constants/webgl';
 import UniformBuffer from '../UniformBuffer';
 import { createStd140Layout } from '../ubo/Std140Layout';
@@ -27,6 +28,66 @@ export interface PBRDecalOptions {
 }
 
 export const MAX_MATERIAL_DECALS = 8;
+
+const materialBindings = new WeakMap<Material, DecalMaterialBinding>();
+const TEXTURE_HISTORY_FIELDS = [
+    'updateRevision',
+    'width',
+    'height',
+    'target',
+    'depth',
+    'internalFormat',
+    'format',
+    'type',
+    'compressed',
+    'flipY',
+    'premultiplyAlpha',
+    'minFilter',
+    'magFilter',
+    'wrapS',
+    'wrapT',
+    'wrapR',
+    'anisotropic'
+] as const;
+
+class AtlasHistory {
+    readonly values: (number | boolean | undefined)[] = [];
+    image: unknown;
+    mipmaps: readonly TextureMipmap[] | null = null;
+
+    constructor(readonly texture: Texture<unknown>) {}
+
+    update(): boolean {
+        const texture = this.texture;
+        const backing = getTextureRecoveryBacking(texture);
+        const image = backing ? backing.image : texture.image;
+        const mipmaps = backing ? backing.mipmaps : texture.mipmaps;
+        let changed = this.image !== image || this.mipmaps !== mipmaps;
+        this.image = image;
+        this.mipmaps = mipmaps;
+        for (let index = 0; index < TEXTURE_HISTORY_FIELDS.length; index++) {
+            const field = TEXTURE_HISTORY_FIELDS[index];
+            if (field === undefined) throw new Error('Missing decal texture history field');
+            const value = texture[field];
+            changed ||= this.values[index] !== value;
+            this.values[index] = value;
+        }
+        return changed;
+    }
+}
+
+/** @internal Associate the existing material with its decal recipe without adding public API. */
+export function registerMaterialDecalBinding(
+    material: Material,
+    binding: DecalMaterialBinding
+): void {
+    materialBindings.set(material, binding);
+}
+
+/** @internal Content identity for submission-owned motion history; -1 denotes continuously updated images. */
+export function getMaterialDecalHistoryRevision(material: Material | null): number {
+    return material === null ? 0 : (materialBindings.get(material)?.temporalRevision ?? 0);
+}
 
 /** @internal Fixed portable std140 ABI: 8 * (64 + 6 * 16) = 1280 bytes. */
 export const DECAL_BLOCK_LAYOUT = createStd140Layout({
@@ -58,6 +119,9 @@ export class DecalMaterialBinding {
     readonly #tangent = new Float32Array(MAX_MATERIAL_DECALS * 4);
     readonly #surface = new Float32Array(MAX_MATERIAL_DECALS * 4);
     readonly #range = new Float32Array(MAX_MATERIAL_DECALS * 4);
+    readonly #atlasHistory: readonly AtlasHistory[];
+    #temporalRevision = 0;
+    #temporalBufferRevision = -1;
 
     constructor(options: Readonly<PBRDecalOptions>) {
         const candidate: unknown = options.projectors;
@@ -86,6 +150,30 @@ export class DecalMaterialBinding {
         });
         this.#ordered = [...this.options.projectors];
         this.#revisions = this.options.projectors.map(() => -1);
+        this.#atlasHistory = [
+            ...new Set([
+                this.options.baseColorAtlas,
+                this.options.normalAtlas,
+                this.options.roughnessAtlas
+            ])
+        ]
+            .filter((texture): texture is Texture<unknown> => texture !== undefined)
+            .map(texture => new AtlasHistory(texture));
+    }
+
+    get temporalRevision(): number {
+        const bufferRevision = this.buffer.revision;
+        let changed = bufferRevision !== this.#temporalBufferRevision;
+        let continuous = false;
+        this.#temporalBufferRevision = bufferRevision;
+        for (const history of this.#atlasHistory) {
+            // Evaluate every atlas even when a preceding one already changed.
+            const atlasChanged = history.update();
+            changed ||= atlasChanged;
+            continuous ||= history.texture.autoUpdate;
+        }
+        if (changed) this.#temporalRevision++;
+        return continuous ? -1 : this.#temporalRevision;
     }
 
     get buffer(): UniformBuffer {

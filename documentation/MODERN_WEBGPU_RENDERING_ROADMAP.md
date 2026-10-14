@@ -178,10 +178,10 @@ particle effects. Its approximation limits must be explicit; it does not provide
 glass, refraction or colored transmission. Keep glass on a separately specified sorted
 depth/thickness/refraction path until a better bounded contract is validated.
 
-**Integration.** Preserve global ordering where required and use the existing HDR, reactive and
-short-history composition boundaries. Material/particle definitions declare eligibility; do not
-silently switch an incompatible material to OIT. Validate blend/attachment capabilities before
-runtime creation and bound accumulation targets, passes and bandwidth.
+**Integration.** Preserve global ordering where required and use the existing HDR and fixed-grid
+post-TAA composition boundaries. Material/particle definitions declare eligibility; do not silently
+switch an incompatible material to OIT. Validate blend/attachment capabilities before runtime
+creation and bound accumulation targets, passes and bandwidth.
 
 **Acceptance.** Compare intersecting layers, dense smoke, particles mixed with transparent meshes,
 high-opacity surfaces and camera motion. Include a sorted/reference result, documented approximation

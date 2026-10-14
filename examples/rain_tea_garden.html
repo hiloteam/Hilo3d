@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#eff4ee" />
+        <title>雨后茶寮 · After the rain — Hilo3D</title>
+        <link rel="stylesheet" href="./rain_tea_garden.css" />
+    </head>
+    <body>
+        <main class="garden-shell">
+            <div id="container" class="garden-canvas"></div>
+            <header class="garden-heading">
+                <a class="collection-link" href="./index.html" aria-label="返回案例集">
+                    <span class="leaf-mark" aria-hidden="true">✳</span> HILO3D <span>/</span> LITTLE
+                    WORLDS
+                </a>
+                <div class="title-row">
+                    <h1>雨后茶寮</h1>
+                    <span class="seal" lang="ja">茶</span>
+                </div>
+                <p class="english-title">After the rain</p>
+                <p id="sceneCopy" class="scene-copy">雨停了。来坐一会，让风把茶吹凉。</p>
+            </header>
+            <div class="season-note" aria-hidden="true">
+                <span>雨あがり</span><i></i><span>春 · 庭 · 茶</span>
+            </div>
+            <div class="weather-caption">
+                <span class="weather-dot"></span><span id="weatherLabel">09:20 · 晨光微凉</span>
+            </div>
+            <section class="garden-controls" aria-label="庭院控制">
+                <fieldset id="controlsFieldset" disabled>
+                    <legend class="visually-hidden">让时光慢下来</legend>
+                    <div class="time-controls" role="group" aria-label="时光">
+                        <button type="button" data-preset="morning" aria-pressed="true">
+                            <span aria-hidden="true">☀</span> 晨光
+                        </button>
+                        <button type="button" data-preset="evening" aria-pressed="false">
+                            <span aria-hidden="true">◒</span> 暖暮
+                        </button>
+                    </div>
+                    <span class="control-divider" aria-hidden="true"></span>
+                    <button
+                        id="motionButton"
+                        class="quiet-button"
+                        type="button"
+                        aria-pressed="true"
+                        title="暂停或恢复风中的花瓣"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M6 16h4" /></svg
+                        ><span id="motionLabel">风在吹</span>
+                    </button>
+                    <button
+                        id="viewButton"
+                        class="quiet-button"
+                        type="button"
+                        title="切换庭院、池畔与茶席视角"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+                            <circle cx="12" cy="12" r="3" /></svg
+                        ><span>换个角度</span>
+                    </button>
+                </fieldset>
+            </section>
+            <footer class="garden-footer">
+                <span>一庭春色 · 一盏清茶</span
+                ><span class="drag-hint">拖动环顾 <i>·</i> 滚轮靠近</span>
+            </footer>
+            <details class="details-panel">
+                <summary>光与细节 <span aria-hidden="true">＋</span></summary>
+                <div class="detail-controls" aria-label="画面细节比较">
+                    <p>轻点开关，看看庭院里细微的变化。</p>
+                    <button type="button" data-feature="gi" aria-pressed="true">
+                        <span>柔和反光</span><i></i>
+                    </button>
+                    <button type="button" data-feature="volumetric" aria-pressed="true">
+                        <span>雨后薄雾</span><i></i>
+                    </button>
+                    <button type="button" data-feature="decals" aria-pressed="true">
+                        <span>石上落花</span><i></i>
+                    </button>
+                    <button type="button" data-feature="transparency" aria-pressed="true">
+                        <span>水色与风铃</span><i></i>
+                    </button>
+                    <span class="detail-footnote">BLENDER × HILO3D · WEBGPU</span>
+                </div>
+            </details>
+            <div id="loadingPanel" class="loading-panel" role="status" aria-live="polite">
+                <div class="loading-emblem" aria-hidden="true">茶</div>
+                <p class="loading-kicker">AFTER THE RAIN</p>
+                <h2 id="loadingTitle">一盏茶的时间</h2>
+                <p id="loadingDetail">正在打开雨后的庭院…</p>
+                <span class="loading-line" aria-hidden="true"></span>
+            </div>
+        </main>
+        <script type="module" src="./rain_tea_garden.ts"></script>
+    </body>
+</html>

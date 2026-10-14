@@ -1,3 +1,6 @@
+import { withRasterViewport } from '../internal/RasterViewportScope';
+import { withStableRasterCamera } from '../internal/StableRasterCamera';
+import { STABLE_CLUSTERED_FRAME_PASS } from './internal/stableClusteredFrame';
 import {
     DynamicGlobalIlluminationController,
     snapshotDynamicGlobalIlluminationOptions,
@@ -1385,7 +1388,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #hizCullPass: ComputeRenderPass | null;
     readonly #temporal: TemporalResolveController | null;
     readonly #transparentTemporal: TransparentTemporalController | null;
-    readonly #particleTemporal: TransparentTemporalController | null;
     readonly #temporalInputExtent = { relativeTo: 'output' as const, scale: 1 };
     readonly #temporalMotionDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
     readonly #temporalReactiveMaskDescriptor: Readonly<RenderPipelineTextureDescriptor> | null;
@@ -1549,6 +1551,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     );
     readonly #displayPass: FullscreenRenderPass;
+    readonly #stableDepthBatchPass = new GPUDrivenRenderBatchPass(
+        'Stable transparent GPU Scene depth buckets'
+    );
+    readonly #stableFramePool = new RenderPassParameterPool(
+        () => new MutableComputeParameters(2, 0)
+    );
     readonly #depthBatchPass = new GPUDrivenRenderBatchPass('GPU Scene depth buckets');
     readonly #shadowBatchPass = new GPUDrivenRenderBatchPass('GPU Scene shadow caster buckets');
     readonly #virtualShadowBatchPass = new GPUDrivenRenderBatchPass(
@@ -1566,9 +1574,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #fallbackDepthPass = new SceneRenderPass('Clustered Forward+ fallback depth prepass');
     readonly #fallbackMotionPass = new SceneRenderPass(
         'Clustered Forward+ fallback temporal motion'
-    );
-    readonly #transparentReactivePass = new SceneRenderPass(
-        'Transparent transmission and particle temporal reactive coverage'
     );
     readonly #fallbackMaterialAttributesPass = new SceneRenderPass(
         'Clustered Forward+ fallback material attributes'
@@ -1613,13 +1618,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         cullingResults: INVALID_CULLING_RESULTS,
         queue: 'opaque',
         sorting: 'material-front-to-back',
-        materialPass: 'motion-vector',
-        excludeMeshes: this.#gpuManagedMeshes
-    };
-    readonly #transparentReactiveListDescriptor: MutableFallbackRendererListDescriptor = {
-        cullingResults: INVALID_CULLING_RESULTS,
-        queue: 'transparent',
-        sorting: 'back-to-front',
         materialPass: 'motion-vector',
         excludeMeshes: this.#gpuManagedMeshes
     };
@@ -1685,8 +1683,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#temporal =
             options.temporalAA === null ? null : new TemporalResolveController(options.temporalAA);
         this.#transparentTemporal =
-            options.temporalAA === null ? null : new TransparentTemporalController();
-        this.#particleTemporal =
             options.temporalAA === null ? null : new TransparentTemporalController();
         this.#temporalMotionDescriptor =
             options.temporalAA === null
@@ -2130,10 +2126,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       'Clustered Forward+ authored reactive mask',
                       reactiveMaskDescriptor
                   );
-        const transparentTemporalMask =
-            temporalFrame === null || this.#transparentTemporal === null
-                ? null
-                : this.#transparentTemporal.createCurrentMask(context, sceneScale);
         const materialAttributes =
             this.#screenSpaceReflections === null &&
             this.#screenSpaceGlobalIllumination === null &&
@@ -2369,34 +2361,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     sceneDepth
                 );
             }
-            if (this.#fallbackHasTransparent) {
-                if (transparentTemporalMask === null) {
-                    throw new Error('Transparent temporal coverage mask is unavailable');
-                }
-                this.recordTransparentReactiveCoverage(
-                    context,
-                    fallbackCulling,
-                    temporalMotion,
-                    transparentTemporalMask,
-                    sceneDepth
-                );
-            }
         }
-        const combinedTemporalReactiveMask =
-            temporalReactiveMask === null || transparentTemporalMask === null
-                ? temporalReactiveMask
-                : (() => {
-                      if (this.hasVisibleGPUOpaqueParticles(context)) {
-                          this.#transparentTemporal?.forceReactive(context, temporalReactiveMask);
-                      }
-                      return (
-                          this.#transparentTemporal?.combineReactive(
-                              context,
-                              temporalReactiveMask,
-                              transparentTemporalMask
-                          ) ?? temporalReactiveMask
-                      );
-                  })();
+        // Post-resolve transparent color must not replace opaque motion or invalidate opaque TAA.
+        if (temporalReactiveMask !== null && this.hasVisibleGPUOpaqueParticles(context)) {
+            this.#transparentTemporal?.forceReactive(context, temporalReactiveMask);
+        }
+        const combinedTemporalReactiveMask = temporalReactiveMask;
         const ambientOcclusion =
             groundTruthAmbientOcclusion === null ||
             materialAttributes === null ||
@@ -2463,7 +2433,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ambientOcclusion
             );
         }
-        this.recordGPUSceneParticipants(context, sceneColor, sceneDepth, 'opaque');
+        this.recordGPUSceneParticipants(context, sceneColor, sceneDepth, 'opaque', sceneScale);
         if (
             materialAttributes !== null &&
             fallbackCulling !== null &&
@@ -2614,72 +2584,93 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             resolvedSceneColor = resolved?.color ?? volumetricSceneColor;
             resolvedSceneDepth = resolved?.depth ?? sceneDepth;
         }
-        if (fallbackCulling !== null && this.#fallbackHasTransparent) {
-            this.recordFallbackTransparent(
-                context,
-                fallbackCulling,
-                resolvedSceneColor,
-                resolvedSceneDepth,
-                frameBuffer,
-                lights,
-                clusterGrid,
-                clusterIndices
-            );
-        }
-        if (
-            temporalFrame !== null &&
-            transparentTemporalMask !== null &&
-            this.#transparentTemporal !== null
-        ) {
-            resolvedSceneColor = this.#transparentTemporal.resolve(
-                context,
-                resolvedSceneColor,
-                resolvedSceneDepth,
-                transparentTemporalMask,
-                temporalFrame.historyValid && this.#committedCamera === context.camera
-            );
-        }
-        if (this.hasGPUSceneParticipants(context)) {
-            if (
-                temporalFrame === null ||
-                this.#transparentTemporal === null ||
-                this.#particleTemporal === null
-            ) {
-                this.recordGPUSceneParticipants(
-                    context,
-                    resolvedSceneColor,
-                    resolvedSceneDepth,
-                    'transparent'
-                );
-            } else {
-                const particleOverlay = this.#transparentTemporal.createParticleOverlay(context);
-                const particleDepth = this.#transparentTemporal.createParticleDepth(
-                    context,
-                    resolvedSceneDepth
-                );
-                this.recordGPUSceneParticipants(
-                    context,
-                    particleOverlay,
-                    particleDepth,
-                    'transparent'
-                );
-                const particleMask = this.#transparentTemporal.createParticleMask(
-                    context,
-                    particleOverlay
-                );
-                const resolvedParticles = this.#particleTemporal.resolve(
-                    context,
-                    particleOverlay,
-                    resolvedSceneDepth,
-                    particleMask,
-                    temporalFrame.historyValid && this.#committedCamera === context.camera
-                );
-                resolvedSceneColor = this.#transparentTemporal.compositeParticles(
-                    context,
-                    resolvedSceneColor,
-                    resolvedParticles
-                );
-            }
+        const hasParticipants = this.hasGPUSceneParticipants(context);
+        const hasPostResolveDraws = this.#fallbackHasTransparent || hasParticipants;
+        if (hasPostResolveDraws) {
+            // Keep the existing culling/shadow identity. GPU-managed objects replay their compact
+            // indirect depth list; only shared Forward objects use the CPU depth list.
+            const transparentCulling = fallbackCulling;
+            const stableRaster =
+                temporalFrame !== null &&
+                (this.#weightedMeshes.length !== 0 ||
+                    this.#fallbackTransparentMeshes.some(
+                        mesh => !mesh.frustumTest || context.camera.isMeshVisible(mesh)
+                    ) ||
+                    this.hasVisibleGPUSceneParticipants(context));
+            const recordTransparent = (): void => {
+                if (stableRaster) {
+                    const stableFrame = context.graph.createBuffer(
+                        'Stable transparent clustered frame',
+                        { byteLength: FRAME_RECORD_BYTES }
+                    );
+                    const stable = context.acquirePassParameters(this.#stableFramePool);
+                    stable.setBuffer(0, frameBuffer);
+                    stable.setBuffer(1, stableFrame);
+                    stable.setDispatch(Math.ceil(FRAME_RECORD_BYTES / 16 / 64));
+                    context.graph.addPass(STABLE_CLUSTERED_FRAME_PASS, stable);
+                    resolvedSceneDepth = context.graph.createTexture(
+                        'Stable transparent opaque depth',
+                        {
+                            format: 'depth32float',
+                            extent: { relativeTo: 'output', scale: 1 },
+                            sampleCount: 1
+                        }
+                    );
+                    this.recordDepthPrepass(context, {
+                        frameBuffer: stableFrame,
+                        objects,
+                        visible,
+                        visibleBucketOffsets,
+                        materials,
+                        indirect,
+                        sceneDepth: resolvedSceneDepth,
+                        previousVisibility: null,
+                        temporalMotion: null,
+                        temporalReactiveMask: null,
+                        stableRaster: true
+                    });
+                    if (this.#fallbackHasOpaque && transparentCulling !== null)
+                        this.recordFallbackDepthPrepass(
+                            context,
+                            transparentCulling,
+                            resolvedSceneDepth
+                        );
+                    if (this.hasVisibleGPUOpaqueParticles(context)) {
+                        const scratch = this.#transparentTemporal?.createParticleOverlay(context);
+                        if (scratch === undefined)
+                            throw new Error('Stable particle depth requires temporal resources');
+                        this.recordGPUSceneParticipants(
+                            context,
+                            scratch,
+                            resolvedSceneDepth,
+                            'opaque'
+                        );
+                    }
+                }
+                if (this.#fallbackHasTransparent) {
+                    if (transparentCulling === null)
+                        throw new Error('Transparent fallback culling is unavailable');
+                    this.recordFallbackTransparent(
+                        context,
+                        transparentCulling,
+                        resolvedSceneColor,
+                        resolvedSceneDepth,
+                        frameBuffer,
+                        lights,
+                        clusterGrid,
+                        clusterIndices
+                    );
+                }
+                if (hasParticipants)
+                    this.recordGPUSceneParticipants(
+                        context,
+                        resolvedSceneColor,
+                        resolvedSceneDepth,
+                        'transparent'
+                    );
+            };
+            if (stableRaster) withStableRasterCamera(context, recordTransparent);
+            else recordTransparent();
         }
         const exposureTexture =
             this.#autoExposure?.record(context, resolvedSceneColor, frame.historyValid) ?? null;
@@ -2926,11 +2917,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#transparentTemporal?.destroy();
-        } catch (error) {
-            failures.push(error);
-        }
-        try {
-            this.#particleTemporal?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -3767,6 +3753,15 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
     }
 
+    private hasVisibleGPUSceneParticipants(context: RenderPipelineContext): boolean {
+        let visible = false;
+        context.scene.traverse(node => {
+            const gpu = getRenderNodeExtension(node)?.gpu;
+            if (gpu?.isVisible(context.camera) === true) visible = true;
+        });
+        return visible;
+    }
+
     private hasGPUSceneParticipants(context: RenderPipelineContext): boolean {
         let result = false;
         context.scene.traverse(node => {
@@ -3840,16 +3835,25 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         context: RenderPipelineContext,
         color: RenderGraphTextureHandle,
         depth: RenderGraphTextureHandle | null,
-        phase: 'opaque' | 'transparent'
+        phase: 'opaque' | 'transparent',
+        rasterScale = 1
     ): void {
-        context.scene.traverse(node => {
-            const participant = getRenderNodeExtension(node)?.gpu;
-            if (participant === null || participant === undefined) return;
-            if (phase === 'opaque' && !participant.hasOpaqueRenderers) return;
-            // Register before recording so a partial addon update is rolled back when recording
-            // throws before the Render Graph can be submitted.
-            this.#recordedGPUSceneParticipants.add(participant);
-            participant.record(context, color, depth, participant.isVisible(context.camera), phase);
+        withRasterViewport(context, rasterScale, () => {
+            context.scene.traverse(node => {
+                const participant = getRenderNodeExtension(node)?.gpu;
+                if (participant === null || participant === undefined) return;
+                if (phase === 'opaque' && !participant.hasOpaqueRenderers) return;
+                // Register before recording so a partial addon update is rolled back when recording
+                // throws before the Render Graph can be submitted.
+                this.#recordedGPUSceneParticipants.add(participant);
+                participant.record(
+                    context,
+                    color,
+                    depth,
+                    participant.isVisible(context.camera),
+                    phase
+                );
+            });
         });
     }
 
@@ -4707,6 +4711,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     private recordDepthPrepass(
         context: RenderPipelineContext,
         resources: Readonly<{
+            stableRaster?: boolean;
             frameBuffer: RenderGraphBufferHandle;
             objects: RenderGraphBufferHandle;
             visible: RenderGraphBufferHandle;
@@ -4752,11 +4757,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         for (let index = 0; index < this.#physicalBuckets.length; index += 1) {
             const bucket = this.#physicalBuckets[index];
             if (bucket === undefined) continue;
+            const depthPass =
+                resources.stableRaster === true ? bucket.shadowPass : bucket.depthPass;
             const variant = bucket.materialVariant;
             const masked = variant.coverageMode === 'mask';
             const maskedTextures = masked ? coverageTextures(variant) : [];
             const parameters = context.acquirePassParameters(this.#depthDrawPool);
-            parameters.configure(bucket.depthPass.vertexLayouts.length, maskedTextures.length);
+            parameters.configure(depthPass.vertexLayouts.length, maskedTextures.length);
             parameters.configureStorageBufferCount(
                 resources.temporalMotion !== null ? 6 : masked ? 5 : 4
             );
@@ -4815,9 +4822,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 parameters.colorAttachments[1] = reactiveMaskAttachment;
             }
             parameters.depthStencilAttachment = depthAttachment;
-            batch.add(bucket.depthPass, parameters);
+            batch.add(depthPass, parameters);
         }
-        context.graph.addPass(this.#depthBatchPass, batch);
+        context.graph.addPass(
+            resources.stableRaster === true ? this.#stableDepthBatchPass : this.#depthBatchPass,
+            batch
+        );
     }
 
     private recordCurrentHiZ(
@@ -5633,34 +5643,6 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             depthReadOnly: true
         };
         context.graph.addPass(this.#fallbackMotionPass, parameters);
-    }
-
-    private recordTransparentReactiveCoverage(
-        context: RenderPipelineContext,
-        cullingResults: CullingResultsHandle,
-        temporalMotion: RenderGraphTextureHandle,
-        temporalReactiveMask: RenderGraphTextureHandle,
-        sceneDepth: RenderGraphTextureHandle
-    ): void {
-        this.#transparentReactiveListDescriptor.cullingResults = cullingResults;
-        const rendererList = context.createRendererList(this.#transparentReactiveListDescriptor);
-        const parameters = context.acquirePassParameters(this.#fallbackPool);
-        parameters.rendererList = rendererList;
-        const color = parameters.colorAttachments[0];
-        if (color === undefined) {
-            throw new Error('Transparent temporal motion attachment is unavailable');
-        }
-        color.texture = temporalMotion;
-        parameters.colorAttachments[1] = {
-            texture: temporalReactiveMask,
-            loadOp: 'load',
-            storeOp: 'store'
-        };
-        parameters.depthStencilAttachment = {
-            texture: sceneDepth,
-            depthReadOnly: true
-        };
-        context.graph.addPass(this.#transparentReactivePass, parameters);
     }
 
     private recordFallbackMaterialAttributes(

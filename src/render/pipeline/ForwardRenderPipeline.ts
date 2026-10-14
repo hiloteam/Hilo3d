@@ -1,4 +1,13 @@
 import {
+    hasTemporalResolved,
+    requiresStableDepthComposition,
+    withStableRasterCamera
+} from '../internal/StableRasterCamera';
+import {
+    StableTransparentDepth,
+    hasVisiblePostResolveDraws
+} from './internal/StableTransparentDepth';
+import {
     renderTargetFormatHasStencil,
     type RenderTargetColor,
     type RenderTargetColorFormat,
@@ -547,6 +556,11 @@ class ForwardFeatureState {
         this.#colorEncoding = encodingCandidate;
     }
 
+    replaceDepthForComposition(texture: RenderGraphTextureHandle): void {
+        this.assertFrameActive();
+        this.#depth = texture;
+    }
+
     replaceDepth(lease: ForwardFeatureCallbackLease, texture: RenderGraphTextureHandle): void {
         this.assertCallbackActive(lease);
         if (!this.#replacementAllowed) {
@@ -878,6 +892,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             cullMode: 'none'
         }
     });
+    readonly #stableTransparentDepth = new StableTransparentDepth();
     readonly #opaqueCopyPass = new TextureCopyPass('Forward opaque texture');
     readonly #sceneParameters = new RenderPassParameterPool(
         () => new MutableSceneParameters(),
@@ -1131,54 +1146,72 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                     null,
                     this.#featureState.ambientOcclusionTexture
                 );
-                const opaqueTexture = this.#opaqueTextureEnabled
-                    ? this.recordOpaqueTexture(context)
-                    : null;
                 this.#featureState.allowColorReplacement();
                 this.recordFeatureGroup('after-opaque');
                 this.recordFeatureGroup('before-transparent');
                 if (this.#featureState.currentColorEncoding !== 'linear') {
                     throw new Error('Forward transparent rendering requires linear scene color');
                 }
-                if (
-                    this.#weightedTransparency !== null &&
-                    hasVisibleWeightedTransparency(context)
-                ) {
-                    const color = this.#featureState.currentColor;
-                    const currentDepth = this.#featureState.currentDepth;
-                    if (color === null || currentDepth === null) {
-                        throw new Error(
-                            'Weighted transparency requires linear HDR scene color and opaque depth'
-                        );
-                    }
-                    this.#weightedTransparency.record(context, {
-                        cullingResults: culling,
-                        color,
-                        depth: currentDepth,
-                        hasStencil: renderTargetFormatHasStencil(
+                const stableRaster =
+                    hasTemporalResolved(context) &&
+                    (hasVisiblePostResolveDraws(context) ||
+                        requiresStableDepthComposition(context));
+                const recordTransparent = (): void => {
+                    if (stableRaster) {
+                        const stableDepth = this.#stableTransparentDepth.record(
+                            context,
+                            culling,
                             context.output.depthStencilFormat ?? 'depth24plus'
-                        ),
-                        scale: currentDepth === depth ? this.#sceneScale : 1
-                    });
-                }
-                const transparent = context.createRendererList(this.#transparentListDescriptor);
-                this.recordScenePass(
-                    context,
-                    output,
-                    transparent,
-                    this.#featureState.currentDepth,
-                    false,
-                    true,
-                    sceneSampleCount,
-                    opaqueTexture
-                );
+                        );
+                        this.#featureState.replaceDepthForComposition(stableDepth);
+                        this.#stableTransparentDepth.recordGPUOpaque(context, stableDepth);
+                    }
+                    const opaqueTexture = this.#opaqueTextureEnabled
+                        ? this.recordOpaqueTexture(context)
+                        : null;
+                    if (
+                        this.#weightedTransparency !== null &&
+                        hasVisibleWeightedTransparency(context)
+                    ) {
+                        const color = this.#featureState.currentColor;
+                        const currentDepth = this.#featureState.currentDepth;
+                        if (color === null || currentDepth === null) {
+                            throw new Error(
+                                'Weighted transparency requires linear HDR scene color and opaque depth'
+                            );
+                        }
+                        this.#weightedTransparency.record(context, {
+                            cullingResults: culling,
+                            color,
+                            depth: currentDepth,
+                            hasStencil: renderTargetFormatHasStencil(
+                                context.output.depthStencilFormat ?? 'depth24plus'
+                            ),
+                            scale: currentDepth === depth ? this.#sceneScale : 1
+                        });
+                    }
+                    const transparent = context.createRendererList(this.#transparentListDescriptor);
+                    this.recordScenePass(
+                        context,
+                        output,
+                        transparent,
+                        this.#featureState.currentDepth,
+                        false,
+                        true,
+                        sceneSampleCount,
+                        opaqueTexture
+                    );
+                    this.recordFeatureGroup('after-transparent');
+                };
+                if (stableRaster) withStableRasterCamera(context, recordTransparent);
+                else recordTransparent();
             } else {
                 const all = context.createRendererList(this.#allListDescriptor);
                 this.recordScenePass(context, output, all, depth, true, true, sceneSampleCount);
                 this.#featureState.allowColorReplacement();
+                this.recordFeatureGroup('after-transparent');
             }
 
-            this.recordFeatureGroup('after-transparent');
             this.recordFeatureGroup('before-post-process');
             this.recordFeatureGroup('after-post-process');
             this.recordFeatureGroup('before-output');
@@ -1210,6 +1243,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         if (this.#destroyed) return;
         this.#destroyed = true;
         this.#weightedTransparency?.destroy();
+        this.#stableTransparentDepth.destroy();
         const failures: unknown[] = [];
         for (let index = this.#compiledFeatures.length - 1; index >= 0; index -= 1) {
             try {
@@ -1441,7 +1475,9 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             this.#sceneColorFormat ?? context.output.colorFormat(0);
         const destination = context.graph.createTexture(
             'forward opaque scene color',
-            this.#opaqueTextureDescriptor
+            hasTemporalResolved(context)
+                ? { ...this.#opaqueTextureDescriptor, extent: { relativeTo: 'output', scale: 1 } }
+                : this.#opaqueTextureDescriptor
         );
         const parameters = context.acquirePassParameters(this.#textureCopyParameters);
         parameters.source = source;

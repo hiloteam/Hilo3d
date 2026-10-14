@@ -43,9 +43,22 @@ export function nativeWebGPUTextureDescriptor(
 export function nativeWebGPUTextureViewDescriptor(
     descriptor: Readonly<RHINormalizedTextureViewDescriptor>
 ): GPUTextureViewDescriptor {
+    // WebGPU requires the selected component format for a combined depth/stencil aspect view.
+    // Portable descriptors retain the parent format; only this native conversion differs.
+    const combined =
+        descriptor.format === 'depth24plus-stencil8' ||
+        descriptor.format === 'depth32float-stencil8';
+    const format =
+        combined && descriptor.aspect === 'depth-only'
+            ? descriptor.format === 'depth24plus-stencil8'
+                ? 'depth24plus'
+                : 'depth32float'
+            : combined && descriptor.aspect === 'stencil-only'
+              ? 'stencil8'
+              : descriptor.format;
     return {
         label: descriptor.label,
-        format: descriptor.format,
+        format,
         dimension: descriptor.dimension,
         aspect: descriptor.aspect,
         baseMipLevel: descriptor.baseMipLevel,

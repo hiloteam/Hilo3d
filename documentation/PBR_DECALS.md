@@ -62,11 +62,18 @@ registering a decal material as an indirect bucket fails explicitly. Ordinary de
 the existing shared direct path. Checked graph texture bindings let the direct path compose DDGI
 with GTAO and atmosphere/cloud visibility without occupying a conflicting pass-global group.
 
-Decals have no geometric velocity when their projector or atlas changes. Their receiver's motion
-pass therefore rejects color history across the entire receiver, including a projector's previous
-footprint. This conservative policy avoids trails on moved/removed decals and edited atlas pixels;
-it trades temporal accumulation on those receivers for correctness. A later spatial history policy
-must preserve rejection of the old footprint and submission rollback.
+Decals have no geometric velocity when their projector or atlas changes. Shared motion participation
+tracks projector data and the effective upload identity/content of all three atlas textures per mesh
+and renderer. A changed revision invalidates history across the entire receiver, including the
+previous footprint, for the next successful submission. Failed frames retain the old committed
+revision and retry rejection. Static receivers then resume normal TAA accumulation rather than
+displaying each jitter sample directly. An `autoUpdate` atlas remains changed every frame. Receiver
+world transforms, canonical skin/morph poses and vertex-stream uploads follow the same
+submitted-pose rejection rule; camera-relative origin changes and unchanged matrix refreshes do not.
+
+The authored `temporalReactiveFactor` remains an independent baseline; decals no longer force it to
+one. Material replacement, projector movement/removal, atlas edits, texture backing changes and
+submission failure must preserve the same old-footprint rejection contract.
 
 Replacing the material, including removing its complete decal membership, invalidates the mesh's
 motion history through committed material identity. Failed replacement frames do not replace that

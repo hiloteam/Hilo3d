@@ -277,7 +277,8 @@ fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
         label: `${plan.definition.name}:particle-mesh-bucket-build`,
         workgroupSize: [WORKGROUP_SIZE],
         source: `
-struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>, deadCount: atomic<u32>, nextIndex: atomic<u32>, droppedSpawnCount: atomic<u32>, };
+// The graph orders this read-only snapshot after the atomic producer pass; u32 preserves its ABI.
+struct ParticleCounters { aliveCount: u32, outputAliveCount: u32, deadCount: u32, nextIndex: u32, droppedSpawnCount: u32, };
 @group(0) @binding(0) var<storage, read> state: array<u32>;
 @group(0) @binding(1) var<storage, read> aliveIndices: array<u32>;
 @group(0) @binding(2) var<storage, read> counters: ParticleCounters;
@@ -285,7 +286,7 @@ struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>
 @group(0) @binding(4) var<storage, read_write> bucketCounters: array<atomic<u32>>;
 @compute @workgroup_size(${String(WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
-    let aliveCount = atomicLoad(&counters.aliveCount);
+    let aliveCount = counters.aliveCount;
     if (invocation.x >= aliveCount) { return; }
     let particleIndex = aliveIndices[invocation.x];
     let bucket = state[${String(meshIndex)}u + particleIndex] % ${String(meshCount)}u;
@@ -595,13 +596,14 @@ export function compileParticleGPURibbonRenderer(
         label: `${plan.definition.name}:particle-ribbon-topology-initialize`,
         workgroupSize: [WORKGROUP_SIZE],
         source: `
-struct ParticleCounters { aliveCount: atomic<u32>, outputAliveCount: atomic<u32>, deadCount: atomic<u32>, nextIndex: atomic<u32>, droppedSpawnCount: atomic<u32>, };
+// The graph orders this read-only snapshot after the atomic producer pass; u32 preserves its ABI.
+struct ParticleCounters { aliveCount: u32, outputAliveCount: u32, deadCount: u32, nextIndex: u32, droppedSpawnCount: u32, };
 @group(0) @binding(0) var<storage, read> counters: ParticleCounters;
 @group(0) @binding(1) var<storage, read_write> topology: array<u32>;
 @compute @workgroup_size(${String(WORKGROUP_SIZE)})
 fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (invocation.x >= ${String(topologyCapacity)}u) { return; }
-    topology[invocation.x] = select(invocation.x, 0xffffffffu, invocation.x >= atomicLoad(&counters.aliveCount));
+    topology[invocation.x] = select(invocation.x, 0xffffffffu, invocation.x >= counters.aliveCount);
 }`,
         bindings: [
             {

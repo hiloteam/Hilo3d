@@ -105,10 +105,28 @@ lights illuminating otherwise empty transparent pixels.
 
 ## Temporal ordering, budgets and lifetime
 
-Opaque TAA/TAAU resolves before weighted composition, using output-resolution color/depth when
-upscaling. Clustered transparent reactive coverage includes weighted surfaces; its separate short
-transparent history consumes the composed result. Weighted layers never enter the opaque history.
-The existing submission-aware temporal commit/discard and camera-cut rules remain in force.
+Opaque TAA/TAAU resolves before weighted composition. Post-resolve draws use an unjittered
+output-resolution raster camera and a matching opaque depth replay, so transparent silhouettes and
+occlusion do not follow the eight opaque jitter phases. A cached internal camera snapshot preserves
+the original culling/shadow identity and leaves the opaque camera and motion history untouched.
+Clustered GPU Scene reuses its compact visible/indirect depth list; it does not rebuild GPU-managed
+objects through a CPU renderer list. Ordinary Forward receivers use the shared depth-only role.
+
+Weighted, sorted, transmission and GPU transparent contributions stay outside opaque TAA history.
+Their post-resolve coverage no longer overwrites opaque motion or reactive inputs. Fixed-grid
+composition uses current transparent pixels directly, without resurrecting removed layers from a
+separate color/mask/depth history. Existing opaque temporal and GPU simulation commit/discard rules
+remain submission-aware.
+
+The matching depth target is output resolution and single-sample. Ordinary single-camera renders use
+a transient target. Explicit surface camera composition retains pipeline-owned matching depth
+according to each camera's depth/stencil load-clear policy, including a preceding camera that has no
+transparent draws, so later `clearDepth: false` views preserve earlier-layer occlusion. This
+resource follows renderer-owned resize, release and recovery. Existing render-target TAA depth
+restrictions remain unchanged. Clustered also records a bounded frame-buffer copy that substitutes
+the stable view-projection matrix. This work is conditional on TAA/TAAU and visible post-resolve
+mesh or GPU contributions. GPU opaque particle replay may require a temporary color scratch
+attachment while rebuilding the matching depth.
 
 `weightedBlendedTransparency: { maxPixelCount, maxFragmentCount }` bounds each invocation. The pixel
 limit defaults to 3840 × 2160; four transient attachments require 26 bytes per pixel, excluding

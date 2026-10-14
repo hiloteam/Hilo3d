@@ -247,12 +247,12 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 100 个 HTML 的后端适用矩阵
+### 101 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 100 个 HTML，包含 98 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
-2，14 个页面执行 WebGPU，共 185 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
-Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 101 个 HTML，包含 99 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
+2，15 个页面执行 WebGPU，共 186 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+Forward+ 灯光场景、动态 GI、雨后茶寮、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
 
@@ -263,7 +263,7 @@ Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SS
 或
 `WebGL 2 only`；选择不兼容条目时，iframe 使用该条目唯一支持的后端。已有双后端页面改为单后端时，总 page/backend 测试组合数会减少一，但画廊条目总数保持不变。
 
-画廊对 98 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 26 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
+画廊对 99 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 27 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
 examples 集合内。主题数量同时反映搜索和后端条件，无结果的未选主题不显示；多词搜索支持顺序无关匹配及中文主题关键词。
 `q`、`category`、`collection`、`compatible`
 保存在画廊 URL 中，不传给示例；切换示例会清除上一个示例的专属参数。手机侧栏关闭后使用 `inert`
@@ -368,6 +368,10 @@ validation，且源码不访问 native WebGPU 对象。
 WebGPU shader
 corpus（包括 present/mipmap 内部 pass）与真实运行时测试是互补门禁：前者扩大 feature/variant 覆盖，后者证明浏览器端 Naga
 WASM 加载、pipeline creation、draw 与 queue submission 端到端可用。
+
+[雨后茶寮](./RAIN_TEA_GARDEN.md) 的专用 `rain-tea-garden.spec.ts`
+同时进入软件与物理 WebGPU 命令，归入 `post-processing`
+UI 工作组。该场景的四项渲染开关、晨暮切换、OrbitControls、窄屏与清理必须结合实际提交和画面变化验证；显式 WebGPU 边界使其不产生 WebGL2 场景组合。
 
 ### 可选物理 GPU 门禁
 

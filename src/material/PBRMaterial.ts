@@ -23,7 +23,11 @@ import { MaterialTextureSemantic, MaterialUniformSemantic } from './MaterialSema
 import type { ShaderOptions } from '../render/types';
 import type { ReflectionProbe } from '../render/reflections/ReflectionProbe';
 import { ReflectionProbeMaterialBinding } from '../render/reflections/ReflectionProbeMaterialBinding';
-import { DecalMaterialBinding, type PBRDecalOptions } from '../render/decals/DecalMaterialBinding';
+import {
+    DecalMaterialBinding,
+    registerMaterialDecalBinding,
+    type PBRDecalOptions
+} from '../render/decals/DecalMaterialBinding';
 
 export type PBRMaterialTextureInput = Texture<unknown> | MaterialTextureSlotInput | null;
 
@@ -455,7 +459,6 @@ class PBRMaterial extends MaterialInstance {
                 // Dynamic reflection changes have no geometric velocity. Conservatively reject their
                 // material history until a finer spatial reactive contract is provided.
                 temporalReactiveFactor:
-                    params.decals !== undefined ||
                     params.reflectionProbes?.some(probe => probe.dynamic) === true
                         ? 1
                         : (params.temporalReactiveFactor ?? 0)
@@ -473,6 +476,7 @@ class PBRMaterial extends MaterialInstance {
             if (params.uniformBlocks?.['DecalBlock'] !== undefined)
                 throw new TypeError('DecalBlock is owned by PBR decals');
             const binding = new DecalMaterialBinding(params.decals);
+            registerMaterialDecalBinding(this, binding);
             this.decals = binding.options;
             Object.defineProperty(this.uniformBlocks, 'DecalBlock', {
                 enumerable: true,

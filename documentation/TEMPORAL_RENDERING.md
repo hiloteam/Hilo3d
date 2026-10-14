@@ -1,6 +1,6 @@
 # Motion vectors and temporal rendering
 
-Status: current motion/TAA/TAAU and Clustered temporal contract, reviewed on 2026-09-20. The
+Status: current motion/TAA/TAAU and Clustered temporal contract, reviewed on 2026-10-14. The
 [original remediation review](./archive/TEMPORAL_RENDERING_REMEDIATION.md) is historical. Remaining
 feature and evidence work belongs to [the roadmap](./ROADMAP.md).
 
@@ -13,7 +13,8 @@ feature and evidence work belongs to [the roadmap](./ROADMAP.md).
   frustum、picking、project/unproject；成功和失败路径都必须在 frame 边界清零 jitter。
 - TAA/TAAU
   history 只包含 opaque/masked 线性 HDR 结果。transparent/transmission 在 resolve 后以 output
-  resolution 合成，Bloom/display 再消费完整场景。
+  resolution 的稳定栅格合成，并重建匹配的 opaque depth；透明 motion/coverage 不回写 opaque
+  history，Bloom/display 再消费完整场景。
 - `renderScale` 是 0.5–1 的固定配置；`dynamicResolution` 可在同一范围内声明 min/max、初始比例与 GPU
   budget。sub-native 模式同步缩放 scene color、depth、motion、Hi-Z 和 cluster
   viewport，但 color/depth history、resolve 与后续透明组合保持 output resolution。
@@ -23,9 +24,9 @@ feature and evidence work belongs to [the roadmap](./ROADMAP.md).
 - 内置材质通过 `temporalReactiveFactor`（0–1）写独立 `r8unorm` reactive MRT；resolve 做 3×3
   conservative dilation 后与 luminance heuristic 合并。transparent/particle/UI 不进入 opaque
   history，保持 output-resolution composition policy。
-- Clustered GPU Scene 复用已有 depth prepass 输出 motion，不为 GPU-managed
-  object 增加第二次几何 replay；ordinary Forward 与 Clustered fallback 继续使用材质 `motion-vector`
-  pass。
+- Clustered GPU Scene 复用已有 depth prepass 输出 motion；ordinary Forward 与 Clustered
+  fallback 继续使用材质 `motion-vector` pass。有 post-resolve 内容时额外重建稳定 opaque
+  depth，GPU-managed 对象复用当前 compact/indirect 列表，不回退 CPU renderer list。
 - `temporalAA` 未启用时不分配或清空 GPU Scene visibility history，不增加默认 Clustered 的 GPU
   buffer 带宽。
 - camera cut、显著 projection 变化、resize、显隐间断、显式 transform invalidation、history
@@ -77,13 +78,13 @@ shader 保持非 reactive；custom shader 可在 `HILO_TEMPORAL_REACTIVE_MASK` �
    role 补写同一 motion/reactive target；
 6. TAA initialize 或 resolve；TAAU 先以 Catmull-Rom 重建当前颜色，并写 output-resolution color/depth
    history、未进入 history 的 sharpened output 与 full-resolution scene depth；
-7. native clustered 或 ordinary Forward transparent/transmission 合成，随后用透明 motion、reactive
-   coverage 与当前深度 resolve 独立的 color/mask/depth history；
-8. GPU particle 在 output
-   resolution 独立记录 overlay/reactive/depth，resolve 自己的短 history，再合成回场景；
+7. 若有后续透明或 GPU contribution，以缓存的无 jitter 相机快照重建 output-resolution opaque
+   depth；Clustered 间接列表和共享 Forward depth-only 分别回放自身几何；
+8. native clustered、ordinary Forward、weighted、transmission 和 GPU transparent
+   contribution 在同一稳定栅格与匹配深度上合成；不复活旧透明颜色，也不覆盖 opaque motion/reactive；
 9. Bloom、display transform、present；
-10. 只有 queue 接受 submission 后才轮换 opaque、透明、粒子与 visibility history，并提交 previous
-    transforms 和 GPU particle state。
+10. 只有 queue 接受 submission 后才轮换 opaque 与 visibility history，并提交 previous
+    transforms、decal 内容 revision 和 GPU particle state。
 
 任何 setup、prepare、execute 或提交失败都会走 discard：jitter 被清除，history index、visibility
 index 和 previous transform 都保持最后成功状态。
@@ -91,17 +92,17 @@ index 和 previous transform 都保持最后成功状态。
 ## 画质策略
 
 - history UV 必须留在 half-texel 内；越界直接拒绝。
-- depth rejection 在 reprojected UV 周围取保守 2×2 history depth 最小误差，降低边缘 sampling
-  mismatch，同时不允许跨越相对深度阈值。
+- depth rejection 以 reprojected UV 最近 texel 为中心，在对称 3×3 history depth
+  footprint 内取最小误差。固定 output 网格与上帧 jitter
+  depth 的位置差可以落在左/上，也可以落在右/下，不能只检查正方向 2×2；相对深度阈值、无效 motion、camera
+  cut 与颜色 clipping 保持不变。
 - clamp 在 YCoCg 中使用 3×3 mean/variance 与真实 neighborhood extent 的交集，避免单纯 RGB
   box 对亮度和色度同时过宽。
 - 大 physical motion 最多只保留 60%
   history；原 history 亮度偏离当前真实 neighborhood 范围时进一步降低 weight。合法抗锯齿混合色和本帧单点样本的差异不再被误判为 shading 变化。材质 authored
   mask 仍做 3×3 dilation 后与该 heuristic 取最大抑制量，`1` 完全拒绝 history。
-- transparent、transmission 与 particle 不写 opaque
-  history。它们在 TAAU 后以 output-resolution 独立 history resolve：透明使用 motion/reactive/depth
-  agreement 和衰减 resurrection；particle 使用隔离 overlay/mask/depth
-  history，避免污染表面 history。UI 保持在全部时域 composition 之后。
+- transparent、transmission 与 transparent particle 不写 opaque history、motion 或 reactive
+  mask。TAAU 后使用稳定 raster 和匹配深度直接组合当前像素，避免透明层跟随 jitter 跳动以及旧颜色残留。UI 保持在 composition 之后。
 - TAAU full-resolution depth 使用对应 internal depth texel；stencil 从零开始。依赖 opaque
   stencil 标记的透明自定义 pass 必须保持原生 `renderScale=1`。
 
@@ -109,30 +110,32 @@ index 和 previous transform 都保持最后成功状态。
 
 TAA/TAAU 是明确 opt-in。以不含 backend row-pitch/alignment 的格式字节估算：
 
-| 资源/工作           | ordinary Forward                                                      | Clustered Forward+                                                                             |
-| ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Motion target       | `8 B/internal pixel` transient；额外 opaque/masked motion replay      | `8 B/internal pixel` transient；GPU object 融入已有 depth prepass，只有 fallback opaque replay |
-| Reactive target     | `1 B/internal pixel` transient；与 motion replay 使用同一 render pass | `1 B/internal pixel` transient；与 GPU Scene depth/motion 使用同一 prepass                     |
-| Color history       | 双缓冲 output-resolution `rgba16float`，合计 `16 B/pixel` persistent  | 相同                                                                                           |
-| Depth history       | 双缓冲 output-resolution `r32float`，合计 `8 B/pixel` persistent      | 相同                                                                                           |
-| Resolved target     | output-resolution `8 B/pixel` transient                               | 相同                                                                                           |
-| TAAU resolved depth | sub-native 模式额外一张 output-resolution depth transient             | 相同                                                                                           |
-| Visibility history  | 无                                                                    | 双缓冲 `uint`，合计 `8 B/object`；只在启用时存在                                               |
-| Transparent history | 无                                                                    | 双缓冲 `rgba16float` color + `r8unorm` mask + `r32float` depth；按需存在                       |
-| Particle history    | 无                                                                    | 独立双缓冲 color/mask/depth；仅可见 GPU particle 且 TAAU 启用时按需存在                        |
+| 资源/工作                    | ordinary Forward                                                      | Clustered Forward+                                                                             |
+| ---------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Motion target                | `8 B/internal pixel` transient；额外 opaque/masked motion replay      | `8 B/internal pixel` transient；GPU object 融入已有 depth prepass，只有 fallback opaque replay |
+| Reactive target              | `1 B/internal pixel` transient；与 motion replay 使用同一 render pass | `1 B/internal pixel` transient；与 GPU Scene depth/motion 使用同一 prepass                     |
+| Color history                | 双缓冲 output-resolution `rgba16float`，合计 `16 B/pixel` persistent  | 相同                                                                                           |
+| Depth history                | 双缓冲 output-resolution `r32float`，合计 `8 B/pixel` persistent      | 相同                                                                                           |
+| Resolved target              | output-resolution `8 B/pixel` transient                               | 相同                                                                                           |
+| TAAU resolved depth          | sub-native 模式额外一张 output-resolution depth transient             | 相同                                                                                           |
+| Visibility history           | 无                                                                    | 双缓冲 `uint`，合计 `8 B/object`；只在启用时存在                                               |
+| Stable transparent depth     | 有 post-resolve 内容时 output-resolution depth transient              | 相同，GPU Scene 复用 compact/indirect，并增加小型 frame-buffer copy                            |
+| Transparent/particle history | 无额外透明持久 history                                                | 无额外透明持久 history；opaque GPU particle depth replay 可有临时 color scratch                |
 
 原生 1080p 下，上述 history 加 motion/reactive/resolved 的理论额外峰值约 85 MB；其中约 50
 MB 是跨帧 persistent history。TAAU 的 current scene/motion/depth 成本按 `renderScale²`
 下降，但 output history、resolved color 与新增 resolved depth 不缩放。原生 resolve 每像素读取 3×3
 current neighborhood；TAAU 额外用 16-tap Catmull-Rom 重建当前颜色。两者还读取一个 color
-history、一个 motion sample 和最多四个 depth history texel，并输出三张 color
+history、一个 motion sample 和最多九个 depth history texel，并输出三张 color
 attachment。它适合 high-end profile，不应在内存受限设备上默认开启。动态控制开启后还会激活 Render
 Graph timestamp query/resolve/readback 三槽 ring；回读不阻塞生产帧，ring 饱和时保持当前比例。history
 packing 或更低质量 tier 必须作为独立设计，不能偷偷改变当前 ABI。
 
-表中约 85 MB 的旧峰值估算只覆盖 opaque
-TAAU 基线；启用透明或粒子短 history 时还需按上述格式计入各自 output-resolution
-persistent 资源，未启用对应内容时不创建。
+表中约 85 MB 的峰值估算只覆盖 opaque
+TAAU 基线。有 post-resolve 内容时还需计入稳定 depth（depth32float 理论为 output pixel × 4
+bytes）及可能的 GPU opaque particle color scratch；单 camera 时为 transient。显式 surface 多 camera
+composition 为保留 `clearDepth: false`
+的前序遮挡而维护 pipeline-owned 稳定 depth/stencil，遵守各 camera 的 load/clear 策略与资源恢复。不再计入透明 color/mask/depth 双缓冲 history。
 
 ## 自动化验收
 
@@ -152,15 +155,14 @@ cut 和 motion pause；测试模式固定 output 640×360，并以 `renderScale=
 
 ## 明确保留到后续版本
 
-Unreleased 的 projected
-Decal 当前对整个 receiver 写 reactive，覆盖 projector 离开后的旧区域。共享 motion
-participation 同时提交材质 identity；换掉材质（包括移除所有 Decal）会让上一表面 history 失效，失败帧不发布候选 identity。Weighted
-OIT 在 opaque resolve 后合成，并进入 Clustered 独立 transparent short history；见
-[Decal](./PBR_DECALS.md) 和 [透明合同](./TRANSPARENCY.md)。
+Projected Decal 的共享 motion
+participation 按 receiver/renderer 提交材质 identity 与 projector/atlas
+revision。内容变化会使整个 receiver 的旧 footprint 失效一次，成功提交后静态表面恢复累积，失败帧保留变化；不再永久强制 reactive=1。Receiver 的实际世界矩阵、内置 skin/morph 姿态和顶点流更新也使用相同提交规则；相机相对原点变化及值未变的矩阵刷新不会使其失效。Weighted
+OIT 在 opaque resolve 后使用稳定栅格与匹配深度；见 [Decal](./PBR_DECALS.md) 和
+[透明合同](./TRANSPARENCY.md)。
 
-- 更广的 authored spatial reactive
-  mask 与透明材质/粒子适用面；当前 Clustered 已有 transparent/transmission/GPU-particle 独立 short
-  history、coverage/depth rejection 与有界 resurrection，不能再把这组首版能力列为未实现；
+- 更精细的 decal spatial reactive
+  mask，以及保留稳定覆盖的透明专用抗锯齿；当前固定栅格组合不等于透明层进入 opaque TAA history；
 - exposure-compensated history 与 content-aware quality controller；
 - per-pixel normal/material ID rejection、velocity dilation 和专用 thin-feature reconstruction；
 - memory-constrained quality tier 与 history format packing。
@@ -175,3 +177,12 @@ sequence 全部启用。控制组只恢复旧的 jitter 重投影、单点亮度
 reconstruction 三处表达式；候选必须让八相位收敛后的邻帧像素差降至控制组的 20% 以下，并保持 submission
 phase 连续。该测试同时覆盖 WebGL 2、WebGPU、反向 Z 与 TAAU，并验证 std140
 offset/size。它是画质回归，不是 GPU 性能证据。
+
+`StableTransparentRaster.test.ts`
+与粒子/多 camera 配套用例保留连续 jitter 相位，检查稳定透明栅格、标准/反向深度、TAAU、遮挡、移除、提交失败与资源恢复。`TemporalHistoryEviction.test.ts`
+覆盖一个相机在同一 frame 先被判为过期、随后又被调用的情形：使用新的 history
+keys 初始化候选，成功提交才回收旧状态；失败恢复旧状态和相位。多次辅助读回推进 renderer
+frame 编号也不能使相机返回时撞上 pending release。
+
+`TemporalDepthFootprint.test.ts`
+将旧的正方向 2×2 深度 footprint 作为单一因果控制，保留同一 jitter、权重、阈值与场景。薄斜几何与近景遮挡以正序/逆序八相位比较，并检查移动、移除和 TAAU；对称搜索不代表已经解决全部亚像素细节或扩大了深度接受阈值。

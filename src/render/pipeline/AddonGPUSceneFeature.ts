@@ -1,3 +1,4 @@
+import { withRasterViewport } from '../internal/RasterViewportScope';
 import { getRenderNodeExtension, type RenderNodeGPUExtension } from './RenderNodeExtension';
 import type {
     ForwardRenderFeatureContext,
@@ -70,19 +71,25 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
 
     record(context: ForwardRenderFeatureContext): void {
         if (!this.#supported || context.resources.color === null) return;
-        context.pipeline.scene.traverse(node => {
-            const gpu = getRenderNodeExtension(node)?.gpu;
-            if (gpu === null || gpu === undefined) return;
-            if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) return;
-            this.transaction.record(gpu);
-            gpu.record(
-                context.pipeline,
-                context.resources.color as NonNullable<typeof context.resources.color>,
-                context.resources.depth,
-                gpu.isVisible(context.pipeline.camera),
-                this.phase
-            );
-        });
+        withRasterViewport(
+            context.pipeline,
+            this.phase === 'opaque' ? context.resources.sceneScale : 1,
+            () => {
+                context.pipeline.scene.traverse(node => {
+                    const gpu = getRenderNodeExtension(node)?.gpu;
+                    if (gpu === null || gpu === undefined) return;
+                    if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) return;
+                    this.transaction.record(gpu);
+                    gpu.record(
+                        context.pipeline,
+                        context.resources.color as NonNullable<typeof context.resources.color>,
+                        context.resources.depth,
+                        gpu.isVisible(context.pipeline.camera),
+                        this.phase
+                    );
+                });
+            }
+        );
     }
 
     frameSubmitted(frameIndex: number): void {

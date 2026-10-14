@@ -268,18 +268,18 @@ default 对象而发生串改。
 
 ## 10. 当前完成度与长期路线
 
-| 工作包                       | 状态            | 当前结果 / 下一步                                                                               |
-| ---------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| Definition / Instance        | 已完成          | 内置与自定义材质都使用不可变结构和实例数据                                                      |
-| Semantic pass                | 已完成基础      | forward/depth/shadow/picking/motion/material-attributes 均已接生产消费者                        |
-| Texture slot                 | 已完成          | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                                |
-| Typed semantics              | 已完成          | attribute/uniform/texture/slot 常量与联合类型公开                                               |
-| UBO lowering                 | 已完成          | scalar 与 slot block 分离，双后端固定 ABI                                                       |
-| Shared GPU Material Database | 已完成（PBR）   | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery                     |
-| Variant manifest / warmup    | high-end 已完成 | Clustered manifest 异步 warmup、固定预算、事务式运行时准入与诊断                                |
-| Motion vectors               | 已完成生产切片  | opaque/masked、skin/morph/instance history、固定/动态 TAAU，以及透明/粒子 reactive 与短 history |
-| Material attributes          | 已完成生产 ABI  | oct normal/roughness/receiver/metallic；SSR opt-in 再写 response 与 fallback specular MRT       |
-| Advanced surface families    | 后续            | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                              |
+| 工作包                       | 状态            | 当前结果 / 下一步                                                                                       |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| Definition / Instance        | 已完成          | 内置与自定义材质都使用不可变结构和实例数据                                                              |
+| Semantic pass                | 已完成基础      | forward/depth/shadow/picking/motion/material-attributes 均已接生产消费者                                |
+| Texture slot                 | 已完成          | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                                        |
+| Typed semantics              | 已完成          | attribute/uniform/texture/slot 常量与联合类型公开                                                       |
+| UBO lowering                 | 已完成          | scalar 与 slot block 分离，双后端固定 ABI                                                               |
+| Shared GPU Material Database | 已完成（PBR）   | 私有 PBR table 已抽取、共享、去重，并具备 dirty upload、提交回滚与 recovery                             |
+| Variant manifest / warmup    | high-end 已完成 | Clustered manifest 异步 warmup、固定预算、事务式运行时准入与诊断                                        |
+| Motion vectors               | 已完成生产切片  | opaque/masked、skin/morph/instance history、固定/动态 TAAU，以及稳定栅格透明/粒子组合与贴花内容变更失效 |
+| Material attributes          | 已完成生产 ABI  | oct normal/roughness/receiver/metallic；SSR opt-in 再写 response 与 fallback specular MRT               |
+| Advanced surface families    | 后续            | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                                      |
 
 首个共享 GPU Material Database 已满足：
 

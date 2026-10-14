@@ -19,6 +19,7 @@ import {
 } from '../../../src/render/decals/DecalMaterialBinding';
 import { ClusteredForwardPlusPipelineFactory } from '../../../src/render/pipeline/ClusteredForwardPlus';
 import { SceneRenderPass } from '../../../src/render/pipeline/passes/SceneRenderPass';
+import { PresentRenderPass } from '../../../src/render/pipeline/passes/FullscreenRenderPass';
 import { depthClearValue } from '../../../src/render/renderer/DepthConvention';
 import { ForwardRenderPipelineFactory } from '../../../src/render/pipeline/ForwardRenderPipeline';
 import { TemporalAA } from '../../../src/render/postprocessing/TemporalAA';
@@ -194,6 +195,123 @@ describe('PBR projected decals', () => {
     });
 
     for (const backend of ['webgl2', 'webgpu'] as const) {
+        it(`writes authored reactive masks for static decal receivers on ${backend}`, async () => {
+            const atlas = texture([255, 255, 255, 255]);
+            const material = new PBRMaterial({
+                decals: { projectors: [new DecalProjector()], baseColorAtlas: atlas }
+            });
+            const { root, camera } = plane(material);
+            const depthPass = new SceneRenderPass('decal motion depth');
+            const motionPass = new SceneRenderPass('decal authored reactive mask');
+            const readbackPass = new PresentRenderPass('decal reactive mask readback');
+            const renderer = await Renderer.create({
+                backend,
+                width: 16,
+                height: 16,
+                domElement: document.createElement('canvas'),
+                antialias: false,
+                renderPipeline: {
+                    name: 'decal reactive mask readback',
+                    create: () => ({
+                        name: 'decal reactive mask readback',
+                        record(frame): void {
+                            const output = frame.graph.importOutput();
+                            if (output.depthStencil === null)
+                                throw new Error('Missing motion test depth');
+                            const motion = frame.graph.createTexture('decal motion', {
+                                format: 'rgba16float',
+                                extent: { width: 16, height: 16 }
+                            });
+                            const reactive = frame.graph.createTexture('decal reactive', {
+                                format: 'r8unorm',
+                                extent: { width: 16, height: 16 }
+                            });
+                            const culling = frame.cull();
+                            frame.graph.addPass(depthPass, {
+                                rendererList: frame.createRendererList({
+                                    cullingResults: culling,
+                                    queue: 'opaque',
+                                    sorting: 'none',
+                                    materialPass: 'depth-only'
+                                }),
+                                colorAttachments: [],
+                                depthStencilAttachment: {
+                                    texture: output.depthStencil,
+                                    depthLoadOp: 'clear',
+                                    depthStoreOp: 'store',
+                                    depthClearValue: depthClearValue(frame.camera.depthMode)
+                                }
+                            });
+                            frame.graph.addPass(motionPass, {
+                                rendererList: frame.createRendererList({
+                                    cullingResults: culling,
+                                    queue: 'opaque',
+                                    sorting: 'none',
+                                    materialPass: 'motion-vector'
+                                }),
+                                colorAttachments: [
+                                    {
+                                        texture: motion,
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                        clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                                    },
+                                    {
+                                        texture: reactive,
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                        clearValue: { r: 1, g: 0, b: 0, a: 0 }
+                                    }
+                                ],
+                                depthStencilAttachment: {
+                                    texture: output.depthStencil,
+                                    depthReadOnly: true
+                                }
+                            });
+                            frame.graph.addPass(readbackPass, {
+                                inputTextures: [reactive],
+                                colorAttachments: [
+                                    {
+                                        texture: output.color(0),
+                                        loadOp: 'clear',
+                                        storeOp: 'store',
+                                        clearValue: { r: 0, g: 0, b: 0, a: 0 }
+                                    }
+                                ]
+                            });
+                        },
+                        destroy(): void {
+                            readbackPass.shader.destroy();
+                        }
+                    })
+                }
+            });
+            const output = renderer.createRenderTarget({
+                width: 16,
+                height: 16,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: { format: 'depth32float' }
+            });
+            try {
+                for (const factor of [0, 0.4, 1, 0]) {
+                    material.temporalReactiveFactor = factor;
+                    renderer.renderToTarget(output, root, camera);
+                    const pixel = await output.readColorAttachment({
+                        attachmentIndex: 0,
+                        x: 8,
+                        y: 8,
+                        width: 1,
+                        height: 1
+                    });
+                    expect(pixel.data[0]).toBeCloseTo(factor * 255, 0);
+                }
+            } finally {
+                output.destroy();
+                renderer.destroy();
+                atlas.destroy();
+            }
+        }, 30_000);
+
         it(`keeps cutout holes, temporal history, discarded updates and recovery correct on ${backend}`, async () => {
             const atlas = texture([255, 255, 255, 255]);
             const coverage = texture([255, 255, 255, 0, 255, 255, 255, 255], 2, 1);
@@ -397,8 +515,8 @@ describe('PBR projected decals', () => {
                 moved.elements[12] = 5;
                 projector.update({ transform: moved });
                 expect((await read(12))[1]).toBeCloseTo((255 * 0.96) / Math.PI, 0);
-                // Full receiver rejection includes the former footprint, even after a projector moves away.
-                expect(material.temporalReactiveFactor).toBe(1);
+                // Content revisions reject changed receiver history; static frames retain authored reactivity.
+                expect(material.temporalReactiveFactor).toBe(0);
             } finally {
                 output.destroy();
                 renderer.destroy();

@@ -1,3 +1,4 @@
+import { markTemporalResolved } from '../internal/StableRasterCamera';
 import type Camera from '../../camera/Camera';
 import { getTransformHistoryRevision } from '../../core/TransformHistory';
 import { DEFAULT_MATERIAL_PIPELINE_STATE } from '../../material/MaterialDefinition';
@@ -126,10 +127,12 @@ float relativeDepthError(float historyLogDepth, float expectedLogDepth) {
 float minimumHistoryDepthError(vec2 historyUV, float expectedLogDepth) {
     ivec2 dimensions = textureSize(u_historyDepth, 0);
     vec2 samplePosition = historyUV * vec2(dimensions) - 0.5;
-    ivec2 base = ivec2(floor(samplePosition));
+    // Color history is on the fixed pixel grid, while saved depth is a jittered point sample.
+    // Either jitter direction can move matching surface coverage into the adjacent history texel.
+    ivec2 base = ivec2(round(samplePosition));
     float error = 1e20;
-    for (int y = 0; y <= 1; y++) {
-        for (int x = 0; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
             ivec2 coordinate = clamp(base + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
             error = min(
                 error,
@@ -309,10 +312,12 @@ float relativeDepthError(float historyLogDepth, float expectedLogDepth) {
 float minimumHistoryDepthError(vec2 historyUV, float expectedLogDepth) {
     ivec2 dimensions = textureSize(u_historyDepth, 0);
     vec2 samplePosition = historyUV * vec2(dimensions) - 0.5;
-    ivec2 base = ivec2(floor(samplePosition));
+    // Color history is on the fixed pixel grid, while saved depth is a jittered point sample.
+    // Either jitter direction can move matching surface coverage into the adjacent history texel.
+    ivec2 base = ivec2(round(samplePosition));
     float error = 1e20;
-    for (int y = 0; y <= 1; y++) {
-        for (int x = 0; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
             ivec2 coordinate = clamp(base + ivec2(x, y), ivec2(0), dimensions - ivec2(1));
             error = min(
                 error,
@@ -970,6 +975,7 @@ export class TemporalResolveController {
     readonly #ownedStates = new Set<CameraTemporalState>();
     readonly #stagedStates: CameraTemporalState[] = [];
     readonly #pendingEvictions: CameraTemporalState[] = [];
+    readonly #replacementStates = new Map<CameraTemporalState, CameraTemporalState>();
     #destroyed = false;
     #submissionIndex = 0;
 
@@ -1146,6 +1152,7 @@ export class TemporalResolveController {
                   : this.#initializePass,
             parameters
         );
+        markTemporalResolved(context);
         return Object.freeze({ color: resolved, depth: resolvedDepth ?? depth });
     }
 
@@ -1163,13 +1170,16 @@ export class TemporalResolveController {
             state.camera.clearProjectionJitter();
         }
         for (const state of this.#pendingEvictions) {
-            this.#states.delete(state.camera);
+            // A later view can return after an earlier view scheduled its old history for release.
+            // Retire only that old state, preserving the independently submitted replacement.
+            if (this.#states.get(state.camera) === state) this.#states.delete(state.camera);
             this.#ownedStates.delete(state);
             this.#availableBindings.push(state.bindings);
             state.camera.clearProjectionJitter();
         }
         this.#stagedStates.length = 0;
         this.#pendingEvictions.length = 0;
+        this.#replacementStates.clear();
         this.#submissionIndex = committedSubmission;
     }
 
@@ -1179,8 +1189,17 @@ export class TemporalResolveController {
             state.pendingFrame = -1;
             state.camera.clearProjectionJitter();
         }
+        for (const [candidate, previous] of this.#replacementStates) {
+            // The graph rolls back the old release and the candidate's new history allocations.
+            // Restore the same committed camera state and recycle only the unsubmitted binding slot.
+            if (this.#states.get(candidate.camera) === candidate)
+                this.#states.set(candidate.camera, previous);
+            this.#ownedStates.delete(candidate);
+            this.#availableBindings.push(candidate.bindings);
+        }
         this.#stagedStates.length = 0;
         this.#pendingEvictions.length = 0;
+        this.#replacementStates.clear();
     }
 
     destroy(): void {
@@ -1189,6 +1208,7 @@ export class TemporalResolveController {
         this.#ownedStates.clear();
         this.#stagedStates.length = 0;
         this.#pendingEvictions.length = 0;
+        this.#replacementStates.clear();
         this.#dynamicResolution?.destroy();
         this.#availableBindings.length = 0;
         this.#destroyed = true;
@@ -1202,6 +1222,11 @@ export class TemporalResolveController {
         renderScale: number
     ): CameraTemporalState {
         let state = this.#states.get(camera);
+        const retiring =
+            state !== undefined && this.#pendingEvictions.includes(state) ? state : null;
+        // Pending graph releases cannot be reacquired. Use fresh history keys while retaining the
+        // previous CPU state until submission decides whether retirement or rollback wins.
+        if (retiring !== null) state = undefined;
         if (state === undefined) {
             state = {
                 camera,
@@ -1224,6 +1249,7 @@ export class TemporalResolveController {
             };
             this.#states.set(camera, state);
             this.#ownedStates.add(state);
+            if (retiring !== null) this.#replacementStates.set(state, retiring);
         }
         if (state.pendingFrame === frameIndex) {
             throw new Error(

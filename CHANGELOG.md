@@ -1,6 +1,21 @@
 # Unreleased
 
+### Examples
+
+- Add 雨后茶寮 / After the rain, a Blender MCP-authored anime garden with morning/evening light,
+  dynamic GI, shadowed volumetric mist, fallen-petal decals and weighted transparent glass. Include
+  public OrbitControls, feature comparisons and explicit WebGPU capability handling.
+
 ### Rendering
+
+- Use a symmetric temporal depth footprint to reduce phase-dependent flicker at thin opaque edges.
+- Stabilize post-TAA transparency with an unjittered raster view and matching opaque depth,
+  retaining shared culling and GPU indirect visibility while avoiding stale transparent history.
+- Correct combined depth/stencil sampled views on WebGPU and GPU particle readonly-counter and
+  reversed-depth handling; retain live multi-camera TAA state across history eviction/revival.
+- Restore TAA accumulation on static decal receivers; invalidate changed projector/atlas content and
+  receiver poses against successful submissions so updates and failed-frame retries still clear old
+  footprints.
 
 - Extend dynamic diffuse GI with bounded, GPU-sampled asset textures, independent UV sets and
   transforms, vertex colors, alpha-mask ray visibility, projected decal color/normal transport, and

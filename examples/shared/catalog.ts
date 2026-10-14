@@ -288,6 +288,14 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         featured: true,
         backend: 'webgpu'
     },
+    'rain_tea_garden.html': {
+        title: '雨后茶寮 / After the rain',
+        description:
+            'Visit a Blender-authored anime garden after the rain: warm tea-house light, DDGI color bounce, shadowed mist, fallen-petal decals and layered transparent glass under morning or evening light.',
+        category: 'lighting',
+        featured: true,
+        backend: 'webgpu'
+    },
     'fog.html': {
         title: 'Distance Fog',
         description: 'Observe distance-based fog blending across textured objects.',
