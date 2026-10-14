@@ -1,3 +1,4 @@
+import { readBoundedResponse } from './bounded-response';
 import { validateProject, type ProjectDocument } from './project';
 
 export type CollaborationRole = 'editor' | 'viewer';
@@ -136,41 +137,21 @@ export function sameCollaborationContent(left: ProjectDocument, right: ProjectDo
     return authored(left) === authored(right);
 }
 
-async function json(response: Response): Promise<unknown> {
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('Collaboration server returned no response body');
-    const decoder = new TextDecoder();
-    const parts: string[] = [];
-    let bytes = 0;
-    let complete = false;
-    try {
-        for (;;) {
-            const next = await reader.read();
-            if (next.done) {
-                complete = true;
-                break;
-            }
-            bytes += next.value.byteLength;
-            if (bytes > MAX_RESPONSE_BYTES)
-                throw new Error('Collaboration response exceeds the project size limit');
-            parts.push(decoder.decode(next.value, { stream: true }));
-        }
-        parts.push(decoder.decode());
-        const value: unknown = JSON.parse(parts.join(''));
-        if (!response.ok) {
-            const body = object(value);
-            throw new CollaborationRequestError(
-                response.status,
-                typeof body['error'] === 'string'
-                    ? body['error']
-                    : `Server returned ${String(response.status)}`
-            );
-        }
-        return value;
-    } finally {
-        if (!complete) await reader.cancel().catch(() => undefined);
-        reader.releaseLock();
+/** Keep the original HTTP consumer alive through native completion before publishing a snapshot. */
+async function json(response: Response, signal?: AbortSignal): Promise<unknown> {
+    if (!response.body) throw new Error('Collaboration server returned no response body');
+    const bytes = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!response.ok) {
+        const body = object(value);
+        throw new CollaborationRequestError(
+            response.status,
+            typeof body['error'] === 'string'
+                ? body['error']
+                : `Server returned ${String(response.status)}`
+        );
     }
+    return value;
 }
 
 async function authenticatedJson(
@@ -204,7 +185,7 @@ async function authenticatedJson(
             },
             ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) })
         });
-        return await json(response);
+        return await json(response, controller.signal);
     } finally {
         clearTimeout(timeout);
         options.signal?.removeEventListener('abort', abort);
@@ -658,7 +639,7 @@ export class CollaborationClient {
                     }
                 );
                 clearTimeout(timeout);
-                if (!response.ok) await json(response);
+                if (!response.ok) await json(response, stream.signal);
                 if (!response.headers.get('content-type')?.includes('text/event-stream'))
                     throw new Error('Server does not provide an event stream');
                 attempt = 0;

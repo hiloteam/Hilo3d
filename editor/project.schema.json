@@ -337,6 +337,9 @@
               "maximum": 100000
             }
           }
+        },
+        "components": {
+          "$ref": "#/$defs/scene-components"
         }
       },
       "allOf": [
@@ -428,7 +431,7 @@
       ]
     },
     "scene": {
-      "description": "Editable scene source. IDs are semantic stable keys; positions use meters, rotations use Euler degrees, colors use sRGB. Parent cycles, dangling references, more than 8 directional lights (including hidden lights), hierarchy depth above 64, and documents above 2 MiB are additionally rejected at runtime. The importer migrates primitive-only v1 documents to v2. Asset and script references are resolved by the containing project.",
+      "description": "Editable scene source. IDs are semantic stable keys; positions use meters, rotations use Euler degrees, colors use sRGB. Parent cycles, dangling references, more than 8 directional lights (including hidden lights), hierarchy depth above 64, and documents above 2 MiB are additionally rejected at runtime. The importer migrates primitive-only v1 and v2 documents to v3. Components require version 3. Particle, audio and rigid-body ownership budgets are also validated at runtime. Asset and script references are resolved by the containing project.",
       "type": "object",
       "additionalProperties": false,
       "required": ["format", "version", "name", "units", "environment", "materials", "nodes"],
@@ -437,7 +440,7 @@
           "const": "hilo3d-scene"
         },
         "version": {
-          "const": 2
+          "const": 3
         },
         "name": {
           "$ref": "#/$defs/scene-name"
@@ -509,10 +512,10 @@
           "$ref": "#/$defs/name"
         },
         "kind": {
-          "enum": ["model", "texture"]
+          "enum": ["model", "texture", "audio"]
         },
         "mimeType": {
-          "enum": ["model/gltf-binary", "image/png", "image/jpeg", "image/webp"]
+          "enum": ["model/gltf-binary", "image/png", "image/jpeg", "image/webp", "audio/wav"]
         },
         "size": {
           "type": "integer",
@@ -562,7 +565,7 @@
         }
       },
       "required": ["id", "name", "kind", "mimeType", "size", "hash", "source", "data"],
-      "description": "Checksums, ID hash suffix, image/GLB content, MIME-kind agreement and embedded-only dependencies are verified by the runtime parser."
+      "description": "Checksums, ID hash suffix, image/GLB content, MIME-kind agreement and embedded-only dependencies are verified by the runtime parser. Audio is strict RIFF integer PCM WAV, mono/stereo, 8/16/24/32 bits, 8000\u2013192000 Hz and at most 300 seconds."
     },
     "prefab": {
       "type": "object",
@@ -750,6 +753,239 @@
         }
       },
       "required": ["id", "name", "sceneId", "duration", "fps", "loop", "tracks"]
+    },
+    "scene-physics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "body",
+        "shape",
+        "size",
+        "radius",
+        "halfHeight",
+        "mass",
+        "friction",
+        "restitution",
+        "sensor"
+      ],
+      "properties": {
+        "body": {
+          "enum": ["static", "dynamic", "kinematic"]
+        },
+        "shape": {
+          "enum": ["box", "sphere", "capsule"]
+        },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 10000
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 10000
+            },
+            "z": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 10000
+            }
+          }
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "halfHeight": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 10000
+        },
+        "mass": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100000
+        },
+        "friction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "restitution": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sensor": {
+          "type": "boolean"
+        }
+      },
+      "description": "Collider dimensions are local meters; size is the full box extent and halfHeight is half the capsule central segment. Sphere/capsule need uniform object scale. Physics ancestors need unit scale. Dynamic pose belongs to physics; ancestor scripts and transform animation are rejected. Collider scale cannot be animated."
+    },
+    "scene-particles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seed",
+        "maxParticles",
+        "rate",
+        "lifetime",
+        "speed",
+        "size",
+        "color",
+        "gravity",
+        "shape",
+        "extent",
+        "loop",
+        "duration"
+      ],
+      "properties": {
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "maxParticles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "lifetime": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 60
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 100
+        },
+        "color": {
+          "$ref": "#/$defs/scene-color"
+        },
+        "gravity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            },
+            "y": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            },
+            "z": {
+              "type": "number",
+              "minimum": -1000,
+              "maximum": 1000
+            }
+          }
+        },
+        "shape": {
+          "enum": ["point", "box", "sphere"]
+        },
+        "extent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 1000
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 1000
+            },
+            "z": {
+              "type": "number",
+              "minimum": 0.001,
+              "maximum": 1000
+            }
+          }
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 3600
+        }
+      },
+      "description": "Deterministic bounded local-space CPU emitter. Particles follow the object; gravity uses local axes. Box extent is half size; sphere extent is equal x/y/z radii. Total scene capacity is at most 32768 particles."
+    },
+    "scene-audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset", "autoplay", "loop", "volume", "spatial", "refDistance", "maxDistance"],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/scene-id"
+        },
+        "autoplay": {
+          "type": "boolean"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "spatial": {
+          "type": "boolean"
+        },
+        "refDistance": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 10000
+        },
+        "maxDistance": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 100000
+        }
+      },
+      "description": "Local imported PCM WAV asset; maxDistance must be at least refDistance. Audio starts only after explicit Play; at most 32 sources per scene."
+    },
+    "scene-components": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "physics": {
+          "$ref": "#/$defs/scene-physics"
+        },
+        "particles": {
+          "$ref": "#/$defs/scene-particles"
+        },
+        "audio": {
+          "$ref": "#/$defs/scene-audio"
+        }
+      }
     }
   }
 }

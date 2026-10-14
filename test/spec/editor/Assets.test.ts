@@ -376,7 +376,7 @@ describe('editor asset import', () => {
             importAsset(new File([new Uint8Array(MAX_ASSET_BYTES + 1)], 'large.glb'))
         ).rejects.toThrow('16 MiB');
         await expect(importAsset(new File(['<svg/>'], 'script.svg'))).rejects.toThrow(
-            'GLB, PNG, JPEG, or WebP'
+            'GLB, PNG, JPEG, WebP, or PCM WAV'
         );
     });
 });

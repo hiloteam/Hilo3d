@@ -19,6 +19,7 @@ export default defineConfig(
         'addon-physics/dist/**',
         'dist-examples/**',
         'dist-editor/**',
+        'dist-player/**',
         'docs/**',
         'site/**',
         'node_modules/**',

@@ -9,9 +9,11 @@
   "include": [
     "**/*.ts",
     "../collaboration.ts",
+    "../bounded-response.ts",
     "../project.ts",
     "../assets.ts",
     "../scene.ts",
+    "../components.ts",
     "../animation.ts",
     "../prefabs.ts",
     "../script-types.ts",

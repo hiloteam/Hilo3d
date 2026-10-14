@@ -54,6 +54,25 @@ presentation，使用完整 Chromium compositor。必需的 macOS editor job 串
 package job 构建的自包含 `site/editor`
 artifact，不重新构建受测发布文件；instrumented 引擎覆盖率不承担这条 GPU 生命周期测试。
 
+新增的编辑器组件回归中，WebGL
+2 用例进入普通 UI 工作组；WebGPU 音频所有权和初始化期间 pagehide 的三个用例由同一个必需的 macOS
+editor job 独立串行执行，失败产物保留在
+`test-results/editor-components`。这组源码交互测试与后续构建产物验收分别执行，不替代 Pages 或独立 Player 的发布路径检查。
+
+`npm run editor:build` 先执行
+`npm run player:build`，再将经过 SHA-256 清单校验的独立 Player 模板复制进
+`dist-editor/editor/player-template/`。`dist-player/`
+同样是生成物。开发服务器在首次请求导出模板时构建生产 Player；修改 Player 源码后重启开发服务器以刷新模板。导出流程与场景/组件合同见
+[Player](./PLAYER.md)。`npm run test:player`
+对实际构建的编辑器执行导入、下载、ZIP 提取和独立 HTTP 部署验收，覆盖两个渲染后端与根路径/子目录。默认读取
+`dist-editor`；必需的 macOS editor job 设置 `HILO3D_PLAYER_EDITOR_ROOT=site`，继续消费上游 package
+job 的同一发布产物。此检查进入 `test:editor`、`validate` 与 `validate:ci`，失败保留
+`test-results/player-export` 中的截图、trace 与诊断。它不发布到外部托管账户。
+
+编辑器导出与协作的有限 HTTP 响应共享
+`editor/bounded-response.ts`：先逐块检查克隆分支的字节上限，再由原始 Response 完成原生读取。保持两分支同时取消，避免 tee 取消互相等待；不把完整接收后的
+`ERR_ABORTED` 加入测试豁免。长期 SSE 仍使用自身的持续流与断开合同。
+
 ## 语言与架构
 
 ### 严格 TypeScript 全覆盖

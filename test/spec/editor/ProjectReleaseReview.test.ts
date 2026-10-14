@@ -16,7 +16,7 @@ import { createScript } from '../../../editor/script-types';
 describe('cross-feature authoring release regressions', () => {
     it('migrates genuine version1 scenes but rejects version2-only fields under a legacy label', () => {
         const legacy = { ...createDefaultScene(), version: 1 };
-        expect(parseScene(JSON.stringify(legacy)).version).toBe(2);
+        expect(parseScene(JSON.stringify(legacy)).version).toBe(3);
         const withLock = structuredClone(legacy);
         const group = withLock.nodes['sculpture'];
         if (!group) throw new Error('Missing group');

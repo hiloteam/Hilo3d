@@ -4,12 +4,28 @@
     "composite": true,
     "noEmit": true,
     "tsBuildInfoFile": "../.cache/tsconfig.editor.tsbuildinfo",
-    "types": ["vite/client", "webxr"]
+    "types": ["vite/client", "webxr"],
+    "paths": {
+      "hilo3d": ["../src/Hilo3d.ts"],
+      "@hilo/addon-physics": ["../addon-physics/src/index.ts"],
+      "@hilo/addon-physics/rapier3d": ["../addon-physics/src/rapier3d.ts"],
+      "@hilo/addon-particle": ["../addon-particle/src/index.ts"],
+      "@hilo/addon-audio": ["../addon-audio/src/index.ts"]
+    }
   },
   "include": ["**/*.ts", "../examples/shared/test-frame-control.ts", "**/*.json"],
   "references": [
     {
       "path": "../tsconfig.lib.json"
+    },
+    {
+      "path": "../addon-physics/tsconfig.json"
+    },
+    {
+      "path": "../addon-particle/tsconfig.json"
+    },
+    {
+      "path": "../addon-audio/tsconfig.json"
     }
   ],
   "exclude": ["server/**"]

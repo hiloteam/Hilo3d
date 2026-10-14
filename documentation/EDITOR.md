@@ -5,7 +5,8 @@ Unity-style hierarchy, viewport and inspector with a Blender-inspired charcoal w
 commercial-readiness work and acceptance gates are tracked in
 [Editor development](./ROADMAP.md#editor-development); implementation status and executed evidence
 are separate. The release-candidate evidence below applies to the local-first, self-hostable scope
-documented here.
+documented here. The newer [standalone Player and component workflow](./PLAYER.md) is tracked as E9
+separately; the dated E0–E8 results do not certify its complete deployment workflow.
 
 ![Hilo Studio editing an imported bronze barn lamp](./assets/hilo-studio-barn-lamp.png)
 
@@ -38,9 +39,9 @@ The existing Pages workflow builds the editor with the documentation and example
 `dev` publishes the static application at `https://hilo3d.js.org/editor/`; a project-subpath host
 uses `/Hilo3d/editor/`. Homepage navigation includes **Editor**. All editor scripts, styles, schemas
 and Naga WASM live below `editor/assets/` and use relative URLs, so the same artifact supports
-either hosting layout. `npm run test:editor:pages` exercises the actual built site at both URL
-layouts on WebGL2 and WebGPU, including real pixels, edits, reload persistence and teardown
-diagnostics.
+either hosting layout. The standalone Player template is included under `editor/player-template/`.
+`npm run test:editor:pages` exercises the actual built site at both URL layouts on WebGL2 and
+WebGPU, including real pixels, edits, reload persistence and teardown diagnostics.
 
 Pages hosts the editor frontend. Projects remain in the visitor's browser unless explicitly exported
 or shared with a configured collaboration server. Run `npm run editor:server` separately behind
@@ -53,6 +54,8 @@ The **Projects** browser creates, opens, renames and copies projects; manages sc
 imports self-contained `.hilo-project.json` bundles; and restores previous revisions. A bundle
 contains authored scenes, asset bytes, prefab templates/instances, script source and animation
 clips. Import creates a separate local project identity rather than overwriting a matching ID.
+**Publish website** additionally exports a complete static website with an independent Player,
+per-scene camera/animation settings and all project assets. See [Player deployment](./PLAYER.md).
 
 IndexedDB is the primary local store. Writes compare the revision that was loaded against the stored
 revision and atomically commit the project, summary and recovery records. The ten previous revisions
@@ -100,6 +103,10 @@ undone.
   maps. Material changes affect every object using that material. Color maps use the engine's sRGB
   sampling contract; numeric maps use data encoding. Authored colors use sRGB hex values and are
   converted to linear factors at the engine boundary.
+- **Components:** add Physics, Particles and Audio to selected objects from the inspector. Their
+  serialized values participate in undo, prefab overrides, project validation and static website
+  export. Play uses the same addon owners as the standalone Player; component authoring is locked
+  during playback. See [component contracts and limits](./PLAYER.md#authored-components).
 - **Cameras and lights:** camera field of view and clipping planes are authored data. Directional
   lights and ambient intensity remain in the shared renderer; their behavior is not reimplemented
   per backend.
@@ -110,12 +117,15 @@ cloned per instance while immutable geometry and textures can be shared safely.
 
 ## Assets
 
-The asset library imports binary glTF (`.glb`) models and static PNG, JPEG or WebP textures. Source
-filenames, import timestamps, content hashes, optional license/attribution/source-URL metadata and
-immutable source bytes travel with a project. Imports are validated before installation and commit
-atomically; a failed multi-file import leaves the project unchanged. Identical source bytes are
-deduplicated. Model cards instantiate real engine nodes; texture cards can apply to the selected
-material.
+The asset library imports binary glTF (`.glb`) models, static PNG/JPEG/WebP textures and PCM WAV
+audio. WAV accepts mono/stereo integer PCM at 8/16/24/32 bits and 8–192 kHz, with a maximum duration
+of 300 seconds; it retains the same 16 MiB per-asset source limit. Source filenames, import
+timestamps, content hashes, optional license/attribution/source-URL metadata and immutable source
+bytes travel with a project. Imports are validated before installation and commit atomically; a
+failed multi-file import leaves the project unchanged. Identical source bytes are deduplicated.
+Model cards instantiate real engine nodes; texture cards can apply to the selected material. Audio
+assets can be assigned to Audio components, and reference checks prevent removal while a scene,
+prefab or instance baseline uses them.
 
 GLB version, declared lengths, chunk boundaries and embedded images are checked. External buffer and
 image URLs are rejected: portable project imports do not fetch arbitrary dependencies from the
@@ -188,11 +198,18 @@ Attach scripts to objects explicitly. `ctx` provides `id`, `name`, `time`, read-
 rotation and scale, bounded key/pointer input, transform setters, `translate`, `rotate` and `log`.
 Angles are degrees and `dt` is seconds. Lifecycle callbacks are synchronous; asynchronous callbacks
 are rejected. Script instance state can live on the returned lifecycle object. Disabled assets do
-not execute.
+not execute. Bound scripts can also use `applyImpulse`, `emitParticles`, `playAudio` and
+`stopAudio`; these require the corresponding component and pass bounded host validation. Dynamic
+bodies reject script transform writes. Exact command and transform ownership contracts are in
+[Player scripts](./PLAYER.md#scripts-animation-and-the-simulation-clock).
 
-Play copies authored state, samples a selected clip and then applies script updates. Animation owns
-its keyed channels at each sample; script updates run afterward. Pause freezes simulation, Step
-advances one bounded frame, and Stop restores the authored scene. Imports, project opening and
+Play waits for scene assets, copies authored state, starts scripts and prepares components. A shared
+60 Hz fixed-step clock samples the selected clip, runs scripts, advances imported GLB animation and
+physics/particles, then feeds dynamic-body poses back into the isolated script scene. Animation owns
+its keyed channels at each sample; scripts run afterward, and dynamic physics owns its body poses.
+Each imported GLB instance uses its first embedded clip. Pause freezes simulation and audio, Step
+advances exactly one fixed step, and Stop releases components and restores authored state. The
+original Play gesture unlocks audio before asynchronous preparation. Imports, project opening and
 collaboration updates never automatically execute source.
 
 Scripts run in a dedicated Worker created by an opaque-origin sandbox frame. Its CSP denies network
@@ -245,10 +262,12 @@ quotas, backup and crash-recovery procedures are documented in the
 
 ## AI-friendly documents
 
-Scene source uses `format: "hilo3d-scene"`, version 2, meters, top-left managed-texture UVs and Y
+Scene source uses `format: "hilo3d-scene"`, version 3, meters, top-left managed-texture UVs and Y
 up. Rotations contain local x/y/z Euler components in degrees using the engine's ZYX order. A
-default plane lies in XZ. Version 1 primitive scenes remain importable and are migrated to
-version 2.
+default plane lies in XZ. Version 1 and 2 scenes remain importable and migrate to version 3 without
+adding components or changing transforms. Version 3 adds optional physics, particle and audio
+component records; older version numbers reject those new fields. The project container remains
+version 1, and audio assets use kind `audio` with MIME type `audio/wav`.
 
 Stable semantic IDs key scene objects, materials, project assets, templates, instances, scripts and
 clips. Parent and resource relationships are references; display names are independent. Canonical
@@ -288,9 +307,15 @@ backend shortcut or hand-authored raster WGSL tree.
 
 Teardown stops drawing before disposing runtime resources. Persisted page transitions preserve the
 editor resources and pause activity; normal teardown removes listeners, observers, object URLs,
-workers, loaders and leases. Device recovery remains the engine's backend-neutral responsibility.
+workers, loaders and leases. Active script stop hooks finish before components are released, and
+late component preparation cannot restart a stopped session. Device recovery remains the engine's
+backend-neutral responsibility.
 
 ## Validation status
+
+Standalone website publishing and the new component contract are described in
+[Player validation status](./PLAYER.md#validation-status). The historical candidate evidence below
+precedes these additions.
 
 Run the smallest relevant tests during development, then the integrated editor suite and repository
 checks. `npm run test:editor:server` tests the self-hosted collaboration service separately in Node.

@@ -1,3 +1,4 @@
+import { defaultAudioComponent } from './components';
 import { importAsset, type ProjectAsset } from './assets';
 import { AssetThumbnailCache, type AssetThumbnailLease } from './asset-thumbnails';
 import { icon } from './icons';
@@ -19,8 +20,11 @@ export function assetReferences(project: ProjectDocument, assetId: string): Asse
         nodes: Record<string, SceneNode>,
         materials: Record<string, SceneMaterial>
     ): void => {
-        for (const [id, node] of Object.entries(nodes))
+        for (const [id, node] of Object.entries(nodes)) {
             if (node.asset === assetId) references.push({ owner, objectId: id, property: 'asset' });
+            if (node.components?.audio?.asset === assetId)
+                references.push({ owner, objectId: id, property: 'components.audio.asset' });
+        }
         for (const [id, material] of Object.entries(materials)) {
             for (const slot of [
                 'baseColorTexture',
@@ -58,7 +62,7 @@ export function removeProjectAsset(project: ProjectDocument, id: string): Projec
     return validateProject(next);
 }
 
-/** Apply a texture to the selected material or instantiate a model with a new semantic node ID. */
+/** Apply texture/audio to the selection or instantiate a model with a new semantic node ID. */
 export function useProjectAsset(
     project: ProjectDocument,
     id: string,
@@ -76,6 +80,11 @@ export function useProjectAsset(
                 'Unlock the selected object and its parent collection before applying assets'
             );
         ancestor = ancestor.parent ? scene.nodes[ancestor.parent] : undefined;
+    }
+    if (asset.kind === 'audio') {
+        if (!node || !selected) throw new Error('Select an object before attaching audio');
+        node.components = { ...node.components, audio: defaultAudioComponent(id) };
+        return { project: validateProject(next), nodeId: selected };
     }
     if (asset.kind === 'texture') {
         const material = node?.material ? scene.materials[node.material] : undefined;
@@ -161,7 +170,7 @@ export class AssetPanel {
                 .toLowerCase()
                 .includes(filter.toLowerCase())
         );
-        host.innerHTML = `<div class="project-assets-toolbar"><span>${String(Object.keys(project.assets).length)} source assets <b>·</b> GLB / PNG / JPEG / WebP</span><button class="primary" data-asset-action="import" ${this.importing ? 'disabled' : ''}>${icon('import')}${this.importing ? 'Importing…' : 'Import assets'}</button><input class="project-asset-input" type="file" accept=".glb,.png,.jpg,.jpeg,.webp" multiple hidden aria-label="Import asset files" /></div><div class="project-assets-grid">${assets.map(asset => this.card(project, asset)).join('') || `<div class="project-assets-empty">${icon('import')}<strong>${filter ? 'No matching assets' : 'Bring your project to life'}</strong><span>${filter ? 'Try another name or file type.' : 'Drop models and textures here, or choose Import assets.'}</span><small>Files stay in this project and are included in project exports.</small></div>`}</div>`;
+        host.innerHTML = `<div class="project-assets-toolbar"><span>${String(Object.keys(project.assets).length)} source assets <b>·</b> GLB / PNG / JPEG / WebP / WAV</span><button class="primary" data-asset-action="import" ${this.importing ? 'disabled' : ''}>${icon('import')}${this.importing ? 'Importing…' : 'Import assets'}</button><input class="project-asset-input" type="file" accept=".glb,.png,.jpg,.jpeg,.webp,.wav" multiple hidden aria-label="Import asset files" /></div><div class="project-assets-grid">${assets.map(asset => this.card(project, asset)).join('') || `<div class="project-assets-empty">${icon('import')}<strong>${filter ? 'No matching assets' : 'Bring your project to life'}</strong><span>${filter ? 'Try another name or file type.' : 'Drop models, textures and PCM WAV audio here, or choose Import assets.'}</span><small>Files stay in this project and are included in project exports.</small></div>`}</div>`;
         const generation = this.previewGeneration;
         const projectId = project.id;
         this.previewObserver = new IntersectionObserver(
@@ -232,9 +241,11 @@ export class AssetPanel {
     }
 
     private card(project: ProjectDocument, asset: ProjectAsset): string {
-        const preview = icon(asset.kind === 'model' ? 'cube' : 'material');
+        const preview = icon(
+            asset.kind === 'model' ? 'cube' : asset.kind === 'audio' ? 'play' : 'material'
+        );
         const references = assetReferences(project, asset.id);
-        return `<article class="project-asset-card"><button class="project-asset-preview ${asset.kind}" data-asset-action="use" data-asset-id="${asset.id}" ${asset.kind === 'texture' ? `data-thumbnail-asset="${asset.id}"` : ''} aria-label="${asset.kind === 'model' ? 'Add model' : 'Apply texture'} ${escape(asset.name)}">${preview}<span>${asset.kind === 'model' ? 'GLB' : asset.mimeType.slice(6).toUpperCase()}</span></button><input class="project-asset-name" data-asset-name="${asset.id}" aria-label="Asset name ${escape(asset.name)}" value="${escape(asset.name)}" maxlength="120"/><div class="project-asset-meta"><span>${bytesLabel(asset.size)} · ${String(references.length)} uses</span><button data-asset-action="remove" data-asset-id="${asset.id}" aria-label="Remove asset ${escape(asset.name)}" title="${references.length ? 'Referenced assets must be detached before removal' : 'Remove unused asset'}">${icon('trash')}</button></div><span class="project-asset-source" title="${escape(asset.source.fileName)} · SHA-256 ${asset.hash}">${escape(asset.source.fileName)}</span><details class="asset-provenance"><summary>Source & license</summary><form data-asset-source="${asset.id}"><label>License<input name="license" aria-label="Asset license ${escape(asset.name)}" maxlength="120" value="${escape(asset.source.license ?? '')}"/></label><label>Attribution<input name="attribution" aria-label="Asset attribution ${escape(asset.name)}" maxlength="2000" value="${escape(asset.source.attribution ?? '')}"/></label><label>Source URL<input name="originURL" type="url" aria-label="Asset source URL ${escape(asset.name)}" maxlength="2048" value="${escape(asset.source.originURL ?? '')}"/></label><small>Included in project exports.</small><button type="submit">Save source info</button></form></details></article>`;
+        return `<article class="project-asset-card"><button class="project-asset-preview ${asset.kind}" data-asset-action="use" data-asset-id="${asset.id}" ${asset.kind === 'texture' ? `data-thumbnail-asset="${asset.id}"` : ''} aria-label="${asset.kind === 'model' ? 'Add model' : asset.kind === 'audio' ? 'Attach audio' : 'Apply texture'} ${escape(asset.name)}">${preview}<span>${asset.kind === 'model' ? 'GLB' : asset.mimeType.slice(6).toUpperCase()}</span></button><input class="project-asset-name" data-asset-name="${asset.id}" aria-label="Asset name ${escape(asset.name)}" value="${escape(asset.name)}" maxlength="120"/><div class="project-asset-meta"><span>${bytesLabel(asset.size)} · ${String(references.length)} uses</span><button data-asset-action="remove" data-asset-id="${asset.id}" aria-label="Remove asset ${escape(asset.name)}" title="${references.length ? 'Referenced assets must be detached before removal' : 'Remove unused asset'}">${icon('trash')}</button></div><span class="project-asset-source" title="${escape(asset.source.fileName)} · SHA-256 ${asset.hash}">${escape(asset.source.fileName)}</span><details class="asset-provenance"><summary>Source & license</summary><form data-asset-source="${asset.id}"><label>License<input name="license" aria-label="Asset license ${escape(asset.name)}" maxlength="120" value="${escape(asset.source.license ?? '')}"/></label><label>Attribution<input name="attribution" aria-label="Asset attribution ${escape(asset.name)}" maxlength="2000" value="${escape(asset.source.attribution ?? '')}"/></label><label>Source URL<input name="originURL" type="url" aria-label="Asset source URL ${escape(asset.name)}" maxlength="2048" value="${escape(asset.source.originURL ?? '')}"/></label><small>Included in project exports.</small><button type="submit">Save source info</button></form></details></article>`;
     }
 
     private cancelPreviews(): void {

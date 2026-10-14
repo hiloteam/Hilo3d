@@ -64,7 +64,7 @@ function templateScene(definition: PrefabDefinition): SceneDocument {
     return parseScene(
         JSON.stringify({
             format: 'hilo3d-scene',
-            version: 2,
+            version: 3,
             name: definition.name,
             units: 'meters',
             environment: { background: '#222222', ambientIntensity: 1 },

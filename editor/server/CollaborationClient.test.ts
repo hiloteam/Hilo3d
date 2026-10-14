@@ -1,10 +1,12 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     CollaborationClient,
     CollaborationConflictError,
+    CollaborationRequestError,
     createCollaborationRoom,
     deleteCollaborationRoom,
     listCollaborationRooms,
@@ -53,6 +55,69 @@ afterEach(async () => {
 });
 
 describe('collaboration client over real HTTP and SSE', () => {
+    it('cancels an unfinished bounded JSON response and closes the real HTTP transport', async () => {
+        let acknowledgeHeaders = (): void => {
+            throw new Error('Headers resolver is missing');
+        };
+        let acknowledgeClose = (): void => {
+            throw new Error('Close resolver is missing');
+        };
+        const headers = new Promise<void>(done => {
+            acknowledgeHeaders = done;
+        });
+        const closed = new Promise<void>(done => {
+            acknowledgeClose = done;
+        });
+        const server = createServer((request, response) => {
+            request.resume();
+            response.on('close', acknowledgeClose);
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.write('{"roomId":');
+            acknowledgeHeaders();
+        });
+        await new Promise<void>(done => {
+            server.listen(0, '127.0.0.1', done);
+        });
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('Test listener missing');
+        const controller = new AbortController();
+        try {
+            const pending = createCollaborationRoom({
+                url: `http://127.0.0.1:${String(address.port)}`,
+                adminToken: ADMIN,
+                project: createProject(createDefaultScene()),
+                signal: controller.signal
+            });
+            const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+            await headers;
+            controller.abort();
+            await rejected;
+            await closed;
+        } finally {
+            controller.abort();
+            server.closeAllConnections();
+            await new Promise<void>((done, reject) => {
+                server.close(error => {
+                    if (error) reject(error);
+                    else done();
+                });
+            });
+        }
+    });
+
+    it('retains typed authentication errors after the bounded native JSON read', async () => {
+        const { url } = await fixture();
+        const denied = listCollaborationRooms({
+            url,
+            adminToken: 'invalid-admin-capability-000000000000000000000'
+        });
+        await expect(denied).rejects.toBeInstanceOf(CollaborationRequestError);
+        await expect(denied).rejects.toMatchObject({
+            status: 403,
+            message: 'Listing rooms requires the server admin capability'
+        });
+    });
+
     it('rotates capabilities durably, disconnects revoked members and deletes rooms with admin authority', async () => {
         const running = await fixture();
         const { url } = running;
