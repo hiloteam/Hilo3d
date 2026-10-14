@@ -438,6 +438,14 @@ runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
 raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
 coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
 
+真实 WebGPU 多相机画布合成与 TAA history 回收用例由 `npm run test:surface:render` 执行，位于
+`test/surface-render/`，使用完整 Chromium compositor。Linux coverage 的 headless
+shell 无法为这些 swapchain 创建共享图像，会销毁设备并使后续浏览器连接崩溃，因此五项 WebGPU 用例接入下述必需的 macOS
+job；CPU history 与四项 WebGL2 合成及一项 WebGL2 回收用例仍参与 Linux coverage。两条通道调用相同的
+`test/fixtures/`
+场景函数，保留全部像素阈值、八相位、提交失败、resize、资源释放与恢复断言，没有重试或条件跳过。`validate`
+与 `validate:ci` 也包含该独立命令。
+
 package job 成功后，必需的 macOS editor job 使用相同提交和该 job 生成的 Pages editor
 artifact 验证 WebGL2/WebGPU 资产渲染及实际发布路径。该 job 也由 `Required CI`
 聚合门禁检查，跳过或取消均不能通过；失败时保留 Vitest 编辑器截图和 Pages 的 trace、截图与诊断数据。这样保留完整编辑器验收，且不把已知不稳定的 Linux

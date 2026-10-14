@@ -100,8 +100,8 @@
     "release:versions:check": "jiti scripts/release-package-set.ts",
     "publish:check": "npm run check:modernity && npm run release:tag:verify",
     "release:check": "npm run validate",
-    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:editor:render && npm run test:editor:server && npm run test:rhi-benchmark-contract && npm run build && npm run editor:build && npm run test:types && npm run test:browser && npm run site:build:built && npm run test:editor:pages && npm run test:player && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
-    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run test:editor:render && npm run test:editor:server && npm run build && npm run editor:build && npm run test:types && npm run test:browser:ci && npm run site:build:built && npm run test:editor:pages && npm run test:player && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
+    "validate": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck && npm run test:skill && npm run test:coverage && npm run test:rhi && npm run test:surface:render && npm run test:editor:render && npm run test:editor:server && npm run test:rhi-benchmark-contract && npm run build && npm run editor:build && npm run test:types && npm run test:browser && npm run site:build:built && npm run test:editor:pages && npm run test:player && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
+    "validate:ci": "npm run clean && npm run check:modernity && npm run format:check && npm run lint && npm run typecheck:ci && npm run test:skill && npm run test:rhi-benchmark-contract && npm run test:coverage && npm run test:rhi && npm run test:surface:render && npm run test:editor:render && npm run test:editor:server && npm run build && npm run editor:build && npm run test:types && npm run test:browser:ci && npm run site:build:built && npm run test:editor:pages && npm run test:player && npm run docs:check:built && npm run api:check:built && npm run test:package:built && npm run test:addon-package && npm run test:addon-particle-package && npm run test:live2d-runtime-build && npm run test:addon-live2d-package && npm run test:addon-assets-package && npm run test:addon-audio-package && npm run pack:check",
     "prepack": "npm run build",
     "prepublishOnly": "npm run publish:check",
     "benchmark:ddgi:collect": "jiti scripts/performance/collect-ddgi-evidence.ts",
@@ -120,7 +120,8 @@
     "test:editor:render": "vitest run --config vitest.editor-render.config.ts",
     "test:editor:pages": "playwright test --config playwright.editor-pages.config.ts",
     "player:build": "vite build --config vite.player.config.ts",
-    "test:player": "playwright test --config playwright.player.config.ts"
+    "test:player": "playwright test --config playwright.player.config.ts",
+    "test:surface:render": "vitest run --config vitest.surface-render.config.ts"
   },
   "repository": {
     "type": "git",

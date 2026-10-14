@@ -1,5 +1,10 @@
 # Unreleased
 
+### CI
+
+- Run WebGPU canvas composition and temporal history retirement in the required macOS surface
+  rendering lane, retaining shared CPU/WebGL2 coverage and all pixel, recovery and discard checks.
+
 ### Features
 
 - Add Studio **Publish website** and a self-contained static Player ZIP with per-scene camera and

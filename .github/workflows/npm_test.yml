@@ -312,6 +312,11 @@ jobs:
           name: pages-editor
           path: site/editor
 
+      - name: Test shared renderer WebGPU canvas composition
+        run: npm run test:surface:render
+        env:
+          CI: 'true'
+
       - name: Test editor GPU and asset runtime contracts
         run: npm run test:editor:render
         env:
@@ -344,6 +349,7 @@ jobs:
           path: |
             .vitest-attachments
             test/editor-render/__screenshots__
+            test/surface-render/__screenshots__
             test-results/editor-components
             test-results/editor-pages
             test-results/player-export

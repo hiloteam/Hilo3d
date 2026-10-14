@@ -27,7 +27,8 @@
     "test/ui/render-health.ts",
     "test/ui/stable-capture.ts",
     "test/ui/example-paths.ts",
-    "playwright.player.config.ts"
+    "playwright.player.config.ts",
+    "vitest.surface-render.config.ts"
   ],
   "references": [
     {

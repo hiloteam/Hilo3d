@@ -184,5 +184,9 @@ offset/size。它是画质回归，不是 GPU 性能证据。
 keys 初始化候选，成功提交才回收旧状态；失败恢复旧状态和相位。多次辅助读回推进 renderer
 frame 编号也不能使相机返回时撞上 pending release。
 
+WebGPU 画布多 camera 合成与回收测试在 `test/surface-render/`，通过 `npm run test:surface:render`
+进入必需的 macOS
+CI 验收；CPU 与 WebGL2 对应测试继续参与 coverage，共用相同场景与断言。运行环境分工见[工程合同](./ENGINEERING.md)。
+
 `TemporalDepthFootprint.test.ts`
 将旧的正方向 2×2 深度 footprint 作为单一因果控制，保留同一 jitter、权重、阈值与场景。薄斜几何与近景遮挡以正序/逆序八相位比较，并检查移动、移除和 TAAU；对称搜索不代表已经解决全部亚像素细节或扩大了深度接受阈值。
