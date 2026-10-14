@@ -1,0 +1,564 @@
+:root {
+    font-family: 'Avenir Next', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: #304f4a;
+    background: #eff4ee;
+    font-synthesis: none;
+}
+* {
+    box-sizing: border-box;
+}
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+button,
+a,
+summary {
+    -webkit-tap-highlight-color: transparent;
+}
+button {
+    font: inherit;
+}
+button,
+summary,
+a {
+    touch-action: manipulation;
+}
+button:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+    outline: 2px solid #467b71;
+    outline-offset: 5px;
+}
+.garden-shell,
+.garden-canvas {
+    position: absolute;
+    inset: 0;
+}
+.garden-canvas canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+}
+.garden-canvas canvas:active {
+    cursor: grabbing;
+}
+.garden-heading {
+    position: absolute;
+    top: 34px;
+    left: 44px;
+    pointer-events: none;
+}
+.collection-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #53766e;
+    text-decoration: none;
+    font-size: 9px;
+    letter-spacing: 0.19em;
+    font-weight: 600;
+    pointer-events: auto;
+}
+.collection-link > span:not(.leaf-mark) {
+    opacity: 0.35;
+}
+.leaf-mark {
+    font-size: 20px;
+    line-height: 1;
+    font-weight: 400;
+}
+.title-row {
+    display: flex;
+    align-items: center;
+    gap: 17px;
+    margin-top: 32px;
+}
+h1 {
+    margin: 0;
+    font-family: 'Songti SC', 'Noto Serif CJK SC', 'Yu Mincho', serif;
+    font-size: clamp(32px, 3.2vw, 49px);
+    font-weight: 500;
+    letter-spacing: 0.18em;
+}
+.seal {
+    color: #b6776f;
+    border: 1px solid #b6776f;
+    border-radius: 2px;
+    padding: 4px 2px 3px 4px;
+    font-family: 'Songti SC', serif;
+    font-size: 14px;
+    writing-mode: vertical-rl;
+    transform: rotate(3deg);
+}
+.english-title {
+    margin: 9px 0 0 1px;
+    color: #618078;
+    font-family: 'Palatino Linotype', 'Iowan Old Style', Georgia, serif;
+    font-style: italic;
+    font-size: 23px;
+    letter-spacing: 0.045em;
+}
+.scene-copy {
+    margin-top: 18px;
+    color: #6c8881;
+    font-size: 11px;
+    line-height: 1.8;
+    letter-spacing: 0.12em;
+}
+.season-note {
+    position: absolute;
+    right: 43px;
+    top: 48px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    writing-mode: vertical-rl;
+    font-family: 'Songti SC', serif;
+    font-size: 12px;
+    letter-spacing: 0.24em;
+    color: #719087;
+    pointer-events: none;
+}
+.season-note i {
+    width: 1px;
+    height: 55px;
+    background: #86a09566;
+}
+.season-note span:last-child {
+    font-size: 9px;
+}
+.weather-caption {
+    position: absolute;
+    left: 46px;
+    bottom: 104px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #66897d;
+    pointer-events: none;
+}
+.weather-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #80a88a;
+    box-shadow: 0 0 0 4px #80a88a1a;
+}
+.garden-controls {
+    position: absolute;
+    bottom: 66px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 9px;
+    border: 1px solid #ffffffbb;
+    background: #f8faf0e8;
+    box-shadow:
+        0 6px 30px #39574912,
+        inset 0 1px 0 #fff;
+    border-radius: 44px;
+    backdrop-filter: blur(18px);
+}
+fieldset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+fieldset:disabled {
+    opacity: 0.45;
+}
+.time-controls {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 28px;
+    background: #e9eee4;
+}
+.time-controls button {
+    border: 0;
+    background: transparent;
+    padding: 9px 17px;
+    border-radius: 24px;
+    color: #6e877c;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition:
+        background 0.2s,
+        color 0.2s,
+        box-shadow 0.2s;
+}
+.time-controls button span {
+    margin-right: 5px;
+}
+.time-controls button[aria-pressed='true'] {
+    background: #557b6c;
+    color: #fffdf1;
+    box-shadow: 0 2px 6px #244a3722;
+}
+.quiet-button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    border: none;
+    background: transparent;
+    border-radius: 22px;
+    padding: 10px 11px;
+    color: #597569;
+    cursor: pointer;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.quiet-button:hover {
+    background: #dee9dc;
+}
+.quiet-button svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.quiet-button[aria-pressed='false'] {
+    color: #a0907c;
+}
+.control-divider {
+    width: 1px;
+    height: 20px;
+    background: #c4d2c580;
+    margin: 0 3px;
+}
+.garden-footer {
+    position: absolute;
+    left: 44px;
+    right: 44px;
+    bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    letter-spacing: 0.17em;
+    color: #718e81;
+    pointer-events: none;
+}
+.garden-footer .drag-hint {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    letter-spacing: 0.09em;
+}
+.garden-footer i {
+    font-style: normal;
+    margin: 0 8px;
+    opacity: 0.45;
+}
+.details-panel {
+    position: absolute;
+    right: 41px;
+    bottom: 62px;
+    width: 180px;
+    z-index: 2;
+}
+.details-panel summary {
+    list-style: none;
+    display: flex;
+    justify-content: flex-end;
+    gap: 20px;
+    padding: 13px 3px;
+    color: #688477;
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: 0.13em;
+}
+.details-panel summary::-webkit-details-marker {
+    display: none;
+}
+.details-panel[open] summary {
+    background: #f9faf0ee;
+    padding: 14px;
+    border-radius: 14px 14px 0 0;
+}
+.details-panel[open] summary > span {
+    transform: rotate(45deg);
+}
+.detail-controls {
+    background: #f9faf0f2;
+    padding: 0 14px 16px;
+    border-radius: 0 0 14px 14px;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 14px 25px #24493610;
+}
+.detail-controls p {
+    margin: 0 0 12px;
+    color: #8a9a8e;
+    font-size: 9px;
+    line-height: 1.7;
+}
+.detail-controls button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border: 0;
+    background: none;
+    color: #496b5f;
+    cursor: pointer;
+    font-size: 11px;
+}
+.detail-controls button i {
+    width: 24px;
+    height: 13px;
+    background: #bac9bb;
+    border-radius: 20px;
+    position: relative;
+}
+.detail-controls button i::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
+}
+.detail-controls button[aria-pressed='true'] i {
+    background: #678e76;
+}
+.detail-controls button[aria-pressed='true'] i::after {
+    transform: translateX(11px);
+}
+.detail-footnote {
+    display: block;
+    border-top: 1px solid #cad6c966;
+    margin-top: 12px;
+    padding-top: 13px;
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    color: #91a28f;
+}
+.loading-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: #eef3ecef;
+    backdrop-filter: blur(10px);
+    text-align: center;
+    padding: 30px;
+}
+.loading-panel[hidden] {
+    display: none;
+}
+.loading-emblem {
+    display: grid;
+    place-items: center;
+    width: 60px;
+    height: 60px;
+    border: 1px solid #88a389;
+    border-radius: 50%;
+    font-family: 'Songti SC', serif;
+    font-size: 24px;
+    color: #65866d;
+    margin-bottom: 25px;
+}
+.loading-kicker {
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: #9aaa98;
+}
+.loading-panel h2 {
+    margin: 10px 0 5px;
+    font-family: 'Songti SC', serif;
+    font-weight: 400;
+    font-size: 27px;
+    letter-spacing: 0.15em;
+}
+.loading-panel > p:last-of-type {
+    max-width: 420px;
+    color: #7c9281;
+    font-size: 11px;
+    line-height: 1.8;
+}
+.loading-line {
+    width: 100px;
+    height: 1px;
+    background: #c5d2be;
+    position: relative;
+    margin-top: 24px;
+    overflow: hidden;
+}
+.loading-line::after {
+    content: '';
+    position: absolute;
+    width: 40%;
+    height: 100%;
+    background: #68896d;
+    animation: loading 1.8s infinite ease-in-out;
+}
+.loading-panel[data-state='error'] .loading-line {
+    display: none;
+}
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+@keyframes loading {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(350%);
+    }
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+    .garden-heading {
+        left: 26px;
+    }
+    .garden-controls {
+        bottom: 52px;
+    }
+}
+@media (max-width: 900px) {
+    .garden-heading {
+        left: 26px;
+        top: 25px;
+    }
+    .scene-copy {
+        max-width: 170px;
+        font-size: 10px;
+    }
+    .season-note {
+        right: 26px;
+        top: 32px;
+    }
+    .garden-footer {
+        left: 26px;
+        right: 26px;
+    }
+    .weather-caption {
+        left: 28px;
+        bottom: 138px;
+    }
+    .details-panel {
+        right: 24px;
+        bottom: 134px;
+    }
+    .garden-controls {
+        bottom: 64px;
+    }
+}
+@media (max-width: 600px) {
+    .garden-heading {
+        left: 23px;
+        top: 24px;
+    }
+    .collection-link {
+        font-size: 8px;
+        gap: 8px;
+    }
+    .title-row {
+        margin-top: 23px;
+        gap: 12px;
+    }
+    h1 {
+        font-size: 31px;
+    }
+    .english-title {
+        font-size: 20px;
+    }
+    .scene-copy {
+        display: none;
+    }
+    .season-note {
+        top: 26px;
+        right: 22px;
+        font-size: 10px;
+    }
+    .season-note i {
+        height: 37px;
+    }
+    .garden-controls {
+        bottom: 62px;
+        padding: 7px;
+    }
+    fieldset {
+        gap: 3px;
+    }
+    .time-controls button {
+        padding: 9px 12px;
+        font-size: 11px;
+    }
+    .quiet-button {
+        padding: 10px;
+        gap: 6px;
+    }
+    .quiet-button span {
+        font-size: 10px;
+    }
+    .control-divider {
+        margin: 0 2px;
+    }
+    .weather-caption {
+        left: 24px;
+        bottom: 136px;
+        font-size: 9px;
+    }
+    .garden-footer {
+        left: 24px;
+        bottom: 25px;
+        font-size: 8px;
+    }
+    .garden-footer > span:first-child {
+        display: none;
+    }
+    .details-panel {
+        right: 22px;
+        bottom: 122px;
+    }
+    .details-panel summary {
+        font-size: 9px;
+    }
+}
+@media (max-width: 380px) {
+    .quiet-button span {
+        display: none;
+    }
+    .garden-controls {
+        min-width: 284px;
+    }
+    fieldset {
+        justify-content: center;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

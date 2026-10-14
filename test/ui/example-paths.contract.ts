@@ -56,6 +56,10 @@ const lumenReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./clustered-forward-plus-lumen.spec.ts', import.meta.url)),
     'utf8'
 );
+const teaGardenReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./rain-tea-garden.spec.ts', import.meta.url)),
+    'utf8'
+);
 const physicsReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./physics.spec.ts', import.meta.url)),
     'utf8'
@@ -83,11 +87,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(100);
+        expect(examplePaths).toHaveLength(101);
     });
 
-    it('expands 100 pages into the complete 185-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(185);
+    it('expands 101 pages into the complete 186-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(186);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -99,6 +103,7 @@ describe('example release matrix contract', () => {
                         path === 'clustered_forward_plus_sponza.html' ||
                         path === 'clustered_forward_plus_lumen.html' ||
                         path === 'dynamic_global_illumination_atelier.html' ||
+                        path === 'rain_tea_garden.html' ||
                         path === 'volumetric_neon_reliquary.html' ||
                         path === 'stormfront_observatory.html' ||
                         path === 'shadow_residency_sanctum.html' ||
@@ -121,7 +126,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(98);
+        expect(catalog).toHaveLength(99);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -131,7 +136,7 @@ describe('example release matrix contract', () => {
         );
         expect(catalog[0]?.id).toBe('quickStart');
         expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(84);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(97);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(98);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -200,7 +205,7 @@ describe('example release matrix contract', () => {
             'Duplicate example paths'
         );
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog.filter(entry => entry.featured)).toHaveLength(26);
+        expect(catalog.filter(entry => entry.featured)).toHaveLength(27);
         expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
         expect(
             catalog.find(entry => entry.path === 'dynamic_global_illumination_atelier.html')
@@ -210,6 +215,16 @@ describe('example release matrix contract', () => {
             featured: true,
             supportedBackends: ['webgpu']
         });
+        const teaGarden = catalog.find(entry => entry.path === 'rain_tea_garden.html');
+        expect(teaGarden).toMatchObject({
+            title: '雨后茶寮 / After the rain',
+            category: 'lighting',
+            featured: true,
+            supportedBackends: ['webgpu']
+        });
+        if (!teaGarden) throw new Error('Missing tea garden example');
+        expect(matchesExampleSearch(teaGarden, '雨后 Blender')).toBe(true);
+        expect(matchesExampleSearch(teaGarden, 'DDGI decals')).toBe(true);
         const piano = catalog.find(entry => entry.path === 'audio_piano.html');
         expect(piano).toMatchObject({
             title: 'NOCTURNE — 魔法钢琴',
@@ -229,6 +244,7 @@ describe('example release matrix contract', () => {
             'compute_raytracing.html': 'compute',
             'stormfront_observatory.html': 'lighting',
             'dynamic_global_illumination_atelier.html': 'lighting',
+            'rain_tea_garden.html': 'lighting',
             'gtao_acceptance_lab.html': 'advanced'
         };
         for (const [path, category] of Object.entries(categories)) {
@@ -368,6 +384,7 @@ describe('example release matrix contract', () => {
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
             'dynamic_global_illumination_atelier.html',
+            'rain_tea_garden.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -388,6 +405,7 @@ describe('example release matrix contract', () => {
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
             'dynamic_global_illumination_atelier.html',
+            'rain_tea_garden.html',
             'volumetric_neon_reliquary.html',
             'stormfront_observatory.html',
             'shadow_residency_sanctum.html',
@@ -403,6 +421,7 @@ describe('example release matrix contract', () => {
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_lumen.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('rain_tea_garden.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shadow_residency_sanctum.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
@@ -429,6 +448,18 @@ describe('example release matrix contract', () => {
         expect(volumetricReleaseTestSource).toContain(
             'renders stable, visually material froxel lighting in Neon Reliquary'
         );
+        expect(teaGardenReleaseTestSource).toContain(
+            'rain tea garden compares GI and volumetric lighting @webgpu'
+        );
+        expect(teaGardenReleaseTestSource).toContain(
+            'rain tea garden compares decals and weighted transparency @webgpu'
+        );
+        expect(teaGardenReleaseTestSource).toContain(
+            'rain tea garden stays still across consecutive TAA phases @webgpu'
+        );
+        expect(teaGardenReleaseTestSource).toContain(
+            'rain tea garden stays interactive across camera views and page lifecycle @webgpu'
+        );
         expect(lumenReleaseTestSource).toContain(
             'Lumen renders material multi-light changes through Clustered Forward+ @webgpu'
         );
@@ -449,6 +480,7 @@ describe('example release matrix contract', () => {
             'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
             'dynamic_global_illumination_atelier.html': { test: '1' },
+            'rain_tea_garden.html': { test: '1' },
             'compute_eclipse_shrine.html': { test: '1' },
             'glTFViewer/index.html': { url: '/examples/models/Tmall/Tmall.gltf' },
             'ground_truth_ambient_occlusion.html': { test: '1' },

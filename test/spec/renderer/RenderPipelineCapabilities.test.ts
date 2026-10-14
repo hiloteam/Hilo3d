@@ -68,6 +68,25 @@ function runtimeFactory(): RenderPipelineFactory {
 }
 
 describe('RenderPipelineCapabilities', () => {
+    it('distinguishes renderable HDR from blendable HDR before weighted transparency creation', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const source = backend.createDevice().capabilities;
+        const noBlend = createRenderPipelineCapabilities(
+            overrideFormat(
+                source,
+                'rgba16float',
+                formatCapabilities(source, 'rgba16float', { renderable: true, blendable: false })
+            )
+        );
+        expect(noBlend.supportsTextureFormat('rgba16float', 'color-attachment')).toBe(true);
+        expect(noBlend.supportsTextureFormat('rgba16float', 'blendable-color-attachment')).toBe(
+            false
+        );
+        expect(noBlend.supportsTextureFormat('depth32float', 'blendable-color-attachment')).toBe(
+            false
+        );
+        backend.destroy();
+    });
     it('advertises the released compute/storage bundle only for complete WebGPU devices', () => {
         const webgpu = new FakeWebGPURHIBackend();
         const source = webgpu.createDevice().capabilities;

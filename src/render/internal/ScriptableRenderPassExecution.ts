@@ -4,6 +4,9 @@ import {
 } from '../pipeline/passes/internal/ScriptablePassAdapter';
 import Mesh from '../../core/Mesh';
 import StorageGraphicsShader from '../compute/StorageGraphicsShader';
+import ComputeSampler from '../compute/ComputeSampler';
+import UniformBuffer from '../UniformBuffer';
+import { getUniformBlockBinding, UNIFORM_BLOCK_BINDINGS } from '../ubo/UniformBlockBindings';
 import type { RGPassBuilder, RenderPassTemplate } from '../graph/RenderGraphBuilder';
 import type { RGPassContext, RGPrepareContext } from '../graph/RenderGraphExecutor';
 import type { RGPassTimestampKind } from '../graph/RenderGraphTimeline';
@@ -160,6 +163,13 @@ interface MutableSceneStorageBindingPlan {
         size?: number;
     };
     readonly entry: MutableFrameBindGroupEntry;
+}
+
+interface MutableSceneStorageTexturePlan {
+    handle: RGTextureAccessHandle | null;
+    sampler: ComputeSampler | null;
+    readonly textureEntry: MutableFrameBindGroupEntry;
+    readonly samplerEntry: MutableFrameBindGroupEntry;
 }
 
 interface FrameBindGroupScratch {
@@ -720,6 +730,9 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         entries: this.#sceneTextureEntries
     };
     readonly #sceneStoragePlans: MutableSceneStorageBindingPlan[] = [];
+    readonly #sceneStorageTexturePlans: MutableSceneStorageTexturePlan[] = [];
+    #sceneStorageTextureCount = 0;
+    #sceneUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null;
     readonly #sceneStoragePreparation: StorageScenePreparationState = {
         globalBindGroupLayouts: []
     };
@@ -803,6 +816,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         this.#activeSceneTexture = false;
         this.#sceneTextureHandle = null;
         this.#sceneStorageVariant = null;
+        this.#sceneUniformBlocks = null;
         this.#sceneStorageBindingCount = 0;
         this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
         this.#sceneTexturePreparation.globalBindGroupLayout = null;
@@ -892,6 +906,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             this.#activeSceneTexture = false;
             this.#sceneTextureHandle = null;
             this.#sceneStorageVariant = null;
+            this.#sceneUniformBlocks = null;
             this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
             this.#sceneTexturePreparation.globalBindGroupLayout = null;
             this.#sceneTexturePreparation.bindingName = null;
@@ -952,7 +967,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                 this.targetDescriptor,
                 this.#sceneStorageVariant,
                 this.#sceneStoragePreparation,
-                this.#activeSceneTexture ? this.#sceneTexturePreparation : null
+                this.#activeSceneTexture ? this.#sceneTexturePreparation : null,
+                this.#sceneUniformBlocks
             );
             range.count = this.draw.drawCount - range.start;
             this.#rangeCount++;
@@ -1032,6 +1048,20 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
 
     configureScene(parameters: SceneRenderPassParameters): void {
         const owner = this.requireOwner();
+        this.#sceneUniformBlocks = parameters.uniformBlocks ?? null;
+        if (this.#sceneUniformBlocks !== null) {
+            for (const [name, buffer] of Object.entries(this.#sceneUniformBlocks)) {
+                if (!(buffer instanceof UniformBuffer))
+                    throw new TypeError('Scene pass uniform blocks require UniformBuffer');
+                getUniformBlockBinding(name);
+                if (
+                    Object.hasOwn(UNIFORM_BLOCK_BINDINGS, name) &&
+                    name !== 'WeightedTransparencyBlock'
+                ) {
+                    throw new TypeError(`Scene pass cannot override engine-owned ${name}`);
+                }
+            }
+        }
         const variant = parameters.storageShaderVariant;
         const sceneTexture = parameters.ambientOcclusionTexture ?? parameters.opaqueTexture;
         if (variant !== undefined && sceneTexture !== undefined) {
@@ -1176,7 +1206,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                 throw new TypeError('Scene storage shaderByMesh must be a Map');
             }
             const canonicalStorageBindings = variant.shader.bindings.filter(
-                binding => binding.kind === 'read-only-storage-buffer'
+                binding => binding.group === SCENE_STORAGE_BIND_GROUP
             );
             for (const [mesh, shader] of shaderByMesh) {
                 if (!(mesh instanceof Mesh)) {
@@ -1188,7 +1218,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                     );
                 }
                 const storageBindings = shader.bindings.filter(
-                    binding => binding.kind === 'read-only-storage-buffer'
+                    binding => binding.group === SCENE_STORAGE_BIND_GROUP
                 );
                 if (
                     storageBindings.length !== canonicalStorageBindings.length ||
@@ -1198,12 +1228,17 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                         return (
                             binding.name !== canonical.name ||
                             binding.group !== canonical.group ||
-                            binding.binding !== canonical.binding
+                            binding.binding !== canonical.binding ||
+                            binding.kind !== canonical.kind ||
+                            (binding.kind === 'sampled-texture' &&
+                                canonical.kind === 'sampled-texture' &&
+                                (binding.sampleType !== canonical.sampleType ||
+                                    binding.viewDimension !== canonical.viewDimension))
                         );
                     })
                 ) {
                     throw new TypeError(
-                        `Scene storage shader variant for Mesh ${mesh.id} does not match the canonical readonly-storage ABI`
+                        `Scene storage shader variant for Mesh ${mesh.id} does not match the canonical readonly-storage and sampled-texture ABI`
                     );
                 }
             }
@@ -1289,6 +1324,13 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                     `Scene uniform binding ${binding.name} cannot use dynamic offsets`
                 );
             }
+            if (
+                binding.group === SCENE_STORAGE_BIND_GROUP &&
+                (binding.kind === 'sampled-texture' ||
+                    binding.kind === 'sampler' ||
+                    binding.kind === 'comparison-sampler')
+            )
+                continue;
             if (binding.group >= SCENE_STORAGE_BIND_GROUP) {
                 throw new TypeError(
                     `Scene ${binding.kind} binding ${binding.name} conflicts with reserved group ${String(SCENE_STORAGE_BIND_GROUP)}`
@@ -1313,7 +1355,97 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         }
         this.#sceneStorageEntries.length = storageCount;
         this.#sceneStorageBindingCount = storageCount;
+        this.configureSceneStorageTextures(owner, variant, storageCount);
         this.#sceneStorageVariant = variant;
+    }
+
+    private configureSceneStorageTextures(
+        owner: ScriptableRenderPipelineContextImpl,
+        variant: Readonly<SceneStorageShaderVariant>,
+        storageCount: number
+    ): void {
+        const textures = variant.textures ?? [];
+        requireRuntimeArray(textures, 'Scene storage shader variant textures');
+        const declarations = variant.shader.bindings.filter(
+            binding =>
+                binding.group === SCENE_STORAGE_BIND_GROUP && binding.kind === 'sampled-texture'
+        );
+        if (textures.length !== declarations.length) {
+            throw new TypeError(
+                'Scene storage textures do not match the canonical sampled-texture ABI'
+            );
+        }
+        const names = new Set<string>();
+        this.#sceneStorageTextureCount = textures.length;
+        for (let index = 0; index < textures.length; index++) {
+            const resource = textures[index];
+            if (resource === undefined || names.has(resource.name)) {
+                throw new TypeError('Scene storage texture names must be unique');
+            }
+            names.add(resource.name);
+            const declaration = declarations.find(binding => binding.name === resource.name);
+            const samplerDeclaration = variant.shader.bindings.find(
+                binding =>
+                    binding.group === SCENE_STORAGE_BIND_GROUP &&
+                    binding.name === resource.name &&
+                    (binding.kind === 'sampler' || binding.kind === 'comparison-sampler')
+            );
+            if (declaration === undefined || samplerDeclaration === undefined) {
+                throw new TypeError(
+                    `Scene storage texture ${resource.name} requires an exact texture/sampler pair`
+                );
+            }
+            if (!(resource.sampler instanceof ComputeSampler)) {
+                throw new TypeError(
+                    'Scene storage textures require immutable ComputeSampler recipes'
+                );
+            }
+            if (
+                (resource.sampler.compare !== undefined) !==
+                (samplerDeclaration.kind === 'comparison-sampler')
+            ) {
+                throw new TypeError(
+                    `Scene storage texture ${resource.name} comparison sampler does not match its shader`
+                );
+            }
+            const handle = this.sampledInternals.get(resource.texture);
+            if (handle === undefined)
+                throw new Error(
+                    `Scene storage texture ${resource.name} was not declared during setup`
+                );
+            const record = owner.requireTexture(resource.texture);
+            const filtering =
+                resource.sampler.magFilter === 'linear' ||
+                resource.sampler.minFilter === 'linear' ||
+                resource.sampler.mipmapFilter === 'linear';
+            if (
+                record.sampleCount !== 1 ||
+                !owner.capabilities.supportsTextureFormat(
+                    record.format,
+                    filtering ? 'filterable-sampled' : 'sampled'
+                )
+            ) {
+                throw new TypeError(
+                    `Scene storage texture ${resource.name} has incompatible sampling capabilities`
+                );
+            }
+            let plan = this.#sceneStorageTexturePlans[index];
+            if (plan === undefined) {
+                plan = {
+                    handle: null,
+                    sampler: null,
+                    textureEntry: { binding: 0, resource: null },
+                    samplerEntry: { binding: 0, resource: null }
+                };
+                this.#sceneStorageTexturePlans.push(plan);
+            }
+            plan.handle = handle;
+            plan.sampler = resource.sampler;
+            plan.textureEntry.binding = declaration.binding;
+            plan.samplerEntry.binding = samplerDeclaration.binding;
+            this.#sceneStorageEntries[storageCount + index * 2] = plan.textureEntry;
+            this.#sceneStorageEntries[storageCount + index * 2 + 1] = plan.samplerEntry;
+        }
     }
 
     private prepareSceneStorage(context: RGPrepareContext): void {
@@ -1344,6 +1476,17 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             plan.resource.offset = plan.byteOffset;
             plan.resource.size = plan.byteLength;
             plan.entry.resource = plan.resource as RHIBindingResource;
+        }
+        const samplers = owner.services.getScriptableComputeSamplerResources();
+        for (let index = 0; index < this.#sceneStorageTextureCount; index++) {
+            const plan = this.#sceneStorageTexturePlans[index];
+            if (plan?.handle === null || plan?.handle === undefined || plan.sampler === null) {
+                throw new Error('Scene storage texture preparation is incomplete');
+            }
+            plan.textureEntry.resource = context.getTextureView(plan.handle);
+            const samplerHandle = samplers.prepare(plan.sampler);
+            owner.services.getScriptableMeshProcessor().resourceUses.use(samplerHandle);
+            plan.samplerEntry.resource = samplers.resolve(plan.sampler);
         }
         for (let drawIndex = 0; drawIndex < layoutHandles.length; drawIndex += 1) {
             const layoutHandle = layoutHandles[drawIndex];
@@ -1397,6 +1540,10 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             if (plan === undefined) continue;
             plan.resource.buffer = null;
             plan.entry.resource = null;
+        }
+        for (const plan of this.#sceneStorageTexturePlans) {
+            plan.textureEntry.resource = null;
+            plan.samplerEntry.resource = null;
         }
     }
 

@@ -640,6 +640,7 @@ class FakeRHICapabilities implements RHICapabilities {
             maxVertexBufferArrayStride: 2048,
             minUniformBufferOffsetAlignment: 256,
             maxColorAttachments: 8,
+            maxColorAttachmentBytesPerSample: 32,
             ...(backend === 'webgpu'
                 ? {
                       maxStorageBuffersPerShaderStage: 8,

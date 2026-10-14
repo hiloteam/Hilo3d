@@ -666,6 +666,33 @@ describe('BuiltInUniformBlockManager', () => {
         expect(readFloatField(block, 'u_modelHistoryParams', 1)[0]).toBe(0);
     });
 
+    it('rejects replaced surface identity without committing a failed candidate material', () => {
+        const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const mesh = testEnv.mesh.clone();
+        const original = mesh.material;
+        const replacement = new PBRMaterial();
+        const draw = (): UniformBuffer => {
+            if (mesh.material === null) throw new Error('Missing test surface');
+            manager.beginFrame(testEnv.camera);
+            manager.markMotionVectorParticipation(mesh);
+            return manager.resolveUniformBlock('ModelBlock', mesh, mesh.material);
+        };
+        draw();
+        manager.commit({} as never);
+        expect(readFloatField(draw(), 'u_modelHistoryParams', 1)[0]).toBe(1);
+        manager.commit({} as never);
+        mesh.material = replacement;
+        expect(readFloatField(draw(), 'u_modelHistoryParams', 1)[0]).toBe(0);
+        manager.rollback();
+        mesh.material = original;
+        expect(readFloatField(draw(), 'u_modelHistoryParams', 1)[0]).toBe(1);
+        manager.commit({} as never);
+        mesh.material = replacement;
+        expect(readFloatField(draw(), 'u_modelHistoryParams', 1)[0]).toBe(0);
+        manager.commit({} as never);
+        expect(readFloatField(draw(), 'u_modelHistoryParams', 1)[0]).toBe(1);
+    });
+
     it.each([false, true])(
         'keeps skin validity independent of model history and resolution order (skin first: %s)',
         skinFirst => {

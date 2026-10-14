@@ -12,6 +12,8 @@ interface TemporalObservatoryEvidence {
     readonly backend: 'webgpu';
     readonly objectCount: number;
     readonly fallbackObjectCount: number;
+    readonly clusteredTransparentObjectCount: number;
+    readonly clusteredDeformedObjectCount: number;
     readonly visibleObjectCount: number;
     readonly hiZValid: boolean;
     readonly temporalAA: true;
@@ -359,6 +361,8 @@ window.__HILO3D_TEMPORAL_OBSERVATORY_RESULT__ = {
     backend: 'webgpu',
     objectCount: diagnostics.objectCount,
     fallbackObjectCount: diagnostics.fallbackObjectCount,
+    clusteredTransparentObjectCount: diagnostics.clusteredTransparentObjectCount,
+    clusteredDeformedObjectCount: diagnostics.clusteredDeformedObjectCount,
     visibleObjectCount: diagnostics.visibleObjectCount,
     hiZValid: diagnostics.hiZValid,
     temporalAA: true,

@@ -1,6 +1,8 @@
 import { registerScriptablePassAdapter } from './internal/ScriptablePassAdapter';
 import type { RendererViewport } from '../../RendererCore';
 import type StorageGraphicsShader from '../../compute/StorageGraphicsShader';
+import type ComputeSampler from '../../compute/ComputeSampler';
+import type UniformBuffer from '../../UniformBuffer';
 import type Mesh from '../../../core/Mesh';
 import type { RendererListHandle } from '../RendererList';
 import type {
@@ -17,7 +19,7 @@ function requireRuntimeArray(value: unknown, path: string): void {
     if (!Array.isArray(value)) throw new TypeError(`${path} must be an array`);
 }
 
-/** Fixed pass-global bind group reserved by storage-aware scene variants. */
+/** Fixed pass-global bind group for readonly buffers and graph-sampled scene effects. */
 export const SCENE_STORAGE_BIND_GROUP = 3;
 
 /** One graph-buffer range bound to a readonly scene storage declaration. */
@@ -28,6 +30,16 @@ export interface SceneStorageBufferBinding {
     readonly byteOffset?: number;
     /** Bound byte length, defaulting to the remaining resource range. */
     readonly byteLength?: number;
+}
+
+/** One graph texture and immutable sampler bound to a named pass-global shader sampler. */
+export interface SceneStorageTextureBinding {
+    /** Exact sampler name in the canonical group-three ABI. */
+    readonly name: string;
+    /** Setup-declared sampled graph texture or view. */
+    readonly texture: RenderGraphTextureAccessHandle;
+    /** Backend-neutral immutable sampler recipe, rebuilt after device recovery. */
+    readonly sampler: ComputeSampler;
 }
 
 /**
@@ -44,18 +56,25 @@ export interface SceneStorageShaderVariant {
     /**
      * Optional exact per-mesh variants applied without splitting the renderer list. This preserves
      * global transparent sorting while allowing geometry/material topology to select its compiled
-     * shader. Every mapped shader must expose the same group-three readonly-storage ABI as
+     * shader. Every mapped shader must expose the same group-three buffer and sampled-texture ABI as
      * the default shader.
      */
     readonly shaderByMesh?: ReadonlyMap<Mesh, StorageGraphicsShader>;
     /** Positional ranges matching the shader's sorted readonly-storage binding order. */
     readonly buffers: readonly Readonly<SceneStorageBufferBinding>[];
+    /** Named graph texture/sampler pairs declared in the same group-three ABI. */
+    readonly textures?: readonly Readonly<SceneStorageTextureBinding>[];
 }
 
 /** Retained parameters consumed by {@link SceneRenderPass}. */
 export interface SceneRenderPassParameters {
     /** One setup-declared renderer list prepared through the shared mesh draw processor. */
     readonly rendererList: RendererListHandle;
+    /**
+     * Registered pass-owned std140 blocks. Values remain immutable until submission/discard.
+     * Engine camera, material and object blocks cannot be overridden through this channel.
+     */
+    readonly uniformBlocks?: Readonly<Record<string, UniformBuffer>>;
     /** Continuous color attachments in fragment-output location order. */
     readonly colorAttachments: readonly Readonly<RenderPipelineColorAttachment>[];
     /** Optional depth/stencil attachment shared by every draw in the list. */
@@ -131,6 +150,14 @@ export class SceneRenderPass implements ScriptableRenderPass<SceneRenderPassPara
             requireRuntimeArray(storageVariant.buffers, 'Scene storage shader variant buffers');
             for (const resource of storageVariant.buffers) {
                 builder.readBuffer(resource.buffer, 'storage');
+            }
+            if (storageVariant.textures !== undefined) {
+                requireRuntimeArray(
+                    storageVariant.textures,
+                    'Scene storage shader variant textures'
+                );
+                for (const resource of storageVariant.textures)
+                    builder.readTexture(resource.texture);
             }
         }
         builder.useRendererList(parameters.rendererList);

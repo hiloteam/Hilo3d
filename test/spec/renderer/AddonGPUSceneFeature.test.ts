@@ -34,7 +34,7 @@ function createRecordContext(gpu: RenderNodeGPUExtension): ForwardRenderFeatureC
             },
             camera: {}
         },
-        resources: { color: 1, depth: null }
+        resources: { color: 1, depth: null, sceneScale: 1 }
     } as unknown as ForwardRenderFeatureContext;
 }
 

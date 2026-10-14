@@ -106,7 +106,10 @@ export class WebGL2Capabilities implements RHICapabilities {
             maxVertexAttributes: glLimit(gl, gl.MAX_VERTEX_ATTRIBS, 16),
             maxVertexBufferArrayStride: 2048,
             minUniformBufferOffsetAlignment: glLimit(gl, gl.UNIFORM_BUFFER_OFFSET_ALIGNMENT, 256),
-            maxColorAttachments: glLimit(gl, gl.MAX_COLOR_ATTACHMENTS, 4)
+            maxColorAttachments: glLimit(gl, gl.MAX_COLOR_ATTACHMENTS, 4),
+            // WebGL2 has no separate aggregate-byte limit; attachment count and per-format
+            // renderability are its contract. Float color attachments occupy at most 16 bytes.
+            maxColorAttachmentBytesPerSample: glLimit(gl, gl.MAX_COLOR_ATTACHMENTS, 4) * 16
         });
     }
 

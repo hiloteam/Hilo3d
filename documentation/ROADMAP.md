@@ -5,9 +5,9 @@ Reviewed against source commit `6433334c` on 2026-09-20. This is a source-develo
 Current contracts are indexed in [documentation](./README.md); old proposals live in
 [archive](./archive/README.md).
 
-Rendering planning update: 2026-09-22. REFL0 now has a bounded implementation; other planned
-additions remain requirements rather than available APIs. Priorities express the recommended order,
-not delivery dates.
+Rendering implementation update: 2026-10-13. GI asset coverage, shared-atlas volumetric shadows, PBR
+decals and weighted transparency have Unreleased source implementations. Independent release and
+enrolled physical-performance evidence gates remain distinct from source completion.
 
 ## Status vocabulary
 
@@ -20,22 +20,22 @@ not delivery dates.
 
 ## Active work
 
-| ID                 | Status                                      | Scope and dependencies                                                                                                                                                                                                    | Exit evidence                                                                                                                                                          |
-| ------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PERF-G0/L0         | Evidence pending                            | Enroll the existing 110k-object/256-light fixture; depends on current GPU Scene/Clustered.                                                                                                                                | Fixed rig/browser/driver, raw CPU record/GPU pass/upload/resident-memory measurements, repeatability and reviewed budgets.                                             |
-| PERF-S0            | Evidence pending                            | Stress stable and opt-in virtual shadows with fast camera motion and high caster churn.                                                                                                                                   | Same scene/quality, dirty/deferred/residency counters, recovery and comparable physical-GPU captures.                                                                  |
-| PERF-GI0           | Evidence pending                            | DDGI implementation and isolated candidate collector exist; baseline review is outstanding.                                                                                                                               | Clean committed workload, independent candidate review and accepted budgets; [protocol](../benchmarks/ddgi/README.md).                                                 |
-| PERF-SRP           | Evidence pending                            | Define and implement a dedicated default/custom SRP cross-commit protocol; proposed old `benchmark:srp:*` commands do not exist.                                                                                          | Versioned fixture, timing/allocation/command counts, reviewed immutable baseline; no legacy renderer restoration.                                                      |
-| A0                 | Texture slice implemented; evidence pending | Optional addon implements KTX2/Basis workers, mip demand, bounded leases and upload/memory/in-flight budgets. [Contract](./ASSET_STREAMING.md). Geometry pages and sparse/range loading remain.                           | Cold start, cancellation, teleport, memory pressure and recovery with real compressed assets and physical-device budgets.                                              |
-| M0                 | Not started                                 | Offline meshlets, cluster LOD, GPU culling/material bins and geometry pages. Depends on GPU Scene and A0.                                                                                                                 | Static rigid scene correctness, bandwidth/cull benefit and content/format versioning; no Nanite equivalence claim.                                                     |
-| S0-extension       | Extension                                   | Non-rigid/direct casters and local-light virtual pages after pressure evidence. Current opt-in path covers rigid GPU Scene directional clipmaps.                                                                          | Explicit compatibility policy, dynamic/deformed coverage and bounded residency, with shared stable atlas retained where required.                                      |
-| GI0-extension      | Extension                                   | Prioritize texture-aware diffuse transport, alpha-mask occlusion and common rigid instancing; deformed geometry and offscreen specular ray transport follow separately. Local reflection-probe fallback belongs to REFL0. | New transport/visibility/recovery fixtures and separate memory/update/quality evidence. A0 is a scaling dependency, not a prerequisite for the implemented DDGI slice. |
-| V0-extension       | Extension                                   | Prioritize shared shadow-atlas sampling in froxels, including offscreen caster coverage. Transparent volumetric history remains a later slice.                                                                            | Light/caster/medium changes, rejection and device recovery; budgeted physical-GPU evidence.                                                                            |
-| Material-extension | Extension                                   | MAT1 below owns the cloth, thin-surface and SSS slices; other families and unified schemas remain content-driven extensions.                                                                                              | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                                      |
-| Temporal-extension | Extension                                   | Exposure-compensated history, broader spatial masks, quality/memory tiers and thin-feature reconstruction.                                                                                                                | Stable directional fixtures and measured quality/memory tradeoffs. Existing transparent/particle short history is implemented.                                         |
-| Physics-P5         | Not started                                 | Collision mesh cooking/cache, stable application identity, deterministic command capture and asynchronous snapshot storage.                                                                                               | Asset and replay fixtures, bounded ownership, real 2D/3D adapter conformance; [plan](./PHYSICS_IMPLEMENTATION_PLAN.md).                                                |
-| Particle-extension | Extension                                   | GPU checkpoints and wider stateless subsets only with explicit deterministic/recovery contracts.                                                                                                                          | Supported subset and failure behavior, replay/device-loss evidence; [current boundary](./PARTICLE_SYSTEM.md#current-boundary).                                         |
-| Particle-editor    | Separate product                            | Visual editor on the implemented P6 schema/IR/preview protocol.                                                                                                                                                           | Usable authoring application and asset round trips; an authoring protocol alone is not an editor.                                                                      |
+| ID                 | Status                                      | Scope and dependencies                                                                                                                                                                           | Exit evidence                                                                                                                                         |
+| ------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PERF-G0/L0         | Evidence pending                            | Enroll the existing 110k-object/256-light fixture; depends on current GPU Scene/Clustered.                                                                                                       | Fixed rig/browser/driver, raw CPU record/GPU pass/upload/resident-memory measurements, repeatability and reviewed budgets.                            |
+| PERF-S0            | Evidence pending                            | Stress stable and opt-in virtual shadows with fast camera motion and high caster churn.                                                                                                          | Same scene/quality, dirty/deferred/residency counters, recovery and comparable physical-GPU captures.                                                 |
+| PERF-GI0           | Evidence pending                            | DDGI implementation and isolated candidate collector exist; baseline review is outstanding.                                                                                                      | Clean committed workload, independent candidate review and accepted budgets; [protocol](../benchmarks/ddgi/README.md).                                |
+| PERF-SRP           | Evidence pending                            | Define and implement a dedicated default/custom SRP cross-commit protocol; proposed old `benchmark:srp:*` commands do not exist.                                                                 | Versioned fixture, timing/allocation/command counts, reviewed immutable baseline; no legacy renderer restoration.                                     |
+| A0                 | Texture slice implemented; evidence pending | Optional addon implements KTX2/Basis workers, mip demand, bounded leases and upload/memory/in-flight budgets. [Contract](./ASSET_STREAMING.md). Geometry pages and sparse/range loading remain.  | Cold start, cancellation, teleport, memory pressure and recovery with real compressed assets and physical-device budgets.                             |
+| M0                 | Not started                                 | Offline meshlets, cluster LOD, GPU culling/material bins and geometry pages. Depends on GPU Scene and A0.                                                                                        | Static rigid scene correctness, bandwidth/cull benefit and content/format versioning; no Nanite equivalence claim.                                    |
+| S0-extension       | Extension                                   | Non-rigid/direct casters and local-light virtual pages after pressure evidence. Current opt-in path covers rigid GPU Scene directional clipmaps.                                                 | Explicit compatibility policy, dynamic/deformed coverage and bounded residency, with shared stable atlas retained where required.                     |
+| GI0-extension      | Implemented slice; evidence pending         | Actual texture/decal transport, alpha masks, vertex colors, shared-geometry instances and built-in skin/morph. Custom instance streams and transparent/specular ray transport remain extensions. | Combined transport/visibility/recovery fixtures and separate memory/update/quality evidence. A0 remains a scaling dependency.                         |
+| V0-extension       | Implemented slice; evidence pending         | Shared directional/spot/point shadow-atlas sampling in froxels, including offscreen caster coverage. Transparent volumetric history remains a later slice.                                       | Light/caster/medium changes, rejection and device recovery; budgeted physical-GPU evidence.                                                           |
+| Material-extension | Extension                                   | MAT1 below owns the cloth, thin-surface and SSS slices; other families and unified schemas remain content-driven extensions.                                                                     | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                     |
+| Temporal-extension | Extension                                   | Exposure-compensated history, broader spatial masks, quality/memory tiers and thin-feature reconstruction.                                                                                       | Stable directional fixtures and measured quality/memory tradeoffs. Post-TAA transparency/particles use a fixed raster grid and matching opaque depth. |
+| Physics-P5         | Not started                                 | Collision mesh cooking/cache, stable application identity, deterministic command capture and asynchronous snapshot storage.                                                                      | Asset and replay fixtures, bounded ownership, real 2D/3D adapter conformance; [plan](./PHYSICS_IMPLEMENTATION_PLAN.md).                               |
+| Particle-extension | Extension                                   | GPU checkpoints and wider stateless subsets only with explicit deterministic/recovery contracts.                                                                                                 | Supported subset and failure behavior, replay/device-loss evidence; [current boundary](./PARTICLE_SYSTEM.md#current-boundary).                        |
+| Particle-editor    | Separate product                            | Visual editor on the implemented P6 schema/IR/preview protocol.                                                                                                                                  | Usable authoring application and asset round trips; an authoring protocol alone is not an editor.                                                     |
 
 No completion date or hardware result is implied by priority. Start with evidence needed to select
 the next performance investment, then A0 before M0. Coverage extensions can proceed independently
@@ -44,22 +44,22 @@ when their content and budget are known. See
 
 ## Planned rendering additions
 
-| ID                                                                                              | Priority                   | Status            | First delivery slice                                                                                                                                                            | Exit evidence                                                                                                                                                |
-| ----------------------------------------------------------------------------------------------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [REFL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#refl0-local-reflection-probes)                     | P1                         | Implemented slice | Static box-projected cubemaps and explicit two-probe material blends; budgeted, atomic HDR dynamic captures on both backends. [Contract](./LOCAL_REFLECTIONS.md).               | Room transitions, offscreen reflectors, roughness/mip behavior, no duplicate specular energy, atomic capture publication and device recovery.                |
-| [DECAL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#decal0-pbr-decals)                                | P1                         | Not started       | Projected opaque-surface decals, atlas, layer/angle/distance filtering and base-color/normal/roughness changes.                                                                 | Consistent PBR/GTAO/SSR attributes, overlap ordering, moving receiver/projector history rejection and bounded pass/resource costs.                           |
-| [TRANS0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#trans0-transparency-quality)                      | P1                         | Not started       | Transparency classification, ordering/overdraw diagnostics and opt-in approximate OIT for suitable smoke/particle content; glass retains a separate sorted refraction contract. | Intersecting layers, dense particles, camera motion, temporal composition, explicit approximation limits and bounded memory/bandwidth.                       |
-| [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Not started       | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                                   | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
-| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Not started       | Sheen and thin-surface diffuse transmission first; separately scoped profile-based skin/wax subsurface scattering afterward.                                                    | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
-| [DEFORM0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#deform0-reusable-gpu-deformation)                | P2, character-scale-driven | Not started       | Opt-in WebGPU compute skin/morph output reused by depth, shadow, motion and color passes.                                                                                       | Vertex-path image parity, current/previous pose correctness, multi-camera and shadow reuse, recovery, memory bounds and measured multi-pass savings.         |
+| ID                                                                                              | Priority                   | Status            | First delivery slice                                                                                                                                              | Exit evidence                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------- | -------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [REFL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#refl0-local-reflection-probes)                     | P1                         | Implemented slice | Static box-projected cubemaps and explicit two-probe material blends; budgeted, atomic HDR dynamic captures on both backends. [Contract](./LOCAL_REFLECTIONS.md). | Room transitions, offscreen reflectors, roughness/mip behavior, no duplicate specular energy, atomic capture publication and device recovery.                |
+| [DECAL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#decal0-pbr-decals)                                | P1                         | Implemented slice | [Projected opaque-surface decals](./PBR_DECALS.md), bounded atlas membership, layer/angle/distance filtering and base-color/normal/roughness changes.             | Consistent PBR/GTAO/SSR attributes, overlap ordering, moving receiver/projector history rejection and bounded pass/resource costs.                           |
+| [TRANS0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#trans0-transparency-quality)                      | P1                         | Implemented slice | [Explicit transparency classes](./TRANSPARENCY.md), portable weighted OIT for supported Basic/PBR meshes and instance quads, separate sorted refraction.          | Intersecting layers, dense particles, camera motion, temporal composition, explicit approximation limits and bounded memory/bandwidth.                       |
+| [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Not started       | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                     | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
+| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Not started       | Sheen and thin-surface diffuse transmission first; separately scoped profile-based skin/wax subsurface scattering afterward.                                      | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
+| [DEFORM0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#deform0-reusable-gpu-deformation)                | P2, character-scale-driven | Not started       | Opt-in WebGPU compute skin/morph output reused by depth, shadow, motion and color passes.                                                                         | Vertex-path image parity, current/previous pose correctness, multi-camera and shadow reuse, recovery, memory bounds and measured multi-pass savings.         |
 
-For the lighting/appearance lane, first close GI0 asset coverage and V0 atlas shadows, then
-prioritize DECAL0 -> TRANS0. REFL0 has a bounded implementation; broader capture visibility, finer
-temporal masks and enrolled physical-device performance evidence remain extensions. This is a
-recommended sequence, not an artificial dependency between independent features. RG1 starts with
-measured CPU/transient-memory pressure; MAT1 and DEFORM0 need representative material or
-animated-character content. A0 -> M0 remains the independent streaming and geometry lane. Existing
-performance evidence gates stay open until their own acceptance passes.
+The GI0 asset/V0 atlas/DECAL0/TRANS0 appearance lane now needs combined regression and physical
+workload evidence before further scope expansion. REFL0 has a bounded implementation; broader
+capture visibility, finer temporal masks and enrolled physical-device performance evidence remain
+extensions. This is a recommended sequence, not an artificial dependency between independent
+features. RG1 starts with measured CPU/transient-memory pressure; MAT1 and DEFORM0 need
+representative material or animated-character content. A0 -> M0 remains the independent streaming
+and geometry lane. Existing performance evidence gates stay open until their own acceptance passes.
 
 RG1 makes the remaining graph-reuse work under F0 explicit; MAT1 narrows Material-extension rather
 than duplicating it. New feature details and acceptance boundaries live in the rendering roadmap.
@@ -89,6 +89,95 @@ The RHI migration's temporary hot-path allocation budget is historical; review c
 measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before tightening it. The
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
+
+### Rendering acceptance, 2026-10-13
+
+Feature source: `86723c2177e1d9faec52053bfc39ecc20c53e3f5` on `codex/rendering-production`. The
+reviewed contracts are [dynamic GI](./DYNAMIC_GLOBAL_ILLUMINATION.md),
+[volumetrics](./VOLUMETRIC_LIGHTING.md), [decals](./PBR_DECALS.md) and
+[transparency](./TRANSPARENCY.md). Combined pixels, interactivity and post-teardown error
+observation are exercised by `test/ui/rendering-production.spec.ts`; the corresponding renderer
+tests cover resource transactions, actual backend pixels, shader translation and device/context
+recovery.
+
+| Capability            | Implementation                                                                                                                       | Executable coverage                                                                                                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GI assets             | [Scene collection](../src/render/gi/RayTracingScene.ts), [texture atlas](../src/render/gi/SceneTextureAtlas.ts)                      | [Asset transport](../test/spec/renderer/DynamicGlobalIlluminationAssets.test.ts), [HDR/BC1 transport and recovery](../test/spec/renderer/DynamicGIEncodedTextureTransport.test.ts), [source identity and import transactions](../test/spec/renderer/DynamicGITextureSourceIdentity.test.ts) |
+| Volumetric shadows    | [Froxel lighting](../src/render/postprocessing/VolumetricLighting.ts), [caster bounds](../src/render/renderer/ShadowCasterBounds.ts) | [Volume/shadow pixels](../test/spec/renderer/VolumetricLighting.test.ts), [deformed bounds](../test/spec/renderer/ShadowCasterBounds.test.ts)                                                                                                                                               |
+| Decals                | [Projector](../src/render/decals/DecalProjector.ts), [material binding](../src/render/decals/DecalMaterialBinding.ts)                | [Dual-backend decals](../test/spec/renderer/PBRDecals.test.ts)                                                                                                                                                                                                                              |
+| Weighted transparency | [Shared controller](../src/render/pipeline/WeightedBlendedTransparency.ts)                                                           | [Composition/lifecycle](../test/spec/renderer/WeightedBlendedTransparency.test.ts), [HDR and faint layers](../test/spec/renderer/WeightedBlendedPrecision.test.ts)                                                                                                                          |
+| SSR correction        | [Production filters](../src/render/postprocessing/ScreenSpaceReflections.ts)                                                         | [Coverage and energy](../test/spec/renderer/ScreenSpaceReflectionSpatialFilter.test.ts), [unchanged browser gates](../test/ui/screen-space-reflections.spec.ts)                                                                                                                             |
+
+Executed on the macOS development rig with npm 10.9.4:
+
+- Four serial `vitest run --coverage --maxWorkers=1 --shard=N/4` runs and the normal
+  `vitest --merge-reports=reports/vitest-final --coverage` gate on final source `d49daf14`: **279
+  files / 2,529 tests passed**. Statements 84.01%, branches 73.94%, functions 88.73%, lines 85.70%;
+  unchanged global thresholds. No `GITHUB_ACTIONS` substitution was used, so the local shader/pixel
+  cases remained active.
+- `test:webgpu:native`: **13 passed**, including the 110k-object workload, Sponza camera tour,
+  volumetric lighting, Atelier GI and the combined production fixture. This is physical-GPU
+  correctness evidence, not benchmark timing evidence.
+- Final `CI=true npm run test:webgpu` on the SSR-corrected source: **26 passed** in 10.5 minutes.
+  `reports/rendering-final-webgpu.log` retains the complete aggregate run; no assertion, retry or
+  threshold was relaxed.
+- `test:ui:contract`: **6 files / 34 tests passed**. UI grouping still schedules all 123 WebGL2
+  cases exactly once.
+- `build` including addons, `examples:build`, `typecheck`, `lint:built`, `format:check`,
+  `docs:check:built`, `test:types`, `api:update` then `api:check`, `check:modernity`, `test:skill`
+  and the UI grouping check passed. The generated API report also records the new reserved uniform
+  bindings 11/12 and the custom-binding start at 13.
+
+SSR follow-up source: `6bc7bd57263e28bf776948a7ad474ac00436df38`. The initial full WebGPU run passed
+25 cases and reproduced the inherited rapid-orbit failure (`1.129689578714 > 1`). It was traced to
+spatial confidence reconstruction, not reprojection: disabling either SSR or TAA history
+independently still reproduced it. The correction includes valid miss pixels in the coverage kernel
+and preserves confidence-premultiplied energy. All four unchanged Afterimage browser tests then
+passed on software WebGPU and native Metal, including the original rapid-orbit threshold. Three new
+real-GPU production-filter regressions and the four existing trace/history/miss cases passed;
+TypeScript, focused lint/format, fresh package builds, API and documentation checks also passed. The
+interrupted intermediate attempt is not acceptance evidence.
+
+Compressed-source recovery follow-up: `d49daf14520632287d621bafd2a782a60ec62223`. Real RGBA16F and
+BC1-sRGB transport comparisons exposed a software-WebGPU cold-recovery failure: the restored source
+texture was correct but direct compressed compute sampling left the atlas empty. A shared raster
+normalization into RGBA32F resolves this while retaining the original recovery assertions. The final
+source passed **67 related software-GPU/controller checks across eight files**, plus **four
+encoded-texture/directional/recovery checks on a verified non-fallback Metal adapter**. These
+include both raster backends' asymmetric image rows, HDR energy equivalence, sRGB negative controls,
+GI-off isolation, stable zero-pass behavior and discard/retry. Fresh build, API, installed package
+consumers, TypeScript, focused lint/format and TypeDoc checks passed after this change.
+`reports/rendering-gi-normalization-final-checks.txt` indexes the exact commands and logs. Earlier
+failed diagnostic attempts remain retained, and no failing case was moved out of the software lane.
+
+The final `test:rhi` run passed 217 portable checks and three native-RHI checks; its optional
+`shader-f16` compute case was skipped because the software adapter lacks that feature.
+`test:package:built` passed publishing/type resolution checks, installed-tarball recipe compilation,
+audio and Live2D consumers, and asset-worker/WASM pixels plus recovery on both backends. These
+checks used the fresh build after the SSR correction.
+
+The complete affected `csm`, `post-processing` and `chromatic` UI groups passed on both WebGL2 and
+WebGPU: **3 + 8 + 2 cases per backend, 26 total**. WebGL2 used
+`CI=true HILO3D_UI_GROUP=<group> npm run test:ui:webgl2:ci`; WebGPU used the same group filters and
+CI browser configuration with the corresponding Playwright files. Original screenshot thresholds,
+interaction checks and group membership were preserved. Each group's result, elapsed time and
+retained artifacts remain separate under `reports/rendering-ui-*`.
+
+A final seven-case browser selection also passed after the SSR correction: model replacement,
+layered PBR lobe switches and Khronos material asset switches on both backends, plus the complete
+high-end transparent/particle/recovery fixture. Its source files were `runtime-parity.spec.ts` and
+`webgpu.spec.ts`; `reports/rendering-final-material-parity.log` retains the exact selected titles.
+
+The complete project `validate`/`validate:ci` and every catalog/editor/physics/visual browser lane
+were not rerun as a release matrix for this rendering change; the executed lanes above are the
+acceptance record. Broader compressed/HDR format combinations and additional physical devices still
+need their own format/device matrix; source capability support is not that evidence.
+
+Local command logs and retained native/portable screenshots live under ignored `reports/`; they are
+not immutable benchmark snapshots. A failed earlier monolithic coverage attempt disconnected its
+browser; only the complete merged four-shard result above closes that coverage gate. Formal DDGI
+candidate collection still requires confirmed GPU isolation and independent review; no existing
+benchmark baseline was overwritten or enrolled by these functional runs.
 
 ## Editor development
 

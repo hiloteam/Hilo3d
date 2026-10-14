@@ -88,6 +88,10 @@ function resolveForwardState(
 ): Readonly<MaterialPipelineState> {
     const state = pass.state;
     switch (instance.compositing.mode) {
+        case 'weighted-blended':
+            throw new TypeError(
+                'Weighted-blended materials require an enabled weighted-blended transparency pipeline'
+            );
         case 'opaque':
             return state;
         case 'alpha-blend':
@@ -168,6 +172,26 @@ function targetKey(target: Readonly<MaterialTargetSignature>): string {
 export class MaterialCompiler {
     compile(request: Readonly<MaterialCompileRequest>): PreparedMaterialVariant | null {
         const { instance, role } = request;
+        if (role === 'weighted-accumulation' || role === 'weighted-revealage') {
+            if (instance.transparencyClass !== 'weighted-blended') {
+                throw new TypeError(
+                    'Weighted transparency passes require weighted-blended materials'
+                );
+            }
+            if (
+                request.target.sampleCount !== 1 ||
+                request.target.colorFormats.length !== (role === 'weighted-accumulation' ? 3 : 1) ||
+                request.target.colorFormats.some(
+                    format =>
+                        format !== (role === 'weighted-accumulation' ? 'rgba16float' : 'r16float')
+                ) ||
+                request.target.depthStencilFormat === null
+            ) {
+                throw new TypeError(
+                    'Weighted transparency requires single-sample HDR accumulation/revealage and opaque depth'
+                );
+            }
+        }
         if (!instance.definition.profiles.includes(request.renderingProfile)) {
             throw new TypeError(
                 `Material definition ${instance.definition.id} does not support ${request.renderingProfile}`

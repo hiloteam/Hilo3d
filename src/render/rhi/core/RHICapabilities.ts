@@ -45,6 +45,8 @@ export interface RHILimits {
     readonly maxVertexBufferArrayStride: number;
     readonly minUniformBufferOffsetAlignment: number;
     readonly maxColorAttachments: number;
+    /** Aggregate color-attachment storage per sample; absent on older capability providers. */
+    readonly maxColorAttachmentBytesPerSample?: number;
     readonly maxStorageBuffersPerShaderStage?: number;
     readonly maxStorageTexturesPerShaderStage?: number;
     readonly maxStorageBufferBindingSize?: number;

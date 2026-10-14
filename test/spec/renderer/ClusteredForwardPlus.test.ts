@@ -1201,13 +1201,15 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     .renderGraph?.passes.map(pass => pass.name);
                 expect(nativePasses).toContain('GPU Scene deformed and layered clustered PBR');
                 expect(nativePasses).toContain('Clustered Forward+ transparent PBR');
-                expect(nativePasses).toContain(
+                expect(nativePasses).not.toContain(
                     'Transparent transmission and particle temporal reactive coverage'
                 );
-                expect(nativePasses).toContain(
+                expect(nativePasses).not.toContain(
                     'Transparent transmission and particle resurrection'
                 );
-                expect(nativePasses).toContain('Transparent GPU particle temporal composition');
+                expect(nativePasses).not.toContain('Transparent GPU particle temporal composition');
+                expect(nativePasses).toContain('Stable transparent GPU Scene depth buckets');
+                expect(nativePasses).toContain('Stable transparent clustered frame');
                 expect(prepareStorageScene.mock.calls.slice(-2).map(call => call[0])).toEqual([
                     morphMesh,
                     skinned
@@ -1249,17 +1251,14 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                     ...parameters: Parameters<FullscreenRenderPass['execute']>
                 ) => void;
                 let injectedFailure = false;
-                let resurrectionPassCount = 0;
                 const executeFailure = vi
                     .spyOn(FullscreenRenderPass.prototype, 'execute')
                     .mockImplementation(function (
                         this: FullscreenRenderPass,
                         ...parameters: Parameters<typeof originalFullscreenExecute>
                     ): void {
-                        if (this.name === 'Transparent transmission and particle resurrection') {
-                            resurrectionPassCount++;
-                        }
-                        if (!injectedFailure && resurrectionPassCount === 2) {
+                        // Fail after all stable transparent and particle work, before submission.
+                        if (!injectedFailure && this.name.endsWith('display transform')) {
                             injectedFailure = true;
                             throw new Error('injected clustered temporal submission failure');
                         }
@@ -1338,7 +1337,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 await renderer.waitForIdle();
                 expect(
                     rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name)
-                ).toContain('Transparent temporal history initialize');
+                ).toContain('Stable transparent GPU Scene depth buckets');
                 expect(await factory.readDiagnostics()).toMatchObject({
                     activeMaterialVariantCount: 4,
                     materialVariantBudgetExceededCount: 1
@@ -1472,7 +1471,7 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
     );
 
     it.skipIf(__HILO3D_GITHUB_ACTIONS_COVERAGE__)(
-        'integrates GTAO into GPU Scene and Forward fallback SSR reflection data',
+        'integrates GTAO into GPU Scene and native direct PBR while retaining SSR reflection data',
         async () => {
             const geometry = new BoxGeometry();
             const material = new PBRMaterial({
@@ -1511,10 +1510,34 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 renderingProfile: 'high-end',
                 renderPipeline: factory
             });
+            const target = renderer.createRenderTarget({
+                width: 64,
+                height: 64,
+                colorAttachments: [{ format: 'rgba8unorm' }],
+                depthStencilAttachment: false
+            });
+            renderer.clearColor = new Color(0, 0, 0);
+            const preparedAttributes: { formats: readonly (string | null)[]; gtao: boolean }[] = [];
+            const nativeDraws = vi.spyOn(MeshDrawProcessor.prototype, 'prepareStorageScene');
+            const originalPrepare = Reflect.get(MeshDrawProcessor.prototype, 'prepare');
+            const ordinaryDraws = vi
+                .spyOn(MeshDrawProcessor.prototype, 'prepare')
+                .mockImplementation(function (
+                    this: MeshDrawProcessor,
+                    ...args: Parameters<MeshDrawProcessor['prepare']>
+                ): ReturnType<MeshDrawProcessor['prepare']> {
+                    if (args[4] === 'material-attributes' && args[1].colorFormats.length === 3) {
+                        preparedAttributes.push({
+                            formats: [...args[1].colorFormats],
+                            gtao: args[3]?.bindingName === 'u_gtaoTexture'
+                        });
+                    }
+                    return originalPrepare.apply(this, args);
+                });
             try {
                 const scene = new Node();
                 new Mesh({ geometry, material, frustumTest: false }).addTo(scene);
-                new Mesh({
+                const directMesh = new Mesh({
                     geometry: new BoxGeometry(),
                     material: new PBRMaterial({
                         baseColor: new Color(0.3, 0.45, 0.75),
@@ -1536,14 +1559,15 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                 });
                 camera.setPosition(0, 0, 4).lookAt(new Vector3(0, 0, 0));
 
-                renderer.render(scene, camera);
+                renderer.renderToTarget(target, scene, camera);
                 await renderer.waitForIdle();
-                renderer.render(scene, camera);
+                renderer.renderToTarget(target, scene, camera);
                 await renderer.waitForIdle();
 
                 expect(await factory.readDiagnostics()).toMatchObject({
                     objectCount: 1,
-                    fallbackObjectCount: 1
+                    fallbackObjectCount: 0,
+                    clusteredDeformedObjectCount: 1
                 });
                 expect(renderer.renderInfo.drawCount).toBeGreaterThan(0);
                 const passNames = rendererDiagnostics
@@ -1555,13 +1579,50 @@ describe('ClusteredForwardPlusPipelineFactory', () => {
                         'GTAO rotated horizon search',
                         'GTAO production temporal resolve',
                         'Clustered PBR buckets',
+                        'GPU Scene deformed and layered clustered PBR',
                         'Clustered Forward+ fallback material attributes',
                         'Screen-space reflections finalize indirect tile dispatch',
                         'Hierarchical screen-space reflection trace'
                     ])
                 );
+                const directCalls = nativeDraws.mock.calls.filter(([mesh]) => mesh === directMesh);
+                expect(directCalls).toHaveLength(2);
+                for (const call of directCalls) {
+                    expect(
+                        call[2].bindings.some(
+                            binding => binding.name === 'u_gtaoTexture' && binding.group === 3
+                        )
+                    ).toBe(true);
+                }
+                expect(preparedAttributes).toHaveLength(2);
+                for (const attributes of preparedAttributes) {
+                    expect(attributes.gtao).toBe(true);
+                    expect(attributes.formats[0]).toBe('rgba8unorm');
+                    expect(['rgba16float', 'rg11b10ufloat']).toContain(attributes.formats[1]);
+                    expect(attributes.formats[2]).toBe(attributes.formats[1]);
+                }
+                const shown = (await target.readColorAttachment()).data.slice();
+                expect(shown.some((value, index) => index % 4 !== 3 && value > 32)).toBe(true);
+                directMesh.visible = false;
+                for (let frame = 0; frame < 2; frame++) {
+                    renderer.renderToTarget(target, scene, camera);
+                    await renderer.waitForIdle();
+                }
+                const hidden = (await target.readColorAttachment()).data;
+                let changedRGB = 0;
+                for (let offset = 0; offset < shown.length; offset++) {
+                    if (
+                        offset % 4 !== 3 &&
+                        Math.abs((shown[offset] ?? 0) - (hidden[offset] ?? 0)) > 12
+                    )
+                        changedRGB++;
+                }
+                expect(changedRGB).toBeGreaterThan(30);
             } finally {
+                nativeDraws.mockRestore();
+                ordinaryDraws.mockRestore();
                 unregisterRendererDiagnostics(canvas);
+                target.destroy();
                 renderer.destroy();
             }
         },

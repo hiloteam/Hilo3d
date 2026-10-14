@@ -5,9 +5,9 @@ Status reviewed against source commit `6433334c` on 2026-09-20. This page tracks
 [earlier survey and completed work packages](./archive/MODERN_WEBGPU_RENDERING_ROADMAP.md) are
 historical. For cross-engine priorities and evidence gates, use [the main roadmap](./ROADMAP.md).
 
-Planning update: 2026-09-22. REFL0 now has a bounded portable implementation; DECAL0, TRANS0, RG1,
-MAT1 and DEFORM0 remain unstarted requirements. They do not change the delivered capability table or
-declare new public APIs.
+Implementation update: 2026-10-13. GI0 asset coverage, V0 shared-atlas shadows, DECAL0 and TRANS0
+have Unreleased source implementations and executable fixtures. RG1, MAT1 and DEFORM0 remain
+unstarted. Implementation does not close independent physical-performance or release evidence gates.
 
 ## Delivered slices and remaining boundaries
 
@@ -26,10 +26,10 @@ performance result. DDGI is prepared for [alpha.9](./VERSIONS.md); publication i
 | E0   | Implemented                                 | GPU histogram/adaptation/history; parameterized filmic display.                                                                   | Arbitrary authored metering masks and expanded diagnostics.                                                                                           |
 | Q0   | Implemented                                 | Portable GTAO/SSGI and WebGPU Clustered Hi-Z SSR.                                                                                 | Offscreen specular is separate GI work; transparent/offscreen geometry is not screen-trace input.                                                     |
 | S0   | Implemented; evidence pending               | Stable atlas cache, caster cull, budget/cadence/pages; opt-in directional virtual clipmaps, GPU requests/remapping/LRU.           | Physical stress evidence, wider caster and local-light coverage.                                                                                      |
-| V0   | Implemented slice                           | Froxels, height/local fog, physical atmosphere/clouds and cloud shadows.                                                          | Shared atlas shadows in froxels and transparent volumetric history.                                                                                   |
+| V0   | Implemented slice                           | Froxels, shared directional/spot/point atlas shadows, height/local fog, atmosphere/clouds.                                        | Transparent volumetric history and enrolled physical performance.                                                                                     |
 | A0   | Texture slice implemented; evidence pending | Optional addon: KTX2/Basis workers, bounded leases/mip residency and fenced uploads.                                              | Physical workload budgets; sparse/range loading and geometry pages remain.                                                                            |
 | M0   | Not started                                 | Existing GPU Scene/bucket LOD can be reused.                                                                                      | Offline meshlets/cluster LOD, material bins and geometry streaming after A0.                                                                          |
-| GI0  | Initial slice implemented; evidence pending | Rigid opaque PBR software BVH, DDGI probes, dynamic lights and signed SSGI hybrid.                                                | Performance baseline; broader material/geometry, specular transport and optional SDF representation.                                                  |
+| GI0  | Implemented slice; evidence pending         | Textured/masked/deformed PBR software BVH, DDGI probes, decal transport and signed SSGI hybrid.                                   | Performance baseline; custom deformation, transparent/specular transport and optional SDF representation.                                             |
 
 ## Dependency and evidence order
 
@@ -88,31 +88,29 @@ Spot/Point and WebGL2 use the shared stable atlas. Missing/deferred virtual page
 stable CSM. Preserve exact identity, submission-aware page tables, failure rollback and recovery
 before expanding coverage.
 
-V0 has bounded screen-space caster visibility and cloud shadows. Shared shadow-atlas froxel sampling
-is the next lighting slice: consume the shared atlas through declared graph resources and a defined
-light/matrix/index ABI, then prove that offscreen moving casters correctly occlude the light volume.
-Declare supported directional/local-light cases and budgets explicitly. Transparent-media history
-remains a separate later slice. Neither is implied by the implemented surface shadow consumer. See
-[volumetrics](./VOLUMETRIC_LIGHTING.md).
+V0 consumes the shared directional CSM, spot and point atlas through declared graph resources,
+including offscreen casters and bounded tile-clamped PCF. Screen-space visibility and cloud shadows
+remain complementary inputs. Transparent-media history and physical workload budgets remain open;
+see [volumetrics](./VOLUMETRIC_LIGHTING.md).
 
-GI0's first world-space slice is documented in [DDGI](./DYNAMIC_GLOBAL_ILLUMINATION.md). Prioritize
-texture-aware diffuse/emissive transport, alpha-mask occlusion and common rigid instancing, with
-fixtures that distinguish textured transport from the existing explicit material-factor
-approximation. Keep unsupported geometry fail-closed until its own slice is implemented; skinned
-geometry requires separate acceleration-structure update and budget evidence. Local reflection-probe
-fallback is REFL0; broader offscreen specular ray transport and SDF clipmaps remain independent GI0
-extensions with transport, temporal, update and memory evidence. An SDF baker must define
-thin/two-sided/masked surfaces, format/version, worker/CI artifacts, teleport and recovery. Require
-real consumers before exposing a generic scene representation provider. The progressive compute
-path-tracing example is not a real-time dynamic GI performance result.
+GI0 now evaluates real diffuse/emissive/normal texels, alpha-mask visibility, vertex colors,
+world-space decals and built-in skin/morph poses, with exact UV/channel/encoding and submission
+contracts documented in [DDGI](./DYNAMIC_GLOBAL_ILLUMINATION.md). Explicit per-mesh opt-out keeps
+smoke outside solid ray transport without disabling strict validation of other assets. Custom
+per-instance/deformation streams remain fail-closed. Local reflection-probe fallback is REFL0;
+broader offscreen specular ray transport and SDF clipmaps remain independent GI0 extensions with
+transport, temporal, update and memory evidence. An SDF baker must define thin/two-sided/masked
+surfaces, format/version, worker/CI artifacts, teleport and recovery. Require real consumers before
+exposing a generic scene representation provider. The progressive compute path-tracing example is
+not a real-time dynamic GI performance result.
 
 ## Planned rendering work packages
 
 | ID      | Priority                   | Status            | Dependencies / reuse                                                                                                           |
 | ------- | -------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | REFL0   | P1                         | Implemented slice | Existing PBR environment sampling, SSR response/baseline composition, graph subresource views and resource recipes.            |
-| DECAL0  | P1                         | Not started       | Shared material surface/attribute ABI, scene depth, graph passes and temporal invalidation.                                    |
-| TRANS0  | P1                         | Not started       | Shared transparent ordering, HDR composition, particles and existing transparent temporal controllers.                         |
+| DECAL0  | P1                         | Implemented slice | Shared PBR/attribute ABI, eight atlas-backed world projectors, deterministic overlap and temporal rejection.                   |
+| TRANS0  | P1                         | Implemented slice | Explicit composition classes, bounded portable weighted OIT and separate sorted refraction/temporal composition.               |
 | RG1     | P1, measurement-driven     | Not started       | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
 | MAT1    | P2, content-driven         | Not started       | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
 | DEFORM0 | P2, character-scale-driven | Not started       | Compute/storage/vertex graph accesses, shared skin/morph inputs and D0 current/previous transform contracts.                   |
@@ -148,6 +146,11 @@ transitions, capture rollback and recovery, plus bounded capture time and reside
 
 ### DECAL0: PBR decals
 
+**Implemented boundary.** [PBR decals](./PBR_DECALS.md) use the shared material surface evaluator
+for Forward and native Clustered direct draws. The fixed compact indirect material schema does not
+contain projector data. Attached skinned projection, transparent receivers, automatic scene-wide
+projector assignment and finer spatial history remain separate extensions.
+
 **Scope.** Project atlas-backed decals onto opaque receivers with explicit layer, projection-volume,
 angle and distance filters. The first slice changes base color, normal and roughness, with stable
 overlap ordering. Transparent receivers and attached skinned decals need separate contracts.
@@ -163,16 +166,22 @@ declared backend profile, with actual shader translation and pixel evidence.
 
 ### TRANS0: transparency quality
 
+**Implemented boundary.** [Transparency](./TRANSPARENCY.md) provides explicit composition classes
+and opt-in weighted HDR accumulation/revealage on both backends, including native Clustered PBR.
+Compatible instanced Basic/PBR quads are supported; custom GPU particle shaders need their own
+semantic pass integration. Exact layered glass and automatic interleaving with sorted transparency
+are not claimed by this approximation.
+
 **Scope.** Classify sorted alpha, additive, transmitting and suitable approximate-OIT content, and
 expose ordering/overdraw costs. An opt-in weighted-blended OIT slice can target smoke and compatible
 particle effects. Its approximation limits must be explicit; it does not provide exact layered
 glass, refraction or colored transmission. Keep glass on a separately specified sorted
 depth/thickness/refraction path until a better bounded contract is validated.
 
-**Integration.** Preserve global ordering where required and use the existing HDR, reactive and
-short-history composition boundaries. Material/particle definitions declare eligibility; do not
-silently switch an incompatible material to OIT. Validate blend/attachment capabilities before
-runtime creation and bound accumulation targets, passes and bandwidth.
+**Integration.** Preserve global ordering where required and use the existing HDR and fixed-grid
+post-TAA composition boundaries. Material/particle definitions declare eligibility; do not silently
+switch an incompatible material to OIT. Validate blend/attachment capabilities before runtime
+creation and bound accumulation targets, passes and bandwidth.
 
 **Acceptance.** Compare intersecting layers, dense smoke, particles mixed with transparent meshes,
 high-opacity surfaces and camera motion. Include a sorted/reference result, documented approximation
@@ -230,13 +239,13 @@ profile only where the complete workload demonstrates a benefit.
 
 ## Recommended rendering sequence
 
-For scene lighting and appearance: **GI0 asset coverage / V0 shared atlas shadows -> DECAL0 ->
-TRANS0**. REFL0 has a bounded portable implementation with separately tracked visibility, temporal
-and performance extensions. This is priority guidance, not a dependency requiring unrelated features
-to ship together. RG1 proceeds from measured CPU or transient-memory pressure; MAT1 and DEFORM0 are
-driven by actual material and character content. A0 -> M0 continues as the independent
-streaming/geometry lane. Existing physical-GPU performance gates remain mandatory evidence for their
-respective workloads; these planned additions do not mark them complete.
+The GI0/V0/DECAL0/TRANS0 appearance sequence now has bounded source implementations. Prioritize
+their combined regression and physical workload evidence before enlarging supported content. REFL0
+retains separately tracked visibility, temporal and performance extensions. RG1 proceeds from
+measured CPU or transient-memory pressure; MAT1 and DEFORM0 are driven by actual material and
+character content. A0 -> M0 continues as the independent streaming/geometry lane. Existing
+physical-GPU performance gates remain mandatory evidence for their respective workloads; these
+planned additions do not mark them complete.
 
 ## Evidence gates
 

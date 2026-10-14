@@ -149,6 +149,11 @@ resolve 前按 YCoCg neighborhood
 variance 限幅，避免暗地面上的稀疏高亮成为 firefly。最终半分辨率到全分辨率 resolve 手动 gather 相邻 trace
 pixel，并再次用 full-resolution normal/depth/roughness 权重拒绝跨边界泄漏。
 
+空间滤波分别估计命中辐射和覆盖置信度：辐射只使用有效命中的加权样本；coverage 则使用完整、几何与材质连续的滤波核，未命中的接收像素也计入分母。忽略这些 miss 会让一个孤立的随机命中在多级滤波后获得整片区域的高置信度，形成运动时的方块伪影。trace 与 temporal
+RGB 已经预乘 confidence，因此滤波先按命中加权 confidence 恢复辐射，再乘新的全核 coverage；只降低 alpha 而不调整 RGB 会额外增加能量。全 miss 输出零；均匀辐射与相同 environment/probe
+fallback 合成时净能量变化为零。 `ScreenSpaceReflectionSpatialFilter.test.ts`
+直接运行三个生产 filter，验证孤立命中、均匀场、单点孔洞及逐像素的预乘能量关系。
+
 这是纯 screen-space trace：屏幕外、被前景完全遮挡或当前 color
 buffer 中不存在的信息没有 screen-space 命中；这些位置确定性保留 forward
 PBR 已经计算的 environment/probe fallback。它不伪装成 BVH、SDF 或硬件 ray tracing。

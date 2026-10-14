@@ -34,6 +34,9 @@ float ao = 1.0;
     #endif
     float roughness = clamp(1.0 - glossiness, 0.045, 1.0);
     float metallic = 0.0;
+    #ifdef HILO_DECALS
+        hiloApplyDecals(baseColor, N, roughness);
+    #endif
     vec3 diffuseColor = baseColor.rgb *
         (1.0 - max(max(specularColor.r, specularColor.g), specularColor.b));
     vec3 iblDiffuseColor = diffuseColor;
@@ -56,6 +59,9 @@ float ao = 1.0;
         #endif
         roughness *= metallicRoughness.g;
         metallic *= metallicRoughness.b;
+    #endif
+    #ifdef HILO_DECALS
+        hiloApplyDecals(baseColor, N, roughness);
     #endif
     HiloMetallicRoughnessSurface metallicRoughnessSurface =
         hiloEvaluateMetallicRoughnessSurface(

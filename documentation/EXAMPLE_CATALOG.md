@@ -1,21 +1,21 @@
 # 示例目录整理
 
-核对日期：2026-10-05。范围：100 个 HTML 入口，其中 98 个场景示例、两个画廊入口。
+核对日期：2026-10-13。范围：101 个 HTML 入口，其中 99 个场景示例、两个画廊入口。
 
 ## 整理结果
 
 - 目录改为逐项审阅的元数据，删除文件名正则分类、自动拼标题和通用套话。新增页面仍由递归 HTML 扫描发现，缺少说明会直接报错。
-- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景和 NOCTURNE 交互钢琴后现为 26 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
+- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景、NOCTURNE 交互钢琴和雨后茶寮后现为 27 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
-- 每个示例有独立用途。既有场景保留原 URL，当前共有 98 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
+- 每个示例有独立用途。既有场景保留原 URL，当前共有 99 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
 - 静态构建删除 Blender 创作源文件的复制路径，运行时资产保留；仓库中的原始创作文件与授权说明保留。
 - 画廊提供多词搜索、中文主题关键词、主题/后端筛选、URL 状态、浏览器前进后退、手机键盘导航和加载失败重试。主题数量和筛选结果遵循当前 Highlights
   / All examples 集合，切换集合会同步更新。
 
 Atelier 归入 Lighting &
-shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景，其中 4 个精选。
+shadows，采用 WebGPU-only 能力边界；该主题当前共有 14 个场景，其中 5 个精选。
 
 新增 Audio 主题及精选
 [NOCTURNE — 魔法钢琴](../examples/audio_piano.html)，在黑暗空间里弹奏石墨色钢琴，每个琴键分别生长青蓝星尘与流动光羽，展示程序化着色器、空间声源和立体声卷积混响，也支持导入仅在页面内存中处理的本地 MIDI 曲谱。冷色轮廓光勾勒琴体；细尘、稀疏亮点和卷曲薄雾随音符生长并消散，演奏时显出极淡的程序化星云。默认演奏用户提供并确认可使用的
@@ -23,6 +23,10 @@ shadows，采用 WebGPU-only 能力边界；该主题当前共有 13 个场景�
 转录曲谱，保留双手声部、69 小节与延音线，采用 84
 BPM。美术灵感来自何同学的魔法钢琴：静默时保持黑暗，演奏时由音符各自点亮琴键上方，按住继续发光，松键后渐暗；舞台没有地面光圈。声音经用户手势启动，渲染支持 WebGL
 2 与 WebGPU。
+
+[雨后茶寮 / After the rain](../examples/rain_tea_garden.html) 将 Blender
+MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴花和加权透明组合在同一场景，提供晨光与薄暮两种光照。归入 Lighting
+& shadows，明确要求 WebGPU。概念图、资产路径、交互与验证边界见[案例说明](./RAIN_TEA_GARDEN.md)。
 
 ## 相似示例的保留理由
 
@@ -85,6 +89,7 @@ BPM。美术灵感来自何同学的魔法钢琴：静默时保持黑暗，演�
 | [spotLight](../examples/spotLight.html)                                                             | 保留 | lighting        | Inspect a directional light cone and its shadows on a loaded model and floor.                                                                                                                                   |
 | [stormfront_observatory](../examples/stormfront_observatory.html)                                   | 精选 | lighting        | Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.                 |
 | [shadow_residency_sanctum](../examples/shadow_residency_sanctum.html)                               | 保留 | lighting        | Enter a procedural moonlit nave where moving GPU Scene casters, fair page circulation, camera-layer isolation, CSM cadence, volumetric shafts, SSR, GTAO, and bloom exercise submission-aware shadow residency. |
+| [rain_tea_garden](../examples/rain_tea_garden.html)                                                 | 精选 | lighting        | Visit a Blender-authored anime garden after the rain: warm tea-house light, DDGI color bounce, shadowed mist, fallen-petal decals and layered transparent glass under morning or evening light.                 |
 | [canvas_texture_animation](../examples/canvas_texture_animation.html)                               | 保留 | textures        | Stream a procedural Canvas 2D aquarium into a portable animated texture.                                                                                                                                        |
 | [canvas_texture](../examples/canvas_texture.html)                                                   | 精选 | textures        | Turn a live Canvas 2D dashboard into a continuously updated Hilo3D texture.                                                                                                                                     |
 | [compressed_texture](../examples/compressed_texture.html)                                           | 保留 | textures        | Display local KTX textures supported by the active device and report unsupported formats.                                                                                                                       |

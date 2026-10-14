@@ -78,6 +78,9 @@ void main(void) {
                     materialMetallic *= materialMetallicRoughness.b;
                 #endif
             #endif
+            #ifdef HILO_DECALS
+                hiloApplyDecals(color, normal, materialRoughness);
+            #endif
             vec3 reflectionTraceNormal = normal;
             float reflectionTraceRoughness = materialRoughness;
             #ifdef HILO_SSR_MATERIAL_DATA

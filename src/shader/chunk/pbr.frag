@@ -11,6 +11,7 @@ uniform sampler2D u_baseColorMap;
 #endif
 
 #include "./pbr_surface.glsl"
+#include "./decals.glsl"
 
 #ifdef HILO_HAS_LIGHT
     #ifdef HILO_METALLIC_MAP

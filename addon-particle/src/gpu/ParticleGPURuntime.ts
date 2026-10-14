@@ -347,23 +347,22 @@ function advancedBlendState(
 
 /** @internal Shared sprite pipeline state for GPU particle renderers. */
 export function drawPipelineState(
-    renderer: ParticleGPUCompiledPlan['renderers'][number]['definition'],
-    reversed: boolean
+    renderer: ParticleGPUCompiledPlan['renderers'][number]['definition']
 ): Readonly<MaterialPipelineState> {
     return Object.freeze({
         ...DEFAULT_MATERIAL_PIPELINE_STATE,
         cullMode: 'none',
         depthTest: renderer.softParticle === undefined ? (renderer.depthTest ?? true) : false,
         depthWrite: renderer.depthWrite ?? false,
-        depthCompare: reversed ? 'greater-equal' : 'less-equal',
+        // The shared storage-raster pipeline applies the camera depth convention exactly once.
+        depthCompare: 'less-equal',
         blend: blendState(renderer.blend)
     });
 }
 
 function advancedDrawPipelineState(
     definition:
-        ParticleGPUMeshRendererPlan['definition'] | ParticleGPURibbonRendererPlan['definition'],
-    reversed: boolean
+        ParticleGPUMeshRendererPlan['definition'] | ParticleGPURibbonRendererPlan['definition']
 ): Readonly<MaterialPipelineState> {
     const transparent = (definition.coverage ?? 'transparent') === 'transparent';
     const soft =
@@ -376,7 +375,8 @@ function advancedDrawPipelineState(
         cullMode: definition.type === 'mesh' ? 'back' : 'none',
         depthTest: soft === undefined ? (definition.depthTest ?? true) : false,
         depthWrite: definition.depthWrite ?? !transparent,
-        depthCompare: reversed ? 'greater-equal' : 'less-equal',
+        // The shared storage-raster pipeline applies the camera depth convention exactly once.
+        depthCompare: 'less-equal',
         ...(blend === undefined ? {} : { blend })
     });
 }
@@ -628,7 +628,7 @@ export class ParticleGPUEmitterRuntime {
                     new GPUDrivenRenderPass({
                         name: `${plan.definition.name}:sprite-${reversed ? 'reversed' : 'standard'}`,
                         shader: rendererPlan.shader,
-                        pipelineState: drawPipelineState(rendererPlan.definition, reversed)
+                        pipelineState: drawPipelineState(rendererPlan.definition)
                     });
                 const hasTexture =
                     rendererPlan.definition.texture !== null &&
@@ -709,10 +709,7 @@ export class ParticleGPUEmitterRuntime {
                                 new GPUDrivenRenderPass({
                                     name: `${plan.definition.name}:mesh-${String(advancedIndex)}-${String(assetIndex)}-${reversed ? 'reversed' : 'standard'}`,
                                     shader: asset.shader,
-                                    pipelineState: advancedDrawPipelineState(
-                                        advanced.definition,
-                                        reversed
-                                    )
+                                    pipelineState: advancedDrawPipelineState(advanced.definition)
                                 });
                             return Object.freeze({
                                 standard: create(false),
@@ -781,7 +778,7 @@ export class ParticleGPUEmitterRuntime {
                     new GPUDrivenRenderPass({
                         name: `${plan.definition.name}:${advanced.definition.type}-${reversed ? 'reversed' : 'standard'}`,
                         shader: advanced.shader,
-                        pipelineState: advancedDrawPipelineState(advanced.definition, reversed)
+                        pipelineState: advancedDrawPipelineState(advanced.definition)
                     });
                 const sortParameters = new RenderPassParameterPool(
                     () =>

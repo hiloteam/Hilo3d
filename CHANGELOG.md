@@ -1,5 +1,10 @@
 # Unreleased
 
+### CI
+
+- Run WebGPU canvas composition and temporal history retirement in the required macOS surface
+  rendering lane, retaining shared CPU/WebGL2 coverage and all pixel, recovery and discard checks.
+
 ### Features
 
 - Add Studio **Publish website** and a self-contained static Player ZIP with per-scene camera and
@@ -21,6 +26,55 @@
 These additions describe the current source. E9 local production export/deployment acceptance passed
 on Chromium with WebGL2 and WebGPU; see the dated checks in `documentation/PLAYER.md`. The full
 engine release and physical-device performance matrices remain separate, unrun gates.
+
+### Examples
+
+- Add 雨后茶寮 / After the rain, a Blender MCP-authored anime garden with morning/evening light,
+  dynamic GI, shadowed volumetric mist, fallen-petal decals and weighted transparent glass. Include
+  public OrbitControls, feature comparisons and explicit WebGPU capability handling.
+
+### Rendering
+
+- Use a symmetric temporal depth footprint to reduce phase-dependent flicker at thin opaque edges.
+- Stabilize post-TAA transparency with an unjittered raster view and matching opaque depth,
+  retaining shared culling and GPU indirect visibility while avoiding stale transparent history.
+- Correct combined depth/stencil sampled views on WebGPU and GPU particle readonly-counter and
+  reversed-depth handling; retain live multi-camera TAA state across history eviction/revival.
+- Restore TAA accumulation on static decal receivers; invalidate changed projector/atlas content and
+  receiver poses against successful submissions so updates and failed-frame retries still clear old
+  footprints.
+
+- Extend dynamic diffuse GI with bounded, GPU-sampled asset textures, independent UV sets and
+  transforms, vertex colors, alpha-mask ray visibility, projected decal color/normal transport, and
+  canonical skin/morph pose snapshots. Bound transport storage with explicit mesh/triangle/texel
+  limits and preserve submitted revisions across failed frames and device recovery.
+- Add `Mesh.contributeToGlobalIllumination` for explicit ray-scene opt-out without weakening strict
+  validation of other assets or disabling supported PBR reception of indirect illumination.
+- Make froxel lighting consume the shared directional, spot and point shadow atlas. Include
+  offscreen casters in shared directional depth fitting and reject stale volume history when lights,
+  media or atlas contents change.
+- Add portable `DecalProjector` and `PBRMaterial.decals`: bounded atlas-backed world projection,
+  stable overlap order, material receiver masks, angle/distance filtering and consistent PBR,
+  normal/roughness attributes and conservative temporal rejection.
+- Add opt-in `weightedBlendedTransparency` to Forward and Clustered pipelines, explicit material
+  transparency classification and portable HDR accumulation/revealage. Keep transmission on its
+  sorted, opaque-color refraction contract and include transparent-only depth regions in clustered
+  light allocation.
+- Reserve `DecalBlock` at shared uniform binding 11 (WebGPU material-group binding 65) and the
+  16-byte `WeightedTransparencyBlock` at binding 12 (WebGPU global-group binding 4). Automatically
+  assigned custom uniform bindings now start at 13; explicit custom bindings 11/12 must move.
+- Bound weighted HDR accumulation with three additive FP16 numeric segments, explicit primitive and
+  pixel budgets, and a pooled pass uniform instead of shader variants. Accumulate optical depth so
+  faint layers retain coverage. Validate three MRTs/24 bytes per sample and preserve sampler
+  retirement across failed prepare through the submission resource tracker.
+
+- Fix SSR spatial confidence reconstruction so isolated stochastic hits cannot expand into block
+  artifacts during camera motion. Include valid receiver misses in the coverage kernel and preserve
+  confidence-premultiplied radiance, avoiding added energy when replacing the same fallback.
+
+- Normalize changed compressed GI textures through a bounded RGBA32F raster pass before atlas
+  population. Preserve exact rows, hardware-sRGB decoding and released-image recovery on native and
+  software WebGPU, with no normalization work on stable frames.
 
 # 2.0.0-alpha.9 (release candidate)
 

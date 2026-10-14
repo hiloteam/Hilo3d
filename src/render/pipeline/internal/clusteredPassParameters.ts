@@ -342,4 +342,5 @@ export interface MutableClusteredSceneShaderVariant extends SceneStorageShaderVa
     shader: StorageGraphicsShader;
     readonly shaderByMesh: Map<Mesh, StorageGraphicsShader>;
     readonly buffers: readonly MutableSceneStorageBufferBinding[];
+    textures?: NonNullable<SceneStorageShaderVariant['textures']>;
 }

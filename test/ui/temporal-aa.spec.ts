@@ -65,7 +65,10 @@ test('keeps the fused Clustered motion/TAAU example stable across convergence an
     expect(evidence).toMatchObject({
         backend: 'webgpu',
         objectCount: 100,
-        fallbackObjectCount: 2,
+        // The opaque floor uses native direct PBR; transmission keeps its scene-color fallback.
+        fallbackObjectCount: 1,
+        clusteredTransparentObjectCount: 0,
+        clusteredDeformedObjectCount: 1,
         hiZValid: true,
         temporalAA: true,
         renderScale: 0.75,
@@ -112,6 +115,8 @@ declare global {
             readonly backend: 'webgpu';
             readonly objectCount: number;
             readonly fallbackObjectCount: number;
+            readonly clusteredTransparentObjectCount: number;
+            readonly clusteredDeformedObjectCount: number;
             readonly visibleObjectCount: number;
             readonly hiZValid: boolean;
             readonly temporalAA: true;

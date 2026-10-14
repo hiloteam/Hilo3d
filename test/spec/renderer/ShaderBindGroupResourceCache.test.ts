@@ -177,6 +177,33 @@ function boundSampler(group: RHIBindGroup, bindingIndex: number): RHISampler {
 }
 
 describe('ShaderBindGroupResourceCache', () => {
+    it('defers checked mixed storage and sampled groups without placeholder texture resources', () => {
+        const backend = new FakeWebGPURHIBackend();
+        const registry = new ResourceRegistry(backend.createDevice());
+        const cache = new ShaderBindGroupResourceCache(registry);
+        const plan = bindingPlan(
+            [],
+            [
+                binding('read-only-storage-buffer', 'lights', 3, 0),
+                ...sampled('graphEffect', 3, 8, 9)
+            ]
+        );
+        const layouts = registerLayouts(registry, plan);
+        const owner = {};
+        const result = cache.prepare(owner, 13, plan, layouts, [], [null], [3]);
+        expect(cache.resolveGroup(owner, 3)).toBeNull();
+        expect(cache.prepare(owner, 13, plan, layouts, [], [null], [3])).toBe(result);
+        expect(() => cache.prepare({}, 13, plan, layouts, [], [null])).toThrow(
+            /explicitly deferred/u
+        );
+        const regular = bindingPlan([], sampled('materialTexture', 1, 0, 1));
+        expect(() =>
+            cache.prepare({}, 14, regular, registerLayouts(registry, regular), [], [null])
+        ).toThrow(/explicitly deferred/u);
+        cache.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
     it('defers one storage-only global group while reusing ordinary mesh resource groups', () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();

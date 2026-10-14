@@ -30,9 +30,15 @@ interface ClusteredForwardPlusP0Result {
     readonly recoveredEnergy: number;
     readonly nativeTransparent: boolean;
     readonly nativeDeformedLayered: boolean;
-    readonly particleTemporalComposition: boolean;
-    readonly transparentResurrection: boolean;
-    readonly recoveryHistoryInitialized: boolean;
+    readonly stableTransparentRaster: boolean;
+    readonly particlesAfterStableDepth: boolean;
+    readonly transparentHistoryPasses: readonly string[];
+    readonly recoveryStableDepthRebuilt: boolean;
+    readonly recoveryOpaqueHistoryInitialized: boolean;
+    readonly particleOnlyEnergy: number;
+    readonly removedParticleEnergy: number;
+    readonly removedParticleDraw: boolean;
+    readonly removedStableDepth: boolean;
     readonly recoveryDeviceChanged: boolean;
     readonly warmedMaterialVariantCount: number;
     readonly activeMaterialVariantCount: number;
@@ -55,6 +61,33 @@ function energy(data: Uint8Array): number {
         result += (data[offset] ?? 0) + (data[offset + 1] ?? 0) + (data[offset + 2] ?? 0);
     }
     return result;
+}
+
+const RETIRED_TRANSPARENT_PASSES = new Set([
+    'Transparent transmission and particle temporal reactive coverage',
+    'Transparent transmission and particle resurrection',
+    'Transparent GPU particle temporal composition',
+    'Transparent temporal history initialize'
+]);
+
+function hasStableTransparentRaster(passes: readonly string[]): boolean {
+    const opaqueResolve = Math.max(
+        passes.indexOf('TemporalAA temporal upscale'),
+        passes.indexOf('TemporalAA upscale initialize history')
+    );
+    const stableFrame = passes.indexOf('Stable transparent clustered frame');
+    const stableDepth = passes.indexOf('Stable transparent GPU Scene depth buckets');
+    const transparent = passes.indexOf('Clustered Forward+ transparent PBR');
+    return (
+        opaqueResolve >= 0 &&
+        stableFrame > opaqueResolve &&
+        stableDepth > stableFrame &&
+        transparent > stableDepth
+    );
+}
+
+function particleDrawIndex(passes: readonly string[]): number {
+    return passes.findIndex(name => name.startsWith('clustered-p0-particles:stateless-sprite-'));
 }
 
 const bucketGeometry = new BoxGeometry();
@@ -278,19 +311,47 @@ await renderer.waitForIdle();
 const mixedPasses = rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name) ?? [];
 const mixedDiagnostics = await factory.readDiagnostics();
 
+// Isolate the actual GPU particle contribution, then inspect its first hidden frame. A later
+// settled frame would conceal stale transparent-history resurrection after removal.
+scene.traverse(node => {
+    if (node instanceof Mesh) node.visible = false;
+});
+renderer.renderToTarget(target, scene, camera);
+await renderer.waitForIdle();
+const particleOnlyEnergy = energy((await target.readColorAttachment()).data);
+particles.visible = false;
+renderer.renderToTarget(target, scene, camera);
+await renderer.waitForIdle();
+const removedParticleEnergy = energy((await target.readColorAttachment()).data);
+const removedPasses =
+    rendererDiagnostics.snapshot().renderGraph?.passes.map(pass => pass.name) ?? [];
+
 window.__HILO3D_CLUSTERED_FORWARD_PLUS_P0_RESULT__ = {
     litEnergy,
     excludedEnergy,
     recoveredEnergy,
     nativeTransparent: nativePasses.includes('Clustered Forward+ transparent PBR'),
     nativeDeformedLayered: nativePasses.includes('GPU Scene deformed and layered clustered PBR'),
-    particleTemporalComposition: nativePasses.includes(
-        'Transparent GPU particle temporal composition'
+    stableTransparentRaster: hasStableTransparentRaster(nativePasses),
+    particlesAfterStableDepth:
+        nativePasses.includes('Stable transparent GPU Scene depth buckets') &&
+        particleDrawIndex(nativePasses) >
+            nativePasses.indexOf('Stable transparent GPU Scene depth buckets'),
+    transparentHistoryPasses: [
+        ...new Set(
+            [...nativePasses, ...recoveryPasses].filter(name =>
+                RETIRED_TRANSPARENT_PASSES.has(name)
+            )
+        )
+    ],
+    recoveryStableDepthRebuilt: hasStableTransparentRaster(recoveryPasses),
+    recoveryOpaqueHistoryInitialized: recoveryPasses.includes(
+        'TemporalAA upscale initialize history'
     ),
-    transparentResurrection: nativePasses.includes(
-        'Transparent transmission and particle resurrection'
-    ),
-    recoveryHistoryInitialized: recoveryPasses.includes('Transparent temporal history initialize'),
+    particleOnlyEnergy,
+    removedParticleEnergy,
+    removedParticleDraw: particleDrawIndex(removedPasses) >= 0,
+    removedStableDepth: removedPasses.includes('Stable transparent GPU Scene depth buckets'),
     recoveryDeviceChanged: extension.device !== deviceBeforeRecovery,
     warmedMaterialVariantCount: nativeDiagnostics.warmedMaterialVariantCount,
     activeMaterialVariantCount: nativeDiagnostics.activeMaterialVariantCount,

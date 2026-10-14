@@ -8,6 +8,8 @@ export type MaterialPassRole =
     | 'shadow-caster'
     | 'motion-vector'
     | 'material-attributes'
+    | 'weighted-accumulation'
+    | 'weighted-revealage'
     | 'picking'
     | `user:${string}`;
 
@@ -114,6 +116,8 @@ export type MaterialCoverage =
 /** Compositing controls how a shaded result combines with the existing color target. */
 export type MaterialCompositing =
     | Readonly<{ mode: 'opaque' }>
+    /** Approximate order-independent transparency; requires explicit pipeline opt-in. */
+    | Readonly<{ mode: 'weighted-blended' }>
     | Readonly<{ mode: 'alpha-blend'; premultiplied: boolean }>
     | Readonly<{ mode: 'additive'; premultiplied: boolean }>
     | Readonly<{ mode: 'custom'; blend: Readonly<MaterialBlendState>; depthWrite: boolean }>;
@@ -383,6 +387,8 @@ export class MaterialDefinition {
         const compositing = parameters.compositing;
         if (compositing === undefined || compositing.mode === 'opaque') {
             this.compositing = Object.freeze({ mode: 'opaque' });
+        } else if (compositing.mode === 'weighted-blended') {
+            this.compositing = Object.freeze({ mode: 'weighted-blended' });
         } else if (compositing.mode === 'alpha-blend') {
             this.compositing = Object.freeze({
                 mode: 'alpha-blend',

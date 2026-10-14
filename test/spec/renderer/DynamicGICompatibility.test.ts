@@ -40,14 +40,18 @@ function smallOptions(): ClusteredForwardPlusPipelineOptions {
     };
 }
 
-async function createRenderer(factory: ClusteredForwardPlusPipelineFactory): Promise<Renderer> {
+async function createRenderer(
+    factory: ClusteredForwardPlusPipelineFactory,
+    useInstanced = false
+): Promise<Renderer> {
     const renderer = await Renderer.create({
         backend: 'webgpu',
         domElement: document.createElement('canvas'),
         width: 16,
         height: 16,
         antialias: false,
-        renderPipeline: factory
+        renderPipeline: factory,
+        useInstanced
     });
     renderer.clearColor = new Color(0, 0, 0);
     return renderer;
@@ -83,61 +87,152 @@ describe('Dynamic GI compatibility boundaries', () => {
             /unsupported: material/
         );
     });
-    it('requires temporal inputs for GTAO and rejects unregistered receivers before submission', async () => {
-        const options = smallOptions();
+    it('requires temporal inputs for GTAO before creating the renderer', () => {
         expect(
             () =>
                 new ClusteredForwardPlusPipelineFactory({
-                    ...options,
+                    ...smallOptions(),
                     groundTruthAmbientOcclusion: {}
                 })
         ).toThrow(/requires temporalAA/);
-        const factory = new ClusteredForwardPlusPipelineFactory({
-            ...options,
-            temporalAA: {},
-            groundTruthAmbientOcclusion: { resolutionScale: 0.5, directionCount: 4, stepCount: 3 }
-        });
-        const renderer = await createRenderer(factory);
-        const output = target(renderer);
-        const scene = new Node();
-        const receiver = new Mesh({
-            geometry: new BoxGeometry(),
-            material: new PBRMaterial({ metallic: 0 }),
-            frustumTest: false
-        });
-        scene.addChild(receiver);
-        scene.addChild(new AmbientLight({ amount: 1 }));
-        const camera = new PerspectiveCamera({ aspect: 1, z: 3 });
-        const beginFrame = vi.spyOn(rhiDevice(renderer).graphicsQueue, 'beginFrame');
-        try {
-            receiver.useInstanced = true;
-            expect(() => {
+    });
+
+    it.each([false, true])(
+        'submits unregistered DDGI and GTAO receivers exactly once, then migrates them into GPU buckets (instanced=%s)',
+        async useInstanced => {
+            const options = smallOptions();
+            const factory = new ClusteredForwardPlusPipelineFactory({
+                ...options,
+                temporalAA: { historyWeight: 0 },
+                groundTruthAmbientOcclusion: {
+                    resolutionScale: 0.5,
+                    directionCount: 4,
+                    stepCount: 3
+                },
+                dynamicGlobalIllumination: {
+                    ...options.dynamicGlobalIllumination,
+                    maxMeshes: 4,
+                    maxTextureTexels: 1,
+                    origin: new Vector3(-1, -1, -1),
+                    spacing: new Vector3(2, 2, 2),
+                    environment: new Color(1, 0.05, 0.01),
+                    hysteresis: 0,
+                    bounceStrength: 0,
+                    relocation: false
+                }
+            });
+            const renderer = await createRenderer(factory, useInstanced);
+            const output = target(renderer);
+            const scene = new Node();
+            const receiver = new Mesh({
+                geometry: new BoxGeometry(),
+                material: new PBRMaterial({ metallic: 0 }),
+                frustumTest: false,
+                useInstanced
+            }).addTo(scene);
+            const camera = new PerspectiveCamera({ aspect: 1, z: 3 });
+            const queue = rhiDevice(renderer).graphicsQueue;
+            const originalBeginFrame = queue.beginFrame.bind(queue);
+            const recordedDraws: Map<string, { calls: number; instances: number }>[] = [];
+            const beginFrame = vi.spyOn(queue, 'beginFrame').mockImplementation(descriptor => {
+                const commands = originalBeginFrame(descriptor);
+                const counts = new Map<string, { calls: number; instances: number }>();
+                recordedDraws.push(counts);
+                const originalBeginPass = commands.beginRenderPass.bind(commands);
+                vi.spyOn(commands, 'beginRenderPass').mockImplementation(passDescriptor => {
+                    const pass = originalBeginPass(passDescriptor);
+                    const originalDraw = pass.drawIndexedRecord.bind(pass);
+                    vi.spyOn(pass, 'drawIndexedRecord').mockImplementation(draw => {
+                        const label = passDescriptor.label ?? '';
+                        const count = counts.get(label) ?? { calls: 0, instances: 0 };
+                        count.calls++;
+                        count.instances += draw.instanceCount;
+                        counts.set(label, count);
+                        originalDraw(draw);
+                    });
+                    return pass;
+                });
+                return commands;
+            });
+            try {
                 renderer.renderToTarget(output, scene, camera);
-            }).toThrow(/instanced PBR receivers require registered GPU Scene buckets/);
-            expect(beginFrame).not.toHaveBeenCalled();
-            receiver.useInstanced = false;
-            expect(() => {
+                const directDraws = recordedDraws.at(-1);
+                expect(beginFrame).toHaveBeenCalledOnce();
+                expect(directDraws?.get('GPU Scene deformed and layered clustered PBR')).toEqual({
+                    calls: 1,
+                    instances: 1
+                });
+                expect(
+                    directDraws?.get('Clustered Forward+ compatibility fallback')
+                ).toBeUndefined();
+                await renderer.waitForIdle();
+                const direct = await factory.readDiagnostics();
+                expect(direct).toMatchObject({
+                    objectCount: 0,
+                    fallbackObjectCount: 0,
+                    clusteredDeformedObjectCount: 1
+                });
+                expect(direct.dynamicGlobalIllumination).toMatchObject({
+                    submittedFrameCount: 1,
+                    updatedProbeCount: 8,
+                    tracedRayCount: 512,
+                    sceneTriangleCount: 12,
+                    excludedMeshCount: 0
+                });
+                const directPixels = (await output.readColorAttachment()).data;
+                const totals = [0, 0, 0];
+                for (let index = 0; index < directPixels.length; index++) {
+                    const channel = index % 4;
+                    if (channel < 3)
+                        totals[channel] = (totals[channel] ?? 0) + (directPixels[index] ?? 0);
+                }
+                // With no direct or ambient lights, the colored probe environment is the source.
+                expect(totals[0]).toBeGreaterThan(100);
+                expect(totals[0]).toBeGreaterThan((totals[1] ?? 0) * 2);
+                factory.setDynamicGlobalIlluminationIntensity(0);
                 renderer.renderToTarget(output, scene, camera);
-            }).toThrow(
-                /GTAO or atmosphere requires rigid opaque PBR receivers registered in GPU Scene buckets/
-            );
-            expect(beginFrame).not.toHaveBeenCalled();
-            const bucket = options.buckets[0];
-            if (bucket === undefined) throw new Error('Expected fixture bucket');
-            receiver.geometry = bucket.geometry;
-            receiver.material = bucket.material;
-            renderer.renderToTarget(output, scene, camera);
-            await renderer.waitForIdle();
-            const pixels = (await output.readColorAttachment()).data;
-            expect(pixels.some((value, index) => index % 4 !== 3 && value > 32)).toBe(true);
-            expect(beginFrame).toHaveBeenCalled();
-            expect((await factory.readDiagnostics()).objectCount).toBe(1);
-        } finally {
-            beginFrame.mockRestore();
-            output.destroy();
-            renderer.destroy();
-        }
-    }, 30_000);
+                await renderer.waitForIdle();
+                const disabled = (await output.readColorAttachment()).data;
+                expect(disabled.every((value, index) => index % 4 === 3 || value <= 1)).toBe(true);
+                factory.setDynamicGlobalIlluminationIntensity(1);
+                const bucket = options.buckets[0];
+                if (!bucket) throw new Error('Expected fixture bucket');
+                receiver.geometry = bucket.geometry;
+                receiver.material = bucket.material;
+                renderer.renderToTarget(output, scene, camera);
+                const bucketDraws = recordedDraws.at(-1);
+                expect(
+                    bucketDraws?.get('GPU Scene deformed and layered clustered PBR')
+                ).toBeUndefined();
+                expect(
+                    bucketDraws?.get('Clustered Forward+ compatibility fallback')
+                ).toBeUndefined();
+                await renderer.waitForIdle();
+                const registered = await factory.readDiagnostics();
+                expect(registered).toMatchObject({
+                    objectCount: 1,
+                    visibleObjectCount: 1,
+                    fallbackObjectCount: 0,
+                    clusteredDeformedObjectCount: 0
+                });
+                expect(registered.dynamicGlobalIllumination).toMatchObject({
+                    submittedFrameCount: 3,
+                    sceneTriangleCount: 12,
+                    excludedMeshCount: 0
+                });
+                expect(
+                    (await output.readColorAttachment()).data.some(
+                        (value, index) => index % 4 !== 3 && value > 32
+                    )
+                ).toBe(true);
+            } finally {
+                beginFrame.mockRestore();
+                output.destroy();
+                renderer.destroy();
+            }
+        },
+        30_000
+    );
 
     it('fails closed on a direct receiver variant budget and retries without a silent Forward fallback', async () => {
         const factory = new ClusteredForwardPlusPipelineFactory({

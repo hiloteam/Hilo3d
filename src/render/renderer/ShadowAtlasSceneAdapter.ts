@@ -1,4 +1,6 @@
 import Camera from '../../camera/Camera';
+import { ShadowCasterBounds } from './ShadowCasterBounds';
+import type Mesh from '../../core/Mesh';
 import OrthographicCamera from '../../camera/OrthographicCamera';
 import PerspectiveCamera from '../../camera/PerspectiveCamera';
 import type { Bounds } from '../../geometry/Geometry';
@@ -47,6 +49,8 @@ export interface ShadowAtlasScenePrepareOptions {
     readonly frameIndex?: number;
     /** Per-cascade camera update intervals. Omitted intervals update every frame. */
     readonly cascadeUpdateIntervals?: readonly number[];
+    /** Full camera-layer-visible caster set, before main-view frustum culling. */
+    readonly casterMeshes?: readonly Mesh[];
 }
 
 /** Fixed-capacity arrays ready for the canonical LightBlock writer. */
@@ -729,6 +733,8 @@ function stagePointCamera(
 
 function copyCamera(source: Camera, destination: Camera): void {
     resetCameraTransform(destination);
+    destination.depthMode = source.depthMode;
+    destination.setProjectionJitter(source.projectionJitterX, source.projectionJitterY);
     destination.up.copy(source.up);
     destination.matrix.copy(source.worldMatrix);
     destination.updateTransform();
@@ -751,6 +757,8 @@ function copyCamera(source: Camera, destination: Camera): void {
     destination.viewMatrix.copy(source.viewMatrix);
     destination.projectionMatrix.copy(source.projectionMatrix);
     destination.viewProjectionMatrix.copy(source.viewProjectionMatrix);
+    destination.jitteredProjectionMatrix.copy(source.jitteredProjectionMatrix);
+    destination.jitteredViewProjectionMatrix.copy(source.jitteredViewProjectionMatrix);
     destination.worldMatrix.copy(source.worldMatrix);
 }
 
@@ -863,6 +871,10 @@ function releaseSceneSlice(slice: MutableSceneSlice): void {
 
 /** Backend-neutral Scene/Light -> shared shadow-atlas production adapter. */
 export class ShadowAtlasSceneAdapter {
+    readonly #casterBounds = new ShadowCasterBounds();
+    readonly #casterMatrix = new Matrix4();
+    readonly #casterPoint = new Vector3();
+
     readonly planner: ShadowAtlasPlanner<ShadowAtlasSceneLight>;
     readonly #stageDirectional: StagedDirectionalLight[] = [];
     readonly #stageSpot: StagedPlanarLight<SpotLight, PerspectiveCamera>[] = [];
@@ -990,13 +1002,15 @@ export class ShadowAtlasSceneAdapter {
         const tileAspect = tileWidth / tileHeight;
         // Keep every fallible scene/camera calculation before build(): the planner mutates its
         // reusable public plan only after its own validation succeeds.
+        this.#casterBounds.begin();
         this.stageCameras(
             mainCamera,
             tileWidth,
             tileHeight,
             tileAspect,
             frameIndex,
-            cascadeUpdateIntervals
+            cascadeUpdateIntervals,
+            options.casterMeshes
         );
 
         const atlas = this.planner.build(this.#stageRequests, capabilities);
@@ -1286,13 +1300,82 @@ export class ShadowAtlasSceneAdapter {
         return maximum;
     }
 
+    private extendDirectionalCasterDepth(
+        camera: OrthographicCamera,
+        meshes: readonly Mesh[]
+    ): void {
+        let near = camera.near;
+        for (const mesh of meshes) {
+            const geometry = mesh.geometry;
+            const vertices = geometry?.vertices;
+            if (
+                !mesh.castShadows ||
+                mesh.material === null ||
+                geometry === null ||
+                vertices === null ||
+                vertices === undefined
+            )
+                continue;
+            const bounds = this.#casterBounds.get(mesh);
+            this.#casterMatrix.multiply(camera.viewMatrix, mesh.worldMatrix);
+            let xMin = Infinity;
+            let xMax = -Infinity;
+            let yMin = Infinity;
+            let yMax = -Infinity;
+            let zMax = -Infinity;
+            for (let corner = 0; corner < 8; corner += 1) {
+                const point = this.#casterPoint
+                    .set(
+                        (corner & 1) === 0 ? bounds.xMin : bounds.xMax,
+                        (corner & 2) === 0 ? bounds.yMin : bounds.yMax,
+                        (corner & 4) === 0 ? bounds.zMin : bounds.zMax
+                    )
+                    .transformMat4(this.#casterMatrix);
+                xMin = Math.min(xMin, point.x);
+                xMax = Math.max(xMax, point.x);
+                yMin = Math.min(yMin, point.y);
+                yMax = Math.max(yMax, point.y);
+                zMax = Math.max(zMax, point.z);
+            }
+            if (
+                !Number.isFinite(zMax) ||
+                !Number.isFinite(xMin) ||
+                !Number.isFinite(yMin) ||
+                !Number.isFinite(xMax) ||
+                !Number.isFinite(yMax)
+            ) {
+                throw new TypeError('Directional shadow caster bounds must be finite');
+            }
+            if (
+                xMax < camera.left ||
+                xMin > camera.right ||
+                yMax < camera.bottom ||
+                yMin > camera.top ||
+                zMax < -camera.far
+            )
+                continue;
+            // Include the near-most caster face and one small numerical guard, independent of
+            // depth convention. Projection changes participate in the existing atlas content key.
+            near = Math.min(near, -zMax - Math.max(0.001, Math.abs(zMax) * 0.00001));
+        }
+        if (near < camera.near) {
+            camera.near = near;
+            camera.updateViewProjectionMatrix();
+            finiteMatrix(
+                camera.viewProjectionMatrix,
+                'Directional caster-fitted viewProjectionMatrix'
+            );
+        }
+    }
+
     private stageCameras(
         mainCamera: Camera,
         tileWidth: number,
         tileHeight: number,
         tileAspect: number,
         frameIndex: number,
-        cascadeUpdateIntervals: readonly number[] | undefined
+        cascadeUpdateIntervals: readonly number[] | undefined,
+        casterMeshes: readonly Mesh[] | undefined
     ): void {
         clearLightBlockState(this.#stageLightBlock);
         this.#stageLightBlock.directionalShadowCount = this.#stageDirectionalRequests.length;
@@ -1373,6 +1456,11 @@ export class ShadowAtlasSceneAdapter {
                         renderHeight,
                         staged.stabilize
                     );
+                }
+                // Receiver XY remains tight; offscreen geometry between the light and the
+                // receiver must extend the near depth even when a cascade reuses its camera.
+                if (light.shadow?.cameraInfo === undefined && casterMeshes !== undefined) {
+                    this.extendDirectionalCasterDepth(camera, casterMeshes);
                 }
                 matrix.multiply(camera.viewProjectionMatrix, mainCamera.worldMatrix);
                 finiteMatrix(matrix, 'Directional cascade lightSpaceMatrix');

@@ -4,8 +4,8 @@ import { createViteConfig } from './vite.config';
 
 const coverageRun = process.argv.includes('--coverage');
 const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
-const githubActionsCoverageShard =
-    githubActionsCoverageRun &&
+const coverageShard =
+    coverageRun &&
     process.argv.some(argument => argument === '--shard' || argument.startsWith('--shard='));
 const monolithicCoverageRun =
     githubActionsCoverageRun && process.env['HILO3D_MONOLITHIC_COVERAGE'] === 'true';
@@ -48,7 +48,7 @@ export default mergeConfig(
                 reportOnFailure: true,
                 // A partial shard cannot meet a whole-suite coverage contract. The required
                 // merge-reports job has no --shard and enforces these unchanged global gates.
-                ...(githubActionsCoverageShard
+                ...(coverageShard
                     ? {}
                     : {
                           thresholds: {

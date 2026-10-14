@@ -110,9 +110,13 @@ test('closes the high-end clustered transparent, particle, and recovery P0 gate'
     expect(result).toMatchObject({
         nativeTransparent: true,
         nativeDeformedLayered: true,
-        particleTemporalComposition: true,
-        transparentResurrection: true,
-        recoveryHistoryInitialized: true,
+        stableTransparentRaster: true,
+        particlesAfterStableDepth: true,
+        transparentHistoryPasses: [],
+        recoveryStableDepthRebuilt: true,
+        recoveryOpaqueHistoryInitialized: true,
+        removedParticleDraw: false,
+        removedStableDepth: false,
         recoveryDeviceChanged: true,
         warmedMaterialVariantCount: 1,
         activeMaterialVariantCount: 3,
@@ -125,6 +129,8 @@ test('closes the high-end clustered transparent, particle, and recovery P0 gate'
     expect(result?.litEnergy).toBeGreaterThan(1_000);
     expect(result?.excludedEnergy).toBeLessThan((result?.litEnergy ?? 0) * 0.75);
     expect(result?.recoveredEnergy).toBeGreaterThan(1_000);
+    expect(result?.particleOnlyEnergy).toBeGreaterThan(0);
+    expect(result?.removedParticleEnergy).toBe(0);
 });
 
 for (const backend of ['webgl2', 'webgpu'] as const) {
@@ -241,9 +247,15 @@ declare global {
             readonly recoveredEnergy: number;
             readonly nativeTransparent: boolean;
             readonly nativeDeformedLayered: boolean;
-            readonly particleTemporalComposition: boolean;
-            readonly transparentResurrection: boolean;
-            readonly recoveryHistoryInitialized: boolean;
+            readonly stableTransparentRaster: boolean;
+            readonly particlesAfterStableDepth: boolean;
+            readonly transparentHistoryPasses: readonly string[];
+            readonly recoveryStableDepthRebuilt: boolean;
+            readonly recoveryOpaqueHistoryInitialized: boolean;
+            readonly particleOnlyEnergy: number;
+            readonly removedParticleEnergy: number;
+            readonly removedParticleDraw: boolean;
+            readonly removedStableDepth: boolean;
             readonly recoveryDeviceChanged: boolean;
             readonly warmedMaterialVariantCount: number;
             readonly activeMaterialVariantCount: number;

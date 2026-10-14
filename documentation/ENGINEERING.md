@@ -266,12 +266,12 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 100 个 HTML 的后端适用矩阵
+### 101 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 100 个 HTML，包含 98 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
-2，14 个页面执行 WebGPU，共 185 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
-Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 101 个 HTML，包含 99 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
+2，15 个页面执行 WebGPU，共 186 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+Forward+ 灯光场景、动态 GI、雨后茶寮、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
 
@@ -282,7 +282,7 @@ Forward+ 灯光场景、动态 GI、体积光、大气天气、阴影驻留、SS
 或
 `WebGL 2 only`；选择不兼容条目时，iframe 使用该条目唯一支持的后端。已有双后端页面改为单后端时，总 page/backend 测试组合数会减少一，但画廊条目总数保持不变。
 
-画廊对 98 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 26 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
+画廊对 99 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 27 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
 examples 集合内。主题数量同时反映搜索和后端条件，无结果的未选主题不显示；多词搜索支持顺序无关匹配及中文主题关键词。
 `q`、`category`、`collection`、`compatible`
 保存在画廊 URL 中，不传给示例；切换示例会清除上一个示例的专属参数。手机侧栏关闭后使用 `inert`
@@ -388,6 +388,10 @@ WebGPU shader
 corpus（包括 present/mipmap 内部 pass）与真实运行时测试是互补门禁：前者扩大 feature/variant 覆盖，后者证明浏览器端 Naga
 WASM 加载、pipeline creation、draw 与 queue submission 端到端可用。
 
+[雨后茶寮](./RAIN_TEA_GARDEN.md) 的专用 `rain-tea-garden.spec.ts`
+同时进入软件与物理 WebGPU 命令，归入 `post-processing`
+UI 工作组。该场景的四项渲染开关、晨暮切换、OrbitControls、窄屏与清理必须结合实际提交和画面变化验证；显式 WebGPU 边界使其不产生 WebGL2 场景组合。
+
 ### 可选物理 GPU 门禁
 
 `npm run test:webgpu:native` 使用独立的 `chromium-native-webgpu` Playwright
@@ -433,6 +437,14 @@ shell。示例 HTML 由 Vite 统一声明空 favicon，避免浏览器自动请�
 runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
 raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
 coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
+
+真实 WebGPU 多相机画布合成与 TAA history 回收用例由 `npm run test:surface:render` 执行，位于
+`test/surface-render/`，使用完整 Chromium compositor。Linux coverage 的 headless
+shell 无法为这些 swapchain 创建共享图像，会销毁设备并使后续浏览器连接崩溃，因此五项 WebGPU 用例接入下述必需的 macOS
+job；CPU history 与四项 WebGL2 合成及一项 WebGL2 回收用例仍参与 Linux coverage。两条通道调用相同的
+`test/fixtures/`
+场景函数，保留全部像素阈值、八相位、提交失败、resize、资源释放与恢复断言，没有重试或条件跳过。`validate`
+与 `validate:ci` 也包含该独立命令。
 
 package job 成功后，必需的 macOS editor job 使用相同提交和该 job 生成的 Pages editor
 artifact 验证 WebGL2/WebGPU 资产渲染及实际发布路径。该 job 也由 `Required CI`
@@ -527,6 +539,21 @@ smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 1
 完成核心与 addon 声明构建、API 检查和站点生成后部署 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
 
 ## 唯一验收入口
+
+本地完整 coverage 若因长寿命 Chromium 的 RPC 连接中断而未完成，可使用与 CI 相同的四分片协议，每片以独立进程、单 GPU
+worker 运行：
+
+```sh
+npx vitest run --coverage --maxWorkers=1 --shard=1/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-1.json
+npx vitest run --coverage --maxWorkers=1 --shard=2/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-2.json
+npx vitest run --coverage --maxWorkers=1 --shard=3/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-3.json
+npx vitest run --coverage --maxWorkers=1 --shard=4/4 --reporter=default --reporter=blob --outputFile.blob=reports/vitest/report-4.json
+npx vitest --merge-reports=reports/vitest --coverage
+```
+
+只对分片运行延后全局 coverage threshold；不带 `--shard`
+的合并仍执行原来的全部阈值。必须确认四片没有失败/未处理错误且并集完整，不能只凭某一片通过宣称完整验收。本地不设置
+`GITHUB_ACTIONS`，保留本机能够执行的全部真实 GPU 用例。常规 `validate` 入口及无分片的检查不变。
 
 ```sh
 npm ci

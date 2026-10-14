@@ -137,7 +137,7 @@ export class ParticleStatelessGPUEmitterRuntime {
                     new GPUDrivenRenderPass({
                         name: `${plan.definition.name}:stateless-sprite-${reversed ? 'reversed' : 'standard'}`,
                         shader: rendererPlan.shader,
-                        pipelineState: drawPipelineState(rendererDefinition, reversed)
+                        pipelineState: drawPipelineState(rendererDefinition)
                     });
                 const hasTexture =
                     rendererDefinition.texture !== null && rendererDefinition.texture !== undefined;

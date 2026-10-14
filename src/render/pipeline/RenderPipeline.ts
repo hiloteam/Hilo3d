@@ -42,6 +42,7 @@ export type RenderPipelineTextureUse =
     | 'sampled'
     | 'filterable-sampled'
     | 'color-attachment'
+    | 'blendable-color-attachment'
     | 'depth-stencil-attachment'
     | 'storage'
     | 'copy-source'
@@ -53,6 +54,8 @@ export interface RenderPipelineLimits {
     readonly maxTextureDimension2D: number;
     /** Maximum simultaneous color attachments in one raster pass. */
     readonly maxColorAttachments: number;
+    /** Maximum aggregate color-attachment bytes per sample, when advertised by the device. */
+    readonly maxColorAttachmentBytesPerSample?: number;
     /** Maximum sampled textures visible to one shader stage. */
     readonly maxSampledTexturesPerShaderStage: number;
     /** Maximum samplers visible to one shader stage. */

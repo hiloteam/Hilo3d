@@ -13,6 +13,10 @@ layout(std430) readonly buffer ClusterLightIndexBlock {
     uint values[];
 } clusterLightIndices;
 
+#ifdef HILO_CLUSTERED_CLOUD_SHADOW
+uniform sampler2D u_cloudShadowTexture;
+#endif
+
 // Keep these offsets synchronized with ClusteredForwardPlus.ts. Vec4 32 maps output-resolution
 // fragment coordinates back to the internal cluster viewport; the shadow payload follows it.
 #define HILO_CLUSTER_OUTPUT_MAPPING_VEC4 32u
@@ -321,6 +325,14 @@ void hiloEvaluateClusteredPBRLight(
     }
     vec3 lightDirection;
     vec3 radiance = colorType.rgb;
+    #ifdef HILO_CLUSTERED_CLOUD_SHADOW
+        // Screen-space cloud visibility uses the same native pixel coordinates as this fragment.
+        // Its compute output is already normalized at the render-target boundary; no UV flip here.
+        if (lightType == 2u) {
+            vec2 cloudUV = gl_FragCoord.xy / clusterFrameData.values[24u].zw;
+            radiance *= clamp(textureLod(u_cloudShadowTexture, cloudUV, 0.0).r, 0.12, 1.0);
+        }
+    #endif
     if (lightType == 2u) {
         lightDirection = normalize(-directionOuter.xyz);
     } else {

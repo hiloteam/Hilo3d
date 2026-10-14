@@ -1,3 +1,4 @@
+import { resolveRasterCamera, markStableDepthComposition } from './StableRasterCamera';
 import Camera from '../../camera/Camera';
 import type Mesh from '../../core/Mesh';
 import type { DispatchEvent } from '../../core/EventDispatcher';
@@ -163,6 +164,7 @@ interface RenderingResources {
         minimumResolution: number;
         frameIndex: number;
         cascadeUpdateIntervals: readonly number[];
+        casterMeshes: readonly Mesh[];
     };
     readonly shadowRenderOptions: {
         label: string;
@@ -321,6 +323,7 @@ class SharedRendererDriver
     readonly #scriptablePipelineResources = new ScriptableRenderPipelineResources();
     readonly #scriptablePipelineContexts: ScriptableRenderPipelineContextImpl[] = [];
     readonly #visibleMeshes: Mesh[] = [];
+    #sceneShadowMeshes: readonly Mesh[] = [];
     readonly #collectVisibleMesh = (mesh: Mesh): void => {
         this.#visibleMeshes.push(mesh);
     };
@@ -552,10 +555,13 @@ class SharedRendererDriver
         });
     }
 
+    #explicitCompositionFrame = false;
+
     override renderFrame(callback: RendererFrameCallback): void {
         this.assertReadyForRender();
         this.#pipelineHost.execute(() => {
             let facadeActive = true;
+            this.#explicitCompositionFrame = true;
             try {
                 invokeRendererFrameCallback(
                     callback,
@@ -563,6 +569,7 @@ class SharedRendererDriver
                 );
             } finally {
                 facadeActive = false;
+                this.#explicitCompositionFrame = false;
             }
         });
     }
@@ -764,7 +771,7 @@ class SharedRendererDriver
             this.#scriptablePipelineContexts.push(context);
         }
         this.#activeScriptablePipelineContext = context;
-        return context.begin(
+        const invocation = context.begin(
             scene,
             camera,
             target,
@@ -773,6 +780,9 @@ class SharedRendererDriver
             runtimeOwner,
             this.#pipelineHost.requireActiveScope()
         );
+        if (this.#explicitCompositionFrame && target === null)
+            markStableDepthComposition(invocation);
+        return invocation;
     }
 
     createPipelineStorageBuffer(descriptor: Readonly<StorageBufferDescriptor>): StorageBuffer {
@@ -947,7 +957,7 @@ class SharedRendererDriver
         viewport: Readonly<RHIViewport>,
         frameIndex: number
     ): RenderGraphFrameContext {
-        return this.createContext(camera, viewport, frameIndex);
+        return this.createContext(resolveRasterCamera(camera), viewport, frameIndex);
     }
 
     beginScriptableResourcePass(context: RenderGraphFrameContext): void {
@@ -1353,6 +1363,8 @@ class SharedRendererDriver
         attempt(() => this.#device?.destroy());
         this.#device = null;
         this.#initialized = false;
+        this.#sceneShadowMeshes = [];
+        this.#visibleMeshes.length = 0;
         attempt(() => this.resourceManager.off('destroyMesh', this.#handleManagedMeshDestroy));
         attempt(() => this.resourceManager.clear());
         attempt(() => this.off());
@@ -1701,6 +1713,7 @@ class SharedRendererDriver
             receiverDrivenResolution: this.renderingProfile === 'high-end',
             minimumResolution: 128,
             frameIndex: 0,
+            casterMeshes: [] as readonly Mesh[],
             cascadeUpdateIntervals:
                 this.renderingProfile === 'high-end'
                     ? Object.freeze([1, 2, 4, 8])
@@ -2037,8 +2050,8 @@ class SharedRendererDriver
         const shadowBuild = this.renderSceneShadows(
             resources,
             context,
-            visible,
-            visible,
+            this.#sceneShadowMeshes,
+            this.#sceneShadowMeshes,
             target.width,
             target.height
         );
@@ -2097,6 +2110,7 @@ class SharedRendererDriver
         prepareOptions.width = positiveSurfaceDimension(defaultWidth, this.width);
         prepareOptions.height = positiveSurfaceDimension(defaultHeight, this.height);
         prepareOptions.frameIndex = context.frameIndex;
+        prepareOptions.casterMeshes = cacheMeshes;
 
         // Frame planning resets LightManager's public atlas fields. Also remove the private active
         // binding before shadow preparation so any failure cannot revive last frame's atlas through
@@ -2210,7 +2224,7 @@ class SharedRendererDriver
         this.fog = stage.fog ?? null;
         stage.updateMatrixWorld();
         camera.updateViewProjectionMatrix();
-        this.buildFramePlan(stage, camera);
+        this.#sceneShadowMeshes = this.buildFramePlan(stage, camera).meshes;
         const visible = this.#visibleMeshes;
         visible.length = 0;
         this.renderList.traverse(this.#collectVisibleMesh);

@@ -40,10 +40,12 @@ export const WEBGPU_UNIFORM_BLOCK_BINDINGS = Object.freeze({
     CameraBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 1),
     SceneBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 2),
     LightBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 3),
+    WeightedTransparencyBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 4),
     MaterialBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 0),
     MaterialTextureBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 1),
     // Outside the built-in material sampler range, preserving every existing slot binding.
     ReflectionProbeBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 64),
+    DecalBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 65),
     ModelBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 0),
     GeometryBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 1),
     SkinningBlock: binding(WEBGPU_BIND_GROUPS.OBJECT, 2),
@@ -60,8 +62,8 @@ const builtInBindings: Readonly<Record<string, WebGPUResourceBinding>> =
  * Resolve a logical uniform block to the WebGPU ABI.
  *
  * Custom block order remains identical to the WebGL2 registry. Group-three bindings 0 and 1 are
- * reserved for the opaque scene texture, so flat binding 11 maps to group 3 binding 2, flat binding
- * 12 maps to group 3 binding 3, and so on.
+ * reserved for the opaque scene texture. Custom flat bindings begin after the stable built-in
+ * block range and map to group 3 binding 2 onward.
  */
 export function getWebGPUUniformBlockBinding(name: string): WebGPUResourceBinding {
     const builtInBinding = builtInBindings[name];
