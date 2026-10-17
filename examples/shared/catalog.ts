@@ -409,6 +409,13 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         description: 'Load external GLSL vertex and fragment files into a ShaderMaterial.',
         category: 'loaders'
     },
+    'mat1_soft_matter.html': {
+        title: 'Soft Matter — 光的触感',
+        description:
+            'Explore velvet sheen, backlit amber petals and ivory subsurface wax in a sculptural gallery, with live material comparisons and close-up views.',
+        category: 'materials',
+        featured: true
+    },
     'mesh_picker.html': {
         title: 'GPU Mesh Picking',
         description: 'Pick visible parts of a glTF model through the GPU-backed MeshPicker.',

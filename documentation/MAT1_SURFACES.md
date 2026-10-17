@@ -146,6 +146,10 @@ Automatically assigned custom uniform bindings now begin at 14.
 
 ## Acceptance
 
+[Soft Matter](./SOFT_MATTER_SHOWCASE.md) is the maintained art showcase: original Blender geometry,
+three independently switchable material responses, close-up views and production-resolution browser
+coverage complement the compact material-contract fixture below.
+
 - Material, loader and UBO tests cover topology, revisions, copied builder colors, malformed glTF
   data, extension mapping, channels and stable byte layouts.
 - `MAT1Rendering.test.ts` uses actual WebGL2 and WebGPU pixels for back lighting, directional

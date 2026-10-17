@@ -319,8 +319,9 @@ jobs:
 
       - name: Test MAT1 WebGPU material composition
         run: >-
-          npx playwright test test/ui/mat1-materials.spec.ts --project=chromium --grep @webgpu
-          --output=test-results/mat1 --reporter=line,./scripts/playwright-timing-reporter.ts
+          npx playwright test test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts
+          --project=chromium --grep @webgpu --output=test-results/mat1
+          --reporter=line,./scripts/playwright-timing-reporter.ts
         env:
           CI: 'true'
 

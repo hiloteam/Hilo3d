@@ -29,12 +29,18 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Examples
 
+- Add Soft Matter, an original Blender-authored material exhibition with velvet sheen, thin amber
+  petals and a fluted wax sculpture. Include close views, independent material comparisons, bounded
+  quality profiles and dual-backend lifecycle acceptance.
 - Add 雨后茶寮 / After the rain, a Blender MCP-authored anime garden with morning/evening light,
   dynamic GI, shadowed volumetric mist, fallen-petal decals and weighted transparent glass. Include
   public OrbitControls, feature comparisons and explicit WebGPU capability handling.
 
 ### Rendering
 
+- Retain bounded per-role mesh Shader variants across multi-pass rendering. Depth, material
+  attributes, color, SSS and motion passes now reuse their compiled resources across frames while
+  topology changes and mesh teardown release the corresponding ownership.
 - Add MAT1 cloth sheen and thin diffuse transmission to shared Forward/Clustered PBR, including
   per-slot textures, energy layering, back lighting and glTF sheen/diffuse-transmission mappings.
   The diffuse-transmission extension is currently a Khronos Release Candidate; volumetric diffuse

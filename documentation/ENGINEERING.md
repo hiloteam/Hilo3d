@@ -272,11 +272,11 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 101 个 HTML 的后端适用矩阵
+### 102 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 101 个 HTML，包含 99 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
-2，15 个页面执行 WebGPU，共 186 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 102 个 HTML，包含 100 个示例和两个画廊入口；86 个页面执行双后端，WebXR 执行 WebGL
+2，15 个页面执行 WebGPU，共 188 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
 Forward+ 灯光场景、动态 GI、雨后茶寮、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
@@ -569,8 +569,8 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、100 个 HTML 后端适用矩阵（85 个双后端、WebXR 显式 WebGL
-2-only、14 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、102 个 HTML 后端适用矩阵（86 个双后端、WebXR 显式 WebGL
+2-only、15 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
 `attribute`/`varying`、`texture2D`/`textureCube`、`gl_FragColor`/`gl_FragData`、WebGL 1 shader
