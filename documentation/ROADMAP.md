@@ -92,6 +92,51 @@ measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before t
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
 
+### Soft Matter acceptance, 2026-10-18
+
+[Soft Matter](./SOFT_MATTER_SHOWCASE.md) supplies the maintained MAT1 art showcase: generated
+concept, original editable Blender source, six runtime material batches retaining all 97,740
+triangles, independent material comparisons, close views and explicit page lifecycle handling.
+Implementation: `5909560dcb554390abee0a0a7982095ce0ef9bcf`; portrait light-shaper placement:
+`a867e5f41890608432aaf2cf1d8b85e002b56ee6`.
+
+The scene exposed a shared multi-pass cache defect, corrected in
+`d52e651815b284a5dd6159d6e2fe23f3b95a87a3`. Mesh Shader ownership now retains bounded role/context
+variants instead of evicting the preceding pass. With the same two-frame warmup, the old regression
+created 22 extra WebGL2 shader modules or 11 WebGPU pipelines on the next frame; the fixed steady
+frames create no extra modules, pipelines or programs. Actual pixels, data updates, new topology,
+shared ownership, bounded eviction, detach and device recovery accompany the counter assertions.
+
+Executed commands and results for the correction and showcase:
+
+- Documented four-shard `vitest run --coverage --maxWorkers=1 --shard=N/4` protocol followed by
+  `vitest --merge-reports=reports/vitest-soft-matter --coverage`: **298 files / 2723 tests passed**.
+  Global coverage: statements **84.22%**, branches **74.42%**, functions **88.93%**, lines
+  **85.87%**.
+- Targeted mesh/cache regressions: **91 passed**. `test:render:architecture`: **150 passed**.
+  `test:rhi`: **224 portable plus 3 native-RHI passed**; the software adapter's optional
+  `shader-f16` case was skipped, as in the preceding MAT1 acceptance.
+- `test:webgpu`: **33 passed**; `test:webgpu:native`: **27 passed**; `test:visual`: **3 passed**.
+- The dedicated Soft Matter Playwright spec passed **4 cases on each project**, including real
+  interaction, per-sculpture on/off/restored pixels, retained/final teardown and initialization
+  cancellation with an actual late GLB response. The last framing-only change reran these cases.
+- Complete `CI=true HILO3D_UI_GROUP=post-processing npm run test:ui:webgl2:ci`: **11 passed**. Both
+  MAT1 specs with `CI=true --project=chromium --grep @webgpu`: **4 passed**. These gates were rerun
+  after the portrait adjustment. UI contracts: **34 passed**; grouping verifies **127 WebGL2 cases
+  exactly once**.
+- `typecheck`, `lint:built`, `format:check`, `build`, `test:types`, `api:check:built`,
+  `test:package:built`, `examples:build`, `docs:check:built` and `site:build:built` passed. Site
+  validation checked **73,139 internal references across 1,585 files**. Built-asset desktop close
+  views and a 430×860 portrait viewport were also inspected.
+
+Evidence is retained under `reports/soft-matter-*` and `reports/vitest-soft-matter/`. Earlier
+software timeout diagnostics and Vite reload failures are not passing results. The final software
+quality profile was restored after correcting ownership; no pixel threshold, retry or test skip was
+used to make the scene pass. The full 267-case UI command and monolithic `validate` were not rerun
+for this example-only addition and cache correction; the full unit coverage, renderer/RHI,
+WebGPU/native matrices and affected complete UI group above are the executed gates. Cross-device
+performance enrollment and publication remain separate, unexecuted work.
+
 ### MAT1 acceptance, 2026-10-18
 
 Feature source: `f73da7957fdde06e2c5451c2922d43d3860d5f5a` on `codex/mat1-materials`, based on

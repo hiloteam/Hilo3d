@@ -69,9 +69,41 @@ recovery and errors after final teardown. The original compact `mat1-materials.s
 independent Forward/Clustered material contract. This example is a featured material study and
 belongs to the complete `post-processing` UI group.
 
-Executed results are recorded after final validation. Screenshots and timings are functional
-evidence; they do not establish an enrolled performance baseline or image equivalence to the
-generated concept.
+### Executed acceptance, 2026-10-18
+
+The showcase is implemented in `5909560d`, with portrait framing finalized in `a867e5f4`. The shared
+shader-ownership correction is `d52e6518`. Both backends passed the full interaction and late-load
+cancellation tests on software and native graphics. The final portrait adjustment also passed the
+complete 11-case WebGL2 post-processing CI group and four MAT1 WebGPU CI cases. The built example
+was checked at 1440×900 in all four views and at 430×860 with horizontal material navigation,
+readable controls and no page overflow.
+
+The fixed sculpture regions at 1440×900 produced the following on/off differences. A changed pixel
+has at least one RGB channel differing by more than 4/255; the mean uses all RGB channels in the
+region. Each restored image must return within half of its disabled difference.
+
+| Material           | Mean RGB difference, WebGL2 / WebGPU (0–255) | Changed region, WebGL2 / WebGPU |
+| ------------------ | -------------------------------------------- | ------------------------------- |
+| Velvet sheen       | 6.27 / 6.27                                  | 29.29% / 29.27%                 |
+| Wax diffusion      | 5.79 / 5.80                                  | 35.30% / 35.32%                 |
+| Petal transmission | 12.66 / 12.65                                | 17.46% / 17.51%                 |
+
+The example exposed a shared cache issue: semantic passes previously replaced a mesh's single Shader
+owner, repeatedly retiring reusable modules. With identical two-frame warmup, the old regression
+created 22 more WebGL2 shader modules or 11 WebGPU pipelines on the next frame; the corrected
+bounded role ownership creates none in steady state. Tests also cover data updates, topology
+changes, reference release and actual WebGPU device recovery. Reducing the portable canvas was
+investigated and did not fix that compilation cost; the final example retains the original 480×300
+portable profile and all effects. Mesh batching and held comparison captures remain as independently
+valid reductions in submission and redundant-frame work.
+
+Final broader checks passed: 298 files / 2723 tests with merged global coverage, 33 WebGPU browser
+cases, 27 native cases, three visual cases, renderer architecture and RHI suites, TypeScript, lint,
+format, API, installed-package consumers, examples and site builds. Detailed commands, coverage
+percentages and limitations are in the
+[roadmap acceptance record](./ROADMAP.md#soft-matter-acceptance-2026-10-18). Screenshots and timings
+are functional evidence; they do not establish an enrolled performance baseline or image equivalence
+to the generated concept.
 
 ## Concept provenance
 
