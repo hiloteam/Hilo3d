@@ -121,7 +121,14 @@ export const materialBlockLayout = createStd140Layout({
     u_iridescenceThicknessMinimum: 'float',
     u_iridescenceThicknessMaximum: 'float',
     u_attenuationColor: 'vec4',
-    u_temporalReactiveFactor: 'float'
+    u_temporalReactiveFactor: 'float',
+    u_sheenColor: 'vec3',
+    u_sheenRoughness: 'float',
+    u_diffuseTransmissionFactor: 'float',
+    u_diffuseTransmissionColor: 'vec3',
+    u_subsurfaceRadius: 'vec3',
+    u_subsurfaceFactor: 'float',
+    u_subsurfaceThickness: 'float'
 });
 
 /** Per-texture-slot metadata kept separate from the stable scalar material ABI. */

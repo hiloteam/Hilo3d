@@ -317,6 +317,22 @@ jobs:
         env:
           CI: 'true'
 
+      - name: Test MAT1 WebGPU material composition
+        run: >-
+          npx playwright test test/ui/mat1-materials.spec.ts --project=chromium --grep @webgpu
+          --output=test-results/mat1 --reporter=line,./scripts/playwright-timing-reporter.ts
+        env:
+          CI: 'true'
+
+      - name: Upload MAT1 timing diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mat1-webgpu-timings
+          path: reports/ui-timings
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Test editor GPU and asset runtime contracts
         run: npm run test:editor:render
         env:
@@ -351,6 +367,7 @@ jobs:
             test/editor-render/__screenshots__
             test/surface-render/__screenshots__
             test-results/editor-components
+            test-results/mat1
             test-results/editor-pages
             test-results/player-export
           if-no-files-found: ignore

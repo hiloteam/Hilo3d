@@ -166,6 +166,30 @@ export interface GLTFIridescenceExtension {
     iridescenceThicknessTexture?: GLTFTextureInfo;
 }
 
+/** Ratified Khronos cloth sheen extension, KHR_materials_sheen. */
+export interface GLTFSheenExtension {
+    /** Linear RGB sheen reflectance in [0, 1] per channel; defaults to [0, 0, 0]. */
+    sheenColorFactor?: readonly [number, number, number];
+    /** sRGB RGB texture multiplied by sheenColorFactor; alpha is unused. */
+    sheenColorTexture?: GLTFTextureInfo;
+    /** Unitless perceptual sheen roughness in [0, 1]; defaults to 0. */
+    sheenRoughnessFactor?: number;
+    /** Linear alpha-channel texture multiplied by sheenRoughnessFactor; RGB is unused. */
+    sheenRoughnessTexture?: GLTFTextureInfo;
+}
+
+/** Khronos release-candidate thin diffuse transmission extension, KHR_materials_diffuse_transmission. */
+export interface GLTFDiffuseTransmissionExtension {
+    /** Fraction of dielectric diffuse light transmitted through the surface, in [0, 1]; defaults to 0. */
+    diffuseTransmissionFactor?: number;
+    /** Linear alpha-channel texture multiplied by diffuseTransmissionFactor; RGB is unused. */
+    diffuseTransmissionTexture?: GLTFTextureInfo;
+    /** Linear transmitted-light RGB in [0, 1] per channel; defaults to [1, 1, 1]. */
+    diffuseTransmissionColorFactor?: readonly [number, number, number];
+    /** sRGB RGB texture multiplied by diffuseTransmissionColorFactor; alpha is unused. */
+    diffuseTransmissionColorTexture?: GLTFTextureInfo;
+}
+
 export interface GLTFMaterialsCommonExtension {
     technique?: 'CONSTANT' | 'LAMBERT' | 'PHONG' | 'BLINN';
     values: Readonly<Record<string, GLTFMaterialValue>>;

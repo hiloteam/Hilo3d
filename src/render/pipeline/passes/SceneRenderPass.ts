@@ -71,6 +71,12 @@ export interface SceneRenderPassParameters {
     /** One setup-declared renderer list prepared through the shared mesh draw processor. */
     readonly rendererList: RendererListHandle;
     /**
+     * Declare that the pipeline records profile diffusion for this pass's subsurface materials.
+     * Custom pipelines must provide the matching diffuse extraction and composition before output.
+     * Without this declaration, forwarding an active subsurface material fails before submission.
+     */
+    readonly subsurfaceScattering?: boolean;
+    /**
      * Registered pass-owned std140 blocks. Values remain immutable until submission/discard.
      * Engine camera, material and object blocks cannot be overridden through this channel.
      */

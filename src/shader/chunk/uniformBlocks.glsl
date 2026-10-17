@@ -97,12 +97,19 @@ layout(std140) uniform MaterialBlock {
     float u_iridescenceThicknessMaximum;
     vec4 u_attenuationColor;
     float u_temporalReactiveFactor;
+    vec3 u_sheenColor;
+    float u_sheenRoughness;
+    float u_diffuseTransmissionFactor;
+    vec3 u_diffuseTransmissionColor;
+    vec3 u_subsurfaceRadius;
+    float u_subsurfaceFactor;
+    float u_subsurfaceThickness;
 };
 
 layout(std140) uniform MaterialTextureBlock {
-    mat3 u_materialTextureTransforms[24];
-    vec4 u_materialTextureInfo[24];
-    ivec4 u_materialTextureChannels[24];
+    mat3 u_materialTextureTransforms[28];
+    vec4 u_materialTextureInfo[28];
+    ivec4 u_materialTextureChannels[28];
 };
 
 #ifdef HILO_VERTEX_SHADER

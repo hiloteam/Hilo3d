@@ -5,9 +5,9 @@ Reviewed against source commit `6433334c` on 2026-09-20. This is a source-develo
 Current contracts are indexed in [documentation](./README.md); old proposals live in
 [archive](./archive/README.md).
 
-Rendering implementation update: 2026-10-13. GI asset coverage, shared-atlas volumetric shadows, PBR
-decals and weighted transparency have Unreleased source implementations. Independent release and
-enrolled physical-performance evidence gates remain distinct from source completion.
+Rendering implementation update: 2026-10-18. GI asset coverage, shared-atlas volumetric shadows, PBR
+decals, weighted transparency and MAT1 surfaces have Unreleased source implementations. Independent
+release and enrolled physical-performance evidence gates remain distinct from source completion.
 
 ## Status vocabulary
 
@@ -31,7 +31,7 @@ enrolled physical-performance evidence gates remain distinct from source complet
 | S0-extension       | Extension                                   | Non-rigid/direct casters and local-light virtual pages after pressure evidence. Current opt-in path covers rigid GPU Scene directional clipmaps.                                                 | Explicit compatibility policy, dynamic/deformed coverage and bounded residency, with shared stable atlas retained where required.                     |
 | GI0-extension      | Implemented slice; evidence pending         | Actual texture/decal transport, alpha masks, vertex colors, shared-geometry instances and built-in skin/morph. Custom instance streams and transparent/specular ray transport remain extensions. | Combined transport/visibility/recovery fixtures and separate memory/update/quality evidence. A0 remains a scaling dependency.                         |
 | V0-extension       | Implemented slice; evidence pending         | Shared directional/spot/point shadow-atlas sampling in froxels, including offscreen caster coverage. Transparent volumetric history remains a later slice.                                       | Light/caster/medium changes, rejection and device recovery; budgeted physical-GPU evidence.                                                           |
-| Material-extension | Extension                                   | MAT1 below owns the cloth, thin-surface and SSS slices; other families and unified schemas remain content-driven extensions.                                                                     | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                     |
+| Material-extension | Extension                                   | MAT1 has a bounded cloth/thin-surface/profile-SSS implementation; other families and unified schemas remain content-driven extensions.                                                           | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                     |
 | Temporal-extension | Extension                                   | Exposure-compensated history, broader spatial masks, quality/memory tiers and thin-feature reconstruction.                                                                                       | Stable directional fixtures and measured quality/memory tradeoffs. Post-TAA transparency/particles use a fixed raster grid and matching opaque depth. |
 | Physics-P5         | Not started                                 | Collision mesh cooking/cache, stable application identity, deterministic command capture and asynchronous snapshot storage.                                                                      | Asset and replay fixtures, bounded ownership, real 2D/3D adapter conformance; [plan](./PHYSICS_IMPLEMENTATION_PLAN.md).                               |
 | Particle-extension | Extension                                   | GPU checkpoints and wider stateless subsets only with explicit deterministic/recovery contracts.                                                                                                 | Supported subset and failure behavior, replay/device-loss evidence; [current boundary](./PARTICLE_SYSTEM.md#current-boundary).                        |
@@ -50,16 +50,18 @@ when their content and budget are known. See
 | [DECAL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#decal0-pbr-decals)                                | P1                         | Implemented slice | [Projected opaque-surface decals](./PBR_DECALS.md), bounded atlas membership, layer/angle/distance filtering and base-color/normal/roughness changes.             | Consistent PBR/GTAO/SSR attributes, overlap ordering, moving receiver/projector history rejection and bounded pass/resource costs.                           |
 | [TRANS0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#trans0-transparency-quality)                      | P1                         | Implemented slice | [Explicit transparency classes](./TRANSPARENCY.md), portable weighted OIT for supported Basic/PBR meshes and instance quads, separate sorted refraction.          | Intersecting layers, dense particles, camera motion, temporal composition, explicit approximation limits and bounded memory/bandwidth.                       |
 | [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Not started       | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                     | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
-| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Not started       | Sheen and thin-surface diffuse transmission first; separately scoped profile-based skin/wax subsurface scattering afterward.                                      | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
+| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Implemented slice | [Cloth sheen, thin diffuse transmission and portable profile SSS](./MAT1_SURFACES.md), with shared Forward/Clustered shading and explicit budgets.                | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
 | [DEFORM0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#deform0-reusable-gpu-deformation)                | P2, character-scale-driven | Not started       | Opt-in WebGPU compute skin/morph output reused by depth, shadow, motion and color passes.                                                                         | Vertex-path image parity, current/previous pose correctness, multi-camera and shadow reuse, recovery, memory bounds and measured multi-pass savings.         |
 
 The GI0 asset/V0 atlas/DECAL0/TRANS0 appearance lane now needs combined regression and physical
 workload evidence before further scope expansion. REFL0 has a bounded implementation; broader
 capture visibility, finer temporal masks and enrolled physical-device performance evidence remain
 extensions. This is a recommended sequence, not an artificial dependency between independent
-features. RG1 starts with measured CPU/transient-memory pressure; MAT1 and DEFORM0 need
-representative material or animated-character content. A0 -> M0 remains the independent streaming
-and geometry lane. Existing performance evidence gates stay open until their own acceptance passes.
+features. RG1 starts with measured CPU/transient-memory pressure; DEFORM0 needs representative
+animated-character content. MAT1 now has source implementations and executable material/diffusion
+fixtures; physical performance enrollment remains separate. A0 -> M0 remains the independent
+streaming and geometry lane. Existing performance evidence gates stay open until their own
+acceptance passes.
 
 RG1 makes the remaining graph-reuse work under F0 explicit; MAT1 narrows Material-extension rather
 than duplicating it. New feature details and acceptance boundaries live in the rendering roadmap.

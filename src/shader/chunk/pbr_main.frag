@@ -80,6 +80,31 @@ float ao = 1.0;
     vec3 iblDiffuseColor = metallicRoughnessSurface.iblDiffuseColor;
 #endif
 
+vec3 sheenColor = vec3(0.0);
+float sheenRoughness = 1.0;
+float sheenBaseWeight = 1.0;
+#ifdef HILO_HAS_SHEEN
+    sheenColor = hiloGetSheenColor();
+    sheenRoughness = hiloGetSheenRoughness();
+    sheenBaseWeight = 1.0 - max(max(sheenColor.r, sheenColor.g), sheenColor.b) *
+        min(hiloSheenAlbedoBound(max(abs(dot(N, V)), 1e-4), sheenRoughness), 1.0);
+#endif
+float diffuseTransmissionFactor = 0.0;
+vec3 diffuseTransmissionColor = vec3(0.0);
+#ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+    diffuseTransmissionFactor = clamp(u_diffuseTransmissionFactor, 0.0, 1.0);
+    #ifdef HILO_DIFFUSE_TRANSMISSION_MAP
+        diffuseTransmissionFactor *= HILO_TEXTURE_2D(
+            u_diffuseTransmissionMap, HILO_DIFFUSE_TRANSMISSION_MAP).a;
+    #endif
+    diffuseTransmissionColor = u_diffuseTransmissionColor;
+    #ifdef HILO_DIFFUSE_TRANSMISSION_COLOR_MAP
+        diffuseTransmissionColor *= HILO_TEXTURE_2D(
+            u_diffuseTransmissionColorMap, HILO_DIFFUSE_TRANSMISSION_COLOR_MAP).rgb;
+    #endif
+    diffuseTransmissionColor *= diffuseTransmissionFactor * (1.0 - metallic);
+#endif
+
 float iridescenceFactor = 0.0;
 float iridescenceIor = 1.3;
 float iridescenceThickness = 0.0;
@@ -235,7 +260,7 @@ for (int i = 0; i < HILO_DIRECTIONAL_LIGHTS; i++) {
             );
         }
     #endif
-    hiloEvaluateBaseBRDF(
+    hiloEvaluateLayeredBRDF(
         N,
         V,
         lightDir,
@@ -248,6 +273,10 @@ for (int i = 0; i < HILO_DIRECTIONAL_LIGHTS; i++) {
         iridescenceFactor,
         iridescenceIor,
         iridescenceThickness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular
     );
@@ -291,7 +320,7 @@ for (int i = 0; i < HILO_SPOT_LIGHTS; i++) {
             );
         }
     #endif
-    hiloEvaluateBaseBRDF(
+    hiloEvaluateLayeredBRDF(
         N,
         V,
         lightDir,
@@ -304,6 +333,10 @@ for (int i = 0; i < HILO_SPOT_LIGHTS; i++) {
         iridescenceFactor,
         iridescenceIor,
         iridescenceThickness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular
     );
@@ -343,7 +376,7 @@ for (int i = 0; i < HILO_POINT_LIGHTS; i++) {
             );
         }
     #endif
-    hiloEvaluateBaseBRDF(
+    hiloEvaluateLayeredBRDF(
         N,
         V,
         lightDir,
@@ -356,6 +389,10 @@ for (int i = 0; i < HILO_POINT_LIGHTS; i++) {
         iridescenceFactor,
         iridescenceIor,
         iridescenceThickness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular
     );
@@ -386,6 +423,10 @@ for (int i = 0; i < HILO_AREA_LIGHTS; i++) {
         lightDiffuse,
         lightSpecular
     );
+    hiloApplyAreaSurfaceLayers(N, V, v_fragPos, u_areaLightsPos[i],
+        u_areaLightsColor[i], u_areaLightsWidth[i], u_areaLightsHeight[i], specularColor,
+        sheenColor, sheenRoughness, diffuseTransmissionColor, diffuseTransmissionFactor,
+        lightDiffuse, lightSpecular);
     directDiffuse += lightDiffuse;
     directSpecular += lightSpecular;
     #ifdef HILO_HAS_CLEARCOAT
@@ -438,6 +479,10 @@ for (uint lightIndex = 0u; lightIndex < clusteredGlobalLightCount; lightIndex +=
         iridescenceThickness,
         clearcoatFactor,
         clearcoatRoughness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular,
         clusteredClearcoat
@@ -468,6 +513,10 @@ for (uint clusteredIndex = 0u; clusteredIndex < clusteredLocalLightCount; cluste
         iridescenceThickness,
         clearcoatFactor,
         clearcoatRoughness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular,
         clusteredClearcoat
@@ -478,11 +527,22 @@ for (uint clusteredIndex = 0u; clusteredIndex < clusteredLocalLightCount; cluste
 }
 #endif
 
+iblDiffuseColor *= (1.0 - diffuseTransmissionFactor) * sheenBaseWeight;
+vec3 indirectTransmission = vec3(0.0);
+vec3 transmissionIBLColor = diffuseTransmissionColor * (vec3(1.0) - specularColor) * sheenBaseWeight;
+#ifdef HILO_HAS_IRIDESCENCE
+transmissionIBLColor = mix(transmissionIBLColor, diffuseTransmissionColor *
+    (1.0 - iridescenceReflectanceView) * sheenBaseWeight, iridescenceFactor);
+#endif
 vec3 indirectDiffuse = hiloGetIBLDiffuse(
     indirectDiffuseNormal,
     iblDiffuseColor,
     materialAmbientOcclusion
 ) * gtaoDiffuseVisibility;
+#ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+    // Screen-space AO describes the visible hemisphere, not the transmitted one.
+    indirectTransmission += hiloGetIBLDiffuse(-N, transmissionIBLColor, materialAmbientOcclusion);
+#endif
 vec3 indirectSpecular = hiloGetIBLSpecular(
     N,
     V,
@@ -494,7 +554,11 @@ vec3 indirectSpecular = hiloGetIBLSpecular(
     iridescenceIor,
     iridescenceThickness,
     materialAmbientOcclusion * gtaoSpecularVisibility
-);
+) * sheenBaseWeight;
+#ifdef HILO_HAS_SHEEN
+indirectSpecular += hiloGetIBLSheen(N, V, sheenColor, sheenRoughness,
+    materialAmbientOcclusion * gtaoSpecularVisibility);
+#endif
 
 #if defined(HILO_CLUSTERED_FORWARD) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
 indirectDiffuse += clusterFrameData.values[31u].rgb * iblDiffuseColor *
@@ -504,9 +568,19 @@ indirectDiffuse += u_ambientLightsColor * iblDiffuseColor *
     materialAmbientOcclusion * gtaoDiffuseVisibility * HILO_INVERSE_PI;
 #endif
 
+#ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+    vec3 ambientTransmission = transmissionIBLColor * materialAmbientOcclusion * HILO_INVERSE_PI;
+    #if defined(HILO_CLUSTERED_FORWARD) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
+        indirectTransmission += clusterFrameData.values[31u].rgb * ambientTransmission;
+    #elif defined(HILO_AMBIENT_LIGHTS) && (defined(HILO_IS_DIFFUSE_ENV_AND_AMBIENT_LIGHT_WORK_TOGETHER) || (!defined(HILO_DIFFUSE_ENV_MAP) && !defined(HILO_DIFFUSE_ENV_SPHERE_HARMONICS3)))
+        indirectTransmission += u_ambientLightsColor * ambientTransmission;
+    #endif
+#endif
+
 #ifdef HILO_LIGHT_MAP
 vec4 lightMapColor = HILO_TEXTURE_2D(u_lightMap, HILO_LIGHT_MAP);
-indirectDiffuse += baseColor.rgb * hiloDecodeRGBD(lightMapColor);
+indirectDiffuse += baseColor.rgb * hiloDecodeRGBD(lightMapColor) *
+    ((1.0 - diffuseTransmissionFactor) * sheenBaseWeight);
 #endif
 
 #ifdef HILO_EMISSION_MAP
@@ -516,6 +590,7 @@ indirectDiffuse += baseColor.rgb * hiloDecodeRGBD(lightMapColor);
     );
 #endif
 
+indirectDiffuse += indirectTransmission;
 vec3 diffuseLighting = directDiffuse + indirectDiffuse;
 vec3 baseLayer = diffuseLighting + directSpecular + indirectSpecular + emissionColor;
 
@@ -539,7 +614,7 @@ vec3 baseLayer = diffuseLighting + directSpecular + indirectSpecular + emissionC
         roughness,
         thickness
     );
-    baseLayer = mix(diffuseLighting, transmitted, transmission) +
+    baseLayer = mix(diffuseLighting, transmitted * sheenBaseWeight, transmission) +
         directSpecular + indirectSpecular + emissionColor;
 #endif
 
@@ -551,11 +626,24 @@ vec3 baseLayer = diffuseLighting + directSpecular + indirectSpecular + emissionC
         V,
         clearcoatRoughness
     );
+    diffuseLighting *= 1.0 - clearcoatFactor * clearcoatFresnel;
     baseLayer = baseLayer * (1.0 - clearcoatFactor * clearcoatFresnel) +
         clearcoatFactor * (clearcoatDirect + clearcoatIndirect);
 #endif
 
+#ifdef HILO_SUBSURFACE_PASS
+    hilo_FragColor = vec4(diffuseLighting, u_subsurfaceFactor);
+    hilo_SubsurfaceProfile = vec4(u_subsurfaceRadius, u_subsurfaceThickness);
+    hilo_SubsurfaceGeometry = vec4(hiloEncodeOctahedralNormal(N),
+        log2(1.0 + max(-v_fragPos.z, 0.0)), 1.0);
+#endif
 color.rgb = baseLayer;
 #else
 color.rgb = baseColor.rgb + emissionColor;
+#ifdef HILO_SUBSURFACE_PASS
+    hilo_FragColor = vec4(0.0, 0.0, 0.0, u_subsurfaceFactor);
+    hilo_SubsurfaceProfile = vec4(u_subsurfaceRadius, u_subsurfaceThickness);
+    hilo_SubsurfaceGeometry = vec4(hiloEncodeOctahedralNormal(normal),
+        log2(1.0 + max(-v_fragPos.z, 0.0)), 1.0);
+#endif
 #endif

@@ -29,6 +29,8 @@ import { MATERIAL_TEXTURE_SLOT_COUNT } from './MaterialTextureSlots';
 import type { MaterialTextureChannel, MaterialTextureEncoding } from './MaterialDefinition';
 import { MaterialAttributeSemantic } from './MaterialSemantics';
 
+const colorRGBValues = new WeakMap<Color, Float32Array>();
+const ZERO_SUBSURFACE_RADIUS = Object.freeze([0, 0, 0] as const);
 const tempVector3 = new Vector3();
 const tempMatrix3 = new Matrix3();
 const tempMatrix4 = new Matrix4();
@@ -41,6 +43,19 @@ const materialTextureTransforms = new Float32Array(MATERIAL_TEXTURE_SLOT_COUNT *
 const materialTextureInfo = new Float32Array(MATERIAL_TEXTURE_SLOT_COUNT * 4);
 const materialTextureChannels = new Int32Array(MATERIAL_TEXTURE_SLOT_COUNT * 4);
 const identityTextureTransform = new Matrix3().elements;
+
+function colorRGB(color: Color): Float32Array {
+    const elements = color.elements;
+    let values = colorRGBValues.get(color);
+    if (values === undefined) {
+        values = new Float32Array(3);
+        colorRGBValues.set(color, values);
+    }
+    values[0] = elements[0];
+    values[1] = elements[1];
+    values[2] = elements[2];
+    return values;
+}
 
 function textureEncodingCode(encoding: MaterialTextureEncoding): number {
     return encoding === 'linear' ? 0 : encoding === 'srgb' ? 1 : 2;
@@ -151,6 +166,31 @@ export interface SemanticMaterial extends Material {
     attenuationDistance: number;
     attenuationColor: Color;
     ior: number;
+    /** Immutable RGB diffusion distances in scene world units, or null without scattering. */
+    subsurfaceProfile: {
+        /** Positive red, green and blue diffusion distances in scene world units. */
+        readonly radius: readonly [number, number, number];
+    } | null;
+    /** Diffuse scattering strength in [0, 1]. */
+    subsurfaceFactor: number;
+    /** World-space slab bound for diffusion radii and depth rejection, in [0.00001, 10000]. */
+    subsurfaceThickness: number;
+    /** Linear cloth sheen RGB reflectance, in [0, 1] per channel. */
+    sheenColor: Color;
+    /** Initial sheen RGB texture; the active texture-slot encoding defaults to sRGB. */
+    sheenColorMap: Texture | null;
+    /** Unitless perceptual sheen roughness in [0, 1]. */
+    sheenRoughness: number;
+    /** Initial linear alpha-channel sheen roughness texture. */
+    sheenRoughnessMap: Texture | null;
+    /** Fraction of dielectric diffuse light transmitted to the opposite hemisphere, in [0, 1]. */
+    diffuseTransmissionFactor: number;
+    /** Initial linear alpha-channel diffuse transmission factor texture. */
+    diffuseTransmissionMap: Texture | null;
+    /** Linear transmitted-light RGB, in [0, 1] per channel and independent of base color. */
+    diffuseTransmissionColor: Color;
+    /** Initial transmitted RGB texture; the active texture-slot encoding defaults to sRGB. */
+    diffuseTransmissionColorMap: Texture | null;
     iridescenceFactor: number;
     iridescenceMap: Texture | null;
     iridescenceIor: number;
@@ -1599,6 +1639,42 @@ const semantic = {
         }
     },
 
+    SUBSURFACERADIUS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.subsurfaceProfile?.radius ?? ZERO_SUBSURFACE_RADIUS;
+        }
+    },
+    SUBSURFACEFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.subsurfaceFactor;
+        }
+    },
+    SUBSURFACETHICKNESS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.subsurfaceThickness;
+        }
+    },
+    SHEENCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return colorRGB(material.sheenColor);
+        }
+    },
+    SHEENROUGHNESS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.sheenRoughness;
+        }
+    },
+    DIFFUSETRANSMISSIONFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return material.diffuseTransmissionFactor;
+        }
+    },
+    DIFFUSETRANSMISSIONCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown {
+            return colorRGB(material.diffuseTransmissionColor);
+        }
+    },
+
     OPAQUETEXTURE: {
         get(): unknown {
             return semantic.getBlankTexture();
@@ -1751,6 +1827,10 @@ for (const [semanticName, textureName] of colorOrTextureSemantics) {
 
 // Texture
 const textureSemantics: readonly (readonly [string, string, string])[] = [
+    ['SHEENCOLORMAP', 'sheenColorMap', 'sheenColor'],
+    ['SHEENROUGHNESSMAP', 'sheenRoughnessMap', 'sheenRoughness'],
+    ['DIFFUSETRANSMISSIONMAP', 'diffuseTransmissionMap', 'diffuseTransmission'],
+    ['DIFFUSETRANSMISSIONCOLORMAP', 'diffuseTransmissionColorMap', 'diffuseTransmissionColor'],
     ['NORMALMAP', 'normalMap', 'normal'],
     ['PARALLAXMAP', 'parallaxMap', 'parallax'],
     ['BASECOLORMAP', 'baseColorMap', 'baseColor'],

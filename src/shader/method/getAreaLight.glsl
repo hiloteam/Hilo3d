@@ -124,3 +124,47 @@ vec3 getAreaLight(
     );
     return diffuseContribution + specularContribution;
 }
+
+void hiloApplyAreaSurfaceLayers(
+    vec3 N, vec3 V, vec3 P, vec3 lightPosition, vec3 lightColor,
+    vec3 halfWidth, vec3 halfHeight, vec3 f0,
+    vec3 sheenColor, float sheenRoughness,
+    vec3 diffuseTransmissionColor, float diffuseTransmissionFactor,
+    inout vec3 diffuseContribution, inout vec3 specularContribution
+) {
+    #ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+        diffuseContribution *= 1.0 - diffuseTransmissionFactor;
+        vec3 corners[4];
+        corners[0] = lightPosition - halfWidth - halfHeight;
+        corners[1] = lightPosition + halfWidth - halfHeight;
+        corners[2] = lightPosition + halfWidth + halfHeight;
+        corners[3] = lightPosition - halfWidth + halfHeight;
+        diffuseContribution += lightColor * diffuseTransmissionColor *
+            (vec3(1.0) - f0) * LTC_Evaluate(-N, -V, P, mat3(1.0), corners);
+    #endif
+    #ifdef HILO_HAS_SHEEN
+        if (max(max(sheenColor.r, sheenColor.g), sheenColor.b) <= 0.0) return;
+        float NdotV = max(abs(dot(N, V)), 1e-4);
+        float baseWeight = 1.0 - max(max(sheenColor.r, sheenColor.g), sheenColor.b) *
+            min(hiloSheenAlbedoBound(NdotV, sheenRoughness), 1.0);
+        diffuseContribution *= baseWeight;
+        specularContribution *= baseWeight;
+        vec3 emitterCross = cross(halfWidth, halfHeight);
+        float emitterArea = length(emitterCross) * 4.0;
+        vec3 emitterNormal = emitterCross / max(length(emitterCross), 1e-8);
+        // 4 x 4 midpoint area quadrature; the GGX LTC is unsuitable for Charlie.
+        for (int row = 0; row < 4; row++) {
+            for (int column = 0; column < 4; column++) {
+                vec2 coordinate = (vec2(float(column), float(row)) + 0.5) * 0.5 - 1.0;
+                vec3 delta = lightPosition + halfWidth * coordinate.x +
+                    halfHeight * coordinate.y - P;
+                float distanceSquared = max(dot(delta, delta), 1e-6);
+                vec3 L = delta * inversesqrt(distanceSquared);
+                float solidAngle = max(dot(emitterNormal, -L), 0.0) *
+                    emitterArea / (16.0 * distanceSquared);
+                specularContribution += lightColor * sheenColor * solidAngle *
+                    hiloSheenBRDF(N, V, L, sheenRoughness);
+            }
+        }
+    #endif
+}

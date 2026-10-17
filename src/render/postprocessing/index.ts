@@ -1,4 +1,5 @@
 export { Bloom, type BloomOptions } from './Bloom';
+export { SubsurfaceScattering, type SubsurfaceScatteringOptions } from './SubsurfaceScattering';
 export {
     AutoExposure,
     type AutoExposureDiagnostics,

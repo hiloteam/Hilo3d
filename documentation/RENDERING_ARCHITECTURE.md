@@ -225,7 +225,7 @@ delta 原位替换已有 fallback specular；ordinary Forward reflection MRT 与
 visibility 和 iridescence 参数。未启用对应 effect 时不创建 attribute、AO/GI/filter
 target、history 或 fallback pass。
 
-portable material UBO 分为 448-byte `MaterialBlock` 与 1,920-byte
+portable material UBO 分为 528-byte `MaterialBlock` 与 2,240-byte
 `MaterialTextureBlock`，二者按最终 std140 bytes 独立更新。WebGPU material group 的 binding
 0/1 对应这两个 block，sampled texture/sampler 从 binding 2 开始；WebGL2 使用同一固定 block
 registry。attribute、uniform、texture 和 built-in
@@ -240,11 +240,17 @@ revision 和 texture-slot dirtiness 只在成功 submission 后提交，失败�
 `builtin-pbr-storage-v4` record 由 GPU Scene 与 clustered indirect draw 共享；除 surface
 scalar 外，它为 compact record 支持的 8 个基础 PBR texture slot 保存独立 UV matrix、UV
 set、encoding、presence 与 channel mapping，并在 surface record 的保留分量保存 authored reactive
-factor。该布局不是 portable UBO 的全部 24 槽；精确集合与 704-byte 大小见
+factor。该布局不是 portable UBO 的全部 28 槽；精确集合与 704-byte 大小见
 [材质合同](./MATERIAL_SYSTEM.md)。logical geometry bucket 与 material
 handle 在对象 record 中保持为两个独立字段。
 
 ### 1.3 RenderPipelineHost：统一的可脚本化编排
+
+MAT1 的 sheen 与薄片漫透使用同一共享 PBR/BRDF 与纹理槽 ABI。Profile
+SSS 由显式开启的 pipeline 在 opaque 后重录 `subsurface`
+语义通道，提取漫反射、profile 与法线/深度，执行两轴有界扩散，再用差值替换原漫反射；高光和自发光保持原值，TAA 与显示变换随后执行。关闭或没有可见参与者时不录制 SSS 中间附件。固定 GPU
+Scene bucket 不接纳新增拓扑，兼容内容使用 Clustered direct 路径。预算、材质限制和恢复合同见
+[MAT1 surfaces](./MAT1_SURFACES.md)。
 
 每个 Renderer 拥有一个 `RenderPipelineHost` 和一个 renderer-local `RenderPipeline`
 runtime。创建时未传 `renderPipeline` 时也由进程级 `ForwardRenderPipelineFactory`

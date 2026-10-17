@@ -184,6 +184,22 @@ function validateMaterialPassTarget(
     role: MaterialPassRole,
     target: RHIMeshDrawTargetDescriptor
 ): void {
+    if (role === 'subsurface') {
+        if (
+            target.sampleCount !== 1 ||
+            target.colorFormats.length !== 3 ||
+            target.colorFormats[0] !== 'rgba16float' ||
+            target.colorFormats[1] !== 'rgba16float' ||
+            target.colorFormats[2] !== 'rgba16float' ||
+            target.depthStencilFormat === undefined ||
+            target.depthStencilFormat === null
+        ) {
+            throw new TypeError(
+                'Material subsurface role requires three single-sample rgba16float targets and opaque depth'
+            );
+        }
+        return;
+    }
     if (role === 'weighted-accumulation' || role === 'weighted-revealage') {
         if (
             target.sampleCount !== 1 ||

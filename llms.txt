@@ -36,6 +36,8 @@ readonly storage raster uses constrained GLSL ES 3.10 and the common Naga transl
 - [PBR and effects](./documentation/PBR_AND_POST_PROCESSING.md): Materials, linear HDR, Bloom,
   filmic and WebGPU auto exposure.
 - [Projected decals](./documentation/PBR_DECALS.md): Unreleased world-space PBR surface projection.
+- [Cloth and subsurface](./documentation/MAT1_SURFACES.md): Unreleased sheen, thin transmission and
+  profile diffusion with explicit pipeline and memory requirements.
 - [Transparency](./documentation/TRANSPARENCY.md): Sorted/refraction and opt-in weighted OIT.
 - [Particles](./documentation/PARTICLE_SYSTEM.md): Optional addon, CPU/GPU/stateless plans and
   authoring contracts.

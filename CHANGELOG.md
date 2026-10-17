@@ -35,6 +35,16 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Rendering
 
+- Add MAT1 cloth sheen and thin diffuse transmission to shared Forward/Clustered PBR, including
+  per-slot textures, energy layering, back lighting and glTF sheen/diffuse-transmission mappings.
+  The diffuse-transmission extension is currently a Khronos Release Candidate; volumetric diffuse
+  transport remains unsupported and is rejected explicitly.
+- Add immutable world-unit `SubsurfaceScatteringProfile` and opt-in portable `SubsurfaceScattering`:
+  bounded diffuse-only profile filtering, depth/normal/profile isolation, sharp specular/emission,
+  and explicit Forward, post-process and Clustered pipeline integration.
+- Append MAT1 values to the 528-byte MaterialBlock and four new texture slots to the 2240-byte
+  MaterialTextureBlock. Reserve SubsurfaceScatteringBlock at shared binding 13 / WebGPU global
+  binding 5; automatically assigned custom uniform bindings now begin at 14.
 - Use a symmetric temporal depth footprint to reduce phase-dependent flicker at thin opaque edges.
 - Stabilize post-TAA transparency with an unjittered raster view and matching opaque depth,
   retaining shared culling and GPU indirect visibility while avoiding stale transparent history.
@@ -62,7 +72,8 @@ engine release and physical-device performance matrices remain separate, unrun g
   light allocation.
 - Reserve `DecalBlock` at shared uniform binding 11 (WebGPU material-group binding 65) and the
   16-byte `WeightedTransparencyBlock` at binding 12 (WebGPU global-group binding 4). Automatically
-  assigned custom uniform bindings now start at 13; explicit custom bindings 11/12 must move.
+  assigned custom uniform bindings move beyond these reservations and MAT1's binding 13 above;
+  explicit custom bindings 11/12/13 must move.
 - Bound weighted HDR accumulation with three additive FP16 numeric segments, explicit primitive and
   pixel budgets, and a pooled pass uniform instead of shader variants. Accumulate optical depth so
   faint layers retain coverage. Validate three MRTs/24 bytes per sample and preserve sampler

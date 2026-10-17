@@ -690,7 +690,7 @@ export interface BrowserFeatures {
 }
 
 // @public (undocumented)
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 13;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 14;
 
 // @public (undocumented)
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;
@@ -896,6 +896,7 @@ export interface ClusteredForwardPlusPipelineOptions {
     readonly maxViewportWidth?: number;
     readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
     readonly screenSpaceReflections?: Readonly<ScreenSpaceReflectionsOptions> | false;
+    readonly subsurfaceScattering?: Readonly<SubsurfaceScatteringOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
     readonly tileSize?: number;
     readonly toneMapping?: 'aces' | 'filmic';
@@ -2230,6 +2231,7 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     readonly sampledSceneColor: boolean;
     readonly sceneScale?: number;
     readonly splitScene?: boolean;
+    readonly subsurfaceScattering?: boolean;
 }
 
 // @public
@@ -2279,6 +2281,7 @@ export interface ForwardRenderPipelineFeatureRuntime {
 
 // @public
 export interface ForwardRenderPipelineResources {
+    readonly ambientOcclusionTexture: RenderGraphTextureHandle | null;
     readonly color: RenderGraphTextureHandle | null;
     readonly colorEncoding: RenderColorEncoding;
     readonly depth: RenderGraphTextureHandle | null;
@@ -2784,6 +2787,14 @@ export type GLTFCollection<Value> = readonly (Value | null)[] | Readonly<Record<
 // @public (undocumented)
 export type GLTFComponentType = 5120 | 5121 | 5122 | 5123 | 5125 | 5126;
 
+// @public
+export interface GLTFDiffuseTransmissionExtension {
+    diffuseTransmissionColorFactor?: readonly [number, number, number];
+    diffuseTransmissionColorTexture?: GLTFTextureInfo;
+    diffuseTransmissionFactor?: number;
+    diffuseTransmissionTexture?: GLTFTextureInfo;
+}
+
 // @public (undocumented)
 export interface GLTFExtensionHandler {
     // (undocumented)
@@ -2842,9 +2853,11 @@ export namespace GLTFExtensions {
         GLTFExtensions_d_KHR_lights_punctual as KHR_lights_punctual,
         GLTFExtensions_d_KHR_materials_anisotropy as KHR_materials_anisotropy,
         GLTFExtensions_d_KHR_materials_clearcoat as KHR_materials_clearcoat,
+        GLTFExtensions_d_KHR_materials_diffuse_transmission as KHR_materials_diffuse_transmission,
         GLTFExtensions_d_KHR_materials_ior as KHR_materials_ior,
         GLTFExtensions_d_KHR_materials_iridescence as KHR_materials_iridescence,
         GLTFExtensions_d_KHR_materials_pbrSpecularGlossiness as KHR_materials_pbrSpecularGlossiness,
+        GLTFExtensions_d_KHR_materials_sheen as KHR_materials_sheen,
         GLTFExtensions_d_KHR_materials_transmission as KHR_materials_transmission,
         GLTFExtensions_d_KHR_materials_volume as KHR_materials_volume,
         GLTFExtensions_d_WEB3D_quantized_attributes as WEB3D_quantized_attributes,
@@ -3419,6 +3432,14 @@ export interface GLTFShader extends GLTFProperty {
     type?: number;
     // (undocumented)
     uri?: string;
+}
+
+// @public
+export interface GLTFSheenExtension {
+    sheenColorFactor?: readonly [number, number, number];
+    sheenColorTexture?: GLTFTextureInfo;
+    sheenRoughnessFactor?: number;
+    sheenRoughnessTexture?: GLTFTextureInfo;
 }
 
 // @public (undocumented)
@@ -4150,7 +4171,7 @@ export const LogLevel: {
 export type LogLevelValue = (typeof LogLevel)[keyof typeof LogLevel];
 
 // @public
-export const MATERIAL_TEXTURE_SLOT_COUNT = 24;
+export const MATERIAL_TEXTURE_SLOT_COUNT = 28;
 
 // @public
 export const MaterialAttributeSemantic: Readonly<{
@@ -4345,7 +4366,7 @@ export interface MaterialDefinitionParameters {
 export type MaterialFamily = 'basic' | 'pbr' | 'geometry' | 'sprite' | 'custom';
 
 // @public
-export type MaterialFragmentOutput = 'color' | 'depth-only' | 'motion-vector' | 'material-attributes' | 'picking';
+export type MaterialFragmentOutput = 'color' | 'depth-only' | 'motion-vector' | 'material-attributes' | 'subsurface' | 'picking';
 
 // @public
 export type MaterialFrontFace = 'ccw' | 'cw';
@@ -4474,7 +4495,7 @@ export interface MaterialPassDefinition {
 export type MaterialPassFallback = 'required' | 'safe-fallback' | 'skip';
 
 // @public
-export type MaterialPassRole = 'forward' | 'depth-only' | 'shadow-caster' | 'motion-vector' | 'material-attributes' | 'weighted-accumulation' | 'weighted-revealage' | 'picking' | `user:${string}`;
+export type MaterialPassRole = 'forward' | 'depth-only' | 'shadow-caster' | 'motion-vector' | 'material-attributes' | 'subsurface' | 'weighted-accumulation' | 'weighted-revealage' | 'picking' | `user:${string}`;
 
 // @public
 export interface MaterialPipelineState {
@@ -4597,6 +4618,10 @@ export const MaterialTextureSemantic: Readonly<{
     readonly THICKNESS_MAP: "THICKNESSMAP";
     readonly IRIDESCENCE_MAP: "IRIDESCENCEMAP";
     readonly IRIDESCENCE_THICKNESS_MAP: "IRIDESCENCETHICKNESSMAP";
+    readonly SHEEN_COLOR_MAP: "SHEENCOLORMAP";
+    readonly SHEEN_ROUGHNESS_MAP: "SHEENROUGHNESSMAP";
+    readonly DIFFUSE_TRANSMISSION_MAP: "DIFFUSETRANSMISSIONMAP";
+    readonly DIFFUSE_TRANSMISSION_COLOR_MAP: "DIFFUSETRANSMISSIONCOLORMAP";
     readonly DIFFUSE_ENV_MAP: "DIFFUSEENVMAP";
     readonly BRDF_LUT: "BRDFLUT";
     readonly SPECULAR_ENV_MAP: "SPECULARENVMAP";
@@ -4605,7 +4630,7 @@ export const MaterialTextureSemantic: Readonly<{
 }>;
 
 // @public (undocumented)
-export type MaterialTextureSemanticName = (typeof MaterialTextureSemantic)[keyof typeof MaterialTextureSemantic] | `${'DIFFUSE' | 'SPECULAR' | 'EMISSION' | 'AMBIENT'}UV` | `${'NORMALMAP' | 'PARALLAXMAP' | 'BASECOLORMAP' | 'METALLICMAP' | 'ROUGHNESSMAP' | 'METALLICROUGHNESSMAP' | 'OCCLUSIONMAP' | 'SPECULARGLOSSINESSMAP' | 'LIGHTMAP' | 'CLEARCOATMAP' | 'CLEARCOATROUGHNESSMAP' | 'CLEARCOATNORMALMAP' | 'ANISOTROPYMAP' | 'TRANSMISSIONMAP' | 'THICKNESSMAP' | 'IRIDESCENCEMAP' | 'IRIDESCENCETHICKNESSMAP'}UV` | 'TRANSPARENCYUV';
+export type MaterialTextureSemanticName = (typeof MaterialTextureSemantic)[keyof typeof MaterialTextureSemantic] | `${'DIFFUSE' | 'SPECULAR' | 'EMISSION' | 'AMBIENT'}UV` | `${'NORMALMAP' | 'PARALLAXMAP' | 'BASECOLORMAP' | 'METALLICMAP' | 'ROUGHNESSMAP' | 'METALLICROUGHNESSMAP' | 'OCCLUSIONMAP' | 'SPECULARGLOSSINESSMAP' | 'LIGHTMAP' | 'CLEARCOATMAP' | 'CLEARCOATROUGHNESSMAP' | 'CLEARCOATNORMALMAP' | 'ANISOTROPYMAP' | 'TRANSMISSIONMAP' | 'THICKNESSMAP' | 'IRIDESCENCEMAP' | 'IRIDESCENCETHICKNESSMAP' | 'SHEENCOLORMAP' | 'SHEENROUGHNESSMAP' | 'DIFFUSETRANSMISSIONMAP' | 'DIFFUSETRANSMISSIONCOLORMAP'}UV` | 'TRANSPARENCYUV';
 
 // @public (undocumented)
 export const MaterialTextureSlot: Readonly<{
@@ -4633,6 +4658,10 @@ export const MaterialTextureSlot: Readonly<{
     readonly IRIDESCENCE_THICKNESS: 21;
     readonly DIFFUSE_ENVIRONMENT: 22;
     readonly SPECULAR_ENVIRONMENT: 23;
+    readonly SHEEN_COLOR: 24;
+    readonly SHEEN_ROUGHNESS: 25;
+    readonly DIFFUSE_TRANSMISSION: 26;
+    readonly DIFFUSE_TRANSMISSION_COLOR: 27;
 }>;
 
 // @public
@@ -4792,6 +4821,13 @@ export const MaterialUniformSemantic: Readonly<{
     readonly IRIDESCENCE_IOR: "IRIDESCENCEIOR";
     readonly IRIDESCENCE_THICKNESS_MINIMUM: "IRIDESCENCETHICKNESSMINIMUM";
     readonly IRIDESCENCE_THICKNESS_MAXIMUM: "IRIDESCENCETHICKNESSMAXIMUM";
+    readonly SUBSURFACE_RADIUS: "SUBSURFACERADIUS";
+    readonly SUBSURFACE_FACTOR: "SUBSURFACEFACTOR";
+    readonly SUBSURFACE_THICKNESS: "SUBSURFACETHICKNESS";
+    readonly SHEEN_COLOR: "SHEENCOLOR";
+    readonly SHEEN_ROUGHNESS: "SHEENROUGHNESS";
+    readonly DIFFUSE_TRANSMISSION_FACTOR: "DIFFUSETRANSMISSIONFACTOR";
+    readonly DIFFUSE_TRANSMISSION_COLOR: "DIFFUSETRANSMISSIONCOLOR";
     readonly MATERIAL_TEXTURE_TRANSFORMS: "MATERIALTEXTURETRANSFORMS";
     readonly MATERIAL_TEXTURE_INFO: "MATERIALTEXTUREINFO";
     readonly MATERIAL_TEXTURE_CHANNELS: "MATERIALTEXTURECHANNELS";
@@ -5535,6 +5571,11 @@ export class PBRMaterial extends MaterialInstance {
     readonly diffuseEnvMap: MaterialTexture | null;
     // (undocumented)
     readonly diffuseEnvSphereHarmonics3: SphericalHarmonics3 | null;
+    readonly diffuseTransmissionColor: Color;
+    readonly diffuseTransmissionColorMap: Texture<unknown> | null;
+    get diffuseTransmissionFactor(): number;
+    set diffuseTransmissionFactor(value: number);
+    readonly diffuseTransmissionMap: Texture<unknown> | null;
     // (undocumented)
     readonly emission: MaterialTextureValue;
     // (undocumented)
@@ -5544,6 +5585,7 @@ export class PBRMaterial extends MaterialInstance {
     // (undocumented)
     get glossiness(): number;
     set glossiness(value: number);
+    invalidateData(): void;
     // (undocumented)
     get ior(): number;
     set ior(value: number);
@@ -5591,6 +5633,11 @@ export class PBRMaterial extends MaterialInstance {
     set roughness(value: number);
     // (undocumented)
     readonly roughnessMap: Texture<unknown> | null;
+    readonly sheenColor: Color;
+    readonly sheenColorMap: Texture<unknown> | null;
+    get sheenRoughness(): number;
+    set sheenRoughness(value: number);
+    readonly sheenRoughnessMap: Texture<unknown> | null;
     // (undocumented)
     readonly specular: Color;
     // (undocumented)
@@ -5600,6 +5647,11 @@ export class PBRMaterial extends MaterialInstance {
     readonly specularEnvMap: MaterialTexture | null;
     // (undocumented)
     readonly specularGlossinessMap: Texture<unknown> | null;
+    get subsurfaceFactor(): number;
+    set subsurfaceFactor(value: number);
+    readonly subsurfaceProfile: SubsurfaceScatteringProfile | null;
+    get subsurfaceThickness(): number;
+    set subsurfaceThickness(value: number);
     // (undocumented)
     get thicknessFactor(): number;
     set thicknessFactor(value: number);
@@ -5660,6 +5712,10 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly diffuseEnvMap?: MaterialTexture | MaterialTextureSlotInput | null;
     // (undocumented)
     readonly diffuseEnvSphereHarmonics3?: SphericalHarmonics3 | null;
+    readonly diffuseTransmissionColor?: Color;
+    readonly diffuseTransmissionColorMap?: PBRMaterialTextureInput;
+    readonly diffuseTransmissionFactor?: number;
+    readonly diffuseTransmissionMap?: PBRMaterialTextureInput;
     // (undocumented)
     readonly emission?: MaterialTextureValue | MaterialTextureSlotInput;
     // (undocumented)
@@ -5705,6 +5761,10 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly roughness?: number;
     // (undocumented)
     readonly roughnessMap?: PBRMaterialTextureInput;
+    readonly sheenColor?: Color;
+    readonly sheenColorMap?: PBRMaterialTextureInput;
+    readonly sheenRoughness?: number;
+    readonly sheenRoughnessMap?: PBRMaterialTextureInput;
     // (undocumented)
     readonly specular?: Color;
     // (undocumented)
@@ -5715,6 +5775,9 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly specularGlossinessMap?: PBRMaterialTextureInput;
     // (undocumented)
     readonly state?: Partial<Readonly<MaterialPipelineState>>;
+    readonly subsurfaceFactor?: number;
+    readonly subsurfaceProfile?: SubsurfaceScatteringProfile;
+    readonly subsurfaceThickness?: number;
     // (undocumented)
     readonly thicknessFactor?: number;
     // (undocumented)
@@ -5903,6 +5966,7 @@ export interface PostProcessRenderPipelineOptions {
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     readonly opaqueTexture?: boolean;
     readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
+    readonly subsurfaceScattering?: Readonly<SubsurfaceScatteringOptions> | false;
     readonly temporalAA?: Readonly<TemporalAAOptions> | false;
 }
 
@@ -7205,6 +7269,7 @@ export interface SceneRenderPassParameters {
     readonly scissor?: RendererViewport;
     readonly stencilReference?: number;
     readonly storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
+    readonly subsurfaceScattering?: boolean;
     readonly uniformBlocks?: Readonly<Record<string, UniformBuffer>>;
     readonly viewport?: RendererViewport;
 }
@@ -7731,6 +7796,27 @@ export const semantic: {
     IRIDESCENCETHICKNESSMAXIMUM: {
         get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
     };
+    SUBSURFACERADIUS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    SUBSURFACEFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    SUBSURFACETHICKNESS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    SHEENCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    SHEENROUGHNESS: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    DIFFUSETRANSMISSIONFACTOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
+    DIFFUSETRANSMISSIONCOLOR: {
+        get(_mesh: SemanticMesh, material: SemanticMaterial): unknown;
+    };
     OPAQUETEXTURE: {
         get(): unknown;
     };
@@ -7781,6 +7867,10 @@ export interface SemanticMaterial extends MaterialInstance {
     diffuseEnvMap: MaterialTexture | null;
     // (undocumented)
     diffuseEnvSphereHarmonics3: SphericalHarmonics3 | null;
+    diffuseTransmissionColor: Color;
+    diffuseTransmissionColorMap: Texture | null;
+    diffuseTransmissionFactor: number;
+    diffuseTransmissionMap: Texture | null;
     // (undocumented)
     emissionFactor: Color;
     // (undocumented)
@@ -7821,6 +7911,10 @@ export interface SemanticMaterial extends MaterialInstance {
     roughness: number;
     // (undocumented)
     roughnessMap: Texture | null;
+    sheenColor: Color;
+    sheenColorMap: Texture | null;
+    sheenRoughness: number;
+    sheenRoughnessMap: Texture | null;
     // (undocumented)
     shininess: number;
     // (undocumented)
@@ -7833,6 +7927,11 @@ export interface SemanticMaterial extends MaterialInstance {
     specularEnvMatrix: Matrix4 | null;
     // (undocumented)
     specularGlossinessMap: Texture | null;
+    subsurfaceFactor: number;
+    subsurfaceProfile: {
+        readonly radius: readonly [number, number, number];
+    } | null;
+    subsurfaceThickness: number;
     // (undocumented)
     thicknessFactor: number;
     // (undocumented)
@@ -8880,6 +8979,38 @@ export interface SubDataUpdate {
 }
 
 // @public
+export class SubsurfaceScattering implements ForwardRenderPipelineFeature {
+    constructor(options?: Readonly<SubsurfaceScatteringOptions>);
+    // (undocumented)
+    create(): ForwardRenderPipelineFeatureRuntime;
+    // (undocumented)
+    readonly injectionPoint: "after-opaque";
+    // (undocumented)
+    readonly name = "subsurface-scattering";
+    // (undocumented)
+    readonly requirements: Readonly<ForwardRenderFeatureRequirements>;
+}
+
+// @public
+export interface SubsurfaceScatteringOptions {
+    readonly maxPixelCount?: number;
+    readonly maxRadiusPixels?: number;
+    readonly normalThreshold?: number;
+    readonly sampleCount?: 9 | 17 | 25;
+}
+
+// @public
+export class SubsurfaceScatteringProfile {
+    constructor(options?: Readonly<SubsurfaceScatteringProfileOptions>);
+    readonly radius: readonly [number, number, number];
+}
+
+// @public
+export interface SubsurfaceScatteringProfileOptions {
+    readonly radius?: readonly [number, number, number];
+}
+
+// @public
 export class TemporalAA implements ForwardRenderPipelineFeature {
     constructor(options?: Readonly<TemporalAAOptions>);
     // (undocumented)
@@ -9409,6 +9540,7 @@ export const UNIFORM_BLOCK_BINDINGS: Readonly<{
     readonly ReflectionProbeBlock: 10;
     readonly DecalBlock: 11;
     readonly WeightedTransparencyBlock: 12;
+    readonly SubsurfaceScatteringBlock: 13;
 }>;
 
 // @public

@@ -228,6 +228,9 @@ function unsupportedMesh(mesh: Mesh): RayTracingSceneExclusion | null {
         material.forwardQueue !== 'opaque' ||
         (material.coverage.mode !== 'opaque' && material.coverage.mode !== 'mask') ||
         material.transmissionFactor > 0 ||
+        material.definition.staticFeatures['HAS_SHEEN'] === 1 ||
+        material.definition.staticFeatures['HAS_DIFFUSE_TRANSMISSION'] === 1 ||
+        material.definition.staticFeatures['HAS_SUBSURFACE'] === 1 ||
         material.getTextureSlot('parallax') !== null ||
         RAY_UNIFORMS.some(([name, semantic]) => material.uniforms[name] !== semantic) ||
         RAY_ATTRIBUTES.some(([name, semantic]) => material.attributes[name] !== semantic)

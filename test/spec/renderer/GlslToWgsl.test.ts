@@ -1030,6 +1030,56 @@ const builtInShaderCases: readonly BuiltInShaderCase[] = [
         ]
     },
     {
+        name: 'MAT1 cloth and thin-surface transmission with environment and area lights',
+        fragment: pbrFragmentSource,
+        defines: {
+            HILO_LIGHT_TYPE_PBR: 1,
+            HILO_SIDE: 1028,
+            HILO_HAS_LIGHT: 1,
+            HILO_HAS_NORMAL: 1,
+            HILO_HAS_TEXCOORD0: 1,
+            HILO_HAS_TEXCOORD1: 1,
+            HILO_NEED_WORLD_NORMAL: 1,
+            HILO_HAS_SHEEN: 1,
+            HILO_SHEEN_COLOR_MAP: MaterialTextureSlot.SHEEN_COLOR,
+            HILO_SHEEN_ROUGHNESS_MAP: MaterialTextureSlot.SHEEN_ROUGHNESS,
+            HILO_HAS_DIFFUSE_TRANSMISSION: 1,
+            HILO_DIFFUSE_TRANSMISSION_MAP: MaterialTextureSlot.DIFFUSE_TRANSMISSION,
+            HILO_DIFFUSE_TRANSMISSION_COLOR_MAP: MaterialTextureSlot.DIFFUSE_TRANSMISSION_COLOR,
+            HILO_DIFFUSE_ENV_MAP: MaterialTextureSlot.DIFFUSE_ENVIRONMENT,
+            HILO_DIFFUSE_ENV_MAP_CUBE: 1,
+            HILO_SPECULAR_ENV_MAP: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
+            HILO_SPECULAR_ENV_MAP_CUBE: 1,
+            HILO_USE_SHADER_TEXTURE_LOD: 1,
+            HILO_DIRECTIONAL_LIGHTS: 1,
+            HILO_SPOT_LIGHTS: 1,
+            HILO_POINT_LIGHTS: 1,
+            HILO_AREA_LIGHTS: 1
+        },
+        expectedSamplers: [
+            'u_sheenColorMap[0]',
+            'u_sheenRoughnessMap[0]',
+            'u_diffuseTransmissionMap[0]',
+            'u_diffuseTransmissionColorMap[0]'
+        ]
+    },
+    {
+        name: 'MAT1 sheen reflection response and environment baseline',
+        fragment: pbrFragmentSource,
+        defines: {
+            HILO_LIGHT_TYPE_PBR: 1,
+            HILO_SIDE: 1028,
+            HILO_HAS_LIGHT: 1,
+            HILO_HAS_NORMAL: 1,
+            HILO_HAS_SHEEN: 1,
+            HILO_MATERIAL_ATTRIBUTES_PASS: 1,
+            HILO_SSR_MATERIAL_DATA: 1,
+            HILO_SPECULAR_ENV_MAP: MaterialTextureSlot.SPECULAR_ENVIRONMENT,
+            HILO_SPECULAR_ENV_MAP_CUBE: 1,
+            HILO_NEED_WORLD_NORMAL: 1
+        }
+    },
+    {
         name: 'all shadow sampler kinds',
         fragment: pbrFragmentSource,
         defines: {

@@ -1,5 +1,5 @@
 /** Stable MaterialBlock texture-slot indices shared by built-in families and shader source. */
-export const MATERIAL_TEXTURE_SLOT_COUNT = 24;
+export const MATERIAL_TEXTURE_SLOT_COUNT = 28;
 export const MaterialTextureSlot = Object.freeze({
     NORMAL: 0,
     PARALLAX: 1,
@@ -24,7 +24,11 @@ export const MaterialTextureSlot = Object.freeze({
     IRIDESCENCE: 20,
     IRIDESCENCE_THICKNESS: 21,
     DIFFUSE_ENVIRONMENT: 22,
-    SPECULAR_ENVIRONMENT: 23
+    SPECULAR_ENVIRONMENT: 23,
+    SHEEN_COLOR: 24,
+    SHEEN_ROUGHNESS: 25,
+    DIFFUSE_TRANSMISSION: 26,
+    DIFFUSE_TRANSMISSION_COLOR: 27
 } as const);
 
 export type BuiltInMaterialTextureSlotName = keyof typeof MaterialTextureSlot;

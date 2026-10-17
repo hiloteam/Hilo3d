@@ -323,7 +323,10 @@ class Shader {
 
         const options: Record<string, number> = { ...this.commonOptions };
         const shadedColorRole =
-            role === 'forward' || role === 'weighted-accumulation' || role === 'weighted-revealage';
+            role === 'forward' ||
+            role === 'subsurface' ||
+            role === 'weighted-accumulation' ||
+            role === 'weighted-revealage';
         if (shadedColorRole && lightType && lightType !== 'NONE') {
             lightManager.getRenderOption(options);
             const limits: readonly (readonly [string, number])[] = [
@@ -691,7 +694,8 @@ function getShaderVariant(
 ): Shader | null {
     let header = Shader.getHeader(mesh, material, lightManager, fog, useLogDepth, role);
     header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').replaceAll(':', '_').toUpperCase()} 1\n`;
-    if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
+    if (role === 'subsurface') header += '#define HILO_SUBSURFACE_PASS 1\n';
+    else if (role === 'depth-only') header += '#define HILO_DEPTH_ONLY_PASS 1\n';
     else if (role === 'shadow-caster') header += '#define HILO_SHADOW_CASTER_PASS 1\n';
     else if (role === 'motion-vector') header += '#define HILO_MOTION_VECTOR_PASS 1\n';
     else if (role === 'material-attributes') {

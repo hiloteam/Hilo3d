@@ -239,6 +239,12 @@ Pages 子路径部署使用同一份产物。
 
 ## 测试体系
 
+MAT1 的浏览器材质/SSS 组合验收位于 `test/ui/mat1-materials.spec.ts`。WebGL2 用例纳入完整
+`post-processing` UI 组；两个 WebGPU
+Forward/Clustered 用例由必需的 macOS 图形验收 job 串行执行，保留 `test-results/mat1`
+失败证据和耗时。完整本地 `test:ui` 也执行这三个用例， `test:webgpu:native`
+额外以非 fallback 适配器和 production 分辨率验收。软件 GPU 正确性与物理 GPU 正确性均不等同于已登记的性能基线。
+
 ### 单元测试与覆盖率
 
 单元测试运行于 Vitest Browser Mode + Playwright

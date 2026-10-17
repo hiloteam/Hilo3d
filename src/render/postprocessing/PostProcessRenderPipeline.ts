@@ -21,9 +21,12 @@ import {
     type ScreenSpaceGlobalIlluminationOptions
 } from './ScreenSpaceGlobalIllumination';
 import { TemporalAA, type TemporalAAOptions } from './TemporalAA';
+import { SubsurfaceScattering, type SubsurfaceScatteringOptions } from './SubsurfaceScattering';
 
 /** Turnkey HDR forward/post-processing pipeline configuration. */
 export interface PostProcessRenderPipelineOptions {
+    /** Profile-based diffuse subsurface scattering, or false to omit the diffusion passes. */
+    readonly subsurfaceScattering?: Readonly<SubsurfaceScatteringOptions> | false;
     /** Ground-truth ambient occlusion settings, or false to omit GTAO. */
     readonly groundTruthAmbientOcclusion?: Readonly<GroundTruthAmbientOcclusionOptions> | false;
     /** Screen-space diffuse global illumination settings, or false to omit SSGI. */
@@ -60,6 +63,9 @@ export class PostProcessRenderPipelineFactory implements RenderPipelineFactory {
             options.groundTruthAmbientOcclusion !== undefined
         ) {
             features.push(new GroundTruthAmbientOcclusion(options.groundTruthAmbientOcclusion));
+        }
+        if (options.subsurfaceScattering !== false && options.subsurfaceScattering !== undefined) {
+            features.push(new SubsurfaceScattering(options.subsurfaceScattering));
         }
         if (
             options.screenSpaceGlobalIllumination !== false &&

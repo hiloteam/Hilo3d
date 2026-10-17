@@ -449,6 +449,10 @@ export {
     type PBRMaterialTextureInput
 } from './material/PBRMaterial';
 export {
+    SubsurfaceScatteringProfile,
+    type SubsurfaceScatteringProfileOptions
+} from './material/SubsurfaceScatteringProfile';
+export {
     type SemanticMaterial,
     type SemanticMesh,
     type SemanticRenderer,

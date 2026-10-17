@@ -12,6 +12,7 @@ import LightManager from '../../../src/light/LightManager';
 import Matrix3 from '../../../src/math/Matrix3';
 import Matrix4 from '../../../src/math/Matrix4';
 import PBRMaterial from '../../../src/material/PBRMaterial';
+import { SubsurfaceScatteringProfile } from '../../../src/material/SubsurfaceScatteringProfile';
 import PerspectiveCamera from '../../../src/camera/PerspectiveCamera';
 import SkinnedMesh from '../../../src/core/SkinnedMesh';
 import UniformBuffer from '../../../src/render/UniformBuffer';
@@ -99,6 +100,59 @@ describe('BuiltInUniformBlockManager', () => {
         expect(direct).toBe(aggregate['CameraBlock']);
         expect(aggregate['FrameBlock']).toBeInstanceOf(UniformBuffer);
         expect(resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('packs MAT1 RGB views, scalar factors and immutable profile data into std140', () => {
+        const manager = new BuiltInUniformBlockManager({ width: 320, height: 180 });
+        const material = new PBRMaterial({
+            sheenColor: new Color(0.2, 0.4, 0.6),
+            sheenRoughness: 0.7,
+            diffuseTransmissionFactor: 0.35,
+            diffuseTransmissionColor: new Color(0.9, 0.8, 0.7)
+        });
+        manager.beginFrame(testEnv.camera);
+        const block = manager.resolveUniformBlock(
+            'MaterialBlock',
+            testEnv.mesh,
+            material,
+            testEnv.camera
+        );
+        expect(readFloatField(block, 'u_sheenColor', 3)).toEqualishValues(0.2, 0.4, 0.6);
+        expect(readFloatField(block, 'u_sheenRoughness', 1)).toEqualishValues(0.7);
+        expect(readFloatField(block, 'u_diffuseTransmissionFactor', 1)).toEqualishValues(0.35);
+        expect(readFloatField(block, 'u_diffuseTransmissionColor', 3)).toEqualishValues(
+            0.9,
+            0.8,
+            0.7
+        );
+        material.sheenColor.g = 0.5;
+        material.invalidateData();
+        manager.beginFrame(testEnv.camera);
+        const updated = manager.resolveUniformBlock(
+            'MaterialBlock',
+            testEnv.mesh,
+            material,
+            testEnv.camera
+        );
+        expect(readFloatField(updated, 'u_sheenColor', 3)).toEqualishValues(0.2, 0.5, 0.6);
+        const scattering = new PBRMaterial({
+            subsurfaceProfile: new SubsurfaceScatteringProfile({ radius: [0.01, 0.004, 0.002] }),
+            subsurfaceFactor: 0.8,
+            subsurfaceThickness: 0.02
+        });
+        const scatteringBlock = manager.resolveUniformBlock(
+            'MaterialBlock',
+            testEnv.mesh,
+            scattering,
+            testEnv.camera
+        );
+        expect(readFloatField(scatteringBlock, 'u_subsurfaceRadius', 3)).toEqualishValues(
+            0.01,
+            0.004,
+            0.002
+        );
+        expect(readFloatField(scatteringBlock, 'u_subsurfaceFactor', 1)).toEqualishValues(0.8);
+        expect(readFloatField(scatteringBlock, 'u_subsurfaceThickness', 1)).toEqualishValues(0.02);
     });
 
     it('resolves a custom material uniform block by identity', () => {

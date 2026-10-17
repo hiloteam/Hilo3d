@@ -114,6 +114,17 @@ function buildPasses(
         ...motionVectorState
     });
     return Object.freeze([
+        ...(family === 'pbr'
+            ? [
+                  Object.freeze({
+                      role: 'subsurface' as const,
+                      shader: module,
+                      fragmentOutput: 'subsurface' as const,
+                      state: materialAttributesState,
+                      fallback: 'required' as const
+                  })
+              ]
+            : []),
         ...(weighted
             ? (['weighted-accumulation', 'weighted-revealage'] as const).map(role =>
                   Object.freeze({

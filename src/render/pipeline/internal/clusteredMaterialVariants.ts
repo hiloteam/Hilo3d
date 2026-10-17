@@ -83,6 +83,13 @@ export interface PBRMaterialVariant {
 }
 
 export function bucketMaterialIssue(material: PBRMaterial): string | null {
+    if (
+        material.definition.staticFeatures['HAS_SHEEN'] === 1 ||
+        material.definition.staticFeatures['HAS_DIFFUSE_TRANSMISSION'] === 1 ||
+        material.definition.staticFeatures['HAS_SUBSURFACE'] === 1
+    ) {
+        return 'uses MAT1 surface layers (shared clustered direct path required)';
+    }
     if (material.decals !== null)
         return 'uses projected decals (shared clustered direct path required)';
     if (material.isTransparent) return 'must be opaque and unblended';
