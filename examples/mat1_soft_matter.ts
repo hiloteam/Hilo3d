@@ -517,12 +517,13 @@ async function initialize(): Promise<void> {
         range: 7
     }).addTo(stage);
     for (let index = 0; index < 5; index++) {
+        // Translating along the incoming ray preserves the pattern and clears the portrait view.
         new H.Mesh({
             geometry: new H.BoxGeometry({ width: 0.13, height: 1.9, depth: 0.12 }),
             material: brass,
-            x: -3.7 + index * 0.48,
-            y: 8,
-            z: 2.8,
+            x: -9.225 + index * 0.48,
+            y: 17.1,
+            z: 8,
             rotationZ: -28
         }).addTo(stage);
     }
