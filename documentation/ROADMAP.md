@@ -92,6 +92,55 @@ measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before t
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
 
+### MAT1 acceptance, 2026-10-18
+
+Feature source: `f73da7957fdde06e2c5451c2922d43d3860d5f5a` on `codex/mat1-materials`, based on
+updated `dev` commit `e9cc67d9ab0dddfcfc7c05f8a82a564561b793c3`. The reviewed contract is
+[MAT1 surfaces](./MAT1_SURFACES.md). Shared [PBR materials](../src/material/PBRMaterial.ts) and
+[surface GLSL](../src/shader/chunk/pbr_main.frag) implement cloth sheen and thin diffuse
+transmission; [profile diffusion](../src/render/postprocessing/SubsurfaceScattering.ts) supplies the
+portable Forward/Clustered SSS passes.
+
+Executed checks on this change:
+
+| Gate                                       | Result                                                                                                                                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Final four-shard coverage and global merge | **297 files / 2709 tests passed**; statements 84.18%, branches 74.34%, functions 88.92%, lines 85.84%.                                                                                                                                                                          |
+| Renderer architecture and RHI              | Architecture **6 files / 150 tests**; portable RHI **14 files / 224 tests**; native-RHI configuration **3 passed, 1 optional `shader-f16` case skipped** on the software adapter.                                                                                               |
+| Browser matrices                           | `test:webgpu` **33 passed**; complete `test:ui` **263 passed**; `test:visual` **3 passed**, including exact first-frame backend parity.                                                                                                                                         |
+| Physical GPU                               | Complete `test:webgpu:native` **23 passed**. MAT1 Forward/Clustered assert a non-fallback adapter, render 1920×1080, verify pixels/submission and observe teardown errors.                                                                                                      |
+| Affected CI lanes                          | Complete `CI=true HILO3D_UI_GROUP=post-processing npm run test:ui:webgl2:ci` **9 passed**; both MAT1 WebGPU cases under `CI=true` **passed**. UI grouping verifies all **125 WebGL2 cases exactly once**; UI contracts **6 files / 34 tests passed**.                           |
+| Surface/editor/player                      | Surface **2 files / 5 tests**, editor rendering **3 / 25**, editor server **3 / 17**, built Pages editor **2 browser cases**, exported Player **2 browser cases**, all passed.                                                                                                  |
+| Packaging and documentation                | `build`, `editor:build`, `site:build:built`, `test:types`, `api:update` then `api:check`, `docs:check:built`, main/addon package checks, Live2D runtime build and `pack:check` passed. Installed-tarball recipes and asset-worker/WASM pixels/recovery passed on both backends. |
+| Static and protocol checks                 | `typecheck`, `lint:built`, `format:check`, `check:modernity`, `test:skill` and RHI benchmark contracts (**8 files / 83 tests**) passed. Benchmark contracts are not workload performance evidence.                                                                              |
+
+The monolithic `validate` invocation stopped when its long-lived coverage browser lost the RPC
+connection before `HDRLoader.test.ts`; that invocation is **not** a passing validation result. The
+[documented local four-shard protocol](./ENGINEERING.md#唯一验收入口) completed every test and
+enforced the unchanged global coverage thresholds. The remaining release gates completed as separate
+commands. The final coverage includes the actual custom-SRP target regressions and the
+`beforeRender` activation regressions. The 33-case WebGPU and 263-case UI matrices ran earlier in
+this change; the final target guard and fixture-layout correction were followed by the full native
+matrix, complete affected WebGL2 CI group and both MAT1 WebGPU CI cases.
+
+The initial native 1080p checks exposed fractional page-layout screenshot rounding (1081 captured
+rows for a 1080-row canvas). Integer heading spacing fixed the fixture; the unchanged exact-size,
+pixel, submission and lifecycle assertions then passed. The visual command now explicitly selects
+`visual.spec.ts`, preserving all three existing visual cases while avoiding Vitest contract-file
+collection. No failing case was skipped, pixel threshold relaxed, baseline replaced or retry added.
+
+Local evidence remains in `reports/mat1-release-*`, `reports/mat1-native-release-final.log`,
+`reports/mat1-native-release-final/`, `reports/vitest-mat1-release/` and the earlier
+`reports/mat1-gate-*` logs. The original interrupted run is retained at
+`/tmp/hilo-mat1-validate.log`. CI group timings remain under `reports/ui-timings/` and
+`reports/mat1-ci-webgpu-timings/`.
+
+This closes the bounded MAT1 functional implementation and local release-check slice. SSS remains
+opaque/masked, full-viewport and explicitly budgeted; dynamic-probe capture of active SSS content,
+compact GPU Scene MAT1 records and MAT1 ray-contributor BSDFs remain outside the contract. Other
+physical-device matrices, enrolled cross-commit performance/memory budgets and registry publication
+were not executed and are not implied by these results.
+
 ### Rendering acceptance, 2026-10-13
 
 Feature source: `86723c2177e1d9faec52053bfc39ecc20c53e3f5` on `codex/rendering-production`. The
