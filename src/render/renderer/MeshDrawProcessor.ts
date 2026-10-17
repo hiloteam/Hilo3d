@@ -19,6 +19,7 @@ import Shader, {
 import Texture from '../../texture/Texture';
 import BuiltInUniformBlockManager from '../BuiltInUniformBlockManager';
 import type RendererCore from '../RendererCore';
+import type { ShaderOptions } from '../types';
 import type UniformBuffer from '../UniformBuffer';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
 import type { RHIUploadBatch } from '../frame/RHIUploadBatch';
@@ -274,6 +275,53 @@ interface MeshShaderSnapshot {
     readonly shader: Shader;
 }
 
+// A role may use distinct direct/instanced, lighting, output or override variants in one frame.
+// Exact resolved Shader identities already encode that context; bound their residency rather than
+// duplicating the shader compiler's variant key. Custom SRPs also have a bounded number of roles.
+const MAX_MESH_SHADER_ROLE_SLOTS = 16;
+const MAX_MESH_SHADER_VARIANTS_PER_ROLE = 8;
+
+interface MeshShaderRoleSlot {
+    readonly variants: Shader[];
+    lastUsed: number;
+}
+
+interface MeshShaderOwnership {
+    readonly geometry: Geometry;
+    readonly materialDefinition: Material['definition'] | null;
+    readonly geometryOptions: Readonly<ShaderOptions>;
+    geometryRevision: number;
+    geometryOptionValues: readonly unknown[];
+    colorSize: unknown;
+    jointCount: number;
+    unsignedSkinIndices: boolean;
+    morphTopology: number;
+    readonly roles: Map<MaterialPassRole, MeshShaderRoleSlot>;
+    clock: number;
+}
+
+function morphShaderTopology(geometry: Geometry): number {
+    if (!(geometry instanceof MorphGeometry) || geometry.targets === null) return 0;
+    let kinds = 0;
+    let count = 0;
+    for (const name in geometry.targets) {
+        if (!Object.hasOwn(geometry.targets, name)) continue;
+        kinds |= name === 'vertices' ? 1 : name === 'normals' ? 2 : 4;
+        count = geometry.targets[name]?.length ?? 0;
+    }
+    return kinds + Math.min(8, count) * 8;
+}
+
+function sameShaderOptions(left: Readonly<ShaderOptions>, right: Readonly<ShaderOptions>): boolean {
+    for (const key in left) {
+        if (!Object.hasOwn(right, key) || !optionValueEqual(left[key], right[key])) return false;
+    }
+    for (const key in right) {
+        if (!Object.hasOwn(left, key)) return false;
+    }
+    return true;
+}
+
 interface InstanceDrawRecord {
     geometry: Geometry;
     material: Material;
@@ -453,7 +501,8 @@ export class MeshDrawProcessor {
     readonly #textureReferenceCounts = new Map<Texture<unknown>, number>();
     #vertexSourcesByGeometry = new WeakMap<Geometry, Set<GeometryData>>();
     #shaderSnapshots = new WeakMap<Mesh, MeshShaderSnapshot>();
-    #shaderByMesh = new WeakMap<Mesh, Shader>();
+    #shaderByMesh = new WeakMap<Mesh, MeshShaderOwnership>();
+    readonly #meshShaderGeometryOptions: ShaderOptions = {};
     #shaderByShadowOwner = new WeakMap<object, Shader>();
     readonly #shaderReferenceCounts = new Map<Shader, number>();
     readonly #preparedMeshes = new Set<Mesh>();
@@ -884,7 +933,7 @@ export class MeshDrawProcessor {
             const handle = bindingSet.groupHandles[group];
             if (handle !== null && handle !== undefined) this.resourceUses.use(handle);
         }
-        this.trackMeshShader(mesh, shader);
+        this.trackMeshShader(mesh, geometry, shader, role);
         this.trackGeometrySources(geometry, vertexPlan.streams);
         this.trackMeshTextures(mesh, this.requireSampledScratchSources(mesh, sampledResources));
         this.#preparedMeshes.add(mesh);
@@ -1526,7 +1575,7 @@ export class MeshDrawProcessor {
         if (instanceStream !== null) this.trackGeometrySource(geometry, instanceStream.source);
         const sampledSources = this.requireSampledScratchSources(owner, sampledResources);
         for (const mesh of meshes) {
-            this.trackMeshShader(mesh, shader);
+            this.trackMeshShader(mesh, geometry, shader, role);
             this.trackMeshTextures(mesh, sampledSources);
             this.#preparedMeshes.add(mesh);
         }
@@ -2610,23 +2659,150 @@ export class MeshDrawProcessor {
         return context;
     }
 
-    private trackMeshShader(mesh: Mesh, shader: Shader): void {
-        const previous = this.#shaderByMesh.get(mesh);
-        if (previous === shader) return;
-        if (previous !== undefined) this.releaseShaderReference(previous);
+    private trackMeshShader(
+        mesh: Mesh,
+        geometry: Geometry,
+        shader: Shader,
+        role: MaterialPassRole
+    ): void {
+        const definition = mesh.material?.definition ?? null;
+        let ownership = this.#shaderByMesh.get(mesh);
+        const colorSize = optionalColorSize(geometry.colors);
+        const jointCount = mesh instanceof SkinnedMesh ? (mesh.skeleton?.jointCount ?? 0) : 0;
+        const indices = geometry.skinIndices;
+        const unsignedSkinIndices =
+            indices !== null &&
+            !indices.normalized &&
+            (indices.data instanceof Uint8Array ||
+                indices.data instanceof Uint8ClampedArray ||
+                indices.data instanceof Uint16Array ||
+                indices.data instanceof Uint32Array);
+        const morphTopology = morphShaderTopology(geometry);
+        const geometryFieldsMatch =
+            ownership?.geometry === geometry &&
+            optionFieldsMatch(
+                geometry,
+                SHADER_GEOMETRY_OPTION_FIELDS,
+                ownership.geometryOptionValues
+            );
+        const refreshGeometry =
+            ownership === undefined ||
+            !geometryFieldsMatch ||
+            ownership.geometryRevision !== geometry.revision ||
+            !optionValueEqual(ownership.colorSize, colorSize) ||
+            ownership.jointCount !== jointCount ||
+            ownership.unsignedSkinIndices !== unsignedSkinIndices ||
+            ownership.morphTopology !== morphTopology;
+        let options: Readonly<ShaderOptions> =
+            ownership?.geometryOptions ?? this.#meshShaderGeometryOptions;
+        if (refreshGeometry) {
+            const scratch = this.#meshShaderGeometryOptions;
+            for (const name in scratch) Reflect.deleteProperty(scratch, name);
+            mesh.getRenderOption(scratch);
+            options = scratch;
+        }
+        const topologyChanged =
+            ownership !== undefined &&
+            (ownership.geometry !== geometry ||
+                ownership.materialDefinition !== definition ||
+                !sameShaderOptions(ownership.geometryOptions, options));
+        if (ownership !== undefined && !topologyChanged && refreshGeometry) {
+            ownership.geometryRevision = geometry.revision;
+            if (!geometryFieldsMatch)
+                ownership.geometryOptionValues = snapshotOptionFields(
+                    geometry,
+                    SHADER_GEOMETRY_OPTION_FIELDS
+                );
+            ownership.colorSize = colorSize;
+            ownership.jointCount = jointCount;
+            ownership.unsignedSkinIndices = unsignedSkinIndices;
+            ownership.morphTopology = morphTopology;
+        }
+        let slot = topologyChanged ? undefined : ownership?.roles.get(role);
+        if (slot !== undefined) {
+            const variants = slot.variants;
+            for (let index = 0; index < variants.length; index++) {
+                if (variants[index] !== shader) continue;
+                // Move the hit to MRU without splice(), an iterator or an allocation per draw.
+                for (let next = index + 1; next < variants.length; next++) {
+                    const following = variants[next];
+                    if (following !== undefined) variants[next - 1] = following;
+                }
+                variants[variants.length - 1] = shader;
+                if (ownership !== undefined) slot.lastUsed = ++ownership.clock;
+                return;
+            }
+        }
+
+        // Retain first: a topology replacement can resolve the exact same shader as an old slot.
+        // FrameResourceUseTracker independently retains prepared pipelines until submission.
         const count = this.#shaderReferenceCounts.get(shader) ?? 0;
         if (count === Number.MAX_SAFE_INTEGER) {
             throw new RangeError('Mesh shader reference count is exhausted');
         }
         this.#shaderReferenceCounts.set(shader, count + 1);
-        this.#shaderByMesh.set(mesh, shader);
+        if (topologyChanged) {
+            this.releaseMeshShader(mesh);
+            ownership = undefined;
+        }
+        if (ownership === undefined) {
+            ownership = {
+                geometry,
+                materialDefinition: definition,
+                geometryOptions: Object.freeze({ ...options }),
+                geometryRevision: geometry.revision,
+                geometryOptionValues: snapshotOptionFields(geometry, SHADER_GEOMETRY_OPTION_FIELDS),
+                colorSize,
+                jointCount,
+                unsignedSkinIndices,
+                morphTopology,
+                roles: new Map(),
+                clock: 0
+            };
+            this.#shaderByMesh.set(mesh, ownership);
+        }
+        if (slot === undefined) {
+            if (ownership.roles.size === MAX_MESH_SHADER_ROLE_SLOTS) {
+                let oldestRole: MaterialPassRole | undefined;
+                let oldestUse = Infinity;
+                for (const [candidateRole, candidate] of ownership.roles) {
+                    if (oldestRole === undefined || candidate.lastUsed < oldestUse) {
+                        oldestRole = candidateRole;
+                        oldestUse = candidate.lastUsed;
+                    }
+                }
+                if (oldestRole !== undefined) {
+                    const oldest = ownership.roles.get(oldestRole);
+                    if (oldest !== undefined)
+                        for (const previous of oldest.variants)
+                            this.releaseShaderReference(previous);
+                    ownership.roles.delete(oldestRole);
+                }
+            }
+            slot = { variants: [], lastUsed: 0 };
+            ownership.roles.set(role, slot);
+        }
+        const variants = slot.variants;
+        if (variants.length === MAX_MESH_SHADER_VARIANTS_PER_ROLE) {
+            const previous = variants[0];
+            for (let index = 1; index < variants.length; index++) {
+                const next = variants[index];
+                if (next !== undefined) variants[index - 1] = next;
+            }
+            variants[variants.length - 1] = shader;
+            if (previous !== undefined) this.releaseShaderReference(previous);
+        } else {
+            variants.push(shader);
+        }
+        slot.lastUsed = ++ownership.clock;
     }
 
     private releaseMeshShader(mesh: Mesh): void {
-        const shader = this.#shaderByMesh.get(mesh);
-        if (shader === undefined) return;
+        const ownership = this.#shaderByMesh.get(mesh);
+        if (ownership === undefined) return;
         this.#shaderByMesh.delete(mesh);
-        this.releaseShaderReference(shader);
+        for (const slot of ownership.roles.values())
+            for (const shader of slot.variants) this.releaseShaderReference(shader);
     }
 
     private trackShadowShader(owner: object, shader: Shader): void {

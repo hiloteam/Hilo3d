@@ -1126,6 +1126,13 @@ prepared-draw owner detaches. Canonical vertex aliases and buffers shared across
 remain valid; ownerless compute/fullscreen accesses retain their explicit lifetime. Native
 allocations still retire behind the last submission fence.
 
+Prepared mesh draws retain bounded Shader ownership per semantic role, including the role's distinct
+rendering-context variants. Depth, attributes, color, subsurface and motion passes do not evict one
+another's reusable modules or pipelines. Material data changes preserve ownership; source-definition
+or geometry shader-topology changes replace it, and mesh detachment releases all slots. New
+references are retained before old ones are retired. The shared ownership model applies to both
+backends; native program deduplication is not a substitute for this lifetime contract.
+
 WebGL2 detects native context loss at frame/error boundaries even before the browser dispatches
 `webglcontextlost`. Loss invalidation is idempotent, abort cleanup retains the lost queue state, and
 the eventual DOM event is still prevented so the browser permits restoration. The shared renderer

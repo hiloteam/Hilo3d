@@ -242,6 +242,12 @@ snapshot 包含 role 以及真正影响 source 的 geometry/light/fog/shadow 维
 light、fog 或 receive-shadow 变体；`subsurface` 显式复用光照与阴影。结构化 collision-safe
 key 和有界 cache 继续作为 Shader cache 合同。
 
+Mesh 的 Shader 所有权按语义 role 分槽；每个 role 最多保留八个已解析的上下文 variant，每个 mesh 最多保留十六个 role 槽。这样同一模型的 depth、attributes、color、subsurface 和 motion
+pass 不会互相逐出仍需复用的编译结果，同 role 的直接/实例绘制及多视图变体也可共存。普通材质数值、相机或灯光数据变化不清空这些槽；源 MaterialDefinition、geometry
+identity 或真正影响 shader 的 geometry
+topology 变化会替换旧所有权。替换时先保留新引用，再释放旧集合；mesh
+detach 释放全部槽，在途 pipeline 仍由 frame resource tracker 与 submission fence 保护。
+
 ## 8. 加载器与运行时构造
 
 glTF loader 在创建 PBR Definition 前合并
