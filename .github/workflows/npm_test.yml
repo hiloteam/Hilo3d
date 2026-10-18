@@ -112,6 +112,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: vitest-coverage-${{ matrix.shard }}
+          include-hidden-files: true
           path: |
             reports/vitest
             .vitest-attachments
@@ -207,6 +208,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rhi-failure-evidence
+          include-hidden-files: true
           path: .vitest-attachments
           if-no-files-found: ignore
           retention-days: 14

@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
+import { hostedUIArguments, hostedUISpecFiles } from '../../scripts/playwright-ci';
 import {
     createExampleCatalog,
     EXAMPLE_CATEGORIES,
@@ -535,7 +536,10 @@ describe('example release matrix contract', () => {
             ['test:ui:webgl2:ci', ['webgl2']],
             ['test:ui:webgpu', ['webgpu']]
         ] as const) {
-            const script = packageJson.scripts?.[scriptName];
+            const script =
+                scriptName === 'test:ui:webgl2:ci'
+                    ? hostedUIArguments().join(' ')
+                    : packageJson.scripts?.[scriptName];
             if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
             expect(script, scriptName).toContain('test/ui/live2d.spec.ts');
             expect(script, scriptName).toContain('--project=chromium');
@@ -598,7 +602,10 @@ describe('example release matrix contract', () => {
             ['test:ui:webgl2:ci', ['webgl2']],
             ['test:ui:webgpu', ['webgpu']]
         ] as const) {
-            const script = packageJson.scripts?.[scriptName];
+            const script =
+                scriptName === 'test:ui:webgl2:ci'
+                    ? hostedUIArguments().join(' ')
+                    : packageJson.scripts?.[scriptName];
             if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
             expect(script, scriptName).toContain('test/ui/physics.spec.ts');
             expect(script, scriptName).toContain('--project=chromium');
@@ -625,7 +632,7 @@ describe('example release matrix contract', () => {
             'npm run test:webgpu && npm run test:ui && npm run test:visual'
         );
         expect(packageJson.scripts?.['test:browser:ci']).toBe(
-            'npm run test:ui:webgl2 && npm run test:visual:webgl2'
+            'npm run test:ui:contract && npm run test:ui:webgl2:ci'
         );
         expect(packageJson.scripts?.['test:webgpu:native']).toContain(
             'test/ui/clustered-forward-plus-lumen.spec.ts'
@@ -633,9 +640,7 @@ describe('example release matrix contract', () => {
         expect(packageJson.scripts?.['test:webgpu']).not.toContain(
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
-        expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
-            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts test/ui/editor-components.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
-        );
+        expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe('jiti scripts/run-ui-ci.ts');
         for (const script of [
             'test:ui',
             'test:ui:webgl2',
@@ -643,12 +648,12 @@ describe('example release matrix contract', () => {
             'test:ui:webgpu',
             'test:webgpu:native'
         ]) {
-            expect(packageJson.scripts?.[script], script).toContain(
-                'test/ui/mat1-materials.spec.ts'
-            );
-            expect(packageJson.scripts?.[script], script).toContain(
-                'test/ui/mat1-soft-matter.spec.ts'
-            );
+            const command =
+                script === 'test:ui:webgl2:ci'
+                    ? hostedUISpecFiles.join(' ')
+                    : packageJson.scripts?.[script];
+            expect(command, script).toContain('test/ui/mat1-materials.spec.ts');
+            expect(command, script).toContain('test/ui/mat1-soft-matter.spec.ts');
         }
         expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
             'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'

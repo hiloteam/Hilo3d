@@ -9,6 +9,8 @@ export default mergeConfig(
             include: [
                 'test/ui/test-frame-control.contract.test.ts',
                 'test/ui/stable-capture.contract.test.ts',
+                'test/ui/ci-selection.contract.test.ts',
+                'test/ui/browser-test-capabilities.contract.test.ts',
                 'test/ui/example-paths.contract.ts',
                 'test/ui/physics-scenes.contract.test.ts',
                 'test/ui/character-scene.contract.test.ts',

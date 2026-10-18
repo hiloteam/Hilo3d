@@ -1,8 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 import { captureStableFrame } from './stable-capture';
 import type { TestFrameControl } from '../../examples/shared/test-frame-control';
-import { createExampleCatalog } from '../../examples/shared/catalog';
+import { createExampleCatalog, type ExampleCatalogEntry } from '../../examples/shared/catalog';
 import {
     completionContractForExample,
     exampleCases,
@@ -1079,8 +1079,25 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
     });
 }
 
+async function expectGalleryEntries(
+    results: Locator,
+    entries: readonly ExampleCatalogEntry[]
+): Promise<void> {
+    // Compare membership as well as counts: adding a reviewed entry must not require a second
+    // inventory here, and a duplicate, omitted or incorrectly filtered card must still fail.
+    await expect
+        .poll(() =>
+            results.evaluateAll(items => items.map(item => item.getAttribute('data-example-id')))
+        )
+        .toEqual(entries.map(entry => entry.id));
+}
+
 for (const backend of ['webgl2', 'webgpu'] as const) {
     test(`gallery filters survive reload and backend changes @${backend}`, async ({ page }) => {
+        const catalog = createExampleCatalog(examplePaths);
+        const highlights = catalog.filter(entry => entry.featured);
+        const twoDimensional = catalog.filter(entry => entry.category === '2d');
+        const highlightedTwoDimensional = twoDimensional.filter(entry => entry.featured);
         // This test exercises the gallery's DOM/URL state, including an opposite-backend switch.
         // Keep that switch out of native GPU work in the hosted WebGL2 lane. Actual iframe draws
         // and backend health remain covered by the gallery integration and page release gates.
@@ -1093,10 +1110,15 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await page.goto(`list.html?backend=${backend}`);
         const topics = page.locator('#categorySelect');
         const results = page.locator('.exampleButton');
-        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (3)');
-        await expect(page.locator('#exampleCount')).toHaveText('27 of 27 highlights');
+        await expect(topics.locator('option[value="2d"]')).toHaveText(
+            `2D games (${String(highlightedTwoDimensional.length)})`
+        );
+        await expectGalleryEntries(results, highlights);
+        await expect(page.locator('#exampleCount')).toHaveText(
+            `${String(highlights.length)} of ${String(highlights.length)} highlights`
+        );
         await topics.selectOption('2d');
-        await expect(results).toHaveCount(3);
+        await expectGalleryEntries(results, highlightedTwoDimensional);
         await page.locator('#exampleSearch').fill('Sprite Batching');
         await expect(results).toHaveCount(0);
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (0)');
@@ -1104,11 +1126,15 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
         await expect(results).toHaveCount(1);
         await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (1)');
         await page.locator('#exampleSearch').fill('');
-        await expect(results).toHaveCount(6);
-        await expect(topics.locator('option[value="2d"]')).toHaveText('2D games (6)');
+        await expectGalleryEntries(results, twoDimensional);
+        await expect(topics.locator('option[value="2d"]')).toHaveText(
+            `2D games (${String(twoDimensional.length)})`
+        );
         await page.locator('#featuredMode').click();
-        await expect(results).toHaveCount(3);
-        await expect(page.locator('#exampleCount')).toHaveText('3 of 27 highlights');
+        await expectGalleryEntries(results, highlightedTwoDimensional);
+        await expect(page.locator('#exampleCount')).toHaveText(
+            `${String(highlightedTwoDimensional.length)} of ${String(highlights.length)} highlights`
+        );
         await page.locator('#allMode').click();
         await page.locator('#categorySelect').selectOption('rendering');
         await page.locator('#exampleSearch').fill('texture depth');

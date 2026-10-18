@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+    assertHostedUIInventory,
+    assertSeparateUIInventory,
+    hostedUIArguments,
+    hostedUISpecFiles,
+    separateUISpecs
+} from './playwright-ci';
 import { uiGroups, uiGroupForTest } from './playwright-ui-groups';
 
 interface ListedSuite {
@@ -7,36 +15,43 @@ interface ListedSuite {
     specs?: { id: string; title: string; file: string }[];
 }
 
-const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
-    scripts: Record<string, string>;
-};
-const command = packageJson.scripts['test:ui:webgl2:ci'];
-if (!command) throw new Error('Missing hosted UI command');
-const files = [...command.matchAll(/test\/ui\/[\w./-]+\.spec\.ts/gu)].map(match => match[0]);
-if (files.length === 0) throw new Error('Hosted UI command has no test files');
+function discoverSpecs(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const path = join(directory, entry.name);
+        return entry.isDirectory()
+            ? discoverSpecs(path)
+            : entry.name.endsWith('.spec.ts')
+              ? [path]
+              : [];
+    });
+}
 
-function list(group?: string): Map<string, { title: string; file: string }> {
-    const env = { ...process.env };
+function list(
+    files: readonly string[],
+    group?: string
+): Map<string, { id: string; title: string; file: string }> {
+    return listArguments(
+        ['test', ...files, ...hostedUIArguments().slice(1 + hostedUISpecFiles.length)],
+        group
+    );
+}
+
+function listArguments(
+    args: readonly string[],
+    group?: string
+): Map<string, { id: string; title: string; file: string }> {
+    const env: NodeJS.ProcessEnv = { ...process.env, CI: 'true' };
     delete env['HILO3D_UI_GROUP'];
     if (group) env['HILO3D_UI_GROUP'] = group;
     const result = spawnSync(
         process.execPath,
-        [
-            'node_modules/playwright/cli.js',
-            'test',
-            ...files,
-            '--project=chromium',
-            '--grep',
-            '@webgl2|through webgl2',
-            '--list',
-            '--reporter=json'
-        ],
+        ['node_modules/playwright/cli.js', ...args, '--list', '--reporter=json'],
         { env, encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 }
     );
     if (result.status !== 0)
         throw new Error(`UI discovery failed: ${result.stderr}`, { cause: result.error });
     const report = JSON.parse(result.stdout) as { suites: ListedSuite[] };
-    const tests = new Map<string, { title: string; file: string }>();
+    const tests = new Map<string, { id: string; title: string; file: string }>();
     function visit(suites: ListedSuite[]): void {
         for (const suite of suites) {
             for (const spec of suite.specs ?? []) {
@@ -51,7 +66,22 @@ function list(group?: string): Map<string, { title: string; file: string }> {
     return tests;
 }
 
-const all = list();
+const all = list(hostedUISpecFiles);
+const discovered = [...list(discoverSpecs('test/ui')).values()];
+assertHostedUIInventory(discovered, [...all.values()]);
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+    scripts: Record<string, string>;
+};
+const owners = new Map<string, { id: string; title: string; file: string }[]>();
+for (const { script } of Object.values(separateUISpecs)) {
+    const command = packageJson.scripts[script];
+    if (!command?.startsWith('playwright test ') || /["';&|]/u.test(command))
+        throw new Error(
+            `Separate UI lane must have an auditable direct Playwright command: ${script}`
+        );
+    owners.set(script, [...listArguments(command.split(/\s+/u).slice(1)).values()]);
+}
+assertSeparateUIInventory(discovered, owners);
 const workflow = readFileSync('.github/workflows/npm_test.yml', 'utf8');
 const matrix = /^\s+group: \[([^\]]+)\]/mu
     .exec(workflow)?.[1]
@@ -62,7 +92,7 @@ if (!matrix || [...matrix].sort().join(',') !== [...uiGroups].sort().join(',')) 
 }
 const scheduled = new Set<string>();
 for (const group of uiGroups) {
-    const tests = list(group);
+    const tests = list(hostedUISpecFiles, group);
     for (const [id, test] of tests) {
         if (!all.has(id) || scheduled.has(id) || uiGroupForTest(test.file, test.title) !== group) {
             throw new Error(`Unexpected or overlapping UI assignment: ${group}: ${test.title}`);

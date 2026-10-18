@@ -10,6 +10,7 @@ import {
     type BrowserContext,
     type Locator,
     type Page,
+    type Request,
     type TestInfo
 } from '@playwright/test';
 import { PNG } from 'pngjs';
@@ -726,27 +727,21 @@ async function renameScene(page: Page, name: string): Promise<void> {
 
 interface DecodeGate {
     entered: boolean;
-    transportComplete: boolean;
-    pendingTransports: number;
     width: number;
     height: number;
     release(): void;
-    restore(): void;
 }
 type GatedWindow = Window & { __HILO_EDITOR_DECODE_GATE__?: DecodeGate };
 
-async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<void> {
-    await page.evaluate(url => {
+async function holdRealBitmapDecoder(page: Page): Promise<void> {
+    await page.evaluate(() => {
         const original = window.createImageBitmap.bind(window);
-        const originalFetch = window.fetch.bind(window);
         let unlock: () => void = () => undefined;
         const pending = new Promise<void>(resolveGate => {
             unlock = resolveGate;
         });
         const gate: DecodeGate = {
             entered: false,
-            transportComplete: false,
-            pendingTransports: 0,
             width: 0,
             height: 0,
             release(): void {
@@ -756,44 +751,9 @@ async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<v
                     writable: true,
                     value: original
                 });
-            },
-            restore(): void {
-                this.release();
-                Object.defineProperty(window, 'fetch', {
-                    configurable: true,
-                    writable: true,
-                    value: originalFetch
-                });
             }
         };
         (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__ = gate;
-        // Receive this real server response completely before the application gets its body.
-        // The decode race must not keep the native HTTP request alive until disconnect.
-        Object.defineProperty(window, 'fetch', {
-            configurable: true,
-            writable: true,
-            value: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-                const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
-                const requestURL =
-                    input instanceof Request
-                        ? input.url
-                        : new URL(String(input), location.href).href;
-                if (requestURL !== url || method !== 'GET') return originalFetch(input, init);
-                gate.pendingTransports++;
-                try {
-                    const response = await originalFetch(input, init);
-                    const bytes = await response.arrayBuffer();
-                    gate.transportComplete = true;
-                    return new Response(bytes, {
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: response.headers
-                    });
-                } finally {
-                    gate.pendingTransports--;
-                }
-            }
-        });
         Object.defineProperty(window, 'createImageBitmap', {
             configurable: true,
             writable: true,
@@ -810,7 +770,7 @@ async function holdRealBitmapDecoder(page: Page, snapshotURL: string): Promise<v
                 return bitmap;
             }
         });
-    }, snapshotURL);
+    });
 }
 
 test('editor collaboration uses CLI capabilities and retains edits made during incoming asset decoding @webgl2', async ({
@@ -820,6 +780,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
     const service = await collaborationCLI();
     const contexts: BrowserContext[] = [];
     const monitors: PageFailureMonitor[] = [];
+    const snapshotRequests = new Map<Page, Set<Request>>();
     let gatePage: Page | undefined;
     let roomId = '';
     try {
@@ -840,39 +801,21 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         for (const page of pages) {
             await installRenderHealthProbe(page);
             monitors.push(await installPageFailureMonitor(page));
-            // Join, reconnect and conflict handling can all fetch snapshots. Complete every
-            // actual room response before application decoding can retain its stream reader.
-            await page.addInitScript(serverURL => {
-                const originalFetch = window.fetch.bind(window);
-                const origin = new URL(serverURL).origin;
-                Object.defineProperty(window, 'fetch', {
-                    configurable: true,
-                    writable: true,
-                    value: async (
-                        input: RequestInfo | URL,
-                        init?: RequestInit
-                    ): Promise<Response> => {
-                        const method =
-                            init?.method ?? (input instanceof Request ? input.method : 'GET');
-                        const url = new URL(
-                            input instanceof Request ? input.url : String(input),
-                            location.href
-                        );
-                        const response = await originalFetch(input, init);
-                        if (
-                            method !== 'GET' ||
-                            url.origin !== origin ||
-                            !/^\/rooms\/room-[a-f0-9-]+$/u.test(url.pathname)
-                        )
-                            return response;
-                        return new Response(await response.arrayBuffer(), {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: response.headers
-                        });
-                    }
-                });
-            }, service.url);
+            // Observe the real transport without replacing fetch or Response. The production
+            // bounded reader must complete native requests through join, reconnect and conflict.
+            const pending = new Set<Request>();
+            snapshotRequests.set(page, pending);
+            page.on('request', request => {
+                const url = new URL(request.url());
+                if (
+                    request.method() === 'GET' &&
+                    url.origin === service.url &&
+                    /^\/rooms\/room-[a-f0-9-]+$/u.test(url.pathname)
+                )
+                    pending.add(request);
+            });
+            page.on('requestfinished', request => pending.delete(request));
+            page.on('requestfailed', request => pending.delete(request));
         }
         for (const page of pages) {
             await page.goto(`${testServerOrigin}/editor/index.html?backend=webgl2&test=1`);
@@ -925,6 +868,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await expect(second.locator('#project-name')).toHaveText('Shared scene version two');
         await closeCollaboration(first);
         await openCollaboration(second);
+        await expect.poll(() => snapshotRequests.get(second)?.size).toBe(0);
         await second.getByRole('button', { name: 'Disconnect', exact: true }).click();
         await second.getByLabel('Room capability token', { exact: true }).fill(editorToken);
         await second
@@ -935,7 +879,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
 
         // Hold only the real decoder's completion. The remote snapshot remains pending while the
         // second editor makes a genuine local edit, then the original codec produces real pixels.
-        await holdRealBitmapDecoder(second, `${service.url}/rooms/${roomId}`);
+        await holdRealBitmapDecoder(second);
         await first.getByRole('button', { name: 'Assets', exact: true }).click();
         await first.getByLabel('Import asset files', { exact: true }).setInputFiles({
             name: 'Remote Direction.png',
@@ -963,13 +907,9 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         expect(
             await second.evaluate(() => {
                 const gate = (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__;
-                return {
-                    transportComplete: gate?.transportComplete,
-                    width: gate?.width,
-                    height: gate?.height
-                };
+                return { width: gate?.width, height: gate?.height };
             })
-        ).toEqual({ transportComplete: true, width: 4, height: 4 });
+        ).toEqual({ width: 4, height: 4 });
         await renameScene(second, 'Late local draft during decode');
         await second.evaluate(() => {
             (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();
@@ -983,13 +923,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
         await expect(second.locator('.collaboration-conflict')).toBeVisible();
         // Reconciliation may receive another snapshot after the deliberately induced conflict.
         // Finish those real transports before the user action intentionally cancels the session.
-        await expect
-            .poll(() =>
-                second.evaluate(
-                    () => (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.pendingTransports
-                )
-            )
-            .toBe(0);
+        await expect.poll(() => snapshotRequests.get(second)?.size).toBe(0);
         await second
             .getByRole('button', { name: 'Keep local copy & disconnect', exact: true })
             .click();
@@ -1027,6 +961,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
             expect(saved).not.toContain(viewerToken);
             expect(saved).not.toContain(service.adminToken);
         }
+        await expect.poll(() => snapshotRequests.get(first)?.size).toBe(0);
         await first.getByRole('button', { name: 'Disconnect', exact: true }).click();
         await closeCollaboration(first);
         for (const page of pages) {
@@ -1066,7 +1001,7 @@ test('editor collaboration uses CLI capabilities and retains edits made during i
     } finally {
         await gatePage
             ?.evaluate(() => {
-                (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.restore();
+                (window as GatedWindow).__HILO_EDITOR_DECODE_GATE__?.release();
             })
             .catch(() => undefined);
         await Promise.allSettled(monitors.map(monitor => monitor.dispose()));
