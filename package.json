@@ -76,7 +76,7 @@
     "test:visual": "playwright test test/ui/visual.spec.ts --project=chromium --grep @visual",
     "test:visual:webgl2": "playwright test test/ui/visual.spec.ts --project=chromium --grep \"through webgl2\"",
     "test:browser": "npm run test:webgpu && npm run test:ui && npm run test:visual",
-    "test:browser:ci": "npm run test:ui:contract && npm run test:ui:webgl2:ci",
+    "test:browser:ci": "npm run test:ui:webgl2:ci",
     "test:types": "tsc -p test/types/tsconfig.bundler.json && tsc -p test/types/tsconfig.nodenext.json",
     "test:package": "npm run build && npm run test:package:built",
     "test:package:built": "publint && attw --pack . --profile esm-only && jiti scripts/test-package.ts",

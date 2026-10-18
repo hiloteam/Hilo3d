@@ -631,9 +631,7 @@ describe('example release matrix contract', () => {
         expect(packageJson.scripts?.['test:browser']).toBe(
             'npm run test:webgpu && npm run test:ui && npm run test:visual'
         );
-        expect(packageJson.scripts?.['test:browser:ci']).toBe(
-            'npm run test:ui:contract && npm run test:ui:webgl2:ci'
-        );
+        expect(packageJson.scripts?.['test:browser:ci']).toBe('npm run test:ui:webgl2:ci');
         expect(packageJson.scripts?.['test:webgpu:native']).toContain(
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );

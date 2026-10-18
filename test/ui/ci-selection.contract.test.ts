@@ -10,6 +10,7 @@ import {
     parseUIInvocation,
     preserveUIBlob,
     resetUIBlob,
+    runUIAcceptance,
     separateUISpecs,
     type UITestInventoryEntry
 } from '../../scripts/playwright-ci';
@@ -25,6 +26,113 @@ const separate: UITestInventoryEntry[] = Object.keys(separateUISpecs).map(file =
     title: `${file} through webgl2`
 }));
 const discovered = [...scheduled, ...separate];
+
+describe('UI acceptance preflight ordering', () => {
+    it('blocks all GPU work when independent discovery finds an unscheduled new case', () => {
+        const phases: string[] = [];
+        const exitCode = runUIAcceptance(
+            parseUIInvocation([], {}, () => []),
+            arguments_ => {
+                phases.push(arguments_[0] ?? 'missing entrypoint');
+                if (arguments_.includes('scripts/check-ui-groups.ts')) {
+                    try {
+                        assertHostedUIInventory(
+                            [
+                                ...discovered,
+                                { id: 'new', file: 'new.spec.ts', title: 'new @webgl2' }
+                            ],
+                            scheduled
+                        );
+                    } catch {
+                        return 1;
+                    }
+                }
+                return 0;
+            },
+            group => {
+                phases.push(`GPU ${group}`);
+                return 0;
+            }
+        );
+        expect(exitCode).toBe(1);
+        expect(phases).toEqual([
+            'node_modules/vitest/vitest.mjs',
+            'node_modules/jiti/lib/jiti-cli.mjs'
+        ]);
+    });
+
+    it('fails immediately on Node contract errors and does not execute discovery or GPU groups', () => {
+        const phases: string[] = [];
+        expect(
+            runUIAcceptance(
+                parseUIInvocation([], {}, () => []),
+                arguments_ => {
+                    phases.push(arguments_[0] ?? 'missing entrypoint');
+                    return 9;
+                },
+                group => {
+                    phases.push(group);
+                    return 0;
+                }
+            )
+        ).toBe(9);
+        expect(phases).toEqual(['node_modules/vitest/vitest.mjs']);
+    });
+
+    it('runs both audits before the selected groups and stops after the first failing group', () => {
+        const phases: string[] = [];
+        expect(
+            runUIAcceptance(
+                parseUIInvocation([], {}, () => []),
+                arguments_ => {
+                    phases.push(arguments_[0] ?? 'missing entrypoint');
+                    return 0;
+                },
+                group => {
+                    phases.push(group);
+                    return group === 'catalog-scenes' ? 3 : 0;
+                }
+            )
+        ).toBe(3);
+        expect(phases).toEqual([
+            'node_modules/vitest/vitest.mjs',
+            'node_modules/jiti/lib/jiti-cli.mjs',
+            'catalog',
+            'catalog-scenes'
+        ]);
+    });
+
+    it('keeps plan-only inspection cheap while still auditing a real invocation with no affected GPU groups', () => {
+        const phases: string[] = [];
+        const preflight = (arguments_: readonly string[]): number => {
+            phases.push(arguments_[0] ?? 'missing entrypoint');
+            return 0;
+        };
+        const group = (): number => {
+            phases.push('GPU');
+            return 0;
+        };
+        expect(
+            runUIAcceptance(
+                parseUIInvocation(['--plan'], {}, () => []),
+                preflight,
+                group
+            )
+        ).toBe(0);
+        expect(phases).toEqual([]);
+        expect(
+            runUIAcceptance(
+                parseUIInvocation(['--affected=HEAD'], {}, () => ['documentation/ENGINEERING.md']),
+                preflight,
+                group
+            )
+        ).toBe(0);
+        expect(phases).toEqual([
+            'node_modules/vitest/vitest.mjs',
+            'node_modules/jiti/lib/jiti-cli.mjs'
+        ]);
+    });
+});
 
 describe('hosted UI discovery and reproduction', () => {
     it('preserves earlier group blobs when the next Playwright run clears its output directory', () => {

@@ -7,7 +7,8 @@ import {
     hostedUIArguments,
     parseUIInvocation,
     preserveUIBlob,
-    resetUIBlob
+    resetUIBlob,
+    runUIAcceptance
 } from './playwright-ci';
 
 function git(args: string[]): string {
@@ -52,7 +53,16 @@ if (!invocation.plan) {
         ? []
         : ['--reporter=line,blob,./scripts/playwright-timing-reporter.ts'];
     const baseline = sourceState();
-    for (const group of invocation.groups) {
+    const preflight = (args: readonly string[]): number => {
+        console.info(`\nAuditing UI contracts: ${args.join(' ')}`);
+        const result = spawnSync(process.execPath, args, {
+            env: { ...process.env, CI: 'true' },
+            stdio: 'inherit'
+        });
+        if (result.error) console.error(result.error.message);
+        return result.status ?? 1;
+    };
+    process.exitCode = runUIAcceptance(invocation, preflight, group => {
         console.info(`\nRunning complete ${group} group with CI=true and a fresh server.`);
         const args = [...hostedUIArguments(), ...reporter, ...invocation.arguments];
         const before = sourceState();
@@ -84,8 +94,7 @@ if (!invocation.plan) {
                 )
             );
             console.error('Source changed between groups; rerun the complete selection.');
-            process.exitCode = 1;
-            break;
+            return 1;
         }
         resetUIBlob(group);
         writeFileSync(path, JSON.stringify({ ...receipt, status: 'running' }, null, 2));
@@ -120,8 +129,8 @@ if (!invocation.plan) {
                     'Source changed during the run; this result cannot validate the current checkout.'
                 );
             if (result.error) console.error(result.error.message);
-            process.exitCode = exitCode || 1;
-            break;
+            return exitCode || 1;
         }
-    }
+        return 0;
+    });
 }

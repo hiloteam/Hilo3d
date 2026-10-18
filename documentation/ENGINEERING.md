@@ -475,7 +475,10 @@ CI 的正确性证据分开。
 本地和 hosted UI 共用 `scripts/playwright-ci.ts` 的清单与 `scripts/run-ui-ci.ts`
 入口。`npm run test:ui:webgl2:ci` 自行设置 `CI=true`，使用新的 Vite 服务、完整 Chromium
 compositor、单 worker、零重试及线上相同的截图/视频配置；未指定组时串行运行六个完整组。
-`test:browser:ci` 也调用该入口，不再调用另一份选择范围和环境不同的命令。
+`test:browser:ci`
+也调用该入口，不再调用另一份选择范围和环境不同的命令。每次实际运行（包括显式单组）先执行 Node
+UI 合同和独立目录发现；任一失败都会阻止全部 GPU 组。`--plan`
+只预览选择，不启动测试，也不是通过记录。
 
 提交前先更新目标分支，再按当前分支和未提交变更选择受影响的完整组：
 

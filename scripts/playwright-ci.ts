@@ -168,6 +168,27 @@ export interface UIInvocation {
     readonly changedPaths?: readonly string[];
 }
 
+/** Every real acceptance invocation audits coverage before it can launch any GPU group. */
+export function runUIAcceptance(
+    invocation: UIInvocation,
+    runPreflight: (arguments_: readonly string[]) => number,
+    runGroup: (group: UIGroup) => number
+): number {
+    if (invocation.plan) return 0;
+    for (const arguments_ of [
+        ['node_modules/vitest/vitest.mjs', 'run', '--config', 'test/ui/vitest-contract.config.ts'],
+        ['node_modules/jiti/lib/jiti-cli.mjs', 'scripts/check-ui-groups.ts']
+    ]) {
+        const exitCode = runPreflight(arguments_);
+        if (exitCode !== 0) return exitCode;
+    }
+    for (const group of invocation.groups) {
+        const exitCode = runGroup(group);
+        if (exitCode !== 0) return exitCode;
+    }
+    return 0;
+}
+
 export function parseUIInvocation(
     args: readonly string[],
     environment: NodeJS.ProcessEnv,
