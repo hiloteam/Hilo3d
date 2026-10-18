@@ -34,6 +34,8 @@ process.env['no_proxy'] = noProxy;
 export default defineConfig({
     ...uiGroupFilter(process.env['HILO3D_UI_GROUP']),
     testDir: './test/ui',
+    // Vitest contracts share this directory and must never be loaded by Playwright discovery.
+    testMatch: '**/*.spec.ts',
     outputDir: 'test-results',
     timeout: isContinuousIntegration ? 60_000 : 30_000,
     // Finish reporters before the 30-minute Actions job deadline, including slow failure paths.

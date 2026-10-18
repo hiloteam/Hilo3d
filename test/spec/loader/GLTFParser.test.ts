@@ -201,6 +201,133 @@ describe('GLTFParser', () => {
         expect(material.iridescenceThicknessMap).toBe(parser.textures['7']);
     });
 
+    it('loads sheen and thin diffuse transmission with independent transformed texture slots', () => {
+        const parser = new GLTFParser();
+        parser.isGLTF2 = true;
+        parser.json = {
+            asset: { version: '2.0' },
+            textures: Array.from({ length: 4 }, () => ({ source: 0 })),
+            materials: [
+                {
+                    extensions: {
+                        KHR_materials_sheen: {
+                            sheenColorFactor: [0.3, 0.2, 0.1],
+                            sheenRoughnessFactor: 0.8,
+                            sheenColorTexture: {
+                                index: 0,
+                                extensions: {
+                                    KHR_texture_transform: {
+                                        texCoord: 1,
+                                        offset: [0.2, 0.3],
+                                        scale: [0.5, 0.7]
+                                    }
+                                }
+                            },
+                            sheenRoughnessTexture: { index: 1 }
+                        },
+                        KHR_materials_diffuse_transmission: {
+                            diffuseTransmissionFactor: 0.65,
+                            diffuseTransmissionColorFactor: [0.8, 0.9, 0.7],
+                            diffuseTransmissionTexture: { index: 2, texCoord: 1 },
+                            diffuseTransmissionColorTexture: { index: 3 }
+                        }
+                    }
+                }
+            ]
+        };
+        for (let index = 0; index < 4; index++)
+            parser.textures[String(index)] = new Hilo3d.Texture();
+        expect(parser.getUsedTextureNameMap()).toEqual({
+            '0': true,
+            '1': true,
+            '2': true,
+            '3': true
+        });
+        parser.parseMaterials();
+        const material = parser.materials['0'];
+        if (!(material instanceof Hilo3d.PBRMaterial)) throw new TypeError('Expected PBR material');
+        expect(material.sheenColor.r).toBeCloseTo(0.3);
+        expect(material.sheenRoughness).toBe(0.8);
+        expect(material.diffuseTransmissionFactor).toBe(0.65);
+        expect(material.diffuseTransmissionColor.b).toBeCloseTo(0.7);
+        expect(material.getTextureSlot('sheenColor')).toMatchObject({ uvSet: 1, encoding: 'srgb' });
+        expect(material.getTextureSlot('sheenColor')?.transform?.elements[6]).toBeCloseTo(0.2);
+        expect(material.getTextureSlot('sheenColor')?.transform?.elements[7]).toBeCloseTo(0.3);
+        expect(material.getTextureSlot('sheenRoughness')).toMatchObject({
+            uvSet: 0,
+            encoding: 'data',
+            channels: ['r', 'g', 'b', 'a']
+        });
+        expect(material.getTextureSlot('diffuseTransmission')).toMatchObject({
+            uvSet: 1,
+            encoding: 'data'
+        });
+        expect(material.getTextureSlot('diffuseTransmissionColor')).toMatchObject({
+            uvSet: 0,
+            encoding: 'srgb'
+        });
+        expect(material.forwardQueue).toBe('opaque');
+        expect(material.requiresOpaqueSceneTexture).toBe(false);
+    });
+
+    it('accepts required MAT1 extensions and applies their neutral defaults', async () => {
+        const parser = new GLTFParser(
+            JSON.stringify({
+                asset: { version: '2.0' },
+                extensionsRequired: ['KHR_materials_sheen', 'KHR_materials_diffuse_transmission'],
+                materials: [
+                    {
+                        extensions: {
+                            KHR_materials_sheen: {},
+                            KHR_materials_diffuse_transmission: {}
+                        }
+                    }
+                ],
+                scenes: [{ nodes: [] }]
+            })
+        );
+        await parser.parse(unusedLoader);
+        const material = parser.materials['0'];
+        if (!(material instanceof Hilo3d.PBRMaterial)) throw new TypeError('Expected PBR material');
+        expect(Array.from(material.sheenColor.elements)).toEqual([0, 0, 0, 1]);
+        expect(material.sheenRoughness).toBe(0);
+        expect(material.diffuseTransmissionFactor).toBe(0);
+        expect(Array.from(material.diffuseTransmissionColor.elements)).toEqual([1, 1, 1, 1]);
+    });
+
+    it('rejects malformed MAT1 factors, RGB triples, texture metadata and incompatible material models', () => {
+        const invalid: readonly Readonly<Record<string, unknown>>[] = [
+            { KHR_materials_sheen: null },
+            { KHR_materials_sheen: { sheenRoughnessFactor: 1.1 } },
+            { KHR_materials_sheen: { sheenColorFactor: [0, 0] } },
+            { KHR_materials_sheen: { sheenColorFactor: [0, 0, 0, 1] } },
+            { KHR_materials_sheen: { sheenColorFactor: [0, -0.1, 0] } },
+            { KHR_materials_sheen: { sheenColorTexture: { index: 0, texCoord: 2 } } },
+            { KHR_materials_diffuse_transmission: [] },
+            {
+                KHR_materials_diffuse_transmission: { diffuseTransmissionFactor: 0.5 },
+                KHR_materials_volume: { thicknessFactor: 0.01 }
+            },
+            { KHR_materials_diffuse_transmission: { diffuseTransmissionFactor: '0.5' } },
+            { KHR_materials_diffuse_transmission: { diffuseTransmissionFactor: Number.NaN } },
+            { KHR_materials_diffuse_transmission: { diffuseTransmissionColorFactor: [1, 1, 2] } },
+            { KHR_materials_diffuse_transmission: { diffuseTransmissionTexture: false } },
+            { KHR_materials_sheen: {}, KHR_materials_unlit: {} },
+            { KHR_materials_unlit: {}, KHR_materials_diffuse_transmission: {} },
+            { KHR_materials_pbrSpecularGlossiness: {}, KHR_materials_sheen: {} },
+            { KHR_materials_pbrSpecularGlossiness: {}, KHR_materials_diffuse_transmission: {} }
+        ];
+        for (const extensions of invalid) {
+            const parser = new GLTFParser();
+            parser.isGLTF2 = true;
+            parser.textures['0'] = new Hilo3d.Texture();
+            parser.json = { asset: { version: '2.0' }, materials: [{ extensions }] };
+            expect(() => {
+                parser.parseMaterials();
+            }).toThrow();
+        }
+    });
+
     it('rejects out-of-range modern PBR extension factors', () => {
         const parser = new GLTFParser();
         parser.isGLTF2 = true;

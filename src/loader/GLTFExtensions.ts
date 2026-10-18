@@ -553,6 +553,109 @@ export const KHR_materials_iridescence = {
     }
 } satisfies GLTFExtensionHandler;
 
+function requireUnitRGB(value: unknown, label: string): Color {
+    const values = requireNumberArray(value, label, 3);
+    if (values.length !== 3) throw new TypeError(`${label} must contain exactly three numbers.`);
+    return new Color(
+        requireRange(values[0], `${label}[0]`, 0, 1),
+        requireRange(values[1], `${label}[1]`, 0, 1),
+        requireRange(values[2], `${label}[2]`, 0, 1)
+    );
+}
+
+/** Khronos cloth sheen; color uses sRGB RGB and roughness uses linear alpha. */
+export const KHR_materials_sheen = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(extensionData, 'sheenColorTexture', map, 'KHR_materials_sheen');
+        addUsedTexture(extensionData, 'sheenRoughnessTexture', map, 'KHR_materials_sheen');
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterialBuilder {
+        if (!isRecord(extensionData)) throw new TypeError('KHR_materials_sheen must be an object.');
+        const material = requirePBRMaterial(result, 'KHR_materials_sheen');
+        material.parameters.sheenColor =
+            extensionData['sheenColorFactor'] === undefined
+                ? new Color(0, 0, 0)
+                : requireUnitRGB(
+                      extensionData['sheenColorFactor'],
+                      'KHR_materials_sheen.sheenColorFactor'
+                  );
+        material.parameters.sheenRoughness =
+            extensionData['sheenRoughnessFactor'] === undefined
+                ? 0
+                : requireRange(
+                      extensionData['sheenRoughnessFactor'],
+                      'KHR_materials_sheen.sheenRoughnessFactor',
+                      0,
+                      1
+                  );
+        const color = optionalTextureInfo(
+            extensionData,
+            'sheenColorTexture',
+            'KHR_materials_sheen'
+        );
+        const roughness = optionalTextureInfo(
+            extensionData,
+            'sheenRoughnessTexture',
+            'KHR_materials_sheen'
+        );
+        if (color) material.parameters.sheenColorMap = parser.getTextureSlot(color);
+        if (roughness) material.parameters.sheenRoughnessMap = parser.getTextureSlot(roughness);
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
+/** Khronos release-candidate thin diffuse transmission; independent of opacity and refraction. */
+export const KHR_materials_diffuse_transmission = {
+    getUsedTextureNameMap(extensionData: unknown, map: Record<string, true>): void {
+        addUsedTexture(
+            extensionData,
+            'diffuseTransmissionTexture',
+            map,
+            'KHR_materials_diffuse_transmission'
+        );
+        addUsedTexture(
+            extensionData,
+            'diffuseTransmissionColorTexture',
+            map,
+            'KHR_materials_diffuse_transmission'
+        );
+    },
+    parse(extensionData: unknown, parser: GLTFParser, result: unknown): PBRMaterialBuilder {
+        if (!isRecord(extensionData))
+            throw new TypeError('KHR_materials_diffuse_transmission must be an object.');
+        const material = requirePBRMaterial(result, 'KHR_materials_diffuse_transmission');
+        material.parameters.diffuseTransmissionFactor =
+            extensionData['diffuseTransmissionFactor'] === undefined
+                ? 0
+                : requireRange(
+                      extensionData['diffuseTransmissionFactor'],
+                      'KHR_materials_diffuse_transmission.diffuseTransmissionFactor',
+                      0,
+                      1
+                  );
+        material.parameters.diffuseTransmissionColor =
+            extensionData['diffuseTransmissionColorFactor'] === undefined
+                ? new Color(1, 1, 1)
+                : requireUnitRGB(
+                      extensionData['diffuseTransmissionColorFactor'],
+                      'KHR_materials_diffuse_transmission.diffuseTransmissionColorFactor'
+                  );
+        const factor = optionalTextureInfo(
+            extensionData,
+            'diffuseTransmissionTexture',
+            'KHR_materials_diffuse_transmission'
+        );
+        const color = optionalTextureInfo(
+            extensionData,
+            'diffuseTransmissionColorTexture',
+            'KHR_materials_diffuse_transmission'
+        );
+        if (factor) material.parameters.diffuseTransmissionMap = parser.getTextureSlot(factor);
+        if (color) material.parameters.diffuseTransmissionColorMap = parser.getTextureSlot(color);
+        return material;
+    }
+} satisfies GLTFExtensionHandler;
+
 function requireNode(value: unknown, label: string): Node {
     if (!(value instanceof Node)) throw new TypeError(`${label} requires a Node.`);
     return value;

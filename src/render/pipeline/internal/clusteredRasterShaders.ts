@@ -137,7 +137,7 @@ export function clusteredTransparentShader(
     withShadows: boolean,
     withDynamicGlobalIllumination = false,
     giSurface = false,
-    role: 'forward' | 'weighted-accumulation' | 'weighted-revealage' = 'forward',
+    role: 'forward' | 'subsurface' | 'weighted-accumulation' | 'weighted-revealage' = 'forward',
     withGroundTruthAmbientOcclusion = false,
     withCloudShadow = false
 ): StorageGraphicsShader {
@@ -147,6 +147,7 @@ export function clusteredTransparentShader(
     if (withCloudShadow) header += '#define HILO_CLUSTERED_CLOUD_SHADOW 1\n';
     if (role !== 'forward')
         header += `#define HILO_MATERIAL_ROLE_${role.replaceAll('-', '_').toUpperCase()} 1\n`;
+    if (role === 'subsurface') header += '#define HILO_SUBSURFACE_PASS 1\n';
     if (withDynamicGlobalIllumination) header += '#define HILO_DYNAMIC_GI 1\n';
     if (giSurface) header += '#define HILO_DDGI_SURFACE 1\n';
     if (withShadows && mesh.receiveShadows) {
@@ -244,7 +245,17 @@ mat4 ddgiInverseView = inverse(mat4(clusterFrameData.values[8u], clusterFrameDat
 vec4 ddgiSample = hiloDDGISample((ddgiInverseView * vec4(v_fragPos, 1.0)).xyz,
     normalize(mat3(ddgiInverseView) * N), normalize(mat3(ddgiInverseView) * V));
 vec3 ddgiDiffuseContribution = ddgiSample.rgb * iblDiffuseColor * materialAmbientOcclusion * gtaoDiffuseVisibility;
-indirectDiffuse = indirectDiffuse * (1.0 - ddgiSample.a) + ddgiDiffuseContribution;
+indirectDiffuse = (indirectDiffuse - indirectTransmission) * (1.0 - ddgiSample.a) + ddgiDiffuseContribution;
+#ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+    if (diffuseTransmissionFactor > 0.0) {
+    vec4 ddgiTransmissionSample = hiloDDGISample((ddgiInverseView * vec4(v_fragPos, 1.0)).xyz,
+        -normalize(mat3(ddgiInverseView) * N), -normalize(mat3(ddgiInverseView) * V));
+    // Back-face irradiance uses its own visibility/bias; front GTAO never occludes it.
+    indirectTransmission = indirectTransmission * (1.0 - ddgiTransmissionSample.a) +
+        ddgiTransmissionSample.rgb * transmissionIBLColor * materialAmbientOcclusion;
+    }
+#endif
+indirectDiffuse += indirectTransmission;
 vec3 diffuseLighting = directDiffuse + indirectDiffuse;`
             );
     }

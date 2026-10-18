@@ -117,3 +117,10 @@ Use concise Conventional Commit messages, for example `fix: handle incomplete GL
 `docs: clarify renderer lifecycle`. A pull request should explain user-visible behavior, include
 appropriate automated coverage, pass `npm run validate` from a clean checkout, and complete the
 local browser-test checklist.
+
+Before pushing browser or example changes, fetch the target branch and run
+`npm run test:ui:webgl2:ci -- --affected=origin/dev`. Use `--plan` to inspect selection first. The
+shared runner forces CI settings and runs complete affected groups serially, including gallery/page
+coverage for catalog or HTML changes. Shared or unclassified changes require all groups. Record the
+tested source and actual outcomes; separately run the relevant WebGPU lanes. This is the hosted UI
+gate, not a replacement for the complete release validation above.

@@ -12,6 +12,7 @@ logs/
 node_modules/
 npm-debug.log*
 playwright-report/
+blob-report/
 reports/
 site/
 test-results/

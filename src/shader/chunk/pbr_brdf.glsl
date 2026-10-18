@@ -155,3 +155,57 @@ float hiloEvaluateClearcoatBRDF(vec3 N, vec3 V, vec3 L, float perceptualRoughnes
     float Vis = hiloVisibilityGGXCorrelated(NdotV, NdotL, alpha);
     return hiloFresnelSchlickScalar(0.04, VdotH) * D * Vis * NdotL;
 }
+
+#ifdef HILO_HAS_SHEEN
+#include "./sheen.glsl"
+#endif
+
+// Thin diffuse transmission consumes the dielectric diffuse energy, independently
+// of base color. The virtual incident direction keeps opposite hemispheres finite.
+void hiloEvaluateLayeredBRDF(
+    vec3 N, vec3 V, vec3 L, vec3 T, vec3 B,
+    vec3 f0, vec3 diffuseColor, float perceptualRoughness,
+    float anisotropyStrength, float iridescenceFactor,
+    float iridescenceIor, float iridescenceThickness,
+    vec3 sheenColor, float sheenRoughness,
+    vec3 diffuseTransmissionColor, float diffuseTransmissionFactor,
+    out vec3 diffuseTerm, out vec3 specularTerm
+) {
+    // Exactly opposed directions otherwise normalize a zero half-vector.
+    if (dot(N, L) > 0.0) {
+        hiloEvaluateBaseBRDF(N, V, L, T, B, f0, diffuseColor,
+            perceptualRoughness, anisotropyStrength, iridescenceFactor,
+            iridescenceIor, iridescenceThickness, diffuseTerm, specularTerm);
+    } else {
+        diffuseTerm = vec3(0.0);
+        specularTerm = vec3(0.0);
+    }
+    #ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+        diffuseTerm *= 1.0 - diffuseTransmissionFactor;
+        float backCosine = max(-dot(N, L), 0.0);
+        float transmissionFresnelCosine = sqrt(max((1.0 - dot(V, L)) * 0.5, 0.0));
+        vec3 transmissionWeight = vec3(1.0) -
+            hiloFresnelSchlick(f0, transmissionFresnelCosine);
+        #ifdef HILO_HAS_IRIDESCENCE
+            vec3 transmissionIridescence = hiloEvaluateIridescence(1.0, iridescenceIor,
+                transmissionFresnelCosine, iridescenceThickness, f0);
+            float transmissionIridescenceReflectance = clamp(max(max(transmissionIridescence.r,
+                transmissionIridescence.g), transmissionIridescence.b), 0.0, 1.0);
+            transmissionWeight = mix(transmissionWeight,
+                vec3(1.0 - transmissionIridescenceReflectance), iridescenceFactor);
+        #endif
+        diffuseTerm += transmissionWeight * diffuseTransmissionColor *
+            (HILO_INVERSE_PI * backCosine);
+    #endif
+    #ifdef HILO_HAS_SHEEN
+        if (max(max(sheenColor.r, sheenColor.g), sheenColor.b) <= 0.0) return;
+        float NdotV = max(abs(dot(N, V)), 1e-4);
+        float sheenAlbedo = max(hiloSheenAlbedoBound(NdotV, sheenRoughness),
+            hiloSheenAlbedoBound(abs(dot(N, L)), sheenRoughness));
+        float baseWeight = 1.0 - max(max(sheenColor.r, sheenColor.g), sheenColor.b) *
+            min(sheenAlbedo, 1.0);
+        diffuseTerm *= baseWeight;
+        specularTerm *= baseWeight;
+        specularTerm += sheenColor * hiloSheenBRDF(N, V, L, sheenRoughness);
+    #endif
+}

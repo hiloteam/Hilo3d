@@ -1,6 +1,8 @@
 import { playwright } from '@vitest/browser-playwright';
+import type { LaunchOptions } from 'playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { createViteConfig } from './vite.config';
+import { browserCanvasTestPolicy } from './scripts/browser-test-capabilities';
 
 const coverageRun = process.argv.includes('--coverage');
 const githubActionsCoverageRun = coverageRun && process.env['GITHUB_ACTIONS'] === 'true';
@@ -9,12 +11,27 @@ const coverageShard =
     process.argv.some(argument => argument === '--shard' || argument.startsWith('--shard='));
 const monolithicCoverageRun =
     githubActionsCoverageRun && process.env['HILO3D_MONOLITHIC_COVERAGE'] === 'true';
+const browserLaunchOptions: LaunchOptions = {
+    args: [
+        '--enable-unsafe-swiftshader',
+        '--enable-unsafe-webgpu',
+        '--use-angle=swiftshader',
+        '--use-webgpu-adapter=swiftshader'
+    ]
+};
 
 export default mergeConfig(
     createViteConfig(),
     defineConfig({
         define: {
-            __HILO3D_GITHUB_ACTIONS_COVERAGE__: JSON.stringify(githubActionsCoverageRun)
+            __HILO3D_GITHUB_ACTIONS_COVERAGE__: JSON.stringify(githubActionsCoverageRun),
+            __HILO3D_BROWSER_CANVAS_TEST_POLICY__: JSON.stringify(
+                browserCanvasTestPolicy({
+                    platform: process.platform,
+                    coverage: coverageRun,
+                    chromiumChannel: browserLaunchOptions.channel
+                })
+            )
         },
         test: {
             name: 'browser',
@@ -63,14 +80,7 @@ export default mergeConfig(
                 enabled: true,
                 headless: true,
                 provider: playwright({
-                    launchOptions: {
-                        args: [
-                            '--enable-unsafe-swiftshader',
-                            '--enable-unsafe-webgpu',
-                            '--use-angle=swiftshader',
-                            '--use-webgpu-adapter=swiftshader'
-                        ]
-                    }
+                    launchOptions: browserLaunchOptions
                 }),
                 instances: [{ browser: 'chromium' }]
             }

@@ -297,6 +297,7 @@ export class MutableFallbackSceneParameters implements SceneRenderPassParameters
     opaqueTexture?: RenderGraphTextureHandle;
     ambientOcclusionTexture?: RenderGraphTextureHandle;
     storageShaderVariant?: Readonly<SceneStorageShaderVariant>;
+    subsurfaceScattering?: boolean;
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST;
@@ -305,6 +306,7 @@ export class MutableFallbackSceneParameters implements SceneRenderPassParameters
         delete this.opaqueTexture;
         delete this.ambientOcclusionTexture;
         delete this.storageShaderVariant;
+        delete this.subsurfaceScattering;
     }
 }
 

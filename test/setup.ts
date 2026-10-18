@@ -1,4 +1,17 @@
 import { expect, type MatcherResult } from 'vitest';
+import {
+    installWebGPUCanvasTestGuard,
+    type BrowserCanvasTestPolicy
+} from '../scripts/browser-test-capabilities';
+
+declare const __HILO3D_BROWSER_CANVAS_TEST_POLICY__: BrowserCanvasTestPolicy;
+
+// Acquiring a swapchain in this harness crashes Chromium after losing the device. Fail the
+// offending test before that native operation, preserving the rest of its coverage shard.
+installWebGPUCanvasTestGuard(
+    typeof GPUCanvasContext === 'undefined' ? undefined : GPUCanvasContext.prototype,
+    __HILO3D_BROWSER_CANVAS_TEST_POLICY__
+);
 
 const epsilon = 1e-7;
 

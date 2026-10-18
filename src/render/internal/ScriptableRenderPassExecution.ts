@@ -733,6 +733,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
     readonly #sceneStorageTexturePlans: MutableSceneStorageTexturePlan[] = [];
     #sceneStorageTextureCount = 0;
     #sceneUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null;
+    #subsurfaceScattering = false;
     readonly #sceneStoragePreparation: StorageScenePreparationState = {
         globalBindGroupLayouts: []
     };
@@ -817,6 +818,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         this.#sceneTextureHandle = null;
         this.#sceneStorageVariant = null;
         this.#sceneUniformBlocks = null;
+        this.#subsurfaceScattering = false;
         this.#sceneStorageBindingCount = 0;
         this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
         this.#sceneTexturePreparation.globalBindGroupLayout = null;
@@ -907,6 +909,7 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             this.#sceneTextureHandle = null;
             this.#sceneStorageVariant = null;
             this.#sceneUniformBlocks = null;
+            this.#subsurfaceScattering = false;
             this.#sceneStoragePreparation.globalBindGroupLayouts.length = 0;
             this.#sceneTexturePreparation.globalBindGroupLayout = null;
             this.#sceneTexturePreparation.bindingName = null;
@@ -968,7 +971,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
                 this.#sceneStorageVariant,
                 this.#sceneStoragePreparation,
                 this.#activeSceneTexture ? this.#sceneTexturePreparation : null,
-                this.#sceneUniformBlocks
+                this.#sceneUniformBlocks,
+                this.#subsurfaceScattering
             );
             range.count = this.draw.drawCount - range.start;
             this.#rangeCount++;
@@ -1048,6 +1052,13 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
 
     configureScene(parameters: SceneRenderPassParameters): void {
         const owner = this.requireOwner();
+        if (
+            parameters.subsurfaceScattering !== undefined &&
+            typeof parameters.subsurfaceScattering !== 'boolean'
+        ) {
+            throw new TypeError('Scene pass subsurfaceScattering must be a boolean');
+        }
+        this.#subsurfaceScattering = parameters.subsurfaceScattering ?? false;
         this.#sceneUniformBlocks = parameters.uniformBlocks ?? null;
         if (this.#sceneUniformBlocks !== null) {
             for (const [name, buffer] of Object.entries(this.#sceneUniformBlocks)) {

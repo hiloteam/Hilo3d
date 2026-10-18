@@ -1,4 +1,6 @@
 import Color from '../math/Color';
+import { getSheenAlbedoTexture } from '../render/renderer/SheenAlbedoTexture';
+import { SubsurfaceScatteringProfile } from './SubsurfaceScatteringProfile';
 import type SphericalHarmonics3 from '../math/SphericalHarmonics3';
 import Texture from '../texture/Texture';
 import CubeTexture from '../texture/CubeTexture';
@@ -84,6 +86,28 @@ export interface PBRMaterialParameters extends MaterialInstanceParameters {
     readonly iridescenceThicknessMinimum?: number;
     readonly iridescenceThicknessMaximum?: number;
     readonly iridescenceThicknessMap?: PBRMaterialTextureInput;
+    /** Linear sheen RGB in [0, 1]; supplying this value enables the immutable cloth layer. */
+    readonly sheenColor?: Color;
+    /** Sheen RGB texture, decoded from sRGB by default. */
+    readonly sheenColorMap?: PBRMaterialTextureInput;
+    /** Sheen perceptual roughness in [0, 1], multiplied by the roughness texture alpha. */
+    readonly sheenRoughness?: number;
+    /** Linear sheen roughness in the alpha channel. */
+    readonly sheenRoughnessMap?: PBRMaterialTextureInput;
+    /** Fraction of dielectric diffuse light transmitted to the opposite hemisphere, in [0, 1]. */
+    readonly diffuseTransmissionFactor?: number;
+    /** Linear diffuse transmission factor in the alpha channel. */
+    readonly diffuseTransmissionMap?: PBRMaterialTextureInput;
+    /** Linear transmitted-light RGB in [0, 1], independent of baseColor. */
+    readonly diffuseTransmissionColor?: Color;
+    /** Diffusely transmitted RGB texture, decoded from sRGB by default. */
+    readonly diffuseTransmissionColorMap?: PBRMaterialTextureInput;
+    /** Immutable diffusion distances in scene world units; requires an enabled subsurface pipeline. */
+    readonly subsurfaceProfile?: SubsurfaceScatteringProfile;
+    /** Diffuse scattering strength in [0, 1], default 1 with a profile and 0 otherwise. */
+    readonly subsurfaceFactor?: number;
+    /** World-space slab bound in [0.00001, 10000]; defaults to three times the maximum radius, capped at 10000. */
+    readonly subsurfaceThickness?: number;
     readonly frontFace?: MaterialFrontFace;
     readonly cullMode?: MaterialCullMode;
     readonly state?: Partial<Readonly<MaterialPipelineState>>;
@@ -141,6 +165,14 @@ export class PBRMaterialBuilder {
                       )
                   })
         };
+        if (initial.sheenColor !== undefined) {
+            this.parameters.sheenColor = new Color().copy(initial.sheenColor);
+        }
+        if (initial.diffuseTransmissionColor !== undefined) {
+            this.parameters.diffuseTransmissionColor = new Color().copy(
+                initial.diffuseTransmissionColor
+            );
+        }
         this.parameters.baseColor ??= new Color(1, 1, 1);
         this.parameters.emissionFactor ??= new Color(0, 0, 0);
         this.parameters.specular ??= new Color(1, 1, 1);
@@ -176,6 +208,13 @@ function requireNonNegative(value: number, name: string): number {
     if (!Number.isFinite(value) || value < 0) {
         throw new RangeError(`${name} must be finite and non-negative`);
     }
+    return value;
+}
+
+function requireUnitColor(value: Color, name: string): Color {
+    requireRange(value.r, `${name}.r`, 0, 1);
+    requireRange(value.g, `${name}.g`, 0, 1);
+    requireRange(value.b, `${name}.b`, 0, 1);
     return value;
 }
 
@@ -219,6 +258,10 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
     const thickness = input(parameters.thicknessMap);
     const iridescence = input(parameters.iridescenceMap);
     const iridescenceThickness = input(parameters.iridescenceThicknessMap);
+    const sheenColor = input(parameters.sheenColorMap);
+    const sheenRoughness = input(parameters.sheenRoughnessMap);
+    const diffuseTransmission = input(parameters.diffuseTransmissionMap);
+    const diffuseTransmissionColor = input(parameters.diffuseTransmissionColorMap);
     const diffuseEnvironment = input(parameters.diffuseEnvMap);
     const specularEnvironment = input(parameters.specularEnvMap);
     const opacity = input(parameters.opacityMap);
@@ -232,6 +275,59 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
     const hasVolume =
         hasTransmission && ((parameters.thicknessFactor ?? 0) > 0 || thickness !== null);
     const hasIridescence = (parameters.iridescenceFactor ?? 0) > 0 || iridescence !== null;
+    const hasSheen =
+        parameters.sheenColor !== undefined || sheenColor !== null || sheenRoughness !== null;
+    const hasDiffuseTransmission =
+        parameters.diffuseTransmissionFactor !== undefined ||
+        diffuseTransmission !== null ||
+        diffuseTransmissionColor !== null;
+    if (
+        (hasSheen || hasDiffuseTransmission) &&
+        (parameters.unlit === true || parameters.isSpecularGlossiness === true)
+    ) {
+        throw new TypeError(
+            'Sheen and diffuse transmission require a lit metallic-roughness PBR material'
+        );
+    }
+    if (hasDiffuseTransmission && ((parameters.thicknessFactor ?? 0) > 0 || thickness !== null)) {
+        throw new TypeError(
+            'Thin diffuse transmission does not support volume thickness; use a separate subsurface material'
+        );
+    }
+    if (parameters.subsurfaceProfile !== undefined) {
+        if (!(parameters.subsurfaceProfile instanceof SubsurfaceScatteringProfile)) {
+            throw new TypeError('subsurfaceProfile must be a SubsurfaceScatteringProfile');
+        }
+        if (
+            parameters.unlit === true ||
+            parameters.isSpecularGlossiness === true ||
+            hasTransmission ||
+            hasDiffuseTransmission ||
+            (parameters.compositing?.mode !== undefined &&
+                parameters.compositing.mode !== 'opaque') ||
+            parameters.coverage?.mode === 'alpha-to-coverage' ||
+            parameters.state?.depthTest === false ||
+            parameters.state?.depthWrite === false ||
+            (parameters.state?.depthCompare !== undefined &&
+                parameters.state.depthCompare !== 'less' &&
+                parameters.state.depthCompare !== 'less-equal') ||
+            (parameters.state?.depthRange !== undefined &&
+                (parameters.state.depthRange[0] !== 0 || parameters.state.depthRange[1] !== 1)) ||
+            parameters.state?.wireframe === true ||
+            parameters.state?.stencil !== undefined ||
+            parameters.state?.blend !== undefined ||
+            parameters.state?.alphaToCoverage === true
+        ) {
+            throw new TypeError(
+                'Subsurface scattering requires a lit opaque or alpha-masked metallic-roughness PBR material without transmission, with standard depth testing/writes and no custom blend, stencil or wireframe'
+            );
+        }
+    } else if (
+        (parameters.subsurfaceFactor ?? 0) !== 0 ||
+        parameters.subsurfaceThickness !== undefined
+    ) {
+        throw new TypeError('subsurfaceFactor and subsurfaceThickness require a subsurfaceProfile');
+    }
     return getBuiltInMaterialDefinition({
         family: 'pbr',
         lightModel: parameters.unlit === true ? 0 : 4,
@@ -329,9 +425,43 @@ function createDefinition(parameters: Readonly<PBRMaterialParameters>) {
             ...(iridescenceThickness === null
                 ? {}
                 : { IRIDESCENCE_THICKNESS_MAP: MaterialTextureSlot.IRIDESCENCE_THICKNESS }),
+            ...(parameters.subsurfaceProfile === undefined ? {} : { HAS_SUBSURFACE: 1 }),
+            ...(hasSheen ? { HAS_SHEEN: 1 } : {}),
+            ...(sheenColor === null ? {} : { SHEEN_COLOR_MAP: MaterialTextureSlot.SHEEN_COLOR }),
+            ...(sheenRoughness === null
+                ? {}
+                : { SHEEN_ROUGHNESS_MAP: MaterialTextureSlot.SHEEN_ROUGHNESS }),
+            ...(hasDiffuseTransmission ? { HAS_DIFFUSE_TRANSMISSION: 1 } : {}),
+            ...(diffuseTransmission === null
+                ? {}
+                : { DIFFUSE_TRANSMISSION_MAP: MaterialTextureSlot.DIFFUSE_TRANSMISSION }),
+            ...(diffuseTransmissionColor === null
+                ? {}
+                : {
+                      DIFFUSE_TRANSMISSION_COLOR_MAP: MaterialTextureSlot.DIFFUSE_TRANSMISSION_COLOR
+                  }),
             ...(opacity === null ? {} : { TRANSPARENCY_MAP: MaterialTextureSlot.OPACITY })
         },
         textureSlots: [
+            slot('sheenColor', MaterialTextureSlot.SHEEN_COLOR, parameters.sheenColorMap, 'srgb'),
+            slot(
+                'sheenRoughness',
+                MaterialTextureSlot.SHEEN_ROUGHNESS,
+                parameters.sheenRoughnessMap,
+                'data'
+            ),
+            slot(
+                'diffuseTransmission',
+                MaterialTextureSlot.DIFFUSE_TRANSMISSION,
+                parameters.diffuseTransmissionMap,
+                'data'
+            ),
+            slot(
+                'diffuseTransmissionColor',
+                MaterialTextureSlot.DIFFUSE_TRANSMISSION_COLOR,
+                parameters.diffuseTransmissionColorMap,
+                'srgb'
+            ),
             slot('normal', MaterialTextureSlot.NORMAL, parameters.normalMap, 'data'),
             slot('emission', MaterialTextureSlot.EMISSION, parameters.emission, 'srgb'),
             slot('opacity', MaterialTextureSlot.OPACITY, parameters.opacityMap, 'data'),
@@ -450,6 +580,26 @@ class PBRMaterial extends MaterialInstance {
     #iridescenceThicknessMinimum = 100;
     #iridescenceThicknessMaximum = 400;
     readonly iridescenceThicknessMap: Texture<unknown> | null;
+
+    /** Linear cloth sheen RGB. Mutating this color requires invalidateData(). */
+    readonly sheenColor: Color;
+    /** Initial sheen color texture; use setTextureSlot() for runtime binding updates. */
+    readonly sheenColorMap: Texture<unknown> | null;
+    #sheenRoughness = 0;
+    /** Initial sheen roughness texture, sampled from alpha. */
+    readonly sheenRoughnessMap: Texture<unknown> | null;
+    #diffuseTransmissionFactor = 0;
+    /** Initial diffuse transmission factor texture, sampled from alpha. */
+    readonly diffuseTransmissionMap: Texture<unknown> | null;
+    /** Linear transmitted-light RGB. Mutating this color requires invalidateData(). */
+    readonly diffuseTransmissionColor: Color;
+    /** Initial diffuse transmission color texture. */
+    readonly diffuseTransmissionColorMap: Texture<unknown> | null;
+
+    /** Immutable diffusion profile, or null for an ordinary surface. */
+    readonly subsurfaceProfile: SubsurfaceScatteringProfile | null;
+    #subsurfaceFactor = 0;
+    #subsurfaceThickness = 1;
 
     constructor(params: Readonly<PBRMaterialParameters> = {}) {
         super(
@@ -608,7 +758,43 @@ class PBRMaterial extends MaterialInstance {
             );
         }
         this.iridescenceThicknessMap = texture(params.iridescenceThicknessMap);
+        this.subsurfaceProfile = params.subsurfaceProfile ?? null;
+        this.#subsurfaceFactor = requireRange(
+            params.subsurfaceFactor ?? (this.subsurfaceProfile === null ? 0 : 1),
+            'subsurfaceFactor',
+            0,
+            1
+        );
+        this.#subsurfaceThickness = requireRange(
+            params.subsurfaceThickness ??
+                (this.subsurfaceProfile === null
+                    ? 1
+                    : Math.min(10000, Math.max(...this.subsurfaceProfile.radius) * 3)),
+            'subsurfaceThickness',
+            0.00001,
+            10000
+        );
+        this.sheenColor = requireUnitColor(params.sheenColor ?? new Color(0, 0, 0), 'sheenColor');
+        this.sheenColorMap = texture(params.sheenColorMap);
+        this.#sheenRoughness = requireRange(params.sheenRoughness ?? 0, 'sheenRoughness', 0, 1);
+        this.sheenRoughnessMap = texture(params.sheenRoughnessMap);
+        this.#diffuseTransmissionFactor = requireRange(
+            params.diffuseTransmissionFactor ?? 0,
+            'diffuseTransmissionFactor',
+            0,
+            1
+        );
+        this.diffuseTransmissionMap = texture(params.diffuseTransmissionMap);
+        this.diffuseTransmissionColor = requireUnitColor(
+            params.diffuseTransmissionColor ?? new Color(1, 1, 1),
+            'diffuseTransmissionColor'
+        );
+        this.diffuseTransmissionColorMap = texture(params.diffuseTransmissionColorMap);
         for (const [name, value] of [
+            ['sheenColor', params.sheenColorMap],
+            ['sheenRoughness', params.sheenRoughnessMap],
+            ['diffuseTransmission', params.diffuseTransmissionMap],
+            ['diffuseTransmissionColor', params.diffuseTransmissionColorMap],
             ['baseColor', params.baseColorMap],
             ['metallic', params.metallicMap],
             ['roughness', params.roughnessMap],
@@ -636,6 +822,14 @@ class PBRMaterial extends MaterialInstance {
         }
         this.initializeBindings();
         Object.assign(this.uniforms, {
+            u_subsurfaceRadius: MaterialUniformSemantic.SUBSURFACE_RADIUS,
+            u_subsurfaceFactor: MaterialUniformSemantic.SUBSURFACE_FACTOR,
+            u_subsurfaceThickness: MaterialUniformSemantic.SUBSURFACE_THICKNESS,
+            u_sheenAlbedoLUT: { get: getSheenAlbedoTexture },
+            u_sheenColor: MaterialUniformSemantic.SHEEN_COLOR,
+            u_sheenRoughness: MaterialUniformSemantic.SHEEN_ROUGHNESS,
+            u_diffuseTransmissionFactor: MaterialUniformSemantic.DIFFUSE_TRANSMISSION_FACTOR,
+            u_diffuseTransmissionColor: MaterialUniformSemantic.DIFFUSE_TRANSMISSION_COLOR,
             u_baseColor: MaterialUniformSemantic.BASE_COLOR,
             u_metallic: MaterialUniformSemantic.METALLIC,
             u_roughness: MaterialUniformSemantic.ROUGHNESS,
@@ -668,6 +862,10 @@ class PBRMaterial extends MaterialInstance {
             u_gtaoTexture: MaterialTextureSemantic.GROUND_TRUTH_AMBIENT_OCCLUSION
         });
         this.addTextureUniforms({
+            u_sheenColorMap: MaterialTextureSemantic.SHEEN_COLOR_MAP,
+            u_sheenRoughnessMap: MaterialTextureSemantic.SHEEN_ROUGHNESS_MAP,
+            u_diffuseTransmissionMap: MaterialTextureSemantic.DIFFUSE_TRANSMISSION_MAP,
+            u_diffuseTransmissionColorMap: MaterialTextureSemantic.DIFFUSE_TRANSMISSION_COLOR_MAP,
             u_emission: MaterialTextureSemantic.EMISSION,
             u_baseColorMap: MaterialTextureSemantic.BASE_COLOR_MAP,
             u_metallicMap: MaterialTextureSemantic.METALLIC_MAP,
@@ -685,6 +883,78 @@ class PBRMaterial extends MaterialInstance {
             u_iridescenceMap: MaterialTextureSemantic.IRIDESCENCE_MAP,
             u_iridescenceThicknessMap: MaterialTextureSemantic.IRIDESCENCE_THICKNESS_MAP
         });
+    }
+
+    /** Diffuse scattering strength in [0, 1]. */
+    get subsurfaceFactor(): number {
+        return this.#subsurfaceFactor;
+    }
+
+    set subsurfaceFactor(value: number) {
+        value = requireRange(value, 'subsurfaceFactor', 0, 1);
+        this.assertTopologyFeature('HAS_SUBSURFACE', value !== 0, 'subsurfaceFactor');
+        if (value === this.#subsurfaceFactor) return;
+        this.#subsurfaceFactor = value;
+        this.markDataChanged();
+    }
+
+    /** World-space slab bound for radii and depth rejection, from 0.00001 to 10000 scene units. */
+    get subsurfaceThickness(): number {
+        return this.#subsurfaceThickness;
+    }
+
+    set subsurfaceThickness(value: number) {
+        value = requireRange(value, 'subsurfaceThickness', 0.00001, 10000);
+        this.assertTopologyFeature('HAS_SUBSURFACE', true, 'subsurfaceThickness');
+        if (value === this.#subsurfaceThickness) return;
+        this.#subsurfaceThickness = value;
+        this.markDataChanged();
+    }
+
+    /** Validate layered colors and advance the revision after referenced data changes. */
+    override invalidateData(): void {
+        // Base-class construction may update ordinary scalar parameters before these fields exist.
+        if (this.sheenColor instanceof Color) {
+            requireUnitColor(this.sheenColor, 'sheenColor');
+            this.assertTopologyFeature(
+                'HAS_SHEEN',
+                this.sheenColor.r !== 0 || this.sheenColor.g !== 0 || this.sheenColor.b !== 0,
+                'sheenColor'
+            );
+        }
+        if (this.diffuseTransmissionColor instanceof Color) {
+            requireUnitColor(this.diffuseTransmissionColor, 'diffuseTransmissionColor');
+        }
+        super.invalidateData();
+    }
+
+    /** Cloth sheen perceptual roughness in [0, 1]. */
+    get sheenRoughness(): number {
+        return this.#sheenRoughness;
+    }
+
+    set sheenRoughness(value: number) {
+        value = requireRange(value, 'sheenRoughness', 0, 1);
+        if (value === this.#sheenRoughness) return;
+        this.#sheenRoughness = value;
+        this.markDataChanged();
+    }
+
+    /** Diffusely transmitted fraction in [0, 1]; does not change coverage or require scene color. */
+    get diffuseTransmissionFactor(): number {
+        return this.#diffuseTransmissionFactor;
+    }
+
+    set diffuseTransmissionFactor(value: number) {
+        value = requireRange(value, 'diffuseTransmissionFactor', 0, 1);
+        this.assertTopologyFeature(
+            'HAS_DIFFUSE_TRANSMISSION',
+            value !== 0,
+            'diffuseTransmissionFactor'
+        );
+        if (value === this.#diffuseTransmissionFactor) return;
+        this.#diffuseTransmissionFactor = value;
+        this.markDataChanged();
     }
 
     get metallic(): number {

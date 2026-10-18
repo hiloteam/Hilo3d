@@ -11,6 +11,7 @@ import Geometry from '../../../src/geometry/Geometry';
 import GeometryData from '../../../src/geometry/GeometryData';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
+import { SubsurfaceScatteringProfile } from '../../../src/material/SubsurfaceScatteringProfile';
 import { DecalProjector } from '../../../src/render/decals/DecalProjector';
 import Vector3 from '../../../src/math/Vector3';
 import Matrix3 from '../../../src/math/Matrix3';
@@ -386,6 +387,31 @@ describe('RayTracingScene', () => {
         expect(() => scene.update(root)).toThrow(/outside/);
         geometry.indices = null;
         expect(scene.update(root)).toBe(recovered);
+    });
+
+    it('requires an explicit opt-out or exclusion policy for MAT1 ray contributors', () => {
+        const materials = [
+            new PBRMaterial({ sheenColor: new Color(0.6, 0.2, 0.1) }),
+            new PBRMaterial({ sheenColor: new Color(0, 0, 0) }),
+            new PBRMaterial({ diffuseTransmissionFactor: 0.5 }),
+            new PBRMaterial({ diffuseTransmissionFactor: 0 }),
+            new PBRMaterial({ subsurfaceProfile: new SubsurfaceScatteringProfile() })
+        ];
+        for (const material of materials) {
+            const mesh = triangle();
+            mesh.material = material;
+            const compiler = new RayTracingScene({ unsupported: 'error' });
+            expect(() => compiler.update(mesh)).toThrow(/unsupported: material/);
+            expect(
+                new RayTracingScene({ unsupported: 'exclude' }).update(mesh).diagnostics
+            ).toMatchObject({
+                triangleCount: 0,
+                excludedMeshCount: 1,
+                exclusions: { material: 1 }
+            });
+            mesh.contributeToGlobalIllumination = false;
+            expect(() => compiler.update(mesh)).not.toThrow();
+        }
     });
 
     it('reports unsupported surfaces and requires an explicit policy for surface texture approximation', () => {

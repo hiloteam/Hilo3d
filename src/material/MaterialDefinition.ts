@@ -8,6 +8,7 @@ export type MaterialPassRole =
     | 'shadow-caster'
     | 'motion-vector'
     | 'material-attributes'
+    | 'subsurface'
     | 'weighted-accumulation'
     | 'weighted-revealage'
     | 'picking'
@@ -27,7 +28,7 @@ export type MaterialPassFallback = 'required' | 'safe-fallback' | 'skip';
 
 /** Stable fragment-output contract selected by a semantic pass. */
 export type MaterialFragmentOutput =
-    'color' | 'depth-only' | 'motion-vector' | 'material-attributes' | 'picking';
+    'color' | 'depth-only' | 'motion-vector' | 'material-attributes' | 'subsurface' | 'picking';
 
 /** Backend-neutral fixed-function state names. */
 export type MaterialFrontFace = 'ccw' | 'cw';

@@ -11,9 +11,10 @@ export const UNIFORM_BLOCK_BINDINGS = Object.freeze({
     MaterialTextureBlock: 9,
     ReflectionProbeBlock: 10,
     DecalBlock: 11,
-    WeightedTransparencyBlock: 12
+    WeightedTransparencyBlock: 12,
+    SubsurfaceScatteringBlock: 13
 } as const);
-export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 13;
+export const BUILTIN_UNIFORM_BLOCK_BINDING_COUNT = 14;
 
 const bindings = new Map<string, number>(Object.entries(UNIFORM_BLOCK_BINDINGS));
 const FIRST_CUSTOM_BINDING_POINT = BUILTIN_UNIFORM_BLOCK_BINDING_COUNT;

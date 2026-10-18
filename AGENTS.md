@@ -129,6 +129,12 @@ compare verified current-RHI snapshots from different commits instead.
 
 ## Browser CI stability
 
+- Before pushing browser/example changes, run `npm run test:ui:webgl2:ci -- --affected=origin/dev`
+  after fetching the target branch. The shared runner selects complete affected groups and forces
+  the hosted CI browser settings; review its plan and record the tested source and results. Catalog
+  metadata or HTML changes also require the gallery and page groups, even for a dedicated showcase.
+  Shared renderer, harness, or unclassified changes select all groups. A feature-only test is not
+  evidence that dependent gallery or lifecycle flows pass.
 - Heavy example changes must pass the affected complete `HILO3D_UI_GROUP` (`csm`, `physics`,
   `post-processing`, or `chromatic`) with `CI=true npm run test:ui:webgl2:ci`; a single passing
   example is insufficient. Shared screenshot changes also require WebGPU browser coverage.
@@ -139,6 +145,13 @@ compare verified current-RHI snapshots from different commits instead.
   filename unique and retain timings. Investigate traces and same-runner timing history before
   changing budgets; do not silence failures with retries, skips, or weaker pixel thresholds.
 - See `documentation/ENGINEERING.md` for group commands and capture contracts.
+- Keep reviewed catalog counts in the catalog contract. Browser tests derive totals from those
+  reviewed entries and assert actual card identities; do not duplicate changing totals in strings.
+- WebGPU canvas presentation belongs in the automatically discovered `test/surface-render/` or
+  editor presentation suites on the required macOS lane. Linux headless coverage supports offscreen
+  work and rejects native swapchain acquisition before it can destroy the shared test device.
+- Exercise production response readers in browser tests. Observe network completion and gate the
+  intended decode boundary; do not replace `fetch` or pre-read response bodies to conceal a race.
 - Example teardown must stop its ticker before destroying animation/media resources. Retain
   resources on persisted `pagehide` and resume on persisted `pageshow`; lifecycle tests must also
   observe errors after teardown, not only while the page is running.

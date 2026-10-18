@@ -1,14 +1,15 @@
 # 示例目录整理
 
-核对日期：2026-10-13。范围：101 个 HTML 入口，其中 99 个场景示例、两个画廊入口。
+核对日期：2026-10-18。范围：102 个 HTML 入口，其中 100 个场景示例、两个画廊入口。
 
 ## 整理结果
 
 - 目录改为逐项审阅的元数据，删除文件名正则分类、自动拼标题和通用套话。新增页面仍由递归 HTML 扫描发现，缺少说明会直接报错。
-- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景、NOCTURNE 交互钢琴和雨后茶寮后现为 27 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
+- 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景、NOCTURNE 交互钢琴、雨后茶寮和 Soft
+  Matter 材质展厅后现为 28 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
-- 每个示例有独立用途。既有场景保留原 URL，当前共有 99 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
+- 每个示例有独立用途。既有场景保留原 URL，当前共有 100 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
 - 静态构建删除 Blender 创作源文件的复制路径，运行时资产保留；仓库中的原始创作文件与授权说明保留。
 - 画廊提供多词搜索、中文主题关键词、主题/后端筛选、URL 状态、浏览器前进后退、手机键盘导航和加载失败重试。主题数量和筛选结果遵循当前 Highlights
@@ -74,6 +75,7 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | [pbr2](../examples/pbr2.html)                                                                       | 精选 | materials       | Read metallic and roughness response across a controlled 30-sample HDR material studio.                                                                                                                         |
 | [pbr](../examples/pbr.html)                                                                         | 保留 | materials       | Load one glTF model with PBR materials and the shared HDR environment.                                                                                                                                          |
 | [shaderToy](../examples/shaderToy.html)                                                             | 保留 | materials       | Run an interactive fragment shader with pointer and time inputs.                                                                                                                                                |
+| [mat1_soft_matter](../examples/mat1_soft_matter.html)                                               | 精选 | materials       | Explore velvet sheen, backlit amber petals and ivory subsurface wax in a sculptural gallery, with live material comparisons and close-up views.                                                                 |
 | [transparent](../examples/transparent.html)                                                         | 保留 | materials       | Compare alpha blending and render order across overlapping colored boxes.                                                                                                                                       |
 | [uv_map](../examples/uv_map.html)                                                                   | 保留 | materials       | Visualize texture coordinates on a plane and an animated glTF model.                                                                                                                                            |
 | [areaLight](../examples/areaLight.html)                                                             | 保留 | lighting        | Illuminate a PBR surface with a rectangular area light.                                                                                                                                                         |

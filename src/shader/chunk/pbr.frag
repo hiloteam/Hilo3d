@@ -131,6 +131,23 @@ uniform sampler2D u_baseColorMap;
         #endif
     #endif
 
+#ifdef HILO_HAS_SHEEN
+    #ifdef HILO_SHEEN_COLOR_MAP
+    uniform sampler2D u_sheenColorMap;
+    #endif
+    #ifdef HILO_SHEEN_ROUGHNESS_MAP
+    uniform sampler2D u_sheenRoughnessMap;
+    #endif
+#endif
+#ifdef HILO_HAS_DIFFUSE_TRANSMISSION
+    #ifdef HILO_DIFFUSE_TRANSMISSION_MAP
+    uniform sampler2D u_diffuseTransmissionMap;
+    #endif
+    #ifdef HILO_DIFFUSE_TRANSMISSION_COLOR_MAP
+    uniform sampler2D u_diffuseTransmissionColorMap;
+    #endif
+#endif
+
 #include "./pbr_brdf.glsl"
 #include "./localReflections.glsl"
 
@@ -210,6 +227,90 @@ vec3 hiloGetIBLDiffuse(vec3 N, vec3 diffuseColor, float ao) {
         return vec3(0.0);
     #endif
 }
+
+
+#ifdef HILO_HAS_SHEEN
+vec3 hiloGetSheenColor() {
+    vec3 value = u_sheenColor;
+    #ifdef HILO_SHEEN_COLOR_MAP
+        value *= HILO_TEXTURE_2D(u_sheenColorMap, HILO_SHEEN_COLOR_MAP).rgb;
+    #endif
+    return clamp(value, 0.0, 1.0);
+}
+float hiloGetSheenRoughness() {
+    float value = u_sheenRoughness;
+    #ifdef HILO_SHEEN_ROUGHNESS_MAP
+        value *= HILO_TEXTURE_2D(u_sheenRoughnessMap, HILO_SHEEN_ROUGHNESS_MAP).a;
+    #endif
+    return clamp(value, 0.05, 1.0);
+}
+
+vec3 hiloSampleSheenEnvironment(vec3 direction) {
+    vec3 baseline = vec3(0.0);
+    #ifdef HILO_SPECULAR_ENV_MAP
+        #ifdef HILO_SPECULAR_ENV_MAP_CUBE
+            vec4 encoded = textureLod(u_specularEnvMap, hiloTextureCubeDirection(direction), 0.0);
+        #else
+            vec2 uv = vec2(atan(direction.x, direction.z) * HILO_INVERSE_PI * 0.5 + 0.5,
+                acos(clamp(direction.y, -1.0, 1.0)) * HILO_INVERSE_PI);
+            #ifdef HILO_IS_SPECULAR_ENV_MAP_INCLUDE_MIPMAPS
+                uv.y *= 0.5;
+            #endif
+            vec4 encoded = textureLod(u_specularEnvMap, hiloTextureUV(uv), 0.0);
+        #endif
+        baseline = HILO_DECODE_MATERIAL_COLOR(hiloDecodeRGBD(encoded), HILO_SPECULAR_ENV_MAP) *
+            u_specularEnvIntensity;
+    #endif
+    #ifdef HILO_LOCAL_REFLECTIONS
+        return hiloLocalReflection(baseline, direction, 0.0);
+    #else
+        return baseline;
+    #endif
+}
+
+vec3 hiloGetIBLSheen(vec3 N, vec3 V, vec3 sheenColor, float roughness, float ao) {
+    if (max(max(sheenColor.r, sheenColor.g), sheenColor.b) <= 0.0) return vec3(0.0);
+    #if defined(HILO_SPECULAR_ENV_MAP) || defined(HILO_LOCAL_REFLECTIONS)
+        // Fixed 4 x 8 solid-angle quadrature. Horizon-biased rings resolve Charlie's
+        // grazing lobe; normalize by its exact directional albedo for a white furnace.
+        // Sample the unfiltered source: a GGX convolution is not a sheen convolution.
+        vec3 T = V - N * dot(N, V);
+        if (dot(T, T) < 1e-6) T = cross(N, abs(N.z) < 0.9 ? vec3(0, 0, 1) : vec3(0, 1, 0));
+        T = normalize(T);
+        vec3 B = cross(N, T);
+        vec3 sum = vec3(0.0);
+        float weightSum = 0.0;
+        float NdotV = max(abs(dot(N, V)), 1e-4);
+        float viewBound = hiloSheenAlbedoBound(NdotV, roughness);
+        for (int ring = 0; ring < 4; ring++) {
+            float lower = float(ring) * 0.25;
+            float upper = float(ring + 1) * 0.25;
+            float cosine = (lower * lower + upper * upper) * 0.5;
+            float solidAngleWeight = upper * upper - lower * lower;
+            float sine = sqrt(1.0 - cosine * cosine);
+            float normalization = max(1.0, max(viewBound,
+                hiloSheenAlbedoBound(cosine, roughness)));
+            for (int azimuth = 0; azimuth < 8; azimuth++) {
+                float phi = (float(azimuth) + 0.5) * (2.0 * HILO_PI / 8.0);
+                vec3 L = N * cosine + sine * (T * cos(phi) + B * sin(phi));
+                float weight = hiloSheenRawBRDF(N, V, L, roughness) * solidAngleWeight / normalization;
+                vec3 worldDirection = L;
+                #ifdef HILO_NEED_WORLD_NORMAL
+                    worldDirection = normalize(u_viewInverseNormalMatrix * L);
+                #endif
+                sum += hiloSampleSheenEnvironment(worldDirection) * weight;
+                weightSum += weight;
+            }
+        }
+        float albedo = hiloSheenDirectionalAlbedo(NdotV, roughness) / max(1.0, viewBound);
+        return sheenColor * (sum / max(weightSum, 1e-12)) * albedo * ao;
+    #else
+        // Diffuse irradiance is the available low-frequency environment estimate.
+        return hiloGetIBLDiffuse(N, sheenColor, ao) *
+            min(hiloSheenDirectionalAlbedo(max(abs(dot(N, V)), 1e-4), roughness), 1.0);
+    #endif
+}
+#endif
 
 vec3 hiloGetIBLSpecular(
     vec3 N,

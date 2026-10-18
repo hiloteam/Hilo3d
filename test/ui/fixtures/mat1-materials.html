@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" href="data:," />
+        <title>MAT1 material acceptance</title>
+        <style>
+            body {
+                margin: 0;
+                background: #11131a;
+                color: #ede8df;
+                font: 14px system-ui;
+            }
+            main {
+                width: fit-content;
+                margin: 32px auto;
+            }
+            h1 {
+                margin: 0 0 16px;
+                font-size: 22px;
+                font-weight: 500;
+                line-height: 28px;
+            }
+            canvas {
+                display: block;
+            }
+            .labels,
+            .controls {
+                display: flex;
+                justify-content: space-around;
+                gap: 12px;
+                margin-top: 16px;
+            }
+            button {
+                border: 1px solid #657080;
+                background: #232b38;
+                color: inherit;
+                border-radius: 6px;
+                padding: 10px 14px;
+                cursor: pointer;
+            }
+            button[aria-pressed='false'] {
+                opacity: 0.6;
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Cloth · Thin surfaces · Subsurface diffusion</h1>
+            <div id="surface"></div>
+            <div class="labels">
+                <span>Velvet sheen</span><span>Backlit leaf</span><span>Wax diffusion</span>
+            </div>
+            <div class="controls">
+                <button type="button" data-feature="sheen" aria-pressed="true">Toggle sheen</button>
+                <button type="button" data-feature="thin" aria-pressed="true">
+                    Toggle thin transmission
+                </button>
+                <button type="button" data-feature="sss" aria-pressed="true">
+                    Toggle subsurface
+                </button>
+            </div>
+        </main>
+        <script type="module" src="./mat1-materials.ts"></script>
+    </body>
+</html>

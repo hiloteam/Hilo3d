@@ -87,6 +87,12 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     /** Keep opaque and transparent renderer lists distinct even without a scene-color readback. */
     readonly splitScene?: boolean;
     /**
+     * This after-opaque feature resolves profile-based subsurface diffusion before temporal or
+     * display processing. Requires sampled scene color and an opaque depth attachment; custom features own the same
+     * diffuse-only extraction, edge isolation and composition contract as SubsurfaceScattering.
+     */
+    readonly subsurfaceScattering?: boolean;
+    /**
      * Minimum built-in scene color/depth resolution relative to the physical output. A runtime may
      * return a higher scale through `getSceneScale()`; conflicting static floors are rejected.
      */
@@ -154,6 +160,8 @@ export interface ForwardRenderPipelineResources {
     readonly motionDepth: RenderGraphTextureHandle | null;
     /** Reusable opaque view-normal/material texture produced by an earlier feature, if any. */
     readonly materialAttributes: RenderGraphTextureHandle | null;
+    /** Current opaque GTAO visibility, shared by exact diffuse-lighting extraction passes. */
+    readonly ambientOcclusionTexture: RenderGraphTextureHandle | null;
     /**
      * Declare that a feature has completely initialized the current opaque depth attachment.
      * The built-in opaque pass will preserve it instead of clearing it.
@@ -327,6 +335,7 @@ function createDepthStencilAttachment(): MutableDepthStencilAttachment {
 
 class MutableSceneParameters implements SceneRenderPassParameters {
     rendererList = INVALID_RENDERER_LIST_HANDLE;
+    subsurfaceScattering = false;
     readonly colorAttachments: MutableColorAttachment[] = [];
     readonly #retiredColorAttachments: MutableColorAttachment[] = [];
     readonly #depthStencil = createDepthStencilAttachment();
@@ -336,6 +345,7 @@ class MutableSceneParameters implements SceneRenderPassParameters {
 
     reset(): void {
         this.rendererList = INVALID_RENDERER_LIST_HANDLE;
+        this.subsurfaceScattering = false;
         delete this.depthStencilAttachment;
         delete this.opaqueTexture;
         delete this.ambientOcclusionTexture;
@@ -677,6 +687,11 @@ class ForwardFeatureResourcesLease implements ForwardRenderPipelineResources {
         return this.#state.readMaterialAttributes(this.#lease);
     }
 
+    get ambientOcclusionTexture(): RenderGraphTextureHandle | null {
+        this.#state.assertCallbackActive(this.#lease);
+        return this.#state.ambientOcclusionTexture;
+    }
+
     replaceColor(texture: RenderGraphTextureHandle, encoding: RenderColorEncoding): void {
         this.#state.replaceColor(this.#lease, texture, encoding);
     }
@@ -765,6 +780,15 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
     if (typeof splitScene !== 'boolean') {
         throw new TypeError(`Forward render feature ${feature.name} splitScene must be a boolean`);
     }
+    const subsurfaceScattering = feature.requirements.subsurfaceScattering ?? false;
+    if (typeof subsurfaceScattering !== 'boolean') {
+        throw new TypeError('Forward feature subsurfaceScattering must be a boolean');
+    }
+    if (subsurfaceScattering && (injectionPoint !== 'after-opaque' || !sampledSceneColor)) {
+        throw new TypeError(
+            'Subsurface scattering requires an after-opaque feature with sampled scene color'
+        );
+    }
     const sceneScale = feature.requirements.sceneScale ?? 1;
     if (!Number.isFinite(sceneScale) || sceneScale <= 0 || sceneScale > 1) {
         throw new RangeError(
@@ -789,6 +813,7 @@ function snapshotFeature(feature: ForwardRenderPipelineFeature): FeatureSnapshot
         sampledSceneColor,
         sampledDepth,
         splitScene,
+        subsurfaceScattering,
         sceneScale
     });
     const create = feature.create.bind(feature);
@@ -978,6 +1003,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly #requiresSampledDepth: boolean;
     readonly #samplesBetweenQueues: boolean;
     readonly #splitScene: boolean;
+    readonly #subsurfaceScattering: boolean;
     readonly #sceneColorFormat: RenderTargetColorFormat | null;
     readonly #opaqueTextureEnabled: boolean;
     readonly #weightedTransparency: WeightedBlendedTransparency | null;
@@ -998,6 +1024,9 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }>
     ) {
         const compiled: CompiledFeature[] = [];
+        this.#subsurfaceScattering = features.some(
+            feature => feature.requirements.subsurfaceScattering === true
+        );
         let sampledColor = false;
         let sampledDepth = false;
         let samplesBetweenQueues = false;
@@ -1343,7 +1372,8 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         if (
             outputFormat === null &&
             !this.#frameRequiresSampledDepth &&
-            this.#weightedTransparency === null
+            this.#weightedTransparency === null &&
+            !this.#subsurfaceScattering
         )
             return null;
         this.#depthDescriptor.format = outputFormat ?? 'depth24plus';
@@ -1422,6 +1452,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     ): void {
         const parameters = context.acquirePassParameters(this.#sceneParameters);
         parameters.rendererList = rendererList;
+        parameters.subsurfaceScattering = this.#subsurfaceScattering;
         if (opaqueTexture === null) delete parameters.opaqueTexture;
         else parameters.opaqueTexture = opaqueTexture;
         if (ambientOcclusionTexture === null) delete parameters.ambientOcclusionTexture;
@@ -1649,11 +1680,27 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             ...(options.features ?? [])
         ].map(snapshotFeature);
         const names = new Set<string>();
+        let afterOpaqueColorConsumer = false;
+        let hasSubsurfaceScattering = false;
         for (const feature of features) {
             if (names.has(feature.name)) {
                 throw new Error(`Forward render feature name ${feature.name} is duplicated`);
             }
             names.add(feature.name);
+            if (feature.requirements.subsurfaceScattering === true) {
+                if (hasSubsurfaceScattering || afterOpaqueColorConsumer) {
+                    throw new TypeError(
+                        'Subsurface scattering must be the first and only diffusion feature before after-opaque color processing'
+                    );
+                }
+                hasSubsurfaceScattering = true;
+            }
+            if (
+                feature.injectionPoint === 'after-opaque' &&
+                feature.requirements.sampledSceneColor
+            ) {
+                afterOpaqueColorConsumer = true;
+            }
         }
         this.features = Object.freeze(features);
         const requestedSceneScales = new Set<number>();
@@ -1670,7 +1717,9 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
         );
         const sceneColorFormat: unknown =
             options.sceneColorFormat ??
-            (this.weightedBlendedTransparency === null ? null : 'rgba16float');
+            (this.weightedBlendedTransparency === null && !hasSubsurfaceScattering
+                ? null
+                : 'rgba16float');
         if (
             sceneColorFormat !== null &&
             sceneColorFormat !== 'rgba8unorm' &&
@@ -1685,6 +1734,9 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
         this.sceneColorFormat = sceneColorFormat;
         if (this.weightedBlendedTransparency !== null && sceneColorFormat !== 'rgba16float') {
             throw new TypeError('Weighted transparency requires rgba16float linear scene color');
+        }
+        if (hasSubsurfaceScattering && sceneColorFormat !== 'rgba16float') {
+            throw new TypeError('Subsurface scattering requires rgba16float linear scene color');
         }
         this.opaqueTexture = options.opaqueTexture ?? false;
         if (typeof this.opaqueTexture !== 'boolean') {

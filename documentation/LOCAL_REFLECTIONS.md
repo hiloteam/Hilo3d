@@ -80,6 +80,12 @@ reflection transport, per-probe automatic scene-change tracking, volume rotation
 bindless probe selection in this release. Box projection is an approximation for enclosed spaces; it
 does not provide arbitrary planar-mirror accuracy.
 
+Unreleased MAT1 SSS materials may receive probe lighting, but active SSS geometry cannot be captured
+directly: the auxiliary atlas views do not run diffusion and reject it before submission. Existing
+probe-bound materials remain excluded by the nonrecursive policy. For other active SSS objects, use
+the factory's visibility mask and an ordinary PBR capture-only proxy where appropriate. This does
+not restrict static probe consumption; see [MAT1 surfaces](./MAT1_SURFACES.md).
+
 ## Publication and recovery
 
 Face/filter cursors and published texture selection advance only after a valid submission. A

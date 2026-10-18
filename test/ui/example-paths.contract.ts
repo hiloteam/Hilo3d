@@ -3,6 +3,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
+import { hostedUIArguments, hostedUISpecFiles } from '../../scripts/playwright-ci';
 import {
     createExampleCatalog,
     EXAMPLE_CATEGORIES,
@@ -87,11 +88,11 @@ describe('example release matrix contract', () => {
     it('discovers every HTML entry recursively with no hand-maintained gallery omissions', () => {
         expect(examplePaths).toEqual(independentlyDiscoverHtml());
         expect(new Set(examplePaths).size).toBe(examplePaths.length);
-        expect(examplePaths).toHaveLength(101);
+        expect(examplePaths).toHaveLength(102);
     });
 
-    it('expands 101 pages into the complete 186-case backend matrix', () => {
-        expect(exampleCases).toHaveLength(186);
+    it('expands 102 pages into the complete 188-case backend matrix', () => {
+        expect(exampleCases).toHaveLength(188);
         expect(new Set(exampleCases.map(item => `${item.path}:${item.backend}`)).size).toBe(
             exampleCases.length
         );
@@ -126,7 +127,7 @@ describe('example release matrix contract', () => {
 
     it('builds complete, categorized gallery metadata with valid source links', () => {
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog).toHaveLength(99);
+        expect(catalog).toHaveLength(100);
         expect(new Set(catalog.map(entry => entry.id)).size).toBe(catalog.length);
         expect(new Set(catalog.map(entry => entry.path))).toEqual(
             new Set(examplePaths.filter(path => path !== 'index.html' && path !== 'list.html'))
@@ -135,8 +136,8 @@ describe('example release matrix contract', () => {
             new Set(EXAMPLE_CATEGORIES.map(category => category.id))
         );
         expect(catalog[0]?.id).toBe('quickStart');
-        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(84);
-        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(98);
+        expect(examplesForBackend(catalog, 'webgl2')).toHaveLength(85);
+        expect(examplesForBackend(catalog, 'webgpu')).toHaveLength(99);
         expect(
             catalog
                 .filter(entry => entry.category === 'physics')
@@ -205,7 +206,7 @@ describe('example release matrix contract', () => {
             'Duplicate example paths'
         );
         const catalog = createExampleCatalog(examplePaths);
-        expect(catalog.filter(entry => entry.featured)).toHaveLength(27);
+        expect(catalog.filter(entry => entry.featured)).toHaveLength(28);
         expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
         expect(
             catalog.find(entry => entry.path === 'dynamic_global_illumination_atelier.html')
@@ -225,6 +226,15 @@ describe('example release matrix contract', () => {
         if (!teaGarden) throw new Error('Missing tea garden example');
         expect(matchesExampleSearch(teaGarden, '雨后 Blender')).toBe(true);
         expect(matchesExampleSearch(teaGarden, 'DDGI decals')).toBe(true);
+        const softMatter = catalog.find(entry => entry.path === 'mat1_soft_matter.html');
+        expect(softMatter).toMatchObject({
+            title: 'Soft Matter — 光的触感',
+            category: 'materials',
+            featured: true,
+            supportedBackends: ['webgl2', 'webgpu']
+        });
+        if (!softMatter) throw new Error('Missing soft matter example');
+        expect(matchesExampleSearch(softMatter, 'sheen subsurface')).toBe(true);
         const piano = catalog.find(entry => entry.path === 'audio_piano.html');
         expect(piano).toMatchObject({
             title: 'NOCTURNE — 魔法钢琴',
@@ -398,6 +408,7 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'mat1_soft_matter.html',
             'live2d.html',
             'scriptable_pipeline.html',
             'screen_space_global_illumination_chapel.html',
@@ -422,6 +433,7 @@ describe('example release matrix contract', () => {
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_lumen.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('rain_tea_garden.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('mat1_soft_matter.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('stormfront_observatory.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shadow_residency_sanctum.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('shaderToy.html')).toBe(true);
@@ -477,6 +489,7 @@ describe('example release matrix contract', () => {
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
             'audio_piano.html': { test: '1', quality: 'production' },
             'live2d.html': { test: '1' },
+            'mat1_soft_matter.html': { test: '1' },
             'cascaded_shadows.html': { test: '1' },
             'clustered_forward_plus_lumen.html': { test: '1' },
             'dynamic_global_illumination_atelier.html': { test: '1' },
@@ -523,7 +536,10 @@ describe('example release matrix contract', () => {
             ['test:ui:webgl2:ci', ['webgl2']],
             ['test:ui:webgpu', ['webgpu']]
         ] as const) {
-            const script = packageJson.scripts?.[scriptName];
+            const script =
+                scriptName === 'test:ui:webgl2:ci'
+                    ? hostedUIArguments().join(' ')
+                    : packageJson.scripts?.[scriptName];
             if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
             expect(script, scriptName).toContain('test/ui/live2d.spec.ts');
             expect(script, scriptName).toContain('--project=chromium');
@@ -586,7 +602,10 @@ describe('example release matrix contract', () => {
             ['test:ui:webgl2:ci', ['webgl2']],
             ['test:ui:webgpu', ['webgpu']]
         ] as const) {
-            const script = packageJson.scripts?.[scriptName];
+            const script =
+                scriptName === 'test:ui:webgl2:ci'
+                    ? hostedUIArguments().join(' ')
+                    : packageJson.scripts?.[scriptName];
             if (typeof script !== 'string') throw new TypeError(`${scriptName} must be a string`);
             expect(script, scriptName).toContain('test/ui/physics.spec.ts');
             expect(script, scriptName).toContain('--project=chromium');
@@ -612,20 +631,33 @@ describe('example release matrix contract', () => {
         expect(packageJson.scripts?.['test:browser']).toBe(
             'npm run test:webgpu && npm run test:ui && npm run test:visual'
         );
-        expect(packageJson.scripts?.['test:browser:ci']).toBe(
-            'npm run test:ui:webgl2 && npm run test:visual:webgl2'
-        );
+        expect(packageJson.scripts?.['test:browser:ci']).toBe('npm run test:ui:webgl2:ci');
         expect(packageJson.scripts?.['test:webgpu:native']).toContain(
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
         expect(packageJson.scripts?.['test:webgpu']).not.toContain(
             'test/ui/clustered-forward-plus-lumen.spec.ts'
         );
-        expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe(
-            'playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/physics.spec.ts test/ui/visual.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts test/ui/editor-components.spec.ts --project=chromium --grep "@webgl2|through webgl2"'
-        );
+        expect(packageJson.scripts?.['test:ui:webgl2:ci']).toBe('jiti scripts/run-ui-ci.ts');
+        for (const script of [
+            'test:ui',
+            'test:ui:webgl2',
+            'test:ui:webgl2:ci',
+            'test:ui:webgpu',
+            'test:webgpu:native'
+        ]) {
+            const command =
+                script === 'test:ui:webgl2:ci'
+                    ? hostedUISpecFiles.join(' ')
+                    : packageJson.scripts?.[script];
+            expect(command, script).toContain('test/ui/mat1-materials.spec.ts');
+            expect(command, script).toContain('test/ui/mat1-soft-matter.spec.ts');
+        }
         expect(packageJson.scripts?.['test:visual:webgl2']).toBe(
             'playwright test test/ui/visual.spec.ts --project=chromium --grep "through webgl2"'
+        );
+        expect(packageJson.scripts?.['test:visual']).toBe(
+            'playwright test test/ui/visual.spec.ts --project=chromium --grep @visual'
         );
         const validateCI = packageJson.scripts?.['validate:ci'];
         expect(validateCI).toBeTypeOf('string');

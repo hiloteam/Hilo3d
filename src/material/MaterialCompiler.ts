@@ -238,6 +238,17 @@ export class MaterialCompiler {
                 'Material attributes role requires single-sample rgba8unorm attributes and optional matching HDR reflection targets'
             );
         }
+        if (
+            pass.fragmentOutput === 'subsurface' &&
+            (request.target.sampleCount !== 1 ||
+                request.target.colorFormats.length !== 3 ||
+                request.target.colorFormats.some(format => format !== 'rgba16float') ||
+                request.target.depthStencilFormat === null)
+        ) {
+            throw new TypeError(
+                'Material subsurface role requires three single-sample rgba16float targets and opaque depth'
+            );
+        }
         const state = role === 'forward' ? resolveForwardState(instance, pass) : pass.state;
         const sourceRevision =
             pass.shader.kind === 'glsl'

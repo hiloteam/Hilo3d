@@ -239,6 +239,12 @@ Pages 子路径部署使用同一份产物。
 
 ## 测试体系
 
+MAT1 的浏览器材质/SSS 组合验收位于 `test/ui/mat1-materials.spec.ts`。WebGL2 用例纳入完整
+`post-processing` UI 组；两个 WebGPU
+Forward/Clustered 用例由必需的 macOS 图形验收 job 串行执行，保留 `test-results/mat1`
+失败证据和耗时。完整本地 `test:ui` 也执行这三个用例， `test:webgpu:native`
+额外以非 fallback 适配器和 production 分辨率验收。软件 GPU 正确性与物理 GPU 正确性均不等同于已登记的性能基线。
+
 ### 单元测试与覆盖率
 
 单元测试运行于 Vitest Browser Mode + Playwright
@@ -266,11 +272,11 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 101 个 HTML 的后端适用矩阵
+### 102 个 HTML 的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 101 个 HTML，包含 99 个示例和两个画廊入口；85 个页面执行双后端，WebXR 执行 WebGL
-2，15 个页面执行 WebGPU，共 186 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 102 个 HTML，包含 100 个示例和两个画廊入口；86 个页面执行双后端，WebXR 执行 WebGL
+2，15 个页面执行 WebGPU，共 188 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
 Forward+ 灯光场景、动态 GI、雨后茶寮、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
@@ -434,9 +440,11 @@ protection 使用。预检导致测试分片跳过时，报告汇总也跳过，
 presentation/UI 使用 `channel: chromium` 的完整 Chromium headless
 compositor，保留 SwiftShader、单 worker、零重试和既有像素/物理/交互断言；不使用独立的 headless
 shell。示例 HTML 由 Vite 统一声明空 favicon，避免浏览器自动请求不存在的 `/favicon.ico`。Linux hosted
-runner 的 SwiftShader 会在 coverage instrumentation 下销毁 storage-aware
-raster 的真实设备，因此只有对应的一项真实设备集成测试在 GitHub Actions
-coverage 中跳过；本地 coverage 仍执行该测试，portable storage/RHI 合同继续由独立 RHI job 验证。
+runner 的 SwiftShader 在 coverage instrumentation 下有已知的真实设备限制。现有
+`__HILO3D_GITHUB_ACTIONS_COVERAGE__`
+条件涉及 Clustered、粒子、SRP 和 post-processing 集成用例，以及 TAA 的后端选择，并非仅有一项 storage-aware 测试。本地 coverage 仍执行这些用例，portable
+storage/RHI 合同继续由独立 RHI job 验证。不得把 `CI=true`
+当成相同 OS/驱动或相同 coverage 分支的证明；2026-10-18 的稳定性改动不新增条件跳过。
 
 真实 WebGPU 多相机画布合成与 TAA history 回收用例由 `npm run test:surface:render` 执行，位于
 `test/surface-render/`，使用完整 Chromium compositor。Linux coverage 的 headless
@@ -445,6 +453,11 @@ job；CPU history 与四项 WebGL2 合成及一项 WebGL2 回收用例仍参与 
 `test/fixtures/`
 场景函数，保留全部像素阈值、八相位、提交失败、resize、资源释放与恢复断言，没有重试或条件跳过。`validate`
 与 `validate:ci` 也包含该独立命令。
+
+`scripts/browser-test-capabilities.ts` 显式描述测试进程的平台、coverage 模式和 Chromium
+channel。在已知不支持 swapchain 的 Linux coverage headless-shell 组合下，浏览器 setup 在原生
+`GPUCanvasContext.getCurrentTexture()`
+入口立即失败并指出应使用的 presentation 套件，不等到 SharedImage 创建失败后才得到 device-lost、SIGSEGV 或 RPC 断开。只配置 canvas 或使用离屏 RenderTarget 的测试不受影响；这是环境能力边界的错误诊断，不是跳过测试，也不会伪造成功的 GPU 操作。
 
 package job 成功后，必需的 macOS editor job 使用相同提交和该 job 生成的 Pages editor
 artifact 验证 WebGL2/WebGPU 资产渲染及实际发布路径。该 job 也由 `Required CI`
@@ -459,6 +472,25 @@ CI 的正确性证据分开。
 
 ### 重型浏览器测试的维护约定
 
+本地和 hosted UI 共用 `scripts/playwright-ci.ts` 的清单与 `scripts/run-ui-ci.ts`
+入口。`npm run test:ui:webgl2:ci` 自行设置 `CI=true`，使用新的 Vite 服务、完整 Chromium
+compositor、单 worker、零重试及线上相同的截图/视频配置；未指定组时串行运行六个完整组。
+`test:browser:ci`
+也调用该入口，不再调用另一份选择范围和环境不同的命令。每次实际运行（包括显式单组）先执行 Node
+UI 合同和独立目录发现；任一失败都会阻止全部 GPU 组。`--plan`
+只预览选择，不启动测试，也不是通过记录。
+
+提交前先更新目标分支，再按当前分支和未提交变更选择受影响的完整组：
+
+```sh
+git fetch origin dev
+npm run test:ui:webgl2:ci -- --affected=origin/dev --plan
+npm run test:ui:webgl2:ci -- --affected=origin/dev
+```
+
+新增/删除 HTML 或修改 catalog 元数据会包含 `catalog` 与
+`catalog-scenes`，再加入案例所属专项组。共享 renderer、测试基础设施或无法分类的变更选择全部组。运行期间不要编辑受测源码或配置；保存的执行记录标明提交、源码指纹、实际组和命令，避免把先前版本的通过结果当成新版本验收。这个入口统一 UI 工作负载，不能把本机 macOS 结果当作 Linux 驱动证据，也不替代独立 WebGPU、编辑器发布产物和全量发布门禁。
+
 `HILO3D_UI_GROUP` 将同一 hosted UI 命令分成
 `catalog`、`catalog-scenes`、`csm`、`physics`、`post-processing` 和
 `chromatic`。默认不设该变量时仍运行完整矩阵。分组规则位于
@@ -466,6 +498,11 @@ CI 的正确性证据分开。
 `npx jiti scripts/check-ui-groups.ts`，用 Playwright 实际发现的测试 ID 验证六组的并集等于完整 WebGL2 清单，且没有重复或空组。新增测试必须进入恰好一组，新增工作组时同步修改规则、workflow
 matrix 和清单检查。Chromatic 与 SSGI
 chapel 已由双后端专项覆盖，不再重复运行通用首帧门禁；SSGI 专项继续验证启用/关闭后的像素差异、页面错误和 GPU 健康。
+
+清单检查另外从所有 `test/ui/**/*.spec.ts`
+独立发现 WebGL2 用例，与 hosted 清单比较，不能从待检查的 npm 文件列表反推“全部测试”。独立 Pages 配置和深度 runtime 发布矩阵有明确的归属；未声明的新文件或遗漏的用例必须报错。画廊的 reviewed 数量仍由 Node
+catalog
+contract 审核；浏览器筛选测试从该目录推导总数并逐个验证真实卡片 ID，不再在其他测试里重复写死高亮数量。
 
 `catalog-scenes` 承担自动发现的 HTML 原生绘制/像素验收；`catalog`
 承担画廊导航、2D 交互、运行时交互和基础视觉用例。拆分依据为同类 GitHub hosted
@@ -492,7 +529,9 @@ clock 控制 RAF/timer，不让真实 GPU fence 阻塞虚拟时间推进；其�
 
 CSM 和 Physics 截图前等待两个实际 ticker 帧，不能以 RAF 回调数代替已渲染帧数；限流期间 RAF 仍可执行，但场景可能尚未更新。等待者在页面销毁时会被清理并拒绝。
 
-编辑器协作竞态先完整接收真实 HTTP 快照，再把收到的原始字节交给应用并暂缓真实位图解码结果的交付。后续重连快照使用同一接收边界，主动断开前等待正在接收的快照结束。本地编辑与资产激活并发，不与尚未结束的传输并发；保留请求完成、实际解码尺寸、网络错误和渲染健康检查。
+编辑器协作竞态直接使用生产 `readBoundedResponse`
+读取真实 HTTP 快照，仅暂缓真实位图解码结果的交付。测试通过 Playwright 网络事件观察 join、重连和冲突处理的请求，主动断开前等待在途有限响应结束。不覆写
+`fetch`、不提前读完并替换 Response；这样原生请求完成、实际解码尺寸、网络错误、并发本地编辑与渲染健康断言共同覆盖生产接收路径。
 
 UI 默认关闭 trace 连续画面采集，保留 DOM、操作、源码和网络记录；CI 关闭视频，保留失败截图和显式像素断言。涉及像素和 presentation 的工作组继续使用完整 Chromium；无像素要求的合同由 Node 或独立 RHI
 lane 检查。 `scripts/playwright-timing-reporter.ts` 将每例耗时、超时预算及结果写入
@@ -538,6 +577,21 @@ smoke 默认覆盖一个完整普通 mesh 替换周期后结束，只有验证 1
 站点发布工作流同样从干净 checkout 执行 `npm ci`，再通过自包含的 `npm run site:build`
 完成核心与 addon 声明构建、API 检查和站点生成后部署 artifact。仓库不再跟踪旧 API 生成物，也不会从开发者本机的残留目录发布。
 
+### 首次 CI 失败复盘，2026-10-18
+
+检查了连续五个 PR 的首次失败日志、修复提交与成功运行，失败并非同一种随机超时：
+
+| PR / 首次运行                                                                     | 根因和已验证的修复边界                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [#139 / 39081760754](https://github.com/hiloteam/Hilo3d/actions/runs/39081760754) | Soft Matter 将 reviewed highlights 从 27 增至 28，Node contract 已更新，浏览器字符串仍是 27。本次改为从 reviewed catalog 推导并验证实际卡片身份；新增案例的影响选择必须包含画廊。                                                                                                           |
+| [#138 / 38502142018](https://github.com/hiloteam/Hilo3d/actions/runs/38502142018) | Linux coverage 的 headless-shell 无法创建 WebGPU swapchain SharedImage，继而设备丢失、浏览器崩溃及 RPC 断开。`b6e18172` 将同一五项真实 presentation 断言移至必需的 macOS 套件；离屏 RHI 和 WebGL2 coverage 保留。本次补入口能力检查，防止再以模糊崩溃结束。                                 |
+| [#137 / 38335891691](https://github.com/hiloteam/Hilo3d/actions/runs/38335891691) | 新增 editor-components 文件后，npm 清单与测试内重复的完整命令字符串不一致。第二次失败是 Player pause 发布早于在途物理 step 完成（44 → 45），`a0ccbd64` 修正实际暂停边界。本次 UI inventory 只维护一份并对全目录独立发现进行核对。                                                           |
+| [#136 / 37261941473](https://github.com/hiloteam/Hilo3d/actions/runs/37261941473) | 钢琴使用截断的 delta time 衰减，慢 GPU 帧延长了松键光效；`60b7ceb5` 改为真实 elapsed time。协作测试又把网络完成与 bitmap gate 互相等待，只修一次快照、增加 Content-Length 都未覆盖重连/冲突路径。当前生产 bounded reader 已覆盖原生完成，本次移除测试中的 fetch/Response 替换以直接验证它。 |
+| [#135 / 37223259319](https://github.com/hiloteam/Hilo3d/actions/runs/37223259319) | 编辑器真实 WebGPU presentation 也触发同类 Linux 设备错误，隔离 coverage 和去掉无关阴影仍失败，转到完整 compositor/macOS 后通过。96 MiB 文档边界测试另在准备 16 MiB fixture 时重复执行同步 JS 编码/hash 超时；本次保留相同真实数据、边界和断言，改用原生 codec 准备 fixture。                |
+
+共同的流程缺口是变更影响范围靠手选、相同清单多处维护，以及把本机支持的 GPU 环境当成 hosted
+runner 的同等能力。当前防线是同一 CI 入口、独立全目录发现、保守影响选择、受测源码记录和显式环境能力；真实业务竞态继续由原来的像素、物理、网络和生命周期断言约束。历史失败记录不因后续成功而作废，不通过增加重试、放宽阈值或跳过失败用例来改变结论。
+
 ## 唯一验收入口
 
 本地完整 coverage 若因长寿命 Chromium 的 RPC 连接中断而未完成，可使用与 CI 相同的四分片协议，每片以独立进程、单 GPU
@@ -563,8 +617,8 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、100 个 HTML 后端适用矩阵（85 个双后端、WebXR 显式 WebGL
-2-only、14 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、102 个 HTML 后端适用矩阵（86 个双后端、WebXR 显式 WebGL
+2-only、15 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00
 `attribute`/`varying`、`texture2D`/`textureCube`、`gl_FragColor`/`gl_FragData`、WebGL 1 shader

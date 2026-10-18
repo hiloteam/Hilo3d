@@ -21,6 +21,7 @@ describe('WebGPUBindingLayout', () => {
         expect(WEBGPU_UNIFORM_BLOCK_BINDINGS).toEqual({
             FrameBlock: { group: 0, binding: 0 },
             WeightedTransparencyBlock: { group: 0, binding: 4 },
+            SubsurfaceScatteringBlock: { group: 0, binding: 5 },
             CameraBlock: { group: 0, binding: 1 },
             SceneBlock: { group: 0, binding: 2 },
             LightBlock: { group: 0, binding: 3 },

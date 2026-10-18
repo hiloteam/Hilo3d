@@ -5,9 +5,10 @@ Status reviewed against source commit `6433334c` on 2026-09-20. This page tracks
 [earlier survey and completed work packages](./archive/MODERN_WEBGPU_RENDERING_ROADMAP.md) are
 historical. For cross-engine priorities and evidence gates, use [the main roadmap](./ROADMAP.md).
 
-Implementation update: 2026-10-13. GI0 asset coverage, V0 shared-atlas shadows, DECAL0 and TRANS0
-have Unreleased source implementations and executable fixtures. RG1, MAT1 and DEFORM0 remain
-unstarted. Implementation does not close independent physical-performance or release evidence gates.
+Implementation update: 2026-10-18. GI0 asset coverage, V0 shared-atlas shadows, DECAL0 and TRANS0
+have Unreleased source implementations and executable fixtures. MAT1 now also implements cloth, thin
+surfaces and bounded profile SSS; RG1 and DEFORM0 remain unstarted. Implementation does not close
+independent physical-performance or release evidence gates.
 
 ## Delivered slices and remaining boundaries
 
@@ -112,7 +113,7 @@ not a real-time dynamic GI performance result.
 | DECAL0  | P1                         | Implemented slice | Shared PBR/attribute ABI, eight atlas-backed world projectors, deterministic overlap and temporal rejection.                   |
 | TRANS0  | P1                         | Implemented slice | Explicit composition classes, bounded portable weighted OIT and separate sorted refraction/temporal composition.               |
 | RG1     | P1, measurement-driven     | Not started       | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
-| MAT1    | P2, content-driven         | Not started       | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
+| MAT1    | P2, content-driven         | Implemented slice | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
 | DEFORM0 | P2, character-scale-driven | Not started       | Compute/storage/vertex graph accesses, shared skin/morph inputs and D0 current/previous transform contracts.                   |
 
 All slices use the shared renderer -> Render Graph -> portable RHI path. Portable raster keeps one
@@ -206,6 +207,15 @@ resource ownership; claim savings only from the reviewed comparison.
 
 ### MAT1: cloth, thin surfaces and subsurface scattering
 
+**Implemented boundary (2026-10-18).** [MAT1 surfaces](./MAT1_SURFACES.md) provides shared Charlie
+sheen, thin diffuse transmission with checked glTF mapping, and portable separable RGB profile
+diffusion. SSS preserves specular/emission and aligns the DDGI/SSGI hybrid baseline with its
+filtered diffuse contribution. It supports canonical skin/morph, alpha masks, GTAO and TAAU through
+Forward and Clustered direct draws. Full-output viewport, opaque/masked material, world-unit radius
+and explicit pixel/sample budgets define this slice; unsupported combinations fail before
+submission. New material families, volumetric diffuse-ray transport and broader SSS profiles remain
+separate extensions. Source completion does not assert a published package or enrolled performance.
+
 **Scope.** Deliver sheen/cloth and thin-surface diffuse transmission as small shared material
 slices, then evaluate profile-based skin/wax subsurface scattering separately. Define parameter
 units, thickness, energy conservation and supported glTF mappings. Retain one Definition/Instance
@@ -242,10 +252,11 @@ profile only where the complete workload demonstrates a benefit.
 The GI0/V0/DECAL0/TRANS0 appearance sequence now has bounded source implementations. Prioritize
 their combined regression and physical workload evidence before enlarging supported content. REFL0
 retains separately tracked visibility, temporal and performance extensions. RG1 proceeds from
-measured CPU or transient-memory pressure; MAT1 and DEFORM0 are driven by actual material and
-character content. A0 -> M0 continues as the independent streaming/geometry lane. Existing
-physical-GPU performance gates remain mandatory evidence for their respective workloads; these
-planned additions do not mark them complete.
+measured CPU or transient-memory pressure; DEFORM0 is driven by actual character content. MAT1
+extensions build on the implemented material/diffusion contract and its measured content needs. A0
+-> M0 continues as the independent streaming/geometry lane. Existing physical-GPU performance gates
+remain mandatory evidence for their respective workloads; these planned additions do not mark them
+complete.
 
 ## Evidence gates
 

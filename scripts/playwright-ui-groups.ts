@@ -11,7 +11,12 @@ export type UIGroup = (typeof uiGroups)[number];
 
 export function uiGroupForTest(file: string, title: string): UIGroup {
     if (file.endsWith('physics.spec.ts')) return 'physics';
-    if (file.endsWith('post-processing.spec.ts') || file.endsWith('rain-tea-garden.spec.ts'))
+    if (
+        file.endsWith('post-processing.spec.ts') ||
+        file.endsWith('rain-tea-garden.spec.ts') ||
+        file.endsWith('mat1-materials.spec.ts') ||
+        file.endsWith('mat1-soft-matter.spec.ts')
+    )
         return 'post-processing';
     if (file.endsWith('scriptable-pipeline.spec.ts')) return 'chromatic';
     if (file.endsWith('examples.spec.ts') && title.includes('cascaded shadow toy')) return 'csm';
@@ -30,7 +35,7 @@ export function uiGroupFilter(group: string | undefined): {
     if (group === 'catalog') {
         return {
             testIgnore:
-                /(?:physics|post-processing|scriptable-pipeline|rain-tea-garden)\.spec\.ts$/u,
+                /(?:physics|post-processing|scriptable-pipeline|rain-tea-garden|mat1-materials|mat1-soft-matter)\.spec\.ts$/u,
             grepInvert: /cascaded shadow toy|\.html renders through /u
         };
     }
@@ -46,7 +51,7 @@ export function uiGroupFilter(group: string | undefined): {
             : group === 'chromatic'
               ? 'scriptable-pipeline'
               : group === 'post-processing'
-                ? '(?:post-processing|rain-tea-garden)'
+                ? '(?:post-processing|rain-tea-garden|mat1-materials|mat1-soft-matter)'
                 : group;
     return {
         testIgnore: new RegExp(`^(?!.*[/\\\\]${file}\\.spec\\.ts$)`, 'u'),

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta
+            name="description"
+            content="Soft matter — an interactive Hilo3D material study in velvet, petals and wax."
+        />
+        <meta name="theme-color" content="#0c1917" />
+        <title>Soft matter · Hilo3D Material Study</title>
+        <link rel="icon" href="data:," />
+        <link rel="stylesheet" href="./mat1_soft_matter.css" />
+    </head>
+    <body data-ready="false" data-failure="false">
+        <main class="exhibition" aria-label="Soft matter interactive material exhibition">
+            <div
+                id="container"
+                aria-label="Three-dimensional sculptures. Drag to orbit and scroll to explore."
+            ></div>
+            <div class="exhibition-shade" aria-hidden="true"></div>
+
+            <header class="masthead">
+                <a class="wordmark" href="./index.html" aria-label="Back to Hilo3D examples">
+                    HILO3D <span aria-hidden="true">/</span> MATERIAL STUDY
+                </a>
+                <span class="edition">COLLECTION 001</span>
+            </header>
+
+            <section class="introduction" aria-labelledby="exhibition-title">
+                <h1 id="exhibition-title">Soft <em>matter</em></h1>
+                <p>Light finds a different way.</p>
+            </section>
+
+            <div class="gallery-actions" role="group" aria-label="Exhibition controls">
+                <button
+                    id="compare"
+                    class="quiet-button compare-button"
+                    type="button"
+                    aria-pressed="false"
+                    aria-label="Compare all three surfaces with their material effects disabled"
+                >
+                    <span class="compare-symbol" aria-hidden="true"></span>
+                    <span class="compare-label-off">Compare materials</span>
+                    <span class="compare-label-on">Restore materials</span>
+                </button>
+                <button
+                    class="quiet-button gallery-button"
+                    type="button"
+                    data-view="gallery"
+                    aria-pressed="true"
+                    aria-label="View the complete exhibition"
+                >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M3 7V3h4m6 0h4v4M3 13v4h4m6 0h4v-4" />
+                    </svg>
+                    <span>Gallery view</span>
+                </button>
+            </div>
+
+            <section class="material-notes" aria-label="Explore each material">
+                <div class="study-list">
+                    <article class="study study-velvet">
+                        <span class="study-number" aria-hidden="true">01</span>
+                        <div class="study-body">
+                            <button
+                                class="study-view"
+                                type="button"
+                                data-view="velvet"
+                                aria-pressed="false"
+                                aria-label="Look closer at the velvet sculpture"
+                            >
+                                <span>Velvet</span
+                                ><span class="view-arrow" aria-hidden="true">↗</span>
+                            </button>
+                            <p>Soft light along every fold.</p>
+                            <button
+                                class="material-toggle"
+                                type="button"
+                                data-feature="sheen"
+                                aria-pressed="true"
+                                aria-label="Velvet sheen"
+                            >
+                                <span class="toggle-mark" aria-hidden="true"></span>
+                                <span>Sheen</span>
+                                <span class="toggle-state-on" aria-hidden="true">On</span>
+                                <span class="toggle-state-off" aria-hidden="true">Off</span>
+                            </button>
+                        </div>
+                    </article>
+                    <article class="study study-wax">
+                        <span class="study-number" aria-hidden="true">02</span>
+                        <div class="study-body">
+                            <button
+                                class="study-view"
+                                type="button"
+                                data-view="wax"
+                                aria-pressed="false"
+                                aria-label="Look closer at the ivory wax sculpture"
+                            >
+                                <span>Wax</span><span class="view-arrow" aria-hidden="true">↗</span>
+                            </button>
+                            <p>A warm glow beneath the surface.</p>
+                            <button
+                                class="material-toggle"
+                                type="button"
+                                data-feature="sss"
+                                aria-pressed="true"
+                                aria-label="Light scattering beneath the wax surface"
+                            >
+                                <span class="toggle-mark" aria-hidden="true"></span>
+                                <span>Subsurface glow</span>
+                                <span class="toggle-state-on" aria-hidden="true">On</span>
+                                <span class="toggle-state-off" aria-hidden="true">Off</span>
+                            </button>
+                        </div>
+                    </article>
+                    <article class="study study-petal">
+                        <span class="study-number" aria-hidden="true">03</span>
+                        <div class="study-body">
+                            <button
+                                class="study-view"
+                                type="button"
+                                data-view="petal"
+                                aria-pressed="false"
+                                aria-label="Look closer at the amber flower"
+                            >
+                                <span>Petal</span
+                                ><span class="view-arrow" aria-hidden="true">↗</span>
+                            </button>
+                            <p>Light held inside a petal.</p>
+                            <button
+                                class="material-toggle"
+                                type="button"
+                                data-feature="thin"
+                                aria-pressed="true"
+                                aria-label="Light through the petals"
+                            >
+                                <span class="toggle-mark" aria-hidden="true"></span>
+                                <span>Translucency</span>
+                                <span class="toggle-state-on" aria-hidden="true">On</span>
+                                <span class="toggle-state-off" aria-hidden="true">Off</span>
+                            </button>
+                        </div>
+                    </article>
+                </div>
+                <footer class="exhibition-footer">
+                    <p class="navigation-help">Drag to orbit <span>·</span> Scroll to explore</p>
+                    <button id="reset" class="reset-button" type="button">Reset the study</button>
+                    <span class="render-status" aria-label="Rendering backend">
+                        <span aria-hidden="true"></span><span id="render-backend">Live</span>
+                    </span>
+                </footer>
+            </section>
+
+            <div id="loading" class="loading" role="status" aria-live="polite">
+                <div class="loading-content">
+                    <span class="loading-eyebrow">HILO3D / MATERIAL STUDY</span>
+                    <p class="loading-title">Soft <em>matter</em></p>
+                    <span class="loading-line" aria-hidden="true"></span>
+                    <p id="loading-progress">Preparing the exhibition…</p>
+                </div>
+            </div>
+            <div id="failure" class="failure" role="alert" hidden></div>
+        </main>
+        <script type="module" src="./mat1_soft_matter.ts"></script>
+    </body>
+</html>

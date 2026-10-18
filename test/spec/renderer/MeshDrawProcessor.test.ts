@@ -18,6 +18,7 @@ import SpotLight from '../../../src/light/SpotLight';
 import BasicMaterial from '../../../src/material/BasicMaterial';
 import PBRMaterial from '../../../src/material/PBRMaterial';
 import ShaderMaterial from '../../../src/material/ShaderMaterial';
+import type { MaterialPassRole } from '../../../src/material/MaterialDefinition';
 import Color from '../../../src/math/Color';
 import Matrix4 from '../../../src/math/Matrix4';
 import Vector3 from '../../../src/math/Vector3';
@@ -45,6 +46,7 @@ import {
     rhiTextureFormatHasDepth,
     rhiTextureFormatHasStencil,
     type RHITextureFormat,
+    type RHIGraphicsPipeline,
     type RHIVertexFormat
 } from '../../../src/render/rhi/core';
 import { createWebGL2RHIDevice } from '../../../src/render/rhi/backends/webgl2';
@@ -556,14 +558,15 @@ function executeMeshFrame(
     frameIndex: number,
     target = createTarget(),
     device = fixture.device,
-    overrides: MeshFrameSemanticOverrides = {}
+    overrides: MeshFrameSemanticOverrides = {},
+    prepare?: () => PreparedDraw
 ): ExecutedMeshFrame {
     let prepared: PreparedDraw | undefined;
     const result = fixture.frame.execute(
         createContext(fixture, frameIndex, device, overrides),
         scope => {
             fixture.processor.beginFrame(scope.context, scope.uploads);
-            prepared = fixture.processor.prepare(mesh, target);
+            prepared = prepare?.() ?? fixture.processor.prepare(mesh, target);
             const pass = new SharedDrawPassParameters({
                 colorAttachments: target.colorFormats.length,
                 draws: 1
@@ -751,6 +754,285 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('MeshDrawProcessor on %s', (_name, createBackend) => {
+    it.each(['morph', 'skin'] as const)(
+        'retains %s pose data but replaces slots after in-place deformation topology changes',
+        async kind => {
+            const fixture = await createProcessorFixture(createBackend());
+            const morph = createMorphMesh();
+            const skin = createSkinnedMesh('uint16');
+            const mesh = kind === 'morph' ? morph.mesh : skin.mesh;
+            const target: RHIMeshDrawTargetDescriptor = {
+                ...createTarget(),
+                depthStencilFormat: 'depth24plus'
+            };
+            const pipelines: RHIGraphicsPipeline[] = [];
+            const prepare = (): PreparedDraw => {
+                pipelines.length = 0;
+                pipelines.push(
+                    fixture.processor.prepare(
+                        mesh,
+                        { ...target, colorFormats: ['rgba16float'] },
+                        null,
+                        null,
+                        'motion-vector'
+                    ).pipeline
+                );
+                const result = fixture.processor.prepare(mesh, target);
+                pipelines.push(result.pipeline);
+                return result;
+            };
+            const run = async (frameIndex: number): Promise<void> => {
+                await finishSubmission(
+                    fixture.backend,
+                    executeMeshFrame(fixture, mesh, frameIndex, target, fixture.device, {}, prepare)
+                );
+            };
+            await run(1);
+            const initial = [...pipelines];
+            morph.geometry.weights[0] = 0.6;
+            skin.joint.x = 0.2;
+            skin.joint.updateMatrixWorld(true);
+            await run(2);
+            expect(pipelines).toEqual(initial);
+            if (kind === 'morph') {
+                const positions = morph.geometry.targets?.['vertices'];
+                if (positions === undefined) throw new Error('Missing morph positions');
+                positions.push(new GeometryData(new Float32Array(9), 3));
+                morph.geometry.weights = new Float32Array([0.2, 0.4, 0.4]);
+            } else {
+                const joint = new Node();
+                joint.updateMatrixWorld(true);
+                skin.mesh.skeleton?.jointNodeList.push(joint);
+                skin.mesh.skeleton?.inverseBindMatrices.push(new Matrix4());
+            }
+            await run(3);
+            expect(initial.every(pipeline => pipeline.destroyed)).toBe(true);
+            const updated = [...pipelines];
+            await run(4);
+            expect(pipelines).toEqual(updated);
+            if (kind === 'morph') {
+                const targets = morph.geometry.targets;
+                if (targets === null) throw new Error('Missing morph target table');
+                targets['normals'] = Array.from(
+                    { length: 3 },
+                    () => new GeometryData(new Float32Array(9), 3)
+                );
+                await run(5);
+                expect(updated.every(pipeline => pipeline.destroyed)).toBe(true);
+            }
+            fixture.processor.detachMesh(mesh);
+            fixture.processor.collect(5);
+            expect(pipelines.every(pipeline => pipeline.destroyed)).toBe(true);
+            destroyFixture(fixture);
+        }
+    );
+
+    it('retains same-role output, override and instancing variants across data changes and recovery', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const { mesh, geometry, material } = createLitMesh('PBR');
+        mesh.useInstanced = true;
+        const override = createLitMaterial('LAMBERT');
+        const owners = { rgba8unorm: {}, rgba16float: {} };
+        const pipelines: RHIGraphicsPipeline[] = [];
+        const prepare = (): PreparedDraw => {
+            pipelines.length = 0;
+            for (const format of ['rgba8unorm', 'rgba16float'] as const) {
+                const target = createTarget(format);
+                pipelines.push(
+                    fixture.processor.prepare(mesh, target, null, null, 'forward', true).pipeline
+                );
+                pipelines.push(
+                    fixture.processor.prepareInstancedBatch(owners[format], [mesh], target).pipeline
+                );
+            }
+            pipelines.push(
+                fixture.processor.prepare(mesh, createTarget(), override, null, 'forward', true)
+                    .pipeline
+            );
+            return fixture.processor.prepare(mesh, createTarget(), null, null, 'forward', true);
+        };
+        const createPipeline = vi.spyOn(fixture.device, 'createGraphicsPipeline');
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 1, createTarget(), fixture.device, {}, prepare)
+        );
+        const first = [...pipelines];
+        const count = createPipeline.mock.calls.length;
+        expect(new Set(first).size).toBe(5);
+        material.opacity = 0.8;
+        geometry.vertices?.setSubData(0, new Float32Array([-0.8]));
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 2, createTarget(), fixture.device, {}, prepare)
+        );
+        expect(pipelines).toEqual(first);
+        expect(createPipeline).toHaveBeenCalledTimes(count);
+
+        const replacement = fixture.backend.createDevice();
+        const createReplacement = vi.spyOn(replacement, 'createGraphicsPipeline');
+        fixture.processor.recover(replacement);
+        const recoveredCount = createReplacement.mock.calls.length;
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 3, createTarget(), replacement, {}, prepare)
+        );
+        expect(createReplacement).toHaveBeenCalledTimes(recoveredCount);
+        expect(first.every(pipeline => pipeline.destroyed)).toBe(true);
+        expect(pipelines.every(pipeline => pipeline.deviceId === replacement.id)).toBe(true);
+        fixture.processor.detachMesh(mesh);
+        fixture.processor.collect(3);
+        expect(pipelines.every(pipeline => pipeline.destroyed)).toBe(true);
+        destroyFixture(fixture);
+    });
+
+    it('retires all semantic slots on material and geometry topology replacement while preserving shared owners', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const { mesh, geometry, material } = createLitMesh('PBR');
+        const target: RHIMeshDrawTargetDescriptor = {
+            ...createTarget(),
+            depthStencilFormat: 'depth24plus'
+        };
+        const pipelines: RHIGraphicsPipeline[] = [];
+        const prepare = (): PreparedDraw => {
+            pipelines.length = 0;
+            for (const role of ['material-attributes', 'motion-vector', 'forward'] as const) {
+                const passTarget: RHIMeshDrawTargetDescriptor = {
+                    ...target,
+                    colorFormats: [role === 'motion-vector' ? 'rgba16float' : 'rgba8unorm']
+                };
+                pipelines.push(
+                    fixture.processor.prepare(mesh, passTarget, null, null, role).pipeline
+                );
+            }
+            return fixture.processor.prepare(mesh, target);
+        };
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 1, target, fixture.device, {}, prepare)
+        );
+        const initial = [...pipelines];
+        const shared = new Mesh({ geometry, material });
+        const sharedFrame = executeMeshFrame(fixture, shared, 2, target);
+        await finishSubmission(fixture.backend, sharedFrame);
+        const sharedPipeline = sharedFrame.draw.pipeline;
+        mesh.material = new PBRMaterial({ sheenColor: new Color(0.5, 0.1, 0.1) });
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 3, target, fixture.device, {}, prepare)
+        );
+        expect(
+            initial
+                .filter(pipeline => pipeline !== sharedPipeline)
+                .every(pipeline => pipeline.destroyed)
+        ).toBe(true);
+        expect(sharedPipeline.destroyed).toBe(false);
+        fixture.processor.detachMesh(shared);
+        fixture.processor.collect(3);
+        expect(initial.every(pipeline => pipeline.destroyed)).toBe(true);
+        const beforeGeometry = [...pipelines];
+        geometry.colors = new GeometryData(new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), 3);
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 4, target, fixture.device, {}, prepare)
+        );
+        expect(beforeGeometry.every(pipeline => pipeline.destroyed)).toBe(true);
+        fixture.processor.detachMesh(mesh);
+        fixture.processor.collect(4);
+        expect(pipelines.every(pipeline => pipeline.destroyed)).toBe(true);
+        destroyFixture(fixture);
+    });
+
+    it('bounds same-role override residency and keeps recently reused variants alive', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const { mesh } = createMesh();
+        const variants = Array.from(
+            { length: 10 },
+            (_, index) =>
+                createMesh(undefined, `${FRAGMENT_SOURCE}\n// override ${String(index)}`).material
+        );
+        const pipelines: RHIGraphicsPipeline[] = [];
+        for (let index = 0; index < variants.length; index++) {
+            const material = variants[index];
+            if (material === undefined) throw new Error('Missing shader variant');
+            const result = executeMeshFrame(
+                fixture,
+                mesh,
+                index + 1,
+                createTarget(),
+                fixture.device,
+                {},
+                () => fixture.processor.prepare(mesh, createTarget(), material)
+            );
+            pipelines.push(result.draw.pipeline);
+            await finishSubmission(fixture.backend, result);
+        }
+        expect(pipelines.slice(0, 2).every(pipeline => pipeline.destroyed)).toBe(true);
+        expect(pipelines.slice(2).every(pipeline => !pipeline.destroyed)).toBe(true);
+        const recent = variants[2];
+        if (recent === undefined) throw new Error('Missing retained variant');
+        const reused = executeMeshFrame(fixture, mesh, 11, createTarget(), fixture.device, {}, () =>
+            fixture.processor.prepare(mesh, createTarget(), recent)
+        );
+        await finishSubmission(fixture.backend, reused);
+        expect(reused.draw.pipeline).toBe(pipelines[2]);
+        const fresh = createMesh(undefined, `${FRAGMENT_SOURCE}\n// newest override`).material;
+        await finishSubmission(
+            fixture.backend,
+            executeMeshFrame(fixture, mesh, 12, createTarget(), fixture.device, {}, () =>
+                fixture.processor.prepare(mesh, createTarget(), fresh)
+            )
+        );
+        expect(pipelines[2]?.destroyed).toBe(false);
+        expect(pipelines[3]?.destroyed).toBe(true);
+        fixture.processor.detachMesh(mesh);
+        fixture.processor.collect(12);
+        expect(pipelines.every(pipeline => pipeline.destroyed)).toBe(true);
+        destroyFixture(fixture);
+    });
+
+    it('bounds custom semantic role slots without dropping the most recently used role', async () => {
+        const fixture = await createProcessorFixture(createBackend());
+        const { mesh } = createMesh();
+        const roles = Array.from(
+            { length: 17 },
+            (_, index): MaterialPassRole => `user:bounded-${String(index)}`
+        );
+        mesh.material = new ShaderMaterial({
+            vs: VERTEX_SOURCE,
+            fs: FRAGMENT_SOURCE,
+            attributes: { position: 'POSITION' },
+            state: { depthTest: false, depthWrite: false, cullMode: 'none' },
+            roles: roles.map(role => ({
+                role,
+                vertexSource: VERTEX_SOURCE,
+                fragmentSource: FRAGMENT_SOURCE,
+                fragmentOutput: 'color' as const
+            }))
+        });
+        const pipelines: RHIGraphicsPipeline[] = [];
+        for (let index = 0; index < roles.length; index++) {
+            const role = roles[index];
+            if (role === undefined) throw new Error('Missing semantic role');
+            const result = executeMeshFrame(
+                fixture,
+                mesh,
+                index + 1,
+                createTarget(),
+                fixture.device,
+                {},
+                () => fixture.processor.prepare(mesh, createTarget(), null, null, role)
+            );
+            pipelines.push(result.draw.pipeline);
+            await finishSubmission(fixture.backend, result);
+        }
+        expect(pipelines[0]?.destroyed).toBe(true);
+        expect(pipelines.slice(1).every(pipeline => !pipeline.destroyed)).toBe(true);
+        fixture.processor.detachMesh(mesh);
+        fixture.processor.collect(17);
+        expect(pipelines.every(pipeline => pipeline.destroyed)).toBe(true);
+        destroyFixture(fixture);
+    });
+
     it('releases shared geometry and built-in material buffers only after the final mesh owner', async () => {
         const fixture = await createProcessorFixture(createBackend());
         const first = createLitMesh('LAMBERT');

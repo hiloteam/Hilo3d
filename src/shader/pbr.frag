@@ -16,6 +16,11 @@
 #include "./chunk/motionVector.frag"
 #include "./chunk/materialAttributes.frag"
 
+#ifdef HILO_SUBSURFACE_PASS
+layout(location=1) out vec4 hilo_SubsurfaceProfile;
+layout(location=2) out vec4 hilo_SubsurfaceGeometry;
+#endif
+
 void main(void) {
     #ifdef HILO_MOTION_VECTOR_PASS
         {
@@ -342,6 +347,17 @@ void main(void) {
                         reflectionIridescenceThickness,
                         reflectionAO
                     );
+                    #ifdef HILO_HAS_SHEEN
+                        vec3 reflectionSheenColor = hiloGetSheenColor();
+                        float reflectionSheenRoughness = hiloGetSheenRoughness();
+                        float reflectionSheenBaseWeight = 1.0 -
+                            max(max(reflectionSheenColor.r, reflectionSheenColor.g), reflectionSheenColor.b) *
+                            min(hiloSheenAlbedoBound(reflectionNdotV, reflectionSheenRoughness), 1.0);
+                        // SSR replaces the underlying GGX environment only. The broad Charlie
+                        // environment stays in scene color and is not incorrectly traced as GGX.
+                        reflectionResponse *= reflectionSheenBaseWeight;
+                        fallbackSpecular *= reflectionSheenBaseWeight;
+                    #endif
                     #ifdef HILO_HAS_CLEARCOAT
                         float reflectionClearcoatFresnel =
                             hiloFresnelSchlickScalar(
@@ -376,7 +392,9 @@ void main(void) {
         #include "./chunk/normal_main.frag"
         #include "./chunk/lightFog_main.frag"
         #include "./chunk/pbr_main.frag"
-        #include "./chunk/frag_color.frag"
+        #ifndef HILO_SUBSURFACE_PASS
+            #include "./chunk/frag_color.frag"
+        #endif
         #include "./chunk/logDepth_main.frag"
     #endif
 }

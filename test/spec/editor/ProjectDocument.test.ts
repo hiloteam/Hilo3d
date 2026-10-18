@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { importAsset, MAX_ASSET_BYTES } from '../../../editor/assets';
+import { importAsset, MAX_ASSET_BYTES, type ProjectAsset } from '../../../editor/assets';
 import { createClip } from '../../../editor/animation';
 import {
     createProject,
@@ -74,7 +74,37 @@ describe('editor project documents', () => {
         bytes.set(json, 20);
         view.setUint32(20 + jsonLength, bytes.length - 28 - jsonLength, true);
         view.setUint32(24 + jsonLength, 0x004e4942, true);
-        const binary = await importAsset(new File([bytes], 'Bulk.glb'));
+        // Prepare the real payload with native codecs. Re-running the import path's synchronous
+        // SHA-256 twice on 16 MiB tests fixture setup rather than this early byte-budget boundary.
+        // Asset import/checksum behavior is covered separately in Assets.test.ts.
+        const hash = Array.from(
+            new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
+            byte => byte.toString(16).padStart(2, '0')
+        ).join('');
+        const data = await new Promise<string>((resolveData, reject) => {
+            const reader = new FileReader();
+            reader.onload = (): void => {
+                if (typeof reader.result !== 'string') {
+                    reject(new Error('Expected a native base64 data URL'));
+                    return;
+                }
+                resolveData(reader.result.slice(reader.result.indexOf(',') + 1));
+            };
+            reader.onerror = (): void => {
+                reject(new Error('Unable to encode the GLB fixture', { cause: reader.error }));
+            };
+            reader.readAsDataURL(new Blob([bytes], { type: 'model/gltf-binary' }));
+        });
+        const binary: ProjectAsset = {
+            id: `bulk-${hash.slice(0, 12)}`,
+            name: 'Bulk.glb',
+            kind: 'model',
+            mimeType: 'model/gltf-binary',
+            size: bytes.byteLength,
+            hash,
+            source: { fileName: 'Bulk.glb', importedAt: new Date().toISOString() },
+            data
+        };
         const project = createProject(createDefaultScene());
         for (let index = 0; index < 4; index += 1) {
             const id = `bulk-${String(index)}-${binary.hash.slice(0, 12)}`;

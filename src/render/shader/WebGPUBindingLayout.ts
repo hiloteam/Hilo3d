@@ -41,6 +41,7 @@ export const WEBGPU_UNIFORM_BLOCK_BINDINGS = Object.freeze({
     SceneBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 2),
     LightBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 3),
     WeightedTransparencyBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 4),
+    SubsurfaceScatteringBlock: binding(WEBGPU_BIND_GROUPS.GLOBAL, 5),
     MaterialBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 0),
     MaterialTextureBlock: binding(WEBGPU_BIND_GROUPS.MATERIAL, 1),
     // Outside the built-in material sampler range, preserving every existing slot binding.

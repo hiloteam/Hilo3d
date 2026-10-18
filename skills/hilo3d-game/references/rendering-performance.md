@@ -6,6 +6,7 @@
 - [Compose 3D and 2D in one Stage](#compose-3d-and-2d-in-one-stage)
 - [Control draw calls](#control-draw-calls)
 - [Manage transparency](#manage-transparency)
+- [Cloth, thin surfaces and skin](#cloth-thin-surfaces-and-skin)
 - [Use render targets and post-processing only when needed](#use-render-targets-and-post-processing-only-when-needed)
 - [Portable custom shaders](#portable-custom-shaders)
 - [WebGPU-only compute](#webgpu-only-compute)
@@ -129,6 +130,25 @@ For opaque surface detail, Unreleased `PBRMaterial.decals` binds at most eight w
 material-attributes pass. Projectors do not add alpha silhouette or transparent receiver support;
 see [PBR decals](../../../documentation/PBR_DECALS.md). Mutate a projector with `update()` rather
 than replacing its material every frame.
+
+## Cloth, thin surfaces and skin
+
+Current **Unreleased source** adds `PBRMaterial.sheenColor`/`sheenRoughness` for cloth and
+`diffuseTransmissionFactor`/`diffuseTransmissionColor` for thin backlit sheets. Thin diffuse
+transmission stays in the opaque/masked queue; it is independent of refractive glass and does not
+make an object alpha blended. Both use ordinary per-slot texture transforms and explicit topology.
+
+For skin/wax, supply `subsurfaceProfile: new SubsurfaceScatteringProfile({ radius: [r, g, b] })`
+with distances in the same world units as the model. Enable `subsurfaceScattering` in the
+post-process or Clustered factory, or place `SubsurfaceScattering` before TAA in Forward features.
+An active profile without a participating pipeline fails explicitly. This is bounded screen-space
+diffuse filtering; it does not blur specular/emission or implement volumetric ray transport.
+
+Budget the 48 bytes per scene pixel of SSS intermediate textures, and choose explicit sample and
+pixel limits. Use the supported Clustered direct path for MAT1 materials; do not register them in
+the compact GPU Scene bucket ABI. Match installed declarations and consult
+[MAT1 surfaces](../../../documentation/MAT1_SURFACES.md) for supported combinations, glTF status and
+recovery. A checked recipe lives in `documentation/RECIPES.md` in the source checkout.
 
 ## Use render targets and post-processing only when needed
 

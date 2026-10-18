@@ -1,3 +1,10 @@
+import {
+    SubsurfaceScatteringController,
+    SUBSURFACE_SCATTERING_REQUIREMENTS,
+    snapshotSubsurfaceScatteringOptions,
+    type SubsurfaceScatteringOptions,
+    type SubsurfaceScatteringSettings
+} from '../postprocessing/SubsurfaceScattering';
 import { withRasterViewport } from '../internal/RasterViewportScope';
 import { withStableRasterCamera } from '../internal/StableRasterCamera';
 import { STABLE_CLUSTERED_FRAME_PASS } from './internal/stableClusteredFrame';
@@ -375,6 +382,8 @@ export interface ClusteredForwardPlusPipelineOptions {
      * The GPU Scene path reuses motion and material attributes and therefore requires `temporalAA`.
      */
     readonly screenSpaceGlobalIllumination?: Readonly<ScreenSpaceGlobalIlluminationOptions> | false;
+    /** Bounded profile diffusion for opaque/masked PBR, before SSGI and temporal resolve. */
+    readonly subsurfaceScattering?: Readonly<SubsurfaceScatteringOptions> | false;
     /** World-space dynamic diffuse GI with visibility-aware probes and software BVH tracing. WebGPU only; disabled by default. */
     readonly dynamicGlobalIllumination?: Readonly<DynamicGlobalIlluminationOptions> | false;
     /**
@@ -497,6 +506,7 @@ interface NormalizedOptions {
     readonly temporalAA: TemporalAASettings | null;
     readonly groundTruthAmbientOcclusion: GroundTruthAmbientOcclusionSettings | null;
     readonly screenSpaceGlobalIllumination: ScreenSpaceGlobalIlluminationSettings | null;
+    readonly subsurfaceScattering: SubsurfaceScatteringSettings | null;
     readonly dynamicGlobalIllumination: DynamicGlobalIlluminationSettings | null;
     readonly screenSpaceReflections: ScreenSpaceReflectionsSettings | null;
     readonly volumetricLighting: VolumetricLightingSettings | null;
@@ -982,6 +992,10 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         input.screenSpaceGlobalIllumination === false
             ? null
             : snapshotScreenSpaceGlobalIlluminationOptions(input.screenSpaceGlobalIllumination);
+    const subsurfaceScattering =
+        input.subsurfaceScattering === undefined || input.subsurfaceScattering === false
+            ? null
+            : snapshotSubsurfaceScatteringOptions(input.subsurfaceScattering);
     const dynamicGlobalIllumination =
         input.dynamicGlobalIllumination === undefined || input.dynamicGlobalIllumination === false
             ? null
@@ -1114,6 +1128,7 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
         temporalAA,
         groundTruthAmbientOcclusion,
         screenSpaceGlobalIllumination,
+        subsurfaceScattering,
         dynamicGlobalIllumination,
         screenSpaceReflections,
         volumetricLighting,
@@ -1314,6 +1329,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #fallbackOpaqueExcludedMeshes: Mesh[] = [];
     readonly #clusteredOpaqueExcludedMeshes: Mesh[] = [];
     readonly #clusteredOpaqueShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
+    readonly #subsurfaceShaderByMesh = new Map<Mesh, StorageGraphicsShader>();
+    readonly #subsurfaceScattering: SubsurfaceScatteringController | null;
+    #subsurfaceVariant: MutableClusteredSceneShaderVariant | null = null;
     readonly #fallbackTransparentMeshes: Mesh[] = [];
     readonly #clusteredTransparentMeshes: Mesh[] = [];
     readonly #fallbackTransparentExcludedMeshes: Mesh[] = [];
@@ -1696,6 +1714,10 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             options.groundTruthAmbientOcclusion === null
                 ? null
                 : new GroundTruthAmbientOcclusionController(options.groundTruthAmbientOcclusion);
+        this.#subsurfaceScattering =
+            options.subsurfaceScattering === null
+                ? null
+                : new SubsurfaceScatteringController(options.subsurfaceScattering);
         this.#screenSpaceGlobalIllumination =
             options.screenSpaceGlobalIllumination === null
                 ? null
@@ -2491,7 +2513,35 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 );
             }
         }
-        let globallyIlluminatedSceneColor = sceneColor;
+        let subsurfaceSceneColor = sceneColor;
+        if (
+            this.#subsurfaceScattering !== null &&
+            this.#subsurfaceScattering.hasVisibleSurfaces(context)
+        ) {
+            if (fallbackCulling === null || this.#subsurfaceVariant === null)
+                throw new Error(
+                    'SubsurfaceScattering requires native clustered direct material variants'
+                );
+            this.bindClusteredSceneStorage(
+                this.#subsurfaceVariant,
+                frameBuffer,
+                lights,
+                clusterGrid,
+                clusterIndices
+            );
+            this.#subsurfaceVariant.textures = this.#clusteredOpaqueShaderVariant?.textures ?? [];
+            const scattered = this.#subsurfaceScattering.record(context, {
+                cullingResults: fallbackCulling,
+                sceneColor,
+                sceneDepth,
+                sceneScale,
+                storageShaderVariant: this.#subsurfaceVariant,
+                ...(hybridBaseline === undefined ? {} : { hybridBaseline })
+            });
+            subsurfaceSceneColor = scattered.sceneColor;
+            hybridBaseline = scattered.hybridBaseline;
+        }
+        let globallyIlluminatedSceneColor = subsurfaceSceneColor;
         if (this.#screenSpaceGlobalIllumination !== null) {
             if (temporalFrame === null || temporalMotion === null || materialAttributes === null) {
                 throw new Error(
@@ -2502,7 +2552,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ...(hybridBaseline === undefined || hybridAlbedo === undefined
                     ? {}
                     : { hybridBaseline, hybridAlbedo }),
-                sceneColor,
+                sceneColor: subsurfaceSceneColor,
                 sceneDepth,
                 materialAttributes,
                 motionDepth: temporalMotion,
@@ -2938,6 +2988,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         try {
             this.#screenSpaceGlobalIllumination?.destroy();
+            this.#subsurfaceScattering?.destroy();
         } catch (error) {
             failures.push(error);
         }
@@ -3363,6 +3414,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         this.#fallbackOpaqueExcludedMeshes.length = 0;
         this.#clusteredOpaqueExcludedMeshes.length = 0;
         this.#clusteredOpaqueShaderByMesh.clear();
+        this.#subsurfaceShaderByMesh.clear();
+        this.#subsurfaceVariant = null;
         this.#giSurfaceShaderByMesh.clear();
         this.#fallbackTransparentMeshes.length = 0;
         this.#clusteredTransparentMeshes.length = 0;
@@ -3635,6 +3688,27 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 }
                 this.#clusteredOpaqueMeshes.push(mesh);
                 this.#clusteredOpaqueShaderByMesh.set(mesh, shader);
+                if (material.subsurfaceProfile !== null && material.subsurfaceFactor > 0) {
+                    if (this.#subsurfaceScattering === null)
+                        throw new TypeError(
+                            'Subsurface materials require an enabled subsurface-scattering pipeline'
+                        );
+                    const subsurfaceShader = clusteredTransparentShader(
+                        mesh,
+                        material,
+                        fog,
+                        withShadows,
+                        this.#dynamicGlobalIllumination !== null,
+                        false,
+                        'subsurface',
+                        this.#groundTruthAmbientOcclusion !== null,
+                        this.#options.atmosphere?.clouds !== null &&
+                            this.#options.atmosphere !== null
+                    );
+                    if (!this.admitMaterialVariant(subsurfaceShader))
+                        throw new Error('Subsurface material variant budget exhausted');
+                    this.#subsurfaceShaderByMesh.set(mesh, subsurfaceShader);
+                }
                 if (
                     this.#dynamicGlobalIllumination !== null &&
                     this.#screenSpaceGlobalIllumination !== null
@@ -3672,6 +3746,13 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         const firstShader =
             firstMesh === undefined ? undefined : this.#clusteredOpaqueShaderByMesh.get(firstMesh);
         if (firstShader === undefined) return;
+        const firstSubsurface = this.#subsurfaceShaderByMesh.values().next().value;
+        if (firstSubsurface !== undefined)
+            this.#subsurfaceVariant = {
+                shader: firstSubsurface,
+                shaderByMesh: this.#subsurfaceShaderByMesh,
+                buffers: this.#clusteredSceneStorageBuffers
+            };
         const firstSurface =
             firstMesh === undefined ? undefined : this.#giSurfaceShaderByMesh.get(firstMesh);
         if (firstSurface !== undefined) {
@@ -5459,6 +5540,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
             depthClearValue: depthClearValue(context.camera.depthMode)
         };
         parameters.storageShaderVariant = variant;
+        parameters.subsurfaceScattering = this.#subsurfaceScattering !== null;
         context.graph.addPass(this.#clusteredOpaquePass, parameters);
     }
 
@@ -5717,6 +5799,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (ambientOcclusion !== null) {
             parameters.ambientOcclusionTexture = ambientOcclusion;
         }
+        parameters.subsurfaceScattering = this.#subsurfaceScattering !== null;
         context.graph.addPass(this.#fallbackPass, parameters);
     }
 }
@@ -5846,6 +5929,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                           })
                       ]
                     : []),
+                ...(this.#options.subsurfaceScattering === null
+                    ? []
+                    : (SUBSURFACE_SCATTERING_REQUIREMENTS.requiredTextureFormats ?? [])),
                 ...(this.#options.temporalAA === null
                     ? []
                     : TEMPORAL_AA_REQUIREMENTS.requiredTextureFormats),
@@ -5947,7 +6033,8 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                     requirements.maxComputeWorkgroupsPerDimension,
                     this.#options.dynamicGlobalIllumination?.probeCount ?? 1
                 ),
-                ...(this.#options.weightedBlendedTransparency === null
+                ...(this.#options.weightedBlendedTransparency === null &&
+                this.#options.subsurfaceScattering === null
                     ? {}
                     : { maxColorAttachments: 3, maxColorAttachmentBytesPerSample: 24 }),
                 ...(this.#options.temporalAA === null ? {} : { maxColorAttachments: 4 })

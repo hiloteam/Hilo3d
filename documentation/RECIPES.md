@@ -26,6 +26,8 @@ import {
     Matrix4,
     Mesh,
     PBRMaterial,
+    PostProcessRenderPipelineFactory,
+    SubsurfaceScatteringProfile,
     type PBRDecalOptions,
     type Texture,
     type WeightedBlendedTransparencyOptions
@@ -56,6 +58,40 @@ export function projectedSurfaces(atlas: Texture): {
     const pipeline = new ForwardRenderPipelineFactory({ weightedBlendedTransparency: budget });
     projector.update({ opacity: 0.75 });
     return { projector, receiver, smoke, pipeline };
+}
+
+/** Unreleased MAT1: ordinary PBR materials share one portable HDR diffusion pipeline. */
+export function clothThinAndSubsurface(): {
+    readonly cloth: PBRMaterial;
+    readonly thinSheet: PBRMaterial;
+    readonly skin: PBRMaterial;
+    readonly pipeline: PostProcessRenderPipelineFactory;
+} {
+    const cloth = new PBRMaterial({
+        metallic: 0,
+        baseColor: new Color(0.12, 0.02, 0.04),
+        sheenColor: new Color(0.8, 0.2, 0.3),
+        sheenRoughness: 0.6
+    });
+    const thinSheet = new PBRMaterial({
+        metallic: 0,
+        diffuseTransmissionFactor: 0.7,
+        diffuseTransmissionColor: new Color(0.3, 0.8, 0.08),
+        cullMode: 'none'
+    });
+    // This radius is in metres when the application's geometry is authored in metres.
+    const skin = new PBRMaterial({
+        metallic: 0,
+        baseColor: new Color(0.65, 0.3, 0.18),
+        subsurfaceProfile: new SubsurfaceScatteringProfile({ radius: [0.001, 0.00035, 0.0002] }),
+        subsurfaceThickness: 0.003
+    });
+    const pipeline = new PostProcessRenderPipelineFactory({
+        subsurfaceScattering: { sampleCount: 17, maxPixelCount: 1920 * 1080 },
+        temporalAA: {},
+        bloom: false
+    });
+    return { cloth, thinSheet, skin, pipeline };
 }
 ```
 

@@ -267,6 +267,10 @@ void hiloEvaluateClusteredPBRLight(
     float iridescenceThickness,
     float clearcoatFactor,
     float clearcoatRoughness,
+    vec3 sheenColor,
+    float sheenRoughness,
+    vec3 diffuseTransmissionColor,
+    float diffuseTransmissionFactor,
     out vec3 lightDiffuse,
     out vec3 lightSpecular,
     out vec3 clearcoatLighting
@@ -300,6 +304,11 @@ void hiloEvaluateClusteredPBRLight(
             lightDiffuse,
             lightSpecular
         );
+        hiloApplyAreaSurfaceLayers(normal, viewDirection, viewPosition, positionRange.xyz,
+            colorType.rgb, clusterLights.values[lightBase + 5u].xyz,
+            clusterLights.values[lightBase + 6u].xyz, specularColor,
+            sheenColor, sheenRoughness, diffuseTransmissionColor, diffuseTransmissionFactor,
+            lightDiffuse, lightSpecular);
 #ifdef HILO_HAS_CLEARCOAT
         if (clearcoatFactor > 0.0) {
             vec3 unusedDiffuse;
@@ -358,7 +367,7 @@ void hiloEvaluateClusteredPBRLight(
             );
         }
     }
-    hiloEvaluateBaseBRDF(
+    hiloEvaluateLayeredBRDF(
         normal,
         viewDirection,
         lightDirection,
@@ -371,6 +380,10 @@ void hiloEvaluateClusteredPBRLight(
         iridescenceFactor,
         iridescenceIor,
         iridescenceThickness,
+        sheenColor,
+        sheenRoughness,
+        diffuseTransmissionColor,
+        diffuseTransmissionFactor,
         lightDiffuse,
         lightSpecular
     );

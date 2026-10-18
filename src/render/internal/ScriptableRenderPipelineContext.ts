@@ -6,6 +6,7 @@ import Mesh from '../../core/Mesh';
 import type Light from '../../light/Light';
 import type LightManager from '../../light/LightManager';
 import type Material from '../../material/MaterialInstance';
+import PBRMaterial from '../../material/PBRMaterial';
 import type { MaterialPassRole } from '../../material/MaterialDefinition';
 import Texture from '../../texture/Texture';
 import type StorageGraphicsShader from '../compute/StorageGraphicsShader';
@@ -2253,7 +2254,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
         storageVariant: Readonly<SceneStorageShaderVariant> | null,
         storagePreparation: StorageScenePreparationState,
         sceneTexturePreparation: SceneTexturePreparationState | null,
-        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null
+        passUniformBlocks: Readonly<Record<string, UniformBuffer>> | null = null,
+        subsurfaceScattering = false
     ): void {
         const list = this.requireRendererList(handle);
         const culling = list.culling;
@@ -2283,12 +2285,41 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             viewport,
             this.frameIndex
         );
+        if (list.materialPass === 'forward') {
+            for (const mesh of list.selectedMeshes) {
+                const material =
+                    list.overrideMaterial ?? context.renderer.forceMaterial ?? mesh.material;
+                const activeSubsurface =
+                    material instanceof PBRMaterial &&
+                    material.subsurfaceProfile !== null &&
+                    material.subsurfaceFactor > 0;
+                const authoredSubsurface =
+                    mesh.material instanceof PBRMaterial &&
+                    mesh.material.subsurfaceProfile !== null &&
+                    mesh.material.subsurfaceFactor > 0;
+                if (
+                    subsurfaceScattering &&
+                    context.renderer.forceMaterial !== null &&
+                    (activeSubsurface || authoredSubsurface)
+                ) {
+                    throw new TypeError(
+                        'Subsurface scattering does not support renderer.forceMaterial overrides'
+                    );
+                }
+                if (activeSubsurface && !subsurfaceScattering) {
+                    throw new TypeError(
+                        'Active subsurface materials require an enabled SubsurfaceScattering pipeline'
+                    );
+                }
+            }
+        }
         this.services.beginScriptableMeshPass(context);
         const processor = this.services.getScriptableMeshProcessor();
         const storagePipelines = this.services.getScriptableGPUDrivenPipelineResources();
         if (
             storageVariant !== null &&
             list.materialPass !== 'forward' &&
+            list.materialPass !== 'subsurface' &&
             list.materialPass !== 'weighted-accumulation' &&
             list.materialPass !== 'weighted-revealage'
         ) {

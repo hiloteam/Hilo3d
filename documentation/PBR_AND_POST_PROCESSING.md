@@ -1,5 +1,8 @@
 # PBR、HDR 与后处理
 
+Unreleased 的 [MAT1 surfaces](./MAT1_SURFACES.md) 扩展 cloth sheen、薄片漫透和显式开启的profile
+SSS。它们复用下述共享材质/光照链，具体组合限制、glTF 状态和预算由该文档维护。
+
 本文记录 Hilo3D 当前 PBR 材质、glTF layered materials、opaque scene
 texture 和内置后处理的生产合同。实现仍遵循唯一共享路径：
 

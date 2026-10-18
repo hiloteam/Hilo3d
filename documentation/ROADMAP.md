@@ -5,9 +5,9 @@ Reviewed against source commit `6433334c` on 2026-09-20. This is a source-develo
 Current contracts are indexed in [documentation](./README.md); old proposals live in
 [archive](./archive/README.md).
 
-Rendering implementation update: 2026-10-13. GI asset coverage, shared-atlas volumetric shadows, PBR
-decals and weighted transparency have Unreleased source implementations. Independent release and
-enrolled physical-performance evidence gates remain distinct from source completion.
+Rendering implementation update: 2026-10-18. GI asset coverage, shared-atlas volumetric shadows, PBR
+decals, weighted transparency and MAT1 surfaces have Unreleased source implementations. Independent
+release and enrolled physical-performance evidence gates remain distinct from source completion.
 
 ## Status vocabulary
 
@@ -31,7 +31,7 @@ enrolled physical-performance evidence gates remain distinct from source complet
 | S0-extension       | Extension                                   | Non-rigid/direct casters and local-light virtual pages after pressure evidence. Current opt-in path covers rigid GPU Scene directional clipmaps.                                                 | Explicit compatibility policy, dynamic/deformed coverage and bounded residency, with shared stable atlas retained where required.                     |
 | GI0-extension      | Implemented slice; evidence pending         | Actual texture/decal transport, alpha masks, vertex colors, shared-geometry instances and built-in skin/morph. Custom instance streams and transparent/specular ray transport remain extensions. | Combined transport/visibility/recovery fixtures and separate memory/update/quality evidence. A0 remains a scaling dependency.                         |
 | V0-extension       | Implemented slice; evidence pending         | Shared directional/spot/point shadow-atlas sampling in froxels, including offscreen caster coverage. Transparent volumetric history remains a later slice.                                       | Light/caster/medium changes, rejection and device recovery; budgeted physical-GPU evidence.                                                           |
-| Material-extension | Extension                                   | MAT1 below owns the cloth, thin-surface and SSS slices; other families and unified schemas remain content-driven extensions.                                                                     | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                     |
+| Material-extension | Extension                                   | MAT1 has a bounded cloth/thin-surface/profile-SSS implementation; other families and unified schemas remain content-driven extensions.                                                           | Shared semantic roles, ABI, shader parity and bounded variants. Existing high-end manifest/warmup is implemented.                                     |
 | Temporal-extension | Extension                                   | Exposure-compensated history, broader spatial masks, quality/memory tiers and thin-feature reconstruction.                                                                                       | Stable directional fixtures and measured quality/memory tradeoffs. Post-TAA transparency/particles use a fixed raster grid and matching opaque depth. |
 | Physics-P5         | Not started                                 | Collision mesh cooking/cache, stable application identity, deterministic command capture and asynchronous snapshot storage.                                                                      | Asset and replay fixtures, bounded ownership, real 2D/3D adapter conformance; [plan](./PHYSICS_IMPLEMENTATION_PLAN.md).                               |
 | Particle-extension | Extension                                   | GPU checkpoints and wider stateless subsets only with explicit deterministic/recovery contracts.                                                                                                 | Supported subset and failure behavior, replay/device-loss evidence; [current boundary](./PARTICLE_SYSTEM.md#current-boundary).                        |
@@ -50,16 +50,18 @@ when their content and budget are known. See
 | [DECAL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#decal0-pbr-decals)                                | P1                         | Implemented slice | [Projected opaque-surface decals](./PBR_DECALS.md), bounded atlas membership, layer/angle/distance filtering and base-color/normal/roughness changes.             | Consistent PBR/GTAO/SSR attributes, overlap ordering, moving receiver/projector history rejection and bounded pass/resource costs.                           |
 | [TRANS0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#trans0-transparency-quality)                      | P1                         | Implemented slice | [Explicit transparency classes](./TRANSPARENCY.md), portable weighted OIT for supported Basic/PBR meshes and instance quads, separate sorted refraction.          | Intersecting layers, dense particles, camera motion, temporal composition, explicit approximation limits and bounded memory/bandwidth.                       |
 | [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Not started       | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                     | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
-| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Not started       | Sheen and thin-surface diffuse transmission first; separately scoped profile-based skin/wax subsurface scattering afterward.                                      | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
+| [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Implemented slice | [Cloth sheen, thin diffuse transmission and portable profile SSS](./MAT1_SURFACES.md), with shared Forward/Clustered shading and explicit budgets.                | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
 | [DEFORM0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#deform0-reusable-gpu-deformation)                | P2, character-scale-driven | Not started       | Opt-in WebGPU compute skin/morph output reused by depth, shadow, motion and color passes.                                                                         | Vertex-path image parity, current/previous pose correctness, multi-camera and shadow reuse, recovery, memory bounds and measured multi-pass savings.         |
 
 The GI0 asset/V0 atlas/DECAL0/TRANS0 appearance lane now needs combined regression and physical
 workload evidence before further scope expansion. REFL0 has a bounded implementation; broader
 capture visibility, finer temporal masks and enrolled physical-device performance evidence remain
 extensions. This is a recommended sequence, not an artificial dependency between independent
-features. RG1 starts with measured CPU/transient-memory pressure; MAT1 and DEFORM0 need
-representative material or animated-character content. A0 -> M0 remains the independent streaming
-and geometry lane. Existing performance evidence gates stay open until their own acceptance passes.
+features. RG1 starts with measured CPU/transient-memory pressure; DEFORM0 needs representative
+animated-character content. MAT1 now has source implementations and executable material/diffusion
+fixtures; physical performance enrollment remains separate. A0 -> M0 remains the independent
+streaming and geometry lane. Existing performance evidence gates stay open until their own
+acceptance passes.
 
 RG1 makes the remaining graph-reuse work under F0 explicit; MAT1 narrows Material-extension rather
 than duplicating it. New feature details and acceptance boundaries live in the rendering roadmap.
@@ -89,6 +91,100 @@ The RHI migration's temporary hot-path allocation budget is historical; review c
 measurements under [the enrolled protocol](../benchmarks/rhi/README.md) before tightening it. The
 removed legacy renderer must not be restored for comparisons. Performance acceptance belongs here
 and in the benchmark protocols, not in archived implementation checklists.
+
+### Soft Matter acceptance, 2026-10-18
+
+[Soft Matter](./SOFT_MATTER_SHOWCASE.md) supplies the maintained MAT1 art showcase: generated
+concept, original editable Blender source, six runtime material batches retaining all 97,740
+triangles, independent material comparisons, close views and explicit page lifecycle handling.
+Implementation: `5909560dcb554390abee0a0a7982095ce0ef9bcf`; portrait light-shaper placement:
+`a867e5f41890608432aaf2cf1d8b85e002b56ee6`.
+
+The scene exposed a shared multi-pass cache defect, corrected in
+`d52e651815b284a5dd6159d6e2fe23f3b95a87a3`. Mesh Shader ownership now retains bounded role/context
+variants instead of evicting the preceding pass. With the same two-frame warmup, the old regression
+created 22 extra WebGL2 shader modules or 11 WebGPU pipelines on the next frame; the fixed steady
+frames create no extra modules, pipelines or programs. Actual pixels, data updates, new topology,
+shared ownership, bounded eviction, detach and device recovery accompany the counter assertions.
+
+Executed commands and results for the correction and showcase:
+
+- Documented four-shard `vitest run --coverage --maxWorkers=1 --shard=N/4` protocol followed by
+  `vitest --merge-reports=reports/vitest-soft-matter --coverage`: **298 files / 2723 tests passed**.
+  Global coverage: statements **84.22%**, branches **74.42%**, functions **88.93%**, lines
+  **85.87%**.
+- Targeted mesh/cache regressions: **91 passed**. `test:render:architecture`: **150 passed**.
+  `test:rhi`: **224 portable plus 3 native-RHI passed**; the software adapter's optional
+  `shader-f16` case was skipped, as in the preceding MAT1 acceptance.
+- `test:webgpu`: **33 passed**; `test:webgpu:native`: **27 passed**; `test:visual`: **3 passed**.
+- The dedicated Soft Matter Playwright spec passed **4 cases on each project**, including real
+  interaction, per-sculpture on/off/restored pixels, retained/final teardown and initialization
+  cancellation with an actual late GLB response. The last framing-only change reran these cases.
+- Complete `CI=true HILO3D_UI_GROUP=post-processing npm run test:ui:webgl2:ci`: **11 passed**. Both
+  MAT1 specs with `CI=true --project=chromium --grep @webgpu`: **4 passed**. These gates were rerun
+  after the portrait adjustment. UI contracts: **34 passed**; grouping verifies **127 WebGL2 cases
+  exactly once**.
+- `typecheck`, `lint:built`, `format:check`, `build`, `test:types`, `api:check:built`,
+  `test:package:built`, `examples:build`, `docs:check:built` and `site:build:built` passed. Site
+  validation checked **73,139 internal references across 1,585 files**. Built-asset desktop close
+  views and a 430×860 portrait viewport were also inspected.
+
+Evidence is retained under `reports/soft-matter-*` and `reports/vitest-soft-matter/`. Earlier
+software timeout diagnostics and Vite reload failures are not passing results. The final software
+quality profile was restored after correcting ownership; no pixel threshold, retry or test skip was
+used to make the scene pass. The full 267-case UI command and monolithic `validate` were not rerun
+for this example-only addition and cache correction; the full unit coverage, renderer/RHI,
+WebGPU/native matrices and affected complete UI group above are the executed gates. Cross-device
+performance enrollment and publication remain separate, unexecuted work.
+
+### MAT1 acceptance, 2026-10-18
+
+Feature source: `f73da7957fdde06e2c5451c2922d43d3860d5f5a` on `codex/mat1-materials`, based on
+updated `dev` commit `e9cc67d9ab0dddfcfc7c05f8a82a564561b793c3`. The reviewed contract is
+[MAT1 surfaces](./MAT1_SURFACES.md). Shared [PBR materials](../src/material/PBRMaterial.ts) and
+[surface GLSL](../src/shader/chunk/pbr_main.frag) implement cloth sheen and thin diffuse
+transmission; [profile diffusion](../src/render/postprocessing/SubsurfaceScattering.ts) supplies the
+portable Forward/Clustered SSS passes.
+
+Executed checks on this change:
+
+| Gate                                       | Result                                                                                                                                                                                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Final four-shard coverage and global merge | **297 files / 2709 tests passed**; statements 84.18%, branches 74.34%, functions 88.92%, lines 85.84%.                                                                                                                                                                          |
+| Renderer architecture and RHI              | Architecture **6 files / 150 tests**; portable RHI **14 files / 224 tests**; native-RHI configuration **3 passed, 1 optional `shader-f16` case skipped** on the software adapter.                                                                                               |
+| Browser matrices                           | `test:webgpu` **33 passed**; complete `test:ui` **263 passed**; `test:visual` **3 passed**, including exact first-frame backend parity.                                                                                                                                         |
+| Physical GPU                               | Complete `test:webgpu:native` **23 passed**. MAT1 Forward/Clustered assert a non-fallback adapter, render 1920×1080, verify pixels/submission and observe teardown errors.                                                                                                      |
+| Affected CI lanes                          | Complete `CI=true HILO3D_UI_GROUP=post-processing npm run test:ui:webgl2:ci` **9 passed**; both MAT1 WebGPU cases under `CI=true` **passed**. UI grouping verifies all **125 WebGL2 cases exactly once**; UI contracts **6 files / 34 tests passed**.                           |
+| Surface/editor/player                      | Surface **2 files / 5 tests**, editor rendering **3 / 25**, editor server **3 / 17**, built Pages editor **2 browser cases**, exported Player **2 browser cases**, all passed.                                                                                                  |
+| Packaging and documentation                | `build`, `editor:build`, `site:build:built`, `test:types`, `api:update` then `api:check`, `docs:check:built`, main/addon package checks, Live2D runtime build and `pack:check` passed. Installed-tarball recipes and asset-worker/WASM pixels/recovery passed on both backends. |
+| Static and protocol checks                 | `typecheck`, `lint:built`, `format:check`, `check:modernity`, `test:skill` and RHI benchmark contracts (**8 files / 83 tests**) passed. Benchmark contracts are not workload performance evidence.                                                                              |
+
+The monolithic `validate` invocation stopped when its long-lived coverage browser lost the RPC
+connection before `HDRLoader.test.ts`; that invocation is **not** a passing validation result. The
+[documented local four-shard protocol](./ENGINEERING.md#唯一验收入口) completed every test and
+enforced the unchanged global coverage thresholds. The remaining release gates completed as separate
+commands. The final coverage includes the actual custom-SRP target regressions and the
+`beforeRender` activation regressions. The 33-case WebGPU and 263-case UI matrices ran earlier in
+this change; the final target guard and fixture-layout correction were followed by the full native
+matrix, complete affected WebGL2 CI group and both MAT1 WebGPU CI cases.
+
+The initial native 1080p checks exposed fractional page-layout screenshot rounding (1081 captured
+rows for a 1080-row canvas). Integer heading spacing fixed the fixture; the unchanged exact-size,
+pixel, submission and lifecycle assertions then passed. The visual command now explicitly selects
+`visual.spec.ts`, preserving all three existing visual cases while avoiding Vitest contract-file
+collection. No failing case was skipped, pixel threshold relaxed, baseline replaced or retry added.
+
+Local evidence remains in `reports/mat1-release-*`, `reports/mat1-native-release-final.log`,
+`reports/mat1-native-release-final/`, `reports/vitest-mat1-release/` and the earlier
+`reports/mat1-gate-*` logs. The original interrupted run is retained at
+`/tmp/hilo-mat1-validate.log`. CI group timings remain under `reports/ui-timings/` and
+`reports/mat1-ci-webgpu-timings/`.
+
+This closes the bounded MAT1 functional implementation and local release-check slice. SSS remains
+opaque/masked, full-viewport and explicitly budgeted; dynamic-probe capture of active SSS content,
+compact GPU Scene MAT1 records and MAT1 ray-contributor BSDFs remain outside the contract. Other
+physical-device matrices, enrolled cross-commit performance/memory budgets and registry publication
+were not executed and are not implied by these results.
 
 ### Rendering acceptance, 2026-10-13
 

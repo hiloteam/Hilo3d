@@ -136,6 +136,7 @@ Pipeline 通过 role 请求材质，而不是读取 `material.passes[]` 并让�
 | `picking`             | 是           | 复用 geometry/coverage，输出稳定对象 ID                                                                                         |
 | `motion-vector`       | 是           | opaque/masked 输出 single-sample `rgba16float` UV velocity 与 previous/current log-view-depth                                   |
 | `material-attributes` | 是           | single-sample `rgba8unorm` 属性；SSR 时扩展两个 matching HDR MRT，写 reflection response 与 environment/probe specular baseline |
+| `subsurface`          | MAT1         | 三个 single-sample `rgba16float` MRT：漫反射/strength、profile/thickness、法线/log-depth/coverage；复用真实共享光照             |
 | `user:*`              | 自定义       | 只有自定义 Pipeline 显式请求才运行                                                                                              |
 
 [`MaterialCompiler.ts`](../src/material/MaterialCompiler.ts) 负责 role 解析、target
@@ -184,8 +185,9 @@ lowering 即使只启用一个 UV 集，也必须保留 managed material sampler
 
 WebGL2/WebGPU portable uniform ABI 分成两个 material-frequency block：
 
-- `MaterialBlock`：448 bytes，保存 scalar/color/environment 与 authored temporal reactive 数据；
-- `MaterialTextureBlock`：1920 bytes，保存 24 个槽的 transform、UV/encoding info 和 channel
+- `MaterialBlock`：528 bytes，保存 scalar/color/environment、authored temporal
+  reactive 与 MAT1 数据；
+- `MaterialTextureBlock`：2240 bytes，保存 28 个槽的 transform、UV/encoding info 和 channel
   mapping。
 
 分块避免为 per-slot 元数据继续膨胀标量材质 ABI，也让两个 block 按最终 std140 bytes 独立更新。WebGPU
@@ -198,7 +200,7 @@ handle，并把 family/layout 写入稳定 record。当前 `builtin-pbr-storage-
 vec4 与 8 个基础纹理槽，每槽 5 个 vec4，共 704
 bytes。槽集合是 baseColor、metallic、roughness、metallicRoughness、occlusion、emission、normal 和 opacity；每槽保存 UV
 matrix、UV set、encoding、presence 与 channel mapping。它不同于 portable
-UBO 的全部 24 槽；layered/deformed direct storage lane 有独立消费边界。第三个 surface vec4 的 W 保存
+UBO 的全部 28 槽；layered/deformed direct storage lane 有独立消费边界。第三个 surface vec4 的 W 保存
 `temporalReactiveFactor`。GPU Scene 对象 record 分别持有 logical bucket 与 material
 handle，同一材质跨多个 geometry bucket 不重复 storage record。布局以
 [`PBRGPUMaterialRecord.ts`](../src/render/renderer/PBRGPUMaterialRecord.ts) 为准。
@@ -213,9 +215,10 @@ recovery 后保持公共材质 identity 和 dense handle 不变。直接修改�
 
 局部反射通过 `PBRMaterial.reflectionProbes` 固定绑定最多两个 probe，使用可选的 128-byte
 `ReflectionProbeBlock`（WebGL2 binding 10、WebGPU group 1 binding
-64）。原 MaterialBlock、24 槽 MaterialTextureBlock 和 sampler 起始 binding 保持不变；自定义 UBO 注册从 flat
-binding 11 开始。额外的 probe sampler 参与已有 shader 反射和资源绑定路径。固定 GPU Scene
-bucket 不接纳该材质，普通 Clustered direct
+64）。Sampler 起始 binding 保持不变；MAT1 扩展后的材质块与纹理槽见上节。Decal、weighted
+transparency、SSS 分别占用 flat binding 11、12、13；自定义 UBO 注册从 14 开始。额外的 probe
+sampler 参与已有 shader 反射和资源绑定路径。固定 GPU Scene bucket 不接纳该材质，普通 Clustered
+direct
 PBR 复用相同 shader。完整输入、所有权、SSR 和动态 history 边界见[局部反射](./LOCAL_REFLECTIONS.md)。
 
 稳定 variant 至少由以下维度组成：
@@ -235,9 +238,15 @@ base color、roughness、opacity、texture transform、object transform、camera
 order 不进入 Shader variant。普通参数修改只能更新 material data/binding，不能触发 Shader 编译。
 
 Shared Renderer 的 Shader header
-snapshot 包含 role 以及真正影响 source 的 geometry/light/fog/shadow 维度。非-forward
-role 不携带 forward light、fog 或 receive-shadow 变体。结构化 collision-safe
+snapshot 包含 role 以及真正影响 source 的 geometry/light/fog/shadow 维度。Depth、shadow、motion 等非光照 role 不携带 forward
+light、fog 或 receive-shadow 变体；`subsurface` 显式复用光照与阴影。结构化 collision-safe
 key 和有界 cache 继续作为 Shader cache 合同。
+
+Mesh 的 Shader 所有权按语义 role 分槽；每个 role 最多保留八个已解析的上下文 variant，每个 mesh 最多保留十六个 role 槽。这样同一模型的 depth、attributes、color、subsurface 和 motion
+pass 不会互相逐出仍需复用的编译结果，同 role 的直接/实例绘制及多视图变体也可共存。普通材质数值、相机或灯光数据变化不清空这些槽；源 MaterialDefinition、geometry
+identity 或真正影响 shader 的 geometry
+topology 变化会替换旧所有权。替换时先保留新引用，再释放旧集合；mesh
+detach 释放全部槽，在途 pipeline 仍由 frame resource tracker 与 submission fence 保护。
 
 ## 8. 加载器与运行时构造
 
@@ -271,7 +280,7 @@ default 对象而发生串改。
 | 工作包                       | 状态            | 当前结果 / 下一步                                                                                       |
 | ---------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
 | Definition / Instance        | 已完成          | 内置与自定义材质都使用不可变结构和实例数据                                                              |
-| Semantic pass                | 已完成基础      | forward/depth/shadow/picking/motion/material-attributes 均已接生产消费者                                |
+| Semantic pass                | 已完成基础      | forward/depth/shadow/picking/motion/material-attributes/subsurface 均已接生产消费者                     |
 | Texture slot                 | 已完成          | 每槽 UV/transform/encoding/channel，glTF extensions 共用 builder                                        |
 | Typed semantics              | 已完成          | attribute/uniform/texture/slot 常量与联合类型公开                                                       |
 | UBO lowering                 | 已完成          | scalar 与 slot block 分离，双后端固定 ABI                                                               |
@@ -279,7 +288,7 @@ default 对象而发生串改。
 | Variant manifest / warmup    | high-end 已完成 | Clustered manifest 异步 warmup、固定预算、事务式运行时准入与诊断                                        |
 | Motion vectors               | 已完成生产切片  | opaque/masked、skin/morph/instance history、固定/动态 TAAU，以及稳定栅格透明/粒子组合与贴花内容变更失效 |
 | Material attributes          | 已完成生产 ABI  | oct normal/roughness/receiver/metallic；SSR opt-in 再写 response 与 fallback specular MRT               |
-| Advanced surface families    | 后续            | sheen/specular/dispersion、subsurface、hair 等按真实内容和预算推进                                      |
+| Advanced surface families    | MAT1 已实现切片 | [sheen、薄片漫透与 profile SSS](./MAT1_SURFACES.md) 复用共享 PBR；specular/dispersion/hair 仍按内容推进 |
 
 首个共享 GPU Material Database 已满足：
 

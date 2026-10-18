@@ -12,6 +12,10 @@ feature list: texture/deformation-aware DDGI, atlas-shadowed volumetrics, `Decal
 `PBRMaterial.decals` and weighted-blended transparency. New recipes are checked against the packed
 checkout; this does not assert availability in any published npm version.
 
+MAT1 cloth sheen, thin diffuse transmission, `SubsurfaceScatteringProfile` and
+`SubsurfaceScattering` are also **Unreleased source**. Their loader mappings and explicit rendering
+limits are documented in [MAT1 surfaces](./MAT1_SURFACES.md); they are not alpha.9 registry APIs.
+
 ## Install a matching release
 
 For Hilo3D 2.0 alpha, use `npm install --save-exact hilo3d@next`. Resolve and pin the concrete
