@@ -22,7 +22,7 @@ glTFLoader
     .then(async model => {
         const releaseModel = (): void => {
             model.anim?.destroy();
-            model.node.destroy(undefined, true);
+            model.node.destroy(renderer, true);
             for (const texture of model.textures) texture.destroy();
         };
         context.onDispose(() => {
