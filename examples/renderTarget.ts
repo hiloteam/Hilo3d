@@ -2,9 +2,10 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = await createExampleContext({
+const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
+const { camera, stage, renderer } = context;
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
@@ -28,7 +29,7 @@ stage.addChild(colorBox);
 const texture = new Hilo3d.LazyTexture({
     src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
 });
-const textureMaterial = new Hilo3d.BasicMaterial({ diffuse: texture.clone() });
+const textureMaterial = new Hilo3d.BasicMaterial({ diffuse: texture });
 const textureBox = new Hilo3d.Mesh({
     geometry: boxGeometry,
     material: textureMaterial,
@@ -50,6 +51,10 @@ const renderTarget = renderer.createRenderTarget({
         }
     ],
     label: 'RenderTarget.preview'
+});
+context.onDispose(() => {
+    renderTarget.destroy();
+    texture.destroy();
 });
 const preview = createTexturePreview(
     () => renderTarget.getColorTexture(),

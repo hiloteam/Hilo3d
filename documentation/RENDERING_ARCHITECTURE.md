@@ -314,6 +314,16 @@ import 引用上下文合同。
 adapter。完成用户 `setup()` 后，执行模块通过单次注册表查找接入对应的资源准备，不再逐项 `instanceof`
 识别内置 Pass 类。普通自定义 pass 继续使用公开的受限命令 facade；adapter 注册表不从包入口导出，不增加 native/RHI 逃逸接口。注册发生在 Pass 创建时，帧内不创建 adapter 或逐 draw 分派对象。
 
+execute 的独立 lease
+token 与命令 facade 在存活 Pass 的 prepare 中创建，execute 只激活一次并在退出时失效。Forward 在 runtime 创建时捕获可选 requirement、scale 和 notification
+hook，逐帧只遍历实际存在的 callback；动态值仍由 callback 每帧计算。提交、丢弃和销毁通知会完成全部 owner，再聚合错误；timeline
+observer 保留 Promise 错误上报能力。异步 factory 的创建方法在该次初始化结束后失效，迟到结果不会复活已销毁的 Host。
+
+persistent
+target/history 只对本帧 acquire/release 的状态做事务收尾；同一 key 在一帧内固定 descriptor，失败的旧 history 释放保留所有权供重试。纹理 view 缓存按实际 physical
+parent 复用，每次访问仍累计 parent usage，MSAA attachment 与 resolve 不共享 view。具体合同见
+[SRP](./SCRIPTABLE_RENDER_PIPELINE.md)。
+
 带 feature 的 `ForwardRenderPipelineFactory` 在构造时快照配置并合并静态 capabilities/limits/format
 requirements；每个 feature 配置在 Renderer 创建时产生独立且只能附着一次的 runtime。feature
 context 暴露内置 forward/shadow 共用的 `cullingResults`，因此附加 Scene
@@ -548,6 +558,10 @@ group；任何 frame/transient graph 资源都会使该 group 确定性回退到
 group。缓存不会把瞬态 texture/view 留到下一帧，也不会因为 descriptor 对象每帧重建而丢失稳定命中；device
 generation 切换后，persistent recipe 使用同一逻辑 handle 重建原生 bind group。
 
+cache 命中直接比较已有 recipe 与当前绑定，不重新创建 recipe 对象；storage
+buffer 销毁通过反向依赖索引只失效引用它的 group，不扫描全部 owner，也不驱逐仍有效的闲置缓存。失效仅释放 registry
+ownership，原生资源仍等待最后一次 submission fence。
+
 普通 renderer list 也可以通过 `SceneRenderPass.storageShaderVariant` 使用 pass-global readonly
 storage。固定 group 3 由整个 pass 共用，group 0–2 继续服务现有 pass/material/mesh
 ABI；场景遍历、裁剪、排序、Material/Geometry/UBO 准备和 Mesh 事件仍走 shared renderer。storage-aware
@@ -606,6 +620,7 @@ reset arena/uploads
     -> begin RHI frame
     -> flush uploads
     -> execute passes
+    -> validate staged sources and submission ownership
     -> submit
     -> commit resource revisions
 ```
@@ -613,6 +628,11 @@ reset arena/uploads
 如果 Build、Compile、Prepare 或 Execute 任一阶段失败，上传批次和资源使用记录会回滚；只有获得有效
 `RHISubmission`
 后，缓存 revision 与资源“本帧已使用”状态才会提交。这避免了“CPU 侧认为更新成功，但 GPU 命令并未提交”的状态撕裂。
+
+所有 enlisted cache 的源 revision 和 ownership 在最后一个 Pass 完成后、`queue.endFrame()`
+前验证。成功路径提交时不再重复扫描源数据。`endFrame()` 之后的 CPU
+publication 或 observer 异常通过 execution
+result 延后报告；其余 participant 仍完成提交，主 Pipeline、独立 renderer 与 readback 入口先登记 submission、接管提取资源并完成清理，不能把已提交帧当成未提交帧回滚。
 
 Build/Setup 抛错或返回 Promise-like 时，Frame 在 `finally` 中 discard
 builder，立即清空 Pass 参数和 import
@@ -643,6 +663,14 @@ Pass 模板被严格分成三阶段：
   Frame 尚未开始；用于提前准备 Pipeline、Framebuffer、Vertex Input 等后端对象。
 - `execute`：唯一可以访问 `RHICommandContext` 并发出 RHI 命令的阶段。
 
+三个回调都必须同步完成，返回 Promise-like 会立即使该阶段失败。`RGPassBuilder` 只在对应 `setup`
+回调期间有效；回调返回或抛错后立即关闭，不能通过保留引用修改后续复用的 Pass 存储。setup 中也不能重入添加 Pass、编译或丢弃当前图。
+
+同一外部 RHI 对象在一张图中只导入一次，重复导入返回同一内部 handle。延迟 provider 通过稳定的 owner
+identity 去重；registry-backed 资源使用其
+`ResourceRegistryHandle`，因此跨 Camera/invocation 的 StorageBuffer、history texture 和 shadow
+atlas 共享同一套依赖及内容状态。重复 identity 的 descriptor、lifetime 和帧开始时初始化状态必须一致；不能按相同 descriptor 推断两个资源是同一分配。自定义 provider 闭包引用同一分配时也必须显式共享 identity。
+
 Surface 使用延迟 Provider 导入。只有图编译后仍被存活 Pass 使用时，Executor 才调用
 `surface.getCurrentTexture()`，从而把帧级 Surface Texture 的获取推迟到最后的安全时间点。
 
@@ -672,6 +700,11 @@ Compiler 是纯 CPU 阶段，主要完成：
 graph 的独立性。当前仍逐帧构建并编译不可变图结果，不把调度优化表述为 compiled-graph
 cache 或整帧零分配。
 
+编译内部为 parent
+texture 的 mip/layer/aspect 分配连续数字 hazard 区间，view 选择同一区间中的子集；Buffer 使用独立索引。writer、preferred
+writer 和内容初始化状态以高水位 TypedArray 保存，避免逐子资源构造字符串与多次 Map 查找。每个 texture/view 的访问描述只规范化一次，每个 Pass 的 depth/stencil 附件只验证一次；编译完成或失败后清空对象引用，历史 compiled
+graph 不引用复用工作区。
+
 相关代码：[`RenderGraphCompiler.ts`](../src/render/graph/RenderGraphCompiler.ts)、[`RenderGraphPassScheduler.ts`](../src/render/graph/RenderGraphPassScheduler.ts)、[`RenderGraphValidation.ts`](../src/render/graph/RenderGraphValidation.ts)。
 
 ### 2.3 执行：资源准备、Pass 执行与提交围栏
@@ -680,12 +713,13 @@ Executor 的顺序是：
 
 1. 为存活资源租用 Workspace。
 2. 从按 Descriptor 分桶的瞬态资源池取资源，或调用 Imported Provider。
-3. 逐 Pass 执行 `prepare`，此时没有 CommandContext，确保原生对象创建不落入 Draw 热路径。
+3. 逐 Pass 执行 `prepare`，并准备可选 profiling
+   QuerySet/Buffer；此时没有 CommandContext，确保原生对象创建不落入 Draw 热路径。
 4. `graphicsQueue.beginFrame()`。
 5. 在第一个 Pass 前统一 Flush `RHIUploadBatch`。
 6. 按编译后的稳定顺序执行 copy、render 和 compute Pass；一个 command context 同时只允许一个 open
    render/compute pass。
-7. `graphicsQueue.endFrame()` 得到 `RHISubmission`。
+7. 验证 staged source/ownership，然后由 `graphicsQueue.endFrame()` 得到 `RHISubmission`。
 8. 等提交完成后再把瞬态资源归还池、释放 Workspace；提交失败则丢弃相关资源。
 
 当前实现已经具备生命周期分析和跨帧瞬态资源池，但池中资源会保持占用直到对应 Submission 完成；本文不把“根据
@@ -694,6 +728,10 @@ Executor 的顺序是：
 已完成提交的闲置资源按使用顺序淘汰，最多保留 128 项、估算 256 MiB，闲置超过 120 次 graph
 execution 也会淘汰。纹理估算包含 mip、layer、3D depth、压缩块和 MSAA；opaque
 depth 格式采用保守字节数，不声称等于驱动实际显存。待提交完成的资源不计入闲置预算，也不能提前销毁；固定 descriptor 在预算内继续精确复用。这使连续 resize/动态分辨率的历史尺寸有界；单帧工作集超过闲置预算时允许重新分配，预算不限制有效渲染工作。
+
+Descriptor
+bucket 只链接可用的 idle 资源，不扫描在途分配；常见精确匹配获取为 O(1)，hash 碰撞仍逐项检查结构相等，不影响正确性。bucket 在存在租用资源时保留，避免每帧删除/重建索引。Executor 高水位记录只保留执行所需标量和当前资源，释放时不滞留旧 compiled
+resource 或 provider 闭包。
 
 相关代码：[`RenderGraphExecutor.ts`](../src/render/graph/RenderGraphExecutor.ts)、[`RenderGraphTransientResourcePool.ts`](../src/render/graph/RenderGraphTransientResourcePool.ts)、[`RenderGraph.ts`](../src/render/graph/RenderGraph.ts)。
 

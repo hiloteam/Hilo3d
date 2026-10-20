@@ -206,6 +206,7 @@ export class ForwardRenderer {
                 void options.meshProcessor.trackSubmission(context.frameIndex, result.submission);
             }
             surface.present();
+            result.throwCompletionError();
             return result;
         } catch (error) {
             // Acquired surface textures are frame-scoped. Both backends use present as their only

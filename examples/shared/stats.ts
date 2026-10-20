@@ -23,11 +23,16 @@ class Stats {
     readonly renderInfo: RenderInfo;
     readonly container: HTMLElement;
     private intervalId: number | undefined;
+    readonly #ownsContainer: boolean;
+    #running = false;
+    #suspended = false;
+    #disposed = false;
 
     constructor(ticker: Ticker, renderer: Renderer, container?: HTMLElement) {
         this.ticker = ticker;
         this.renderer = renderer;
         this.renderInfo = renderer.renderInfo;
+        this.#ownsContainer = container === undefined;
         this.container = container ?? this.createContainer();
         this.container.classList.add('hilo3dStats');
         this.container.setAttribute('role', 'group');
@@ -76,6 +81,9 @@ class Stats {
     }
 
     start(): void {
+        if (this.#disposed) return;
+        this.#running = true;
+        if (this.#suspended) return;
         if (this.intervalId !== undefined) window.clearInterval(this.intervalId);
         this.update();
         this.intervalId = window.setInterval(() => {
@@ -84,6 +92,28 @@ class Stats {
     }
 
     stop(): void {
+        this.#running = false;
+        this.clearInterval();
+    }
+
+    suspend(): void {
+        this.#suspended = true;
+        this.clearInterval();
+    }
+
+    resume(): void {
+        this.#suspended = false;
+        if (this.#running) this.start();
+    }
+
+    dispose(): void {
+        if (this.#disposed) return;
+        this.#disposed = true;
+        this.stop();
+        if (this.#ownsContainer) this.container.remove();
+    }
+
+    private clearInterval(): void {
         if (this.intervalId === undefined) return;
         window.clearInterval(this.intervalId);
         this.intervalId = undefined;

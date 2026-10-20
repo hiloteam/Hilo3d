@@ -95,8 +95,12 @@ qualityButton.onclick = () => {
 for (const lease of leases) void lease.ready.catch(report);
 const ticker = new Ticker();
 ticker.addTick(stage);
+let diagnosticElapsed = 250;
 ticker.addTick({
-    tick(): void {
+    tick(deltaTime): void {
+        diagnosticElapsed += deltaTime;
+        if (diagnosticElapsed < 250) return;
+        diagnosticElapsed %= 250;
         const info = assets.getDiagnostics();
         diagnostics.textContent = `${stage.renderer.backend.toUpperCase()} · ${compressed ? 'GPU compressed' : 'RGBA fallback'}\nResident: ${String(info.residentBytes)} B · evictions: ${String(info.evictions)}\nIn flight: ${String(info.inFlightBytes)} B\n${info.assets.map(asset => `${asset.id}: ${asset.state} / mip ${asset.residentMip === null ? '—' : String(asset.residentMip)}${asset.stall === 'none' ? '' : ` (${asset.stall})`}`).join('\n')}`;
     }

@@ -28,33 +28,11 @@ interface ObjectBindingRecipe {
 type BindingRecipe = BufferBindingRecipe | ObjectBindingRecipe;
 
 interface BindGroupRecord {
+    readonly owner: object;
     readonly slot: number;
     readonly layout: ResourceRegistryHandle<RHIBindGroupLayout>;
     readonly bindings: readonly Readonly<BindingRecipe>[];
     readonly handle: ResourceRegistryHandle<RHIBindGroup>;
-}
-
-function sameBindings(
-    left: readonly Readonly<BindingRecipe>[],
-    right: readonly Readonly<BindingRecipe>[]
-): boolean {
-    if (left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index += 1) {
-        const a = left[index];
-        const b = right[index];
-        if (a === undefined || b === undefined) return false;
-        if (a.kind !== b.kind || a.binding !== b.binding || a.resource !== b.resource) {
-            return false;
-        }
-        if (
-            a.kind === 'buffer' &&
-            b.kind === 'buffer' &&
-            (a.offset !== b.offset || a.size !== b.size)
-        ) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /**
@@ -67,6 +45,10 @@ function sameBindings(
 export class ScriptableBindGroupResourceCache {
     readonly metrics = new RHICacheCounter();
     readonly #recordsByOwner = new Map<object, Map<number, BindGroupRecord>>();
+    readonly #recordsByDependency = new Map<
+        ResourceRegistryHandle<RHIDeviceOwnedDestroyable>,
+        Set<BindGroupRecord>
+    >();
     #destroyed = false;
 
     constructor(readonly registry: ResourceRegistry) {}
@@ -81,8 +63,7 @@ export class ScriptableBindGroupResourceCache {
             throw new RangeError('Scriptable bind-group slot must be a non-negative safe integer');
         }
         const layout = this.registry.findHandle(descriptor.layout);
-        const bindings = layout === null ? null : this.bindingRecipes(descriptor.entries);
-        if (layout === null || bindings === null) {
+        if (layout === null) {
             this.invalidate(owner, slot);
             this.metrics.recordMiss();
             return null;
@@ -90,24 +71,35 @@ export class ScriptableBindGroupResourceCache {
 
         let records = this.#recordsByOwner.get(owner);
         const current = records?.get(slot);
-        if (current?.layout === layout && sameBindings(current.bindings, bindings)) {
+        if (current?.layout === layout && this.sameBindings(current.bindings, descriptor.entries)) {
             this.metrics.recordHit();
             return current.handle;
         }
 
+        const bindings = this.bindingRecipes(descriptor.entries);
+        if (bindings === null) {
+            this.invalidate(owner, slot);
+            this.metrics.recordMiss();
+            return null;
+        }
         const replacement = this.registerGroup(descriptor.label, layout, bindings);
         if (records === undefined) {
             records = new Map();
             this.#recordsByOwner.set(owner, records);
         }
-        records.set(slot, {
+        const record: BindGroupRecord = {
+            owner,
             slot,
             layout,
             bindings,
             handle: replacement
-        });
+        };
+        records.set(slot, record);
+        this.indexDependency(layout, record);
+        for (const binding of bindings) this.indexDependency(binding.resource, record);
         if (current === undefined) this.metrics.recordInsertion();
         else {
+            this.unindexRecord(current);
             this.registry.release(current.handle);
             this.metrics.recordReplacement();
         }
@@ -119,15 +111,12 @@ export class ScriptableBindGroupResourceCache {
         this.assertAlive();
         const records = this.#recordsByOwner.get(owner);
         if (records === undefined) return;
-        const active = new Set(activeSlots);
         let removed = 0;
-        for (const [slot, record] of records) {
-            if (active.has(slot)) continue;
-            records.delete(slot);
-            this.registry.release(record.handle);
+        for (const record of records.values()) {
+            if (activeSlots.includes(record.slot)) continue;
+            this.removeRecord(record);
             removed += 1;
         }
-        if (records.size === 0) this.#recordsByOwner.delete(owner);
         if (removed > 0) this.metrics.recordRemoval(removed);
     }
 
@@ -135,10 +124,25 @@ export class ScriptableBindGroupResourceCache {
         this.assertAlive();
         const records = this.#recordsByOwner.get(owner);
         if (records === undefined) return false;
-        for (const record of records.values()) this.registry.release(record.handle);
-        this.#recordsByOwner.delete(owner);
-        this.metrics.recordRemoval(records.size);
+        const count = records.size;
+        for (const record of records.values()) this.removeRecord(record);
+        this.metrics.recordRemoval(count);
         return true;
+    }
+
+    /**
+     * Remove cached groups when a logical dependency is explicitly destroyed or detached.
+     * Registry release preserves every group's last submitted frame and its dependency fence.
+     * Valid runtime resources remain cached even while their owners are not recorded.
+     */
+    invalidateResource(handle: ResourceRegistryHandle<RHIDeviceOwnedDestroyable>): number {
+        this.assertAlive();
+        const records = this.#recordsByDependency.get(handle);
+        if (records === undefined) return 0;
+        const count = records.size;
+        for (const record of records) this.removeRecord(record);
+        this.metrics.recordRemoval(count);
+        return count;
     }
 
     destroy(): void {
@@ -147,8 +151,39 @@ export class ScriptableBindGroupResourceCache {
             for (const record of records.values()) this.registry.release(record.handle);
         }
         this.#recordsByOwner.clear();
+        this.#recordsByDependency.clear();
         this.metrics.clear();
         this.#destroyed = true;
+    }
+
+    private sameBindings(
+        bindings: readonly Readonly<BindingRecipe>[],
+        entries: readonly RHIBindGroupEntry[]
+    ): boolean {
+        if (bindings.length !== entries.length) return false;
+        for (let index = 0; index < bindings.length; index += 1) {
+            const binding = bindings[index];
+            const entry = entries[index];
+            if (binding === undefined || entry === undefined) return false;
+            if (binding.binding !== entry.binding) return false;
+            const resource = entry.resource;
+            if ('buffer' in resource) {
+                if (
+                    binding.kind !== 'buffer' ||
+                    binding.offset !== resource.offset ||
+                    binding.size !== resource.size ||
+                    binding.resource !== this.registry.findHandle(resource.buffer)
+                ) {
+                    return false;
+                }
+            } else if (
+                binding.kind !== 'object' ||
+                binding.resource !== this.registry.findHandle(resource)
+            ) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private bindingRecipes(
@@ -225,10 +260,43 @@ export class ScriptableBindGroupResourceCache {
         const records = this.#recordsByOwner.get(owner);
         const current = records?.get(slot);
         if (records === undefined || current === undefined) return;
-        records.delete(slot);
-        this.registry.release(current.handle);
+        this.removeRecord(current);
         this.metrics.recordRemoval();
-        if (records.size === 0) this.#recordsByOwner.delete(owner);
+    }
+
+    private indexDependency(
+        dependency: ResourceRegistryHandle<RHIDeviceOwnedDestroyable>,
+        record: BindGroupRecord
+    ): void {
+        let records = this.#recordsByDependency.get(dependency);
+        if (records === undefined) {
+            records = new Set();
+            this.#recordsByDependency.set(dependency, records);
+        }
+        records.add(record);
+    }
+
+    private unindexRecord(record: BindGroupRecord): void {
+        this.unindexDependency(record.layout, record);
+        for (const binding of record.bindings) this.unindexDependency(binding.resource, record);
+    }
+
+    private unindexDependency(
+        dependency: ResourceRegistryHandle<RHIDeviceOwnedDestroyable>,
+        record: BindGroupRecord
+    ): void {
+        const records = this.#recordsByDependency.get(dependency);
+        if (records === undefined) return;
+        records.delete(record);
+        if (records.size === 0) this.#recordsByDependency.delete(dependency);
+    }
+
+    private removeRecord(record: BindGroupRecord): void {
+        const records = this.#recordsByOwner.get(record.owner);
+        records?.delete(record.slot);
+        if (records?.size === 0) this.#recordsByOwner.delete(record.owner);
+        this.unindexRecord(record);
+        this.registry.release(record.handle);
     }
 
     private assertAlive(): void {

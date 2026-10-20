@@ -924,6 +924,7 @@ export class OffscreenRenderTargetRenderer {
 
             this.resources.markUsed(target, context.frameIndex);
             const tracking = this.submissions.track(context.frameIndex, execution.submission);
+            execution.throwCompletionError();
             autoStaging = null;
             return Object.freeze({
                 execution,

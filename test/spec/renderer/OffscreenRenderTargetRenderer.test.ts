@@ -34,6 +34,7 @@ import {
     FakeWebGLRHIBackend,
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
+    type FakeRHIBuffer,
     type FakeRHIDevice,
     type FakeRHITexture
 } from '../rhi/portable/FakeRHIBackend';
@@ -176,6 +177,39 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('OffscreenRenderTargetRenderer on %s', (_name, createBackend) => {
+    it('tracks submitted work and releases extracted staging when publication fails', async () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const resources = new RenderTargetResourceCache(registry);
+        const submissions = new SubmissionResourceTracker(registry);
+        const renderer = new OffscreenRenderTargetRenderer(resources, submissions);
+        const failure = new Error('publication failed');
+        vi.spyOn(renderer.frame.uploads, 'commit').mockImplementationOnce(() => {
+            throw failure;
+        });
+        const buffers = vi.spyOn(device, 'createBuffer');
+        const track = vi.spyOn(submissions, 'track');
+        const abort = vi.spyOn(device.graphicsQueue, 'abortFrame');
+        expect(() =>
+            renderer.render(
+                frameContext(device, 1),
+                {},
+                { width: 4, height: 3, colorFormats: ['rgba8unorm'] },
+                { colorAttachmentCopy: {} }
+            )
+        ).toThrow(failure);
+        const staging = buffers.mock.results[0]?.value as FakeRHIBuffer | undefined;
+        expect(staging?.destroyed).toBe(true);
+        expect(staging?.nativeReleased).toBe(backend.executionMode === 'immediate');
+        expect(track).toHaveBeenCalledOnce();
+        expect(abort).not.toHaveBeenCalled();
+        await complete(backend);
+        await submissions.waitForIdle();
+        expect(staging?.nativeReleased).toBe(true);
+        releaseTargetResources(renderer, resources, submissions, registry, 1, 2, backend);
+    });
+
     it('executes PreparedDraw MRT, MSAA resolve, depth/stencil, two queues, and readback staging', async () => {
         const backend = createBackend();
         const device = backend.createDevice();

@@ -144,7 +144,13 @@ export interface RenderPipelineInvocationPolicy {
     readonly maxInvocationsPerFrame: number | null;
 }
 
-/** Immutable creation inputs for one renderer-local pipeline runtime. */
+/**
+ * Immutable creation inputs for one renderer-local pipeline runtime.
+ *
+ * Allocation and warmup methods are valid only while the factory's create() call is active,
+ * including its awaited initialization work. They expire when creation settles or the renderer
+ * is destroyed; retaining the context does not extend its lifetime.
+ */
 export interface RenderPipelineCreateContext {
     /** Create a renderer-owned target for a runtime; the runtime must destroy it on teardown. */
     createRenderTarget(parameters: Readonly<RenderTargetParameters>): RenderTarget;
@@ -393,8 +399,11 @@ export interface RenderPipeline {
     /**
      * Consume opt-in Render Graph timing snapshots. GPU-ready snapshots arrive asynchronously
      * after submission completion and may be used by renderer-local adaptive quality controllers.
+     * Returned promises are observed; synchronous throws and rejections reach renderer diagnostics.
      */
-    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    recordRenderGraphTimeline?(
+        snapshot: Readonly<RenderGraphTimelineSnapshot>
+    ): void | Promise<void>;
     /** Release runtime-owned state exactly once during Renderer destruction. */
     destroy(): void;
 }

@@ -81,7 +81,7 @@ class HistoryPipeline implements RenderPipeline {
     frameDiscarded(): void {
         this.discarded++;
     }
-    recordRenderGraphTimeline(): unknown {
+    recordRenderGraphTimeline(): void | Promise<void> {
         if (this.notificationError !== null) throw this.notificationError;
         return this.asyncNotificationError === null
             ? undefined

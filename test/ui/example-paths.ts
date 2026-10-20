@@ -62,6 +62,7 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
+    'loader/glTF_loader.html': { model: 'BoomBox' },
     'audio_piano.html': { test: '1', quality: 'production' },
     'live2d.html': { test: '1' },
     'mat1_soft_matter.html': { test: '1' },

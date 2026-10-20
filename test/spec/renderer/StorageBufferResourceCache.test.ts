@@ -99,6 +99,30 @@ function storageBuffer(
 }
 
 describe('StorageBufferResourceCache', () => {
+    it('exposes existing ownership during destruction without preparing the source again', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const cache = new StorageBufferResourceCache(registry);
+        const frame = new RenderGraphFrame();
+        const source = storageBuffer('destroyed cache identity');
+        expect(cache.getCachedHandle(source)).toBeNull();
+        runCacheFrame(frame, device, 1, cache, () => {
+            cache.prepare(source);
+        });
+        await complete(backend);
+        const handle = cache.getCachedHandle(source);
+        expect(handle).not.toBeNull();
+        source.destroy();
+        expect(cache.getCachedHandle(source)).toBe(handle);
+        cache.detach(source);
+        expect(cache.getCachedHandle(source)).toBeNull();
+        cache.destroy();
+        frame.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('reuses one allocation, maps public usages, and uploads only the aligned dirty span', async () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();
@@ -188,7 +212,7 @@ describe('StorageBufferResourceCache', () => {
         ).toThrow(/changed after its first use/u);
         expect(cache.active).toBe(false);
         expect(cache.diagnostics(source)?.committedRevision).toBe(committedBeforeFailure);
-        await complete(backend);
+        expect(device.graphicsQueue.pendingSubmission()).toBeUndefined();
 
         backend.resetExecutionLog();
         runCacheFrame(frame, device, 3, cache, () => {

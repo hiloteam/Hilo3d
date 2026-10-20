@@ -111,7 +111,9 @@ export class StorageBufferReadbackService {
             staging = execution.getExtractedBuffer(
                 requireHandle(parameters.destination, 'destination')
             );
-            await this.submissions.track(context.frameIndex, execution.submission);
+            const tracking = this.submissions.track(context.frameIndex, execution.submission);
+            execution.throwCompletionError();
+            await tracking;
             await staging.mapAsync('read', 0, byteLength);
             const mapped = new Uint8Array(staging.getMappedRange(0, byteLength));
             return Object.freeze({

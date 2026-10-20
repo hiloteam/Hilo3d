@@ -8,6 +8,8 @@ const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
 const { camera, stage, renderer, directionLight, ticker } = context;
+const isActive = (): boolean => context.lifecycle.active;
+const isDisposed = (): boolean => context.lifecycle.disposed;
 
 camera.far = 5;
 stage.rotationX = 25;
@@ -17,7 +19,23 @@ glTFLoader
     .load({
         src: './models/Tmall/Tmall.gltf'
     })
-    .then(model => {
+    .then(async model => {
+        const releaseModel = (): void => {
+            model.anim?.destroy();
+            model.node.destroy(undefined, true);
+            for (const texture of model.textures) texture.destroy();
+        };
+        context.onDispose(() => {
+            model.anim?.destroy();
+        });
+        try {
+            await model.ready;
+        } catch (error) {
+            releaseModel();
+            throw error;
+        }
+        context.onDispose(releaseModel);
+        if (isDisposed()) return;
         model.node.y = 0.2;
         model.node.setScale(0.0015);
         model.node.onUpdate = function () {
@@ -26,6 +44,7 @@ glTFLoader
         stage.addChild(model.node);
     })
     .catch((error: unknown) => {
+        if (isDisposed()) return;
         queueMicrotask(() => {
             throw error;
         });
@@ -90,9 +109,16 @@ const postProcessFrame: Hilo3d.Tickable = {
 ticker.removeTick(stage);
 ticker.addTick(postProcessFrame);
 
-window.addEventListener('resize', () => {
+const resize = (): void => {
     sceneTarget.resize(Math.max(1, renderer.width), Math.max(1, renderer.height));
     postProcess.resize();
+};
+window.addEventListener('resize', resize);
+context.onDispose(() => {
+    window.removeEventListener('resize', resize);
+    diagnosticTarget.destroy();
+    sceneTarget.destroy();
+    postProcess.destroy();
 });
 
 const kernelSelectElement = document.querySelector<HTMLSelectElement>('#kernelSelect');
@@ -108,6 +134,7 @@ for (const name in postProcess.kernels) {
 kernelSelect.value = currentKernel;
 let activeKernelName = currentKernel;
 let comparisonSequence = 0;
+let comparisonQueue = Promise.resolve();
 
 function reportAsyncError(error: unknown): void {
     queueMicrotask(() => {
@@ -116,6 +143,7 @@ function reportAsyncError(error: unknown): void {
 }
 
 async function compareKernelOutput(nextKernelName: string): Promise<void> {
+    if (!isActive()) return;
     const previousKernelName = activeKernelName;
     const previousKernel = postProcess.kernels[previousKernelName];
     const nextKernel = postProcess.kernels[nextKernelName];
@@ -129,9 +157,11 @@ async function compareKernelOutput(nextKernelName: string): Promise<void> {
         kernelPass.kernel = previousKernel;
         postProcess.render(source, diagnosticTarget);
         const before = await diagnosticTarget.readColorAttachment();
+        if (!isActive()) return;
         kernelPass.kernel = nextKernel;
         postProcess.render(source, diagnosticTarget);
         const after = await diagnosticTarget.readColorAttachment();
+        if (!isActive()) return;
         activeKernelName = nextKernelName;
         window.__HILO3D_POST_PROCESS_INTERACTION_RESULT__ = {
             backend: renderer.backend,
@@ -143,31 +173,28 @@ async function compareKernelOutput(nextKernelName: string): Promise<void> {
             changedPixelCount: changedReadbackPixelCount(before.data, after.data)
         };
     } catch (error: unknown) {
+        if (isDisposed()) return;
         kernelPass.kernel = previousKernel;
         kernelSelect.value = previousKernelName;
         throw error;
     } finally {
-        ticker.start();
+        if (!isDisposed()) {
+            const activeKernel = postProcess.kernels[activeKernelName];
+            if (activeKernel !== undefined) kernelPass.kernel = activeKernel;
+            kernelSelect.value = activeKernelName;
+        }
+        if (!isDisposed()) ticker.start();
     }
 }
 
 kernelSelect.addEventListener('change', () => {
     const nextKernelName = kernelSelect.value;
-    void compareKernelOutput(nextKernelName).catch(reportAsyncError);
+    comparisonQueue = comparisonQueue
+        .then(() => compareKernelOutput(nextKernelName))
+        .catch(reportAsyncError);
 });
 
 ticker.start();
-
-window.addEventListener(
-    'pagehide',
-    () => {
-        diagnosticTarget.destroy();
-        sceneTarget.destroy();
-        postProcess.destroy();
-        context.dispose();
-    },
-    { once: true }
-);
 
 declare global {
     interface Window {

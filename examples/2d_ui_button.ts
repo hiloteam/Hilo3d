@@ -314,6 +314,7 @@ studio.toggle('解锁群星山谷', false, value => {
 });
 studio.section('POINTER STATES', '在两种皮肤间切换；每套都有默认、悬停、按下与禁用四帧。');
 const state = studio.metric('花园按钮状态', 'up');
+document.body.dataset['buttonState'] = 'up';
 studio.metric('图集状态', '2 skins × 4 states');
 studio.metric('单按钮分片', '9 sprites + 1 label');
 studio.metric('固定角部', '22 × 20 px');
@@ -324,8 +325,10 @@ ticker.addTick({
         elapsed += dt;
         if (!reducedMotion) emblem.rotationZ = Math.sin(elapsed * 0.0007) * 5;
         const currentState = buttons?.[0]?.state ?? 'up';
-        if (state.value !== currentState) state.value = currentState;
-        document.body.dataset['buttonState'] = currentState;
+        if (state.value !== currentState) {
+            state.value = currentState;
+            document.body.dataset['buttonState'] = currentState;
+        }
     }
 });
 document.body.dataset['dispatches'] = '0';

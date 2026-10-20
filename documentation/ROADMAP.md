@@ -66,6 +66,31 @@ acceptance passes.
 RG1 makes the remaining graph-reuse work under F0 explicit; MAT1 narrows Material-extension rather
 than duplicating it. New feature details and acceptance boundaries live in the rendering roadmap.
 
+Render Graph review, 2026-10-20: dense subresource hazards, per-compilation access validation
+caches, idle-only transient lookup and graph-wide imported identities are implemented. Local
+CPU/fake-RHI regressions cover these paths; the real WebGL2/WebGPU import-integration, renderer
+architecture and RHI gates remain evidence pending because the review environment rejects local
+browser-server listening (`EPERM`). Run those gates on an enabled browser runner before release. The
+synthetic compiler timing comparison is local diagnostic evidence only. RG1 schedule caching,
+in-frame transient aliasing and peak-budget reporting remain unimplemented.
+
+SRP review, 2026-10-20: lifecycle/initialization ownership, feature callback completion,
+texture-view usage aggregation, persistent/history transactions and bind-group invalidation are
+implemented with passing CPU/fake-RHI regressions. Optional Forward hook dispatch, execute-facade
+preparation, frame-touched resource bookkeeping, live-pass compute uniform preparation and
+bind-group cache hits remove avoidable work. This does not complete PERF-SRP: the dedicated
+cross-commit timing/allocation protocol and real WebGL2/WebGPU browser evidence remain pending; the
+current browser runner and package consumer check fail to listen with `EPERM`. Static checks and
+CPU/fake-RHI regressions do not replace those gates.
+
+Examples review, 2026-10-20: the catalog is reduced to 96 distinct scenes, with duplicate teaching
+coverage moved into retained entries. Page suspension/teardown, asynchronous replacement/readback
+guards and bounded UI/upload updates are implemented. Node lifecycle/catalog contracts and static
+checks do not replace browser acceptance: complete affected WebGL2 groups, WebGPU rendering and
+custom-shader compile/translation/pixel parity must run on a browser-enabled runner. The current
+environment rejects the Playwright web server with `listen EPERM`; no frame-rate improvement or
+visual-baseline approval is claimed. See [the catalog review](./EXAMPLE_CATALOG.md).
+
 ## Delivered foundation
 
 Shared renderer/Render Graph/RHI, async creation and recovery; SRP; compute/storage/indirect;

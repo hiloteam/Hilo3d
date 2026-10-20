@@ -29,6 +29,15 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Examples
 
+- Remove duplicate Canvas-animation, standalone UBO, minimal PBR-loader and backend-name pages, plus
+  two unused helpers. Keep BoomBox coverage in the glTF loader and std140 teaching in the custom
+  shader; the reviewed catalog now contains 96 scenes and 180 page/backend combinations.
+- Separate page suspension from final teardown across shared, 2D, particle, physics and rendering
+  examples. Stop scheduling before cleanup, retain resources for browser back/forward restoration,
+  prevent late readbacks or loads from restarting disposed runtimes, and release private targets.
+- Serialize post-process comparisons, isolate glTF Viewer replacement loads, honor the glTF loader
+  URL override, and correct custom image-shader UV normalization. Reuse repeated materials and
+  update Canvas uploads, path markers and diagnostic DOM only at their required cadence.
 - Add Soft Matter, an original Blender-authored material exhibition with velvet sheen, thin amber
   petals and a fluted wax sculpture. Include close views, independent material comparisons, bounded
   quality profiles and dual-backend lifecycle acceptance.
@@ -38,6 +47,28 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Rendering
 
+- Harden SRP initialization ownership, feature/addon callback completion and temporal publication
+  across failure paths. Snapshot optional Forward hooks and aggregate observer failures without
+  skipping remaining owners; public pipeline/feature timeline hooks explicitly return
+  `void | Promise<void>` and retain asynchronous error reporting.
+- Move scriptable execute facade creation into preparation, aggregate texture-view usages by
+  physical parent, and preserve persistent/history ownership across failed cleanup. Complete only
+  resources touched by the active frame instead of scanning dormant histories and targets.
+- Prepare compute uniform buffers and their uploads only for live graph passes, before command
+  recording; culled passes no longer allocate or upload those buffers.
+- Remove scriptable bind-group recipe allocations on cache hits and invalidate dependency-indexed
+  groups when storage buffers are destroyed, preserving submission-aware native retirement.
+- Replace Render Graph string hazard keys with dense subresource indices and reusable typed-array
+  state; cache texture access and depth/stencil validation within each compilation.
+- Index only idle transient resources for allocation, avoiding quadratic scans through resources
+  still owned by pending submissions while retaining exact matching and bounded LRU retention.
+- Canonicalize imported resource identities across pipeline invocations, preserving producer
+  dependencies for shared storage buffers, histories and shadow atlases. Reject contradictory import
+  contracts and stale or asynchronous pass callbacks; prepare profiling resources before beginning
+  the RHI frame and release obsolete executor references.
+- Validate upload participants before queue submission, then finish all submitted publication and
+  resource tracking before reporting observer/commit failures across pipeline, standalone render and
+  readback entry points. Avoid duplicate source validation in successful batch commits.
 - Retain bounded per-role mesh Shader variants across multi-pass rendering. Depth, material
   attributes, color, SSS and motion passes now reuse their compiled resources across frames while
   topology changes and mesh teardown release the corresponding ownership.

@@ -1,6 +1,10 @@
 import type GeometryData from '../../geometry/GeometryData';
 import type UniformBuffer from '../UniformBuffer';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import {
     RHIBufferUsage,
     type RHIBuffer,
@@ -459,7 +463,7 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
     }
 
     /** Validation half of the upload batch's two-phase commit. */
-    prepareCommit(submission: RHISubmission): void {
+    prepareCommit(submission: RHIUploadBatchCommitContext): void {
         if (this.#state !== 'active') return;
         if (submission.status === 'failed') {
             const error = submission.error;
@@ -487,30 +491,33 @@ export class BufferResourceCache implements RHIUploadBatchParticipant {
     }
 
     /** Commit staged handles/revisions only after graph execution returned `submission`. */
-    commit(submission: RHISubmission): void {
+    commit(submission: RHISubmission, prepared = false): void {
         if (this.#state !== 'active') return;
-        this.prepareCommit(submission);
-        for (const pending of this.#pending.values()) {
-            const record = pending.record;
-            const previous = requireRecordHandle(record);
-            this.registry.markUsed(pending.handle, this.#frameIndex);
-            if (pending.handle !== previous) {
-                record.handle = pending.handle;
-                this.registry.release(previous);
-            }
-            record.allocatedSize = pending.allocatedSize;
-            record.committedRevision = pending.sourceRevision;
-            if (record.committedVertexRevisions && record.vertexSources) {
-                for (const source of record.vertexSources) {
-                    record.committedVertexRevisions.set(
-                        source,
-                        this.requireCapturedSourceRevision(source)
-                    );
+        if (!prepared) this.prepareCommit(submission);
+        try {
+            for (const pending of this.#pending.values()) {
+                const record = pending.record;
+                const previous = requireRecordHandle(record);
+                this.registry.markUsed(pending.handle, this.#frameIndex);
+                if (pending.handle !== previous) {
+                    record.handle = pending.handle;
+                    this.registry.release(previous);
                 }
+                record.allocatedSize = pending.allocatedSize;
+                record.committedRevision = pending.sourceRevision;
+                if (record.committedVertexRevisions && record.vertexSources) {
+                    for (const source of record.vertexSources) {
+                        record.committedVertexRevisions.set(
+                            source,
+                            this.requireCapturedSourceRevision(source)
+                        );
+                    }
+                }
+                record.registryGeneration = pending.registryGeneration;
             }
-            record.registryGeneration = pending.registryGeneration;
+        } finally {
+            this.finishTransaction();
         }
-        this.finishTransaction();
     }
 
     /** Keep committed revisions/handles unchanged so immediate writes are retried next frame. */

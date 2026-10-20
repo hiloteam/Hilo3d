@@ -163,6 +163,32 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('ForwardRenderer on %s', (_name, createBackend) => {
+    it('tracks and presents a submitted frame before reporting publication failure', async () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const surface = configuredSurface(device);
+        const renderer = new ForwardRenderer();
+        const failure = new Error('publication failed');
+        const track = vi.fn((_frameIndex: number, submission: RHISubmission) => submission.done);
+        const processor = meshProcessorStub({ beginFrame: vi.fn(), trackSubmission: track });
+        vi.spyOn(renderer.frame.uploads, 'commit').mockImplementationOnce(() => {
+            throw failure;
+        });
+        const abort = vi.spyOn(device.graphicsQueue, 'abortFrame');
+        expect(() =>
+            renderer.render(frameContext(device, 1), surface, {
+                meshes: [],
+                meshProcessor: processor
+            })
+        ).toThrow(failure);
+        expect(track).toHaveBeenCalledOnce();
+        expect(surface.state).toBe('configured');
+        expect(abort).not.toHaveBeenCalled();
+        await complete(backend);
+        renderer.destroy();
+        backend.destroy();
+    });
+
     it('runs the same single-camera main pass and explicit present path', async () => {
         const backend = createBackend();
         const device = backend.createDevice();

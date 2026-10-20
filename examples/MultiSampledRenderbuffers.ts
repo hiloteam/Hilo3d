@@ -2,9 +2,10 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer, ticker } = await createExampleContext({
+const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
+const { camera, stage, renderer, ticker } = context;
 
 ticker.targetFPS = 1;
 renderer.clearColor = new Hilo3d.Color(0.9, 0.6, 0.3);
@@ -50,6 +51,10 @@ const renderTargets = sampleCounts.map(sampleCount =>
         label: `Multisample.${String(sampleCount)}x`
     })
 );
+context.onDispose(() => {
+    for (const target of renderTargets) target.destroy();
+    sceneNode.destroy(renderer);
+});
 
 const viewports = [
     { x: 0.025, y: 0.25, width: 0.45, height: 0.5 },

@@ -18,7 +18,11 @@ function isPromiseLike(value: unknown): boolean {
 }
 
 export function assertSynchronousResult(label: string, result: unknown): void {
-    if (isPromiseLike(result)) throw new TypeError(`${label} must be synchronous`);
+    if (isPromiseLike(result)) {
+        // Report the invalid callback synchronously, while owning its later rejection too.
+        void Promise.resolve(result).catch(() => undefined);
+        throw new TypeError(`${label} must be synchronous`);
+    }
 }
 
 export function positiveInteger(value: number, name: string): number {
@@ -50,12 +54,23 @@ export function normalizeBufferRange(
     byteLength = buffer.byteLength - byteOffset,
     operation: string
 ): Readonly<{ byteOffset: number; byteLength: number }> {
+    validateBufferRange(buffer.byteLength, byteOffset, byteLength, operation);
+    return { byteOffset, byteLength };
+}
+
+/** Validate a command range without allocating a normalized range record. */
+export function validateBufferRange(
+    bufferSize: number,
+    byteOffset: number,
+    byteLength: number,
+    operation: string
+): void {
     if (
         !Number.isSafeInteger(byteOffset) ||
         !Number.isSafeInteger(byteLength) ||
         byteOffset < 0 ||
         byteLength < 1 ||
-        byteOffset + byteLength > buffer.byteLength
+        byteOffset + byteLength > bufferSize
     ) {
         throw new RangeError(
             `${operation} byte range [${String(byteOffset)}, ${String(byteOffset + byteLength)}) is invalid`
@@ -64,7 +79,6 @@ export function normalizeBufferRange(
     if (byteOffset % 4 !== 0 || byteLength % 4 !== 0) {
         throw new RangeError(`${operation} byte offset and length must be 4-byte aligned`);
     }
-    return { byteOffset, byteLength };
 }
 
 export function graphBufferUsage(

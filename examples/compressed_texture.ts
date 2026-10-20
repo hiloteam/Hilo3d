@@ -52,7 +52,9 @@ const cases: readonly CompressedTextureCase[] = [
     }
 ];
 
-const { stage, renderer, orbitControls } = await createExampleContext();
+const context = await createExampleContext();
+const { stage, renderer, orbitControls, lifecycle } = context;
+const isDisposed = (): boolean => lifecycle.disposed;
 orbitControls.disable();
 
 const supported = cases.filter(entry => renderer.supportsTextureCompression(entry.compression));
@@ -67,6 +69,9 @@ const loaded = await Promise.all(
         const texture = await new Hilo3d.KTXLoader().load({
             src: `./image/compressed/logo_${entry.source}.ktx`
         });
+        context.onDispose(() => {
+            texture.destroy();
+        });
         texture.minFilter = entry.completeMipChain
             ? Hilo3d.constants.LINEAR_MIPMAP_LINEAR
             : Hilo3d.constants.LINEAR;
@@ -74,41 +79,44 @@ const loaded = await Promise.all(
     })
 );
 
-const planeGeometry = new Hilo3d.PlaneGeometry();
-loaded.forEach(({ entry, texture }, index) => {
-    stage.addChild(
-        new Hilo3d.Mesh({
-            geometry: planeGeometry,
-            material: new Hilo3d.BasicMaterial({
-                lightType: 'NONE',
-                diffuse: texture,
-                cullMode: 'none'
-            }),
-            rotationX: 180,
-            x: 0.72 * ((index % 3) - 1),
-            y: 0.72 * (0.5 - Math.floor(index / 3)),
-            scaleX: 0.5,
-            scaleY: 0.5
+if (!isDisposed()) {
+    const planeGeometry = new Hilo3d.PlaneGeometry();
+    loaded.forEach(({ entry, texture }, index) => {
+        stage.addChild(
+            new Hilo3d.Mesh({
+                geometry: planeGeometry,
+                material: new Hilo3d.BasicMaterial({
+                    lightType: 'NONE',
+                    diffuse: texture,
+                    cullMode: 'none'
+                }),
+                rotationX: 180,
+                x: 0.72 * ((index % 3) - 1),
+                y: 0.72 * (0.5 - Math.floor(index / 3)),
+                scaleX: 0.5,
+                scaleY: 0.5
+            })
+        );
+        console.info(`Loaded ${entry.source} as a native ${renderer.backend} compressed texture`);
+    });
+
+    if (lifecycle.active) stage.tick(0);
+    await new Promise<void>(resolve =>
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                resolve();
+            });
         })
     );
-    console.info(`Loaded ${entry.source} as a native ${renderer.backend} compressed texture`);
-});
 
-stage.tick(0);
-await new Promise<void>(resolve =>
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            resolve();
-        });
-    })
-);
-
-window.__HILO3D_COMPRESSED_TEXTURE_RESULT__ = {
-    backend: renderer.backend,
-    supportedSources: supported.map(entry => entry.source),
-    renderedSources: loaded.map(({ entry }) => entry.source),
-    skipped
-};
+    if (!isDisposed())
+        window.__HILO3D_COMPRESSED_TEXTURE_RESULT__ = {
+            backend: renderer.backend,
+            supportedSources: supported.map(entry => entry.source),
+            renderedSources: loaded.map(({ entry }) => entry.source),
+            skipped
+        };
+}
 
 declare global {
     interface Window {

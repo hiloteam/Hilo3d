@@ -1,5 +1,6 @@
 import type Camera from '../../camera/Camera';
-import type Node from '../../core/Node';
+import Node from '../../core/Node';
+import { assertSynchronousResult } from '../internal/ScriptableRenderPipelineValidation';
 import { getRenderNodeExtension, type RenderNodeRasterExtension } from './RenderNodeExtension';
 import type {
     ForwardRenderFeatureContext,
@@ -21,33 +22,30 @@ function visibleRaster(node: Node, camera: Camera): RenderNodeRasterExtension | 
     return visible ? raster : null;
 }
 
-function assertSynchronous(value: unknown): void {
-    if (
-        value !== null &&
-        (typeof value === 'object' || typeof value === 'function') &&
-        typeof Reflect.get(value, 'then') === 'function'
-    ) {
-        throw new TypeError('Render node raster record must be synchronous.');
-    }
-}
-
 class AddonRasterSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime {
     readonly #recorded = new Set<RenderNodeRasterExtension>();
 
     requiresSplitScene(context: RenderPipelineContext): boolean {
         let required = false;
         context.scene.traverse(node => {
-            if (visibleRaster(node, context.camera) !== null) required = true;
+            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
+            if (visibleRaster(node, context.camera) !== null) {
+                required = true;
+                return Node.TRAVERSE_STOP_ALL;
+            }
+            return Node.TRAVERSE_STOP_NONE;
         });
         return required;
     }
 
     record(context: ForwardRenderFeatureContext): void {
         context.pipeline.scene.traverse(node => {
+            if (!node.visible) return Node.TRAVERSE_STOP_CHILDREN;
             const raster = visibleRaster(node, context.pipeline.camera);
-            if (raster === null) return;
+            if (raster === null) return Node.TRAVERSE_STOP_NONE;
             this.#recorded.add(raster);
-            assertSynchronous(raster.record(context));
+            assertSynchronousResult('Render node raster record', raster.record(context));
+            return Node.TRAVERSE_STOP_NONE;
         });
     }
 
@@ -65,16 +63,19 @@ class AddonRasterSceneFeatureRuntime implements ForwardRenderPipelineFeatureRunt
 
     private finishFrame(frameIndex: number, callback: 'frameSubmitted' | 'frameDiscarded'): void {
         if (this.#recorded.size === 0) return;
-        const errors: unknown[] = [];
+        let errors: unknown[] | undefined;
         for (const raster of this.#recorded) {
             try {
-                raster[callback]?.(frameIndex);
+                assertSynchronousResult(
+                    `Render node raster ${callback}`,
+                    raster[callback]?.(frameIndex)
+                );
             } catch (error: unknown) {
-                errors.push(error);
+                (errors ??= []).push(error);
             }
         }
         this.#recorded.clear();
-        if (errors.length !== 0)
+        if (errors !== undefined)
             throw new AggregateError(errors, `Render node raster ${callback} failed.`);
     }
 }

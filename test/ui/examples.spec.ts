@@ -1835,6 +1835,29 @@ test.describe('examples using the generic release gate', () => {
             }
 
             if (examplePath === 'video.html') {
+                await page.evaluate(() => {
+                    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+                });
+                await waitForStableAnimationFrames(page);
+                const suspendedDraws = completedRenderCommands(
+                    await readRenderHealth(page),
+                    backend
+                );
+                expect(
+                    await page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)
+                ).toBe(true);
+                await waitForStableAnimationFrames(page);
+                expect(completedRenderCommands(await readRenderHealth(page), backend)).toBe(
+                    suspendedDraws
+                );
+                await page.evaluate(() => {
+                    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+                });
+                await expect
+                    .poll(async () =>
+                        completedRenderCommands(await readRenderHealth(page), backend)
+                    )
+                    .toBeGreaterThan(suspendedDraws);
                 await page.evaluate(async () => {
                     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
                     // Keep the document alive long enough to catch uploads after source disposal.

@@ -1,7 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
 import { createExampleContext } from './shared/init';
-import { installExampleDisposal } from './shared/particleShowcase';
 
 const context = await createExampleContext({
     camera: { fov: 38, near: 0.1, far: 70, x: 0, y: 0.15, z: 10.8 },
@@ -393,7 +392,6 @@ stage.onUpdate = deltaTime => {
     updateStudyLabels();
 };
 document.body.dataset['particleExampleReady'] = 'true';
-installExampleDisposal(() => {
+context.onDispose(() => {
     window.removeEventListener('resize', fitStudies);
-    context.dispose();
 });

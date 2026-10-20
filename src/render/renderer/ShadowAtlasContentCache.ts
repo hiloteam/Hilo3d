@@ -5,7 +5,11 @@ import type GeometryData from '../../geometry/GeometryData';
 import MorphGeometry from '../../geometry/MorphGeometry';
 import type Material from '../../material/MaterialInstance';
 import type Texture from '../../texture/Texture';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import { RHICacheCounter, type RHISubmission } from '../rhi/core';
 import type { ShadowAtlasResourceRecord } from './ShadowAtlasResourceCache';
 import type { ShadowAtlasScenePlan, ShadowAtlasSceneSlice } from './ShadowAtlasSceneAdapter';
@@ -362,7 +366,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         this.metrics.clear();
     }
 
-    prepareCommit(_submission: RHISubmission): void {
+    prepareCommit(_submission: RHIUploadBatchCommitContext): void {
         this.assertAlive();
         if (!this.#transactionActive) {
             throw new Error('Shadow content cache has no staged transaction to commit');

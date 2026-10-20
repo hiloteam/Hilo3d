@@ -49,6 +49,12 @@ const createLifeTarget = (label: string): Hilo3d.RenderTarget =>
 
 let currentTarget = createLifeTarget('Life game current');
 let nextTarget = createLifeTarget('Life game next');
+context.onDispose(() => {
+    currentTarget.destroy();
+});
+context.onDispose(() => {
+    nextTarget.destroy();
+});
 for (const target of [currentTarget, nextTarget]) {
     const texture = target.getColorTexture();
     texture.minFilter = Hilo3d.constants.NEAREST;
@@ -69,6 +75,9 @@ const copyPass = new FullscreenPass({
     fragmentShader: screenFragment,
     samplers: { u_diffuse: () => copySource },
     label: 'Life game copy'
+});
+context.onDispose(() => {
+    copyPass.destroy();
 });
 
 const lifePass = new FullscreenPass({
@@ -108,6 +117,9 @@ const lifePass = new FullscreenPass({
         }
     `
 });
+context.onDispose(() => {
+    lifePass.destroy();
+});
 
 copyPass.render(currentTarget);
 copyPass.render(nextTarget);
@@ -130,11 +142,13 @@ ticker.targetFPS = 24;
 ticker.start();
 
 async function captureBlinker(): Promise<readonly (readonly number[])[]> {
+    requireActivePage();
     if (width < 5 || height < 5)
         throw new RangeError('Blinker capture requires at least 5×5 cells.');
     ticker.stop();
     try {
         await renderer.waitForIdle();
+        requireActivePage();
         const centerX = Math.floor(width / 2);
         const centerY = Math.floor(height / 2);
         const seed = new ImageData(width, height);
@@ -157,6 +171,7 @@ async function captureBlinker(): Promise<readonly (readonly number[])[]> {
             lifePass.render(nextTarget);
             [currentTarget, nextTarget] = [nextTarget, currentTarget];
             const readback = await currentTarget.readColorAttachment();
+            requireActivePage();
             const pixels: number[] = [];
             for (let y = centerY - 2; y <= centerY + 2; y++) {
                 const offset = (y * width + centerX - 2) * 4;
@@ -168,7 +183,7 @@ async function captureBlinker(): Promise<readonly (readonly number[])[]> {
         copyPass.render();
         return generations;
     } finally {
-        ticker.start();
+        if (!context.lifecycle.disposed) ticker.start();
     }
 }
 
@@ -181,15 +196,28 @@ let injectionSequence = 0;
 let injectionQueue = Promise.resolve();
 
 function reportAsyncError(error: unknown): void {
+    if (context.lifecycle.disposed) return;
     queueMicrotask(() => {
         throw error;
     });
 }
 
+function requireActivePage(): void {
+    if (!context.lifecycle.active) {
+        throw new DOMException('Life game capture requires an active page.', 'AbortError');
+    }
+}
+
+function pageIsActive(): boolean {
+    return context.lifecycle.active;
+}
+
 async function injectLiveCell(x: number, y: number): Promise<void> {
+    if (!pageIsActive()) return;
     ticker.stop();
     try {
         const before = await currentTarget.readColorAttachment();
+        if (!pageIsActive()) return;
         const update = {
             mipLevel: 0,
             x,
@@ -203,6 +231,7 @@ async function injectLiveCell(x: number, y: number): Promise<void> {
         copySource = currentTarget.getColorTexture();
         copyPass.render();
         const after = await currentTarget.readColorAttachment();
+        if (!pageIsActive()) return;
         window.__HILO3D_LIFE_GAME_INTERACTION_RESULT__ = {
             backend: renderer.backend,
             sequence: ++injectionSequence,
@@ -212,11 +241,12 @@ async function injectLiveCell(x: number, y: number): Promise<void> {
             injectedPixelCount: exactReadbackPixelCount(after.data, [255, 0, 255, 255])
         };
     } finally {
-        ticker.start();
+        if (!context.lifecycle.disposed) ticker.start();
     }
 }
 
-document.addEventListener('click', event => {
+function handleClick(event: MouseEvent): void {
+    if (!context.lifecycle.active) return;
     const canvas = renderer.domElement;
     if (!canvas) return;
     const bounds = canvas.getBoundingClientRect();
@@ -231,19 +261,13 @@ document.addEventListener('click', event => {
     );
     injectionQueue = injectionQueue.then(() => injectLiveCell(x, y));
     void injectionQueue.catch(reportAsyncError);
+}
+document.addEventListener('click', handleClick);
+context.onDispose(() => {
+    document.removeEventListener('click', handleClick);
+    delete window.__HILO3D_LIFE_GAME_TEST_API__;
+    delete window.__HILO3D_LIFE_GAME_INTERACTION_RESULT__;
 });
-
-window.addEventListener(
-    'pagehide',
-    () => {
-        copyPass.destroy();
-        lifePass.destroy();
-        currentTarget.destroy();
-        nextTarget.destroy();
-        context.dispose();
-    },
-    { once: true }
-);
 
 declare global {
     interface Window {

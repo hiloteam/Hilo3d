@@ -1,4 +1,6 @@
 import { withRasterViewport } from '../internal/RasterViewportScope';
+import Node from '../../core/Node';
+import { assertSynchronousResult } from '../internal/ScriptableRenderPipelineValidation';
 import { getRenderNodeExtension, type RenderNodeGPUExtension } from './RenderNodeExtension';
 import type {
     ForwardRenderFeatureContext,
@@ -6,6 +8,12 @@ import type {
     ForwardRenderPipelineFeatureRuntime
 } from './ForwardRenderPipeline';
 import type { RenderPipelineContext, RenderPipelineCreateContext } from './RenderPipeline';
+
+type ObservableGPUCallbacks = {
+    [Key in 'record' | 'frameSubmitted' | 'frameDiscarded']: (
+        ...args: Parameters<RenderNodeGPUExtension[Key]>
+    ) => unknown;
+};
 
 class AddonGPUFrameTransaction {
     readonly #recorded = new Set<RenderNodeGPUExtension>();
@@ -15,17 +23,35 @@ class AddonGPUFrameTransaction {
     }
 
     submitted(frameIndex: number): void {
-        for (const gpu of this.#recorded) gpu.frameSubmitted(frameIndex);
-        this.#recorded.clear();
+        this.finishFrame(frameIndex, 'frameSubmitted');
     }
 
     discarded(frameIndex: number): void {
-        for (const gpu of this.#recorded) gpu.frameDiscarded(frameIndex);
-        this.#recorded.clear();
+        this.finishFrame(frameIndex, 'frameDiscarded');
     }
 
     clear(): void {
         this.#recorded.clear();
+    }
+
+    private finishFrame(frameIndex: number, callback: 'frameSubmitted' | 'frameDiscarded'): void {
+        let errors: unknown[] | undefined;
+        try {
+            for (const gpu of this.#recorded) {
+                try {
+                    const callbacks: ObservableGPUCallbacks = gpu;
+                    const result = callbacks[callback](frameIndex);
+                    assertSynchronousResult(`Render node GPU ${callback}`, result);
+                } catch (error) {
+                    (errors ??= []).push(error);
+                }
+            }
+        } finally {
+            this.#recorded.clear();
+        }
+        if (errors !== undefined) {
+            throw new AggregateError(errors, `Render node GPU ${callback} failed.`);
+        }
     }
 }
 
@@ -46,6 +72,8 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
     }
 
     requiresSampledDepth(context: RenderPipelineContext): boolean {
+        // Both phases share the same graph depth. Query it once before either records work.
+        if (!this.#supported || this.phase !== 'opaque') return false;
         let required = false;
         context.scene.traverse(node => {
             const gpu = getRenderNodeExtension(node)?.gpu;
@@ -54,7 +82,9 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
                 (gpu.hasPendingWork || gpu.isVisible(context.camera))
             ) {
                 required = true;
+                return Node.TRAVERSE_STOP_ALL;
             }
+            return Node.TRAVERSE_STOP_NONE;
         });
         return required;
     }
@@ -64,7 +94,11 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
         let required = false;
         context.scene.traverse(node => {
             const gpu = getRenderNodeExtension(node)?.gpu;
-            if (gpu?.hasOpaqueRenderers === true && gpu.isVisible(context.camera)) required = true;
+            if (gpu?.hasOpaqueRenderers === true && gpu.isVisible(context.camera)) {
+                required = true;
+                return Node.TRAVERSE_STOP_ALL;
+            }
+            return Node.TRAVERSE_STOP_NONE;
         });
         return required;
     }
@@ -80,13 +114,15 @@ class AddonGPUSceneFeatureRuntime implements ForwardRenderPipelineFeatureRuntime
                     if (gpu === null || gpu === undefined) return;
                     if (this.phase === 'opaque' && !gpu.hasOpaqueRenderers) return;
                     this.transaction.record(gpu);
-                    gpu.record(
+                    const callbacks: ObservableGPUCallbacks = gpu;
+                    const result = callbacks.record(
                         context.pipeline,
                         context.resources.color as NonNullable<typeof context.resources.color>,
                         context.resources.depth,
                         gpu.isVisible(context.pipeline.camera),
                         this.phase
                     );
+                    assertSynchronousResult('Render node GPU record', result);
                 });
             }
         );

@@ -301,14 +301,19 @@ export class PostProcess {
         let front = this.frontBuffer;
         let back = this.backBuffer;
 
-        this.passes.forEach((pass, index) => {
+        for (let index = 0; index < this.passes.length; index++) {
+            const pass = this.passes[index];
+            if (pass === undefined)
+                throw new Error('Post-process pass list changed during render.');
             const isLastPass = index === this.passes.length - 1;
             this.draw(source, pass, isLastPass ? outputTarget : front);
             if (!isLastPass) {
                 source = front.getColorTexture();
-                [front, back] = [back, front];
+                const previousFront = front;
+                front = back;
+                back = previousFront;
             }
-        });
+        }
     }
 
     draw(texture: unknown, pass: PostProcessPass, target: Hilo3d.RenderTarget | null = null): void {

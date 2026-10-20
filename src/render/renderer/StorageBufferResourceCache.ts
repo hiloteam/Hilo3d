@@ -3,7 +3,11 @@ import type {
     StorageBufferDirtySpan,
     StorageBufferUsage
 } from '../StorageBuffer';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import {
     RHIBufferUsage,
     type RHIBuffer,
@@ -172,6 +176,11 @@ export class StorageBufferResourceCache implements RHIUploadBatchParticipant {
         return this.requirePending(record).handle;
     }
 
+    /** Read existing ownership during destruction without preparing or synchronizing the source. */
+    getCachedHandle(source: RendererStorageBuffer): ResourceRegistryHandle<RHIBuffer> | null {
+        return this.#records.get(source)?.handle ?? null;
+    }
+
     isInitializedAtFrameStart(source: RendererStorageBuffer): boolean {
         const record = this.requirePreparedRecord(source);
         return this.requirePending(record).initializedAtFrameStart;
@@ -190,7 +199,7 @@ export class StorageBufferResourceCache implements RHIUploadBatchParticipant {
         this.requirePending(record).gpuWrittenAfterCommit = true;
     }
 
-    prepareCommit(submission: RHISubmission): void {
+    prepareCommit(submission: RHIUploadBatchCommitContext): void {
         if (this.#state !== 'active') return;
         if (submission.status === 'failed') {
             throw submission.error instanceof Error
@@ -216,18 +225,21 @@ export class StorageBufferResourceCache implements RHIUploadBatchParticipant {
         }
     }
 
-    commit(submission: RHISubmission): void {
+    commit(submission: RHISubmission, prepared = false): void {
         if (this.#state !== 'active') return;
-        this.prepareCommit(submission);
-        for (const pending of this.#pending.values()) {
-            this.registry.markUsed(pending.handle, this.#frameIndex);
-            pending.record.committedRevision = pending.sourceRevision;
-            pending.record.registryGeneration = pending.registryGeneration;
-            pending.record.initialized = pending.initializedAfterCommit;
-            pending.record.source.acknowledgeDirtyRevision(pending.sourceRevision);
-            if (pending.gpuWrittenAfterCommit) pending.record.source.noteGPUWrite();
+        if (!prepared) this.prepareCommit(submission);
+        try {
+            for (const pending of this.#pending.values()) {
+                this.registry.markUsed(pending.handle, this.#frameIndex);
+                pending.record.committedRevision = pending.sourceRevision;
+                pending.record.registryGeneration = pending.registryGeneration;
+                pending.record.initialized = pending.initializedAfterCommit;
+                pending.record.source.acknowledgeDirtyRevision(pending.sourceRevision);
+                if (pending.gpuWrittenAfterCommit) pending.record.source.noteGPUWrite();
+            }
+        } finally {
+            this.finishFrame();
         }
-        this.finishFrame();
     }
 
     rollback(): void {

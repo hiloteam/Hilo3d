@@ -4,7 +4,9 @@ import Stats from './stats';
 import { resolveExampleBackend } from './backend';
 import { loadDefaultEnvironmentMaps, loadDefaultSkyboxMap } from './defaultEnvironment';
 import { createExampleLights, createExampleRenderPipeline } from './lighting';
-import { createTestFrameControl } from './test-frame-control';
+import { createTestFrameControl, type TestFrameControl } from './test-frame-control';
+import { ExampleTicker } from './ExampleTicker';
+import { installPageLifecycle, type ExamplePageLifecycle } from './pageLifecycle';
 
 export { resolveExampleBackend };
 
@@ -37,7 +39,9 @@ export interface ExampleContext<Backend extends Hilo3d.RendererBackend = Hilo3d.
     readonly ticker: Hilo3d.Ticker;
     readonly stats: Stats;
     readonly orbitControls: Hilo3d.OrbitControls;
-    dispose(): void;
+    readonly lifecycle: ExamplePageLifecycle;
+    readonly onDispose: (cleanup: () => void) => void;
+    readonly dispose: () => void;
 }
 
 export function parseQuery(url: string | URL = location.href): QueryValues {
@@ -98,78 +102,149 @@ export async function createExampleContext(
     });
     const container = options.container ?? document.getElementById('container') ?? document.body;
     const backend = options.backend ?? resolveExampleBackend();
-    const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
-        backend,
-        clearColor: new Hilo3d.Color(0.008, 0.012, 0.028),
-        width,
-        height,
-        antialias: false,
-        alpha: false,
-        useLogDepth: false,
-        renderPipeline: createExampleRenderPipeline(),
-        ...options.stage,
-        container,
-        camera
-    });
-
-    const renderer = stage.renderer;
-    const { directionLight, ambientLight } = createExampleLights();
-    directionLight.addTo(stage);
-    ambientLight.addTo(stage);
-
-    const ticker = new Hilo3d.Ticker(60);
-    ticker.addTick(stage);
-    ticker.addTick(Hilo3d.Tween);
-    ticker.addTick(Hilo3d.Animation);
-    const stats = new Stats(ticker, renderer);
-    const orbitControls = new Hilo3d.OrbitControls(stage, {
-        enablePan: false,
-        ...options.controls
-    });
-
+    let stage: Hilo3d.Stage | undefined;
+    let ticker: ExampleTicker | undefined;
+    let stats: Stats | undefined;
+    let orbitControls: Hilo3d.OrbitControls | undefined;
+    let captureControl: TestFrameControl | undefined;
     const handleResize = (): void => {
+        if (!lifecycle.active || stage === undefined) return;
         camera.aspect = window.innerWidth / window.innerHeight;
+        if (stage.camera instanceof Hilo3d.PerspectiveCamera) {
+            stage.camera.aspect = camera.aspect;
+        }
         stage.resize(window.innerWidth, window.innerHeight);
     };
-    window.addEventListener('resize', handleResize);
-
-    console.info(`Stage uses ${renderer.backend}`);
-
-    const captureControl =
-        new URLSearchParams(location.search).get('test') === '1'
-            ? createTestFrameControl(
-                  ticker,
-                  () => renderer.waitForIdle(),
-                  new URLSearchParams(location.search).get('testClock') !== '1'
-              )
-            : undefined;
-    if (captureControl) {
-        window.__HILO3D_TEST_CAPTURE__ = captureControl;
-    }
-
-    if (options.autoStart ?? true) ticker.start();
-
-    return {
-        camera,
-        stage,
-        renderer,
-        directionLight,
-        ambientLight,
-        ticker,
-        stats,
-        orbitControls,
+    const lifecycle = installPageLifecycle({
+        pause(): void {
+            captureControl?.setSuspended(true);
+            ticker?.suspend();
+            stats?.suspend();
+        },
+        resume(): void {
+            handleResize();
+            stats?.resume();
+            captureControl?.setSuspended(false);
+            ticker?.restore();
+        },
         dispose(): void {
-            captureControl?.dispose();
-            if (window.__HILO3D_TEST_CAPTURE__ === captureControl) {
-                delete window.__HILO3D_TEST_CAPTURE__;
+            const failures: unknown[] = [];
+            const cleanups = [
+                (): void => {
+                    ticker?.dispose();
+                },
+                (): void => {
+                    captureControl?.dispose();
+                },
+                (): void => {
+                    if (window.__HILO3D_TEST_CAPTURE__ === captureControl) {
+                        delete window.__HILO3D_TEST_CAPTURE__;
+                    }
+                    window.removeEventListener('resize', handleResize);
+                },
+                (): void => {
+                    orbitControls?.dispose();
+                },
+                (): void => {
+                    stats?.dispose();
+                },
+                (): void => {
+                    stage?.destroy();
+                }
+            ];
+            for (const cleanup of cleanups) {
+                try {
+                    cleanup();
+                } catch (error) {
+                    failures.push(error);
+                }
             }
-            window.removeEventListener('resize', handleResize);
-            orbitControls.dispose();
-            stats.stop();
-            ticker.stop();
-            stage.destroy();
+            if (failures.length === 1) throw failures[0];
+            if (failures.length > 1)
+                throw new AggregateError(failures, 'Example runtime cleanup failed');
         }
-    };
+    });
+
+    try {
+        stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
+            backend,
+            clearColor: new Hilo3d.Color(0.008, 0.012, 0.028),
+            width,
+            height,
+            antialias: false,
+            alpha: false,
+            useLogDepth: false,
+            renderPipeline: createExampleRenderPipeline(),
+            ...options.stage,
+            container,
+            camera
+        });
+        if (lifecycle.disposed) {
+            stage.destroy();
+            stage = undefined;
+            throw new DOMException(
+                'Example initialization was cancelled by page disposal',
+                'AbortError'
+            );
+        }
+
+        const renderer = stage.renderer;
+        const { directionLight, ambientLight } = createExampleLights();
+        directionLight.addTo(stage);
+        ambientLight.addTo(stage);
+        ticker = new ExampleTicker(60);
+        ticker.addTick(stage);
+        ticker.addTick(Hilo3d.Tween);
+        ticker.addTick(Hilo3d.Animation);
+        stats = new Stats(ticker, renderer);
+        orbitControls = new Hilo3d.OrbitControls(stage, {
+            enablePan: false,
+            ...options.controls
+        });
+        window.addEventListener('resize', handleResize);
+        console.info(`Stage uses ${renderer.backend}`);
+        const query = new URLSearchParams(location.search);
+        captureControl =
+            query.get('test') === '1'
+                ? createTestFrameControl(
+                      ticker,
+                      () => renderer.waitForIdle(),
+                      query.get('testClock') !== '1'
+                  )
+                : undefined;
+        if (captureControl) window.__HILO3D_TEST_CAPTURE__ = captureControl;
+        if (!lifecycle.active) {
+            ticker.suspend();
+            stats.suspend();
+            captureControl?.setSuspended(true);
+        }
+        if (options.autoStart ?? true) ticker.start();
+
+        return {
+            camera,
+            stage,
+            renderer,
+            directionLight,
+            ambientLight,
+            ticker,
+            stats,
+            orbitControls,
+            lifecycle,
+            onDispose: lifecycle.onDispose,
+            dispose: lifecycle.dispose
+        };
+    } catch (error) {
+        try {
+            lifecycle.dispose();
+        } catch (cleanupError) {
+            throw new AggregateError(
+                [error, cleanupError],
+                'Example initialization and cleanup failed',
+                { cause: cleanupError }
+            );
+        }
+        throw error;
+    }
 }
 
 declare global {

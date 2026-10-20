@@ -48,6 +48,7 @@ import {
     type DirectionalLightShadowOptions,
     type EventListener,
     type ForwardRenderFeatureContext,
+    type ForwardRenderPipelineFeatureRuntime,
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
@@ -70,6 +71,7 @@ import {
     type RenderTargetColorAttachmentReadback,
     type RenderTargetParameters,
     type RenderPipelineOutput,
+    type RenderPipeline,
     type RenderPipelineOutputColorAttachment,
     type RenderPipelineOutputDepthStencilAttachment,
     type RenderPipelineRequirements,
@@ -876,6 +878,15 @@ const pipelineInvocationPolicy = {
     maxInvocationsPerFrame: 1
 } satisfies RenderPipelineInvocationPolicy;
 declare const customPipelineFactory: RenderPipelineFactory;
+declare const pipelineRuntime: RenderPipeline;
+declare const featureRuntime: ForwardRenderPipelineFeatureRuntime;
+declare const pipelineTimeline: Readonly<RenderGraphTimelineSnapshot>;
+const pipelineNotification: void | Promise<void> =
+    pipelineRuntime.recordRenderGraphTimeline?.(pipelineTimeline);
+const featureNotification: void | Promise<void> =
+    featureRuntime.recordRenderGraphTimeline?.(pipelineTimeline);
+void pipelineNotification;
+void featureNotification;
 const configuredInvocationPolicy: Readonly<RenderPipelineInvocationPolicy> | undefined =
     customPipelineFactory.invocationPolicy;
 const postProcessInvocationPolicy: Readonly<RenderPipelineInvocationPolicy> =

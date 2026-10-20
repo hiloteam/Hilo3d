@@ -1,11 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
 import { createExampleContext } from './shared/init';
-import {
-    createParticleAtlas,
-    createParticleTexture,
-    installExampleDisposal
-} from './shared/particleShowcase';
+import { createParticleAtlas, createParticleTexture } from './shared/particleShowcase';
 
 const particleSystem = Particle.createParticleStageSystem({ budget: false });
 const context = await createExampleContext({
@@ -497,7 +493,6 @@ const resizeComposition = (): void => {
 resizeComposition();
 window.addEventListener('resize', resizeComposition);
 document.body.dataset['particleExampleReady'] = 'true';
-installExampleDisposal(() => {
+context.onDispose(() => {
     window.removeEventListener('resize', resizeComposition);
-    context.dispose();
 });

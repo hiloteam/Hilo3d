@@ -215,14 +215,6 @@ ticker.addTick({
 // Evaluate behavior and pose before scene transform collection and rendering.
 ticker.removeTick(stage);
 ticker.addTick(stage);
-let disposed = false;
-window.addEventListener('pagehide', (event: PageTransitionEvent) => {
-    ticker.stop();
-    if (event.persisted || disposed) return;
-    disposed = true;
+context.onDispose(() => {
     animation.destroy();
-    context.dispose();
-});
-window.addEventListener('pageshow', (event: PageTransitionEvent) => {
-    if (event.persisted && !disposed) ticker.start();
 });

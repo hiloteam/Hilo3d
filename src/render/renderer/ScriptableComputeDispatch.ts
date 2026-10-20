@@ -32,7 +32,6 @@ import type {
 } from './ComputePipelineResourceCache';
 import type { ComputeSamplerResourceCache } from './ComputeSamplerResourceCache';
 import type { FrameResourceUseTracker } from './FrameResourceUseTracker';
-import type { ResourceRegistryHandle } from './ResourceRegistry';
 import type { ScriptableBindGroupResourceCache } from './ScriptableBindGroupResourceCache';
 
 const MAX_U32 = 0xffff_ffff;
@@ -94,7 +93,7 @@ interface ComputeBindGroupScratch {
 
 interface MutableComputeBindingPlan {
     binding: ComputeShaderBinding | null;
-    uniformHandle: ResourceRegistryHandle<RHIBuffer> | null;
+    uniformSource: UniformBuffer | null;
     graphBuffer: RGBufferHandle | null;
     graphTexture: RGTextureAccessHandle | null;
     sampler: ComputeSampler | null;
@@ -289,10 +288,7 @@ export class ScriptableComputeDispatch {
                         true,
                         services
                     );
-                    services.uniformBuffers.prepareUniformBuffer(source);
-                    const handle = services.uniformBuffers.getUniformBufferHandle(source);
-                    services.resourceUses.use(handle);
-                    plan.uniformHandle = handle;
+                    plan.uniformSource = source;
                     plan.byteOffset = range.byteOffset;
                     plan.byteLength = range.byteLength;
                     range.source = null;
@@ -589,15 +585,12 @@ export class ScriptableComputeDispatch {
         if (binding === null) throw new Error('Compute binding plan has no ABI binding');
         switch (binding.kind) {
             case 'uniform-buffer': {
-                const handle = plan.uniformHandle;
-                if (handle === null) throw new Error(`Compute uniform ${binding.name} is missing`);
-                this.addBufferEntry(
-                    group,
-                    binding,
-                    services.uniformBuffers.registry.resolve(handle),
-                    plan.byteOffset,
-                    plan.byteLength
-                );
+                const source = plan.uniformSource;
+                if (source === null) throw new Error(`Compute uniform ${binding.name} is missing`);
+                const buffer = services.uniformBuffers.prepareUniformBuffer(source);
+                const handle = services.uniformBuffers.getUniformBufferHandle(source);
+                services.resourceUses.use(handle);
+                this.addBufferEntry(group, binding, buffer, plan.byteOffset, plan.byteLength);
                 break;
             }
             case 'read-only-storage-buffer':
@@ -780,7 +773,7 @@ export class ScriptableComputeDispatch {
         if (plan === undefined) {
             plan = {
                 binding: null,
-                uniformHandle: null,
+                uniformSource: null,
                 graphBuffer: null,
                 graphTexture: null,
                 sampler: null,
@@ -801,7 +794,13 @@ export class ScriptableComputeDispatch {
             const frameOwned = group.frameOwned;
             group.bindGroup = null;
             group.frameOwned = false;
+            for (const entry of group.entries) entry.resource = null;
+            for (let index = 0; index < group.bufferBindingCursor; index++) {
+                const binding = group.bufferBindings[index];
+                if (binding !== undefined) binding.buffer = null;
+            }
             group.entries.length = 0;
+            group.descriptor.layout = null;
             group.bufferBindingCursor = 0;
             group.dynamicOffsetCursor = 0;
             if (bindGroup === null || !frameOwned) continue;
@@ -836,7 +835,7 @@ export class ScriptableComputeDispatch {
             const plan = this.#bindingPlans[index];
             if (plan === undefined) continue;
             plan.binding = null;
-            plan.uniformHandle = null;
+            plan.uniformSource = null;
             plan.graphBuffer = null;
             plan.graphTexture = null;
             plan.sampler = null;

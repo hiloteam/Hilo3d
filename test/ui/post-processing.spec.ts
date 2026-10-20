@@ -656,11 +656,58 @@ for (const backend of backends) {
                 before,
                 `post-process kernel change must issue a new native ${backend} draw${backend === 'webgpu' ? ' and queue submission' : ''}`
             );
+            await page.evaluate(() => {
+                const selector = document.querySelector<HTMLSelectElement>('#kernelSelect');
+                if (selector === null) throw new Error('Post-process selector is missing');
+                for (const value of ['sharpness', 'normal']) {
+                    selector.value = value;
+                    selector.dispatchEvent(new Event('change'));
+                }
+            });
+            await page.waitForFunction(
+                () => window.__HILO3D_POST_PROCESS_INTERACTION_RESULT__?.sequence === 3
+            );
+            expect(
+                await page.evaluate(() => window.__HILO3D_POST_PROCESS_INTERACTION_RESULT__)
+            ).toMatchObject({ previousKernel: 'sharpness', currentKernel: 'normal' });
+            await expect(kernel).toHaveValue('normal');
+
+            await page.evaluate(() => {
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+            });
+            await waitForStableAnimationFrames(page);
+            const suspended = await currentProgress(page, backend);
+            await waitForStableAnimationFrames(page);
+            expect(await currentProgress(page, backend)).toEqual(suspended);
+            await page.evaluate(() => {
+                window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            });
+            await expectActionProgress(
+                page,
+                backend,
+                suspended,
+                'BFCache restoration resumes draws'
+            );
             await assertFinalGraphicsHealth(
                 page,
                 backend,
                 `post-process interaction graphics errors on ${backend}`
             );
+
+            // Let the queued comparison begin its real readback, then tear down while it is pending.
+            await page.evaluate(async () => {
+                const selector = document.querySelector<HTMLSelectElement>('#kernelSelect');
+                if (selector === null) throw new Error('Post-process selector is missing');
+                selector.value = 'emboss';
+                selector.dispatchEvent(new Event('change'));
+                await Promise.resolve();
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+            });
+            await waitForStableAnimationFrames(page);
+            const disposed = await currentProgress(page, backend);
+            await waitForStableAnimationFrames(page);
+            expect(await currentProgress(page, backend)).toEqual(disposed);
+            failures.assertEmpty(`post-process late readback failures on ${backend}`);
 
             await page.goto('about:blank');
             failures.assertEmpty(`post-process interaction failures on ${backend}`);

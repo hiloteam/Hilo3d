@@ -8,6 +8,7 @@ export default mergeConfig(
             name: 'ui-contract',
             include: [
                 'test/ui/test-frame-control.contract.test.ts',
+                'test/ui/page-lifecycle.contract.test.ts',
                 'test/ui/stable-capture.contract.test.ts',
                 'test/ui/ci-selection.contract.test.ts',
                 'test/ui/browser-test-capabilities.contract.test.ts',

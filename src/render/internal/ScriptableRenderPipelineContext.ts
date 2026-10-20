@@ -1645,7 +1645,10 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 dimension: parent.textureDimension,
                 viewDimension: parent.viewDimension,
                 format: parent.format,
-                usage: RHITextureUsage.COPY_SRC,
+                usage:
+                    parent.sampleCount > 1
+                        ? RHITextureUsage.RENDER_ATTACHMENT
+                        : RHITextureUsage.COPY_SRC,
                 viewFormats: parent.viewFormats
             },
             this.services.getScriptableMeshProcessor().registry.deviceCapabilities
@@ -1758,7 +1761,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             descriptor,
             () => processor.registry.resolve(handles.texture),
             'persistent',
-            true
+            true,
+            handles.texture
         );
         const record = this.acquireTextureRecord({
             name: texture.name || texture.id,
@@ -1943,7 +1947,8 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
                 },
                 () => registry.resolve(registryHandle),
                 'persistent',
-                prepared.initialized[index] ?? false
+                prepared.initialized[index] ?? false,
+                registryHandle
             );
             const current = index === prepared.writeIndex;
             publicHandles[index] = this.acquireTextureRecord({
@@ -2120,19 +2125,14 @@ export class ScriptableRenderPipelineContextImpl implements ScriptableComputeGra
             );
         }
         if (record.kind === 'texture-view') {
-            let internal =
-                access === 'attachment'
-                    ? record.attachment
-                    : access === 'sampled' || access === 'copy-source'
-                      ? record.readable
-                      : record.writable;
-            if (internal !== null) return internal;
+            // Roles can share a view while still requiring distinct parent texture usages.
+            // Resolve every access before consulting the view cache, including cache hits.
             const parent = this.resolvePhysicalTexture(record.texture, access);
-            internal = this.requireScope().graph.createTextureView(
-                record.name,
-                parent,
-                record.descriptor
-            );
+            const internal =
+                (parent === record.texture.attachment ? record.attachment : null) ??
+                (parent === record.texture.readable ? record.readable : null) ??
+                (parent === record.texture.writable ? record.writable : null) ??
+                this.requireScope().graph.createTextureView(record.name, parent, record.descriptor);
             if (access === 'attachment') record.attachment = internal;
             else if (access === 'sampled' || access === 'copy-source') {
                 record.readable = internal;

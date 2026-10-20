@@ -2,9 +2,10 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { hashReadback } from './shared/readbackDiagnostics';
 
-const { camera, stage, renderer, ticker } = await createExampleContext({
+const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
+const { camera, stage, renderer, ticker } = context;
 
 const shaderToyCode = `
 
@@ -567,14 +568,16 @@ function updatePointer(event: PointerEvent): void {
 }
 
 stage.canvas.style.touchAction = 'none';
-stage.canvas.addEventListener('pointermove', event => {
+const movePointer = (event: PointerEvent): void => {
+    if (!context.lifecycle.active) return;
     if (pointer.isDown) updatePointer(event);
-});
-stage.canvas.addEventListener('pointerdown', event => {
+};
+const startPointer = (event: PointerEvent): void => {
+    if (!context.lifecycle.active) return;
     updatePointer(event);
     pointer.isDown = true;
     stage.canvas.setPointerCapture(event.pointerId);
-});
+};
 const endPointer = (event: PointerEvent): void => {
     updatePointer(event);
     pointer.isDown = false;
@@ -584,6 +587,14 @@ const endPointer = (event: PointerEvent): void => {
 };
 stage.canvas.addEventListener('pointerup', endPointer);
 stage.canvas.addEventListener('pointercancel', endPointer);
+stage.canvas.addEventListener('pointermove', movePointer);
+stage.canvas.addEventListener('pointerdown', startPointer);
+context.onDispose(() => {
+    stage.canvas.removeEventListener('pointermove', movePointer);
+    stage.canvas.removeEventListener('pointerdown', startPointer);
+    stage.canvas.removeEventListener('pointerup', endPointer);
+    stage.canvas.removeEventListener('pointercancel', endPointer);
+});
 
 const resolution = new Float32Array([stage.width, stage.height, 1]);
 const mouse = new Float32Array(4);
@@ -713,8 +724,15 @@ const pointerDiagnosticTarget = renderer.createRenderTarget({
     label: 'ShaderToy pointer diagnostics'
 });
 
+function requireActivePage(): void {
+    if (!context.lifecycle.active) {
+        throw new DOMException('ShaderToy capture requires an active page.', 'AbortError');
+    }
+}
+
 window.__HILO3D_SHADER_TOY_DIAGNOSTICS__ = {
     async capture(options = {}) {
+        requireActivePage();
         ticker.stop();
         let succeeded = false;
         try {
@@ -722,6 +740,7 @@ window.__HILO3D_SHADER_TOY_DIAGNOSTICS__ = {
             shaderToyBlock.set('iMouse', mouse);
             renderer.renderToTarget(pointerDiagnosticTarget, stage, camera, true);
             const readback = await pointerDiagnosticTarget.readColorAttachment();
+            requireActivePage();
             let coloredPixelCount = 0;
             for (let offset = 0; offset < readback.data.byteLength; offset += 4) {
                 if (
@@ -740,18 +759,19 @@ window.__HILO3D_SHADER_TOY_DIAGNOSTICS__ = {
                 pointer: { ...pointer }
             };
         } finally {
-            if (!(succeeded && options.keepPaused === true)) ticker.start();
+            if (!context.lifecycle.disposed && !(succeeded && options.keepPaused === true))
+                ticker.start();
         }
     }
 };
 
-window.addEventListener(
-    'pagehide',
-    () => {
-        pointerDiagnosticTarget.destroy();
-    },
-    { once: true }
-);
+context.onDispose(() => {
+    pointerDiagnosticTarget.destroy();
+});
+context.onDispose(() => channel0.destroy());
+context.onDispose(() => {
+    delete window.__HILO3D_SHADER_TOY_DIAGNOSTICS__;
+});
 
 declare global {
     interface Window {

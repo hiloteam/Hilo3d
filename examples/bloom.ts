@@ -404,61 +404,66 @@ function addOrbitalRelics(root: Hilo3d.Node, material: Hilo3d.PBRMaterial): Hilo
     return relicRoot;
 }
 
+const environment = await loadEnvironmentMaps();
 const particleField = new BloomParticleField();
-const { camera, stage, renderer, directionLight, ambientLight, ticker } =
-    await createExampleContext({
-        backend: 'webgpu',
-        camera: {
-            fov: 36,
-            near: 0.05,
-            far: 90,
-            x: 0.42,
-            y: 0.9,
-            z: 8.8
-        },
-        stage: {
-            renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
-                bloom: bloomEnabled
-                    ? {
-                          threshold: 1.05,
-                          knee: 0.62,
-                          clamp: 32,
-                          intensity: 0.74,
-                          scatter: 0.78,
-                          tint: new Hilo3d.Color(1, 0.94, 0.88),
-                          maxLevels: 8,
-                          minResolution: 12
-                      }
-                    : false,
-                colorUber: {
-                    exposure: -0.52,
-                    contrast: 0.11,
-                    saturation: 0.08,
-                    temperature: 0.035,
-                    tint: -0.025,
-                    lift: new Hilo3d.Color(0.002, 0.004, 0.012),
-                    gain: new Hilo3d.Color(1.02, 0.99, 0.96),
-                    toneMapping: 'pbr-neutral',
-                    vignetteIntensity: 0.72,
-                    vignetteSmoothness: 0.6,
-                    vignetteColor: new Hilo3d.Color(0.001, 0.002, 0.009, 0.68),
-                    dithering: true
-                },
-                opaqueTexture: false,
-                features: [particleField.feature]
-            }),
-            useInstanced: false
-        },
-        controls: {
-            enablePan: false,
-            minDistance: 6.5,
-            maxDistance: 11.5,
-            target: new Hilo3d.Vector3(ARTWORK_CENTER_X, 0.12, 0),
-            minPolarAngle: Math.PI / 2 - 0.34,
-            maxPolarAngle: Math.PI / 2 + 0.27
-        },
-        autoStart: false
-    });
+const context = await createExampleContext({
+    backend: 'webgpu',
+    camera: {
+        fov: 36,
+        near: 0.05,
+        far: 90,
+        x: 0.42,
+        y: 0.9,
+        z: 8.8
+    },
+    stage: {
+        renderPipeline: new Hilo3d.PostProcessRenderPipelineFactory({
+            bloom: bloomEnabled
+                ? {
+                      threshold: 1.05,
+                      knee: 0.62,
+                      clamp: 32,
+                      intensity: 0.74,
+                      scatter: 0.78,
+                      tint: new Hilo3d.Color(1, 0.94, 0.88),
+                      maxLevels: 8,
+                      minResolution: 12
+                  }
+                : false,
+            colorUber: {
+                exposure: -0.52,
+                contrast: 0.11,
+                saturation: 0.08,
+                temperature: 0.035,
+                tint: -0.025,
+                lift: new Hilo3d.Color(0.002, 0.004, 0.012),
+                gain: new Hilo3d.Color(1.02, 0.99, 0.96),
+                toneMapping: 'pbr-neutral',
+                vignetteIntensity: 0.72,
+                vignetteSmoothness: 0.6,
+                vignetteColor: new Hilo3d.Color(0.001, 0.002, 0.009, 0.68),
+                dithering: true
+            },
+            opaqueTexture: false,
+            features: [particleField.feature]
+        }),
+        useInstanced: false
+    },
+    controls: {
+        enablePan: false,
+        minDistance: 6.5,
+        maxDistance: 11.5,
+        target: new Hilo3d.Vector3(ARTWORK_CENTER_X, 0.12, 0),
+        minPolarAngle: Math.PI / 2 - 0.34,
+        maxPolarAngle: Math.PI / 2 + 0.27
+    },
+    autoStart: false
+});
+
+const { camera, stage, renderer, directionLight, ambientLight, ticker } = context;
+context.onDispose(() => {
+    particleField.destroy();
+});
 
 renderer.clearColor.set(0.001, 0.0015, 0.006, 1);
 camera.lookAt(new Hilo3d.Vector3(ARTWORK_CENTER_X, 0.12, 0));
@@ -494,7 +499,6 @@ new Hilo3d.Mesh({
     receiveShadows: false
 }).addTo(stage);
 
-const environment = await loadEnvironmentMaps();
 const sceneRoot = new Hilo3d.Node({
     name: 'Garden of the Last Star'
 }).addTo(stage);
@@ -762,10 +766,3 @@ particleField.update(
     motionEnabled
 );
 ticker.start();
-window.addEventListener(
-    'pagehide',
-    () => {
-        particleField.destroy();
-    },
-    { once: true }
-);

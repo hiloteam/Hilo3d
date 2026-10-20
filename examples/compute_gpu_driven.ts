@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 
 // This deterministic scene combines acceptance-scale Forward+/Gaussian data-flow evidence with a
 // showcase-quality Hilo3D particle wordmark. It is not a production light culler, splat sorter, or
@@ -1192,7 +1196,7 @@ const container = document.querySelector<HTMLElement>('#container');
 if (!container) throw new Error('Compute example container is missing');
 const factory = new ComputeEffectsPipelineFactory();
 const camera = new Hilo3d.PerspectiveCamera({ aspect: 1, near: 0.1, far: 10, z: 2 });
-const stage = await Hilo3d.Stage.create({
+const runtime = await createExampleStage({
     backend: 'webgpu',
     container,
     camera,
@@ -1202,112 +1206,116 @@ const stage = await Hilo3d.Stage.create({
     antialias: false,
     alpha: false,
     renderPipeline: factory
+}).catch((error: unknown) => {
+    if (error instanceof ExampleInitializationCancelledError) return null;
+    throw error;
 });
-const forwardGeometry = new Hilo3d.Geometry({
-    mode: Hilo3d.constants.TRIANGLES,
-    vertices: new Hilo3d.GeometryData(
-        new Float32Array([-0.28, -0.32, 0, 0.28, -0.32, 0, 0, 0.34, 0]),
-        3
-    )
-});
-const forwardMeshes = [
-    new Hilo3d.Mesh({
-        geometry: forwardGeometry,
-        material: new Hilo3d.PBRMaterial({
-            baseColor: new Hilo3d.Color(0.92, 0.28, 0.18),
-            roughness: 0.55
+if (runtime !== null) {
+    const { stage, ticker, lifecycle } = runtime;
+    const forwardGeometry = new Hilo3d.Geometry({
+        mode: Hilo3d.constants.TRIANGLES,
+        vertices: new Hilo3d.GeometryData(
+            new Float32Array([-0.28, -0.32, 0, 0.28, -0.32, 0, 0, 0.34, 0]),
+            3
+        )
+    });
+    const forwardMeshes = [
+        new Hilo3d.Mesh({
+            geometry: forwardGeometry,
+            material: new Hilo3d.PBRMaterial({
+                baseColor: new Hilo3d.Color(0.92, 0.28, 0.18),
+                roughness: 0.55
+            }),
+            x: -0.68,
+            frustumTest: false
         }),
-        x: -0.68,
-        frustumTest: false
-    }),
-    new Hilo3d.Mesh({
-        geometry: forwardGeometry,
-        material: new Hilo3d.PBRMaterial({
-            baseColor: new Hilo3d.Color(0.18, 0.86, 0.42),
-            roughness: 0.4
+        new Hilo3d.Mesh({
+            geometry: forwardGeometry,
+            material: new Hilo3d.PBRMaterial({
+                baseColor: new Hilo3d.Color(0.18, 0.86, 0.42),
+                roughness: 0.4
+            }),
+            frustumTest: false
         }),
-        frustumTest: false
-    }),
-    new Hilo3d.Mesh({
-        geometry: forwardGeometry,
-        material: new Hilo3d.PBRMaterial({
-            baseColor: new Hilo3d.Color(0.18, 0.45, 0.96),
-            metallic: 0.25,
-            roughness: 0.32
-        }),
-        x: 0.68,
-        frustumTest: false
-    })
-];
-for (const mesh of forwardMeshes) stage.addChild(mesh);
-const target = stage.renderer.createRenderTarget({
-    width: TARGET_WIDTH,
-    height: TARGET_HEIGHT,
-    colorAttachments: [{ clearValue: { r: 0.015, g: 0.025, b: 0.05, a: 1 } }],
-    depthStencilAttachment: { format: 'depth24plus', sampled: true }
-});
-const gaussianSplats = stage.renderer.createStorageBuffer({
-    label: 'Persistent Gaussian attributes',
-    byteLength: 96,
-    usage: ['storage'],
-    initialData: gaussianInitialData(),
-    recovery: 'cpu-shadow'
-});
-const forwardLights = stage.renderer.createStorageBuffer({
-    label: 'Forward+ screen-space light records',
-    byteLength: 64,
-    usage: ['storage'],
-    initialData: forwardLightData(),
-    recovery: 'cpu-shadow'
-});
-const particles = stage.renderer.createStorageBuffer({
-    label: 'Deterministic Hilo3D curl-noise particle state',
-    byteLength: PARTICLE_BUFFER_BYTE_LENGTH,
-    usage: ['storage'],
-    initialData: particleInitialData(),
-    // cpu-shadow restores the deterministic CPU seed/checkpoint. GPU simulation writes are not
-    // mirrored back to that shadow and therefore are not retained across WebGPU device loss.
-    recovery: 'cpu-shadow'
-});
-factory.runtime.attachBuffers({ forwardLights, gaussianSplats, particles });
-stage.renderer.setRenderTarget(target, { present: true, takeOwnership: true });
-stage.tick(1 / 60);
-await stage.renderer.waitForIdle();
-
-// The only GPU-to-CPU transfer in this acceptance example is the final color attachment. Visible
-// counts, reordered indices, particle lists, and indirect arguments remain GPU-only.
-const readback = await target.readColorAttachment();
-const forward = analyzeLane(readback.data, 0);
-const gaussian = analyzeLane(readback.data, 1);
-const particle = analyzeLane(readback.data, 2);
-window.__HILO3D_COMPUTE_EFFECTS_RESULT__ = {
-    backend: stage.renderer.backend,
-    forward: {
-        centerColor: readPixel(readback.data, LANE_WIDTH / 2, TARGET_HEIGHT / 2),
-        ...forward
-    },
-    gaussian,
-    particle: {
-        ...particle,
-        simulatedParticles: PARTICLE_COUNT
-    }
-};
-document.body.dataset['computeEffectsReady'] = 'true';
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(stage);
-ticker.start();
-
-window.addEventListener(
-    'pagehide',
-    () => {
-        ticker.stop();
+        new Hilo3d.Mesh({
+            geometry: forwardGeometry,
+            material: new Hilo3d.PBRMaterial({
+                baseColor: new Hilo3d.Color(0.18, 0.45, 0.96),
+                metallic: 0.25,
+                roughness: 0.32
+            }),
+            x: 0.68,
+            frustumTest: false
+        })
+    ];
+    for (const mesh of forwardMeshes) stage.addChild(mesh);
+    const target = stage.renderer.createRenderTarget({
+        width: TARGET_WIDTH,
+        height: TARGET_HEIGHT,
+        colorAttachments: [{ clearValue: { r: 0.015, g: 0.025, b: 0.05, a: 1 } }],
+        depthStencilAttachment: { format: 'depth24plus', sampled: true }
+    });
+    const gaussianSplats = stage.renderer.createStorageBuffer({
+        label: 'Persistent Gaussian attributes',
+        byteLength: 96,
+        usage: ['storage'],
+        initialData: gaussianInitialData(),
+        recovery: 'cpu-shadow'
+    });
+    const forwardLights = stage.renderer.createStorageBuffer({
+        label: 'Forward+ screen-space light records',
+        byteLength: 64,
+        usage: ['storage'],
+        initialData: forwardLightData(),
+        recovery: 'cpu-shadow'
+    });
+    const particles = stage.renderer.createStorageBuffer({
+        label: 'Deterministic Hilo3D curl-noise particle state',
+        byteLength: PARTICLE_BUFFER_BYTE_LENGTH,
+        usage: ['storage'],
+        initialData: particleInitialData(),
+        // cpu-shadow restores the deterministic CPU seed/checkpoint. GPU simulation writes are not
+        // mirrored back to that shadow and therefore are not retained across WebGPU device loss.
+        recovery: 'cpu-shadow'
+    });
+    factory.runtime.attachBuffers({ forwardLights, gaussianSplats, particles });
+    stage.renderer.setRenderTarget(target, { present: true, takeOwnership: true });
+    lifecycle.onDispose(() => {
         forwardLights.destroy();
         gaussianSplats.destroy();
         particles.destroy();
-        stage.destroy();
-    },
-    { once: true }
-);
+    });
+    const isDisposed = (): boolean => lifecycle.disposed;
+    try {
+        stage.tick(1000 / 60);
+        await stage.renderer.waitForIdle();
+        if (isDisposed()) throw new Error('Compute example was disposed during initialization');
+
+        // The only GPU-to-CPU transfer in this acceptance example is the final color attachment. Visible
+        // counts, reordered indices, particle lists, and indirect arguments remain GPU-only.
+        const readback = await target.readColorAttachment();
+        if (isDisposed()) throw new Error('Compute example was disposed during readback');
+        const forward = analyzeLane(readback.data, 0);
+        const gaussian = analyzeLane(readback.data, 1);
+        const particle = analyzeLane(readback.data, 2);
+        window.__HILO3D_COMPUTE_EFFECTS_RESULT__ = {
+            backend: stage.renderer.backend,
+            forward: {
+                centerColor: readPixel(readback.data, LANE_WIDTH / 2, TARGET_HEIGHT / 2),
+                ...forward
+            },
+            gaussian,
+            particle: {
+                ...particle,
+                simulatedParticles: PARTICLE_COUNT
+            }
+        };
+        document.body.dataset['computeEffectsReady'] = 'true';
+        ticker.start();
+    } catch (error) {
+        if (!isDisposed()) throw error;
+    }
+}
 
 declare global {
     interface Window {

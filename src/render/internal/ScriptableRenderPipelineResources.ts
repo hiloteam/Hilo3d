@@ -36,8 +36,8 @@ export interface PersistentHistoryState {
     registryGeneration: number;
     generation: number;
     pendingDescriptor: Readonly<HistoryTextureRecipe> | null;
-    pendingHandles: ResourceRegistryHandle<RHITexture>[];
-    pendingInitialized: boolean[];
+    pendingHandles: ResourceRegistryHandle<RHITexture>[] | null;
+    pendingInitialized: boolean[] | null;
     frameHandles: ResourceRegistryHandle<RHITexture>[] | null;
     frameInitialized: boolean[] | null;
     frameWriteIndex: number;
@@ -76,9 +76,15 @@ export class ScriptableRenderPipelineResources {
     #runtimeOwner: object | null = null;
     #persistentByKey = new WeakMap<object, PersistentTargetState>();
     readonly #persistentStates = new Set<PersistentTargetState>();
+    readonly #framePersistentStates = new Set<PersistentTargetState>();
     #historyByKey = new WeakMap<object, PersistentHistoryState>();
     readonly #historyStates = new Set<PersistentHistoryState>();
+    readonly #frameHistoryStates = new Set<PersistentHistoryState>();
     readonly #deferredPersistentCleanupOwners = new Set<object>();
+    readonly #deferredHistoryReleases = new Map<
+        ResourceRegistry,
+        Set<ResourceRegistryHandle<RHITexture>>
+    >();
     readonly #frameBindGroups = new Set<RHIBindGroup>();
     readonly #cleanupFailures: unknown[] = [];
     #activeFrameIndex = -1;
@@ -128,16 +134,21 @@ export class ScriptableRenderPipelineResources {
         if (state.pendingRelease) {
             throw new Error('Cannot acquire a persistent target pending release in this frame');
         }
-        if (state.pendingOwner !== null) {
-            if (!samePersistentTargetDescriptor(state.pendingDescriptor, descriptor)) {
+        this.#framePersistentStates.add(state);
+        if (state.lastAcquiredFrameIndex === frameIndex) {
+            if (
+                !samePersistentTargetDescriptor(
+                    state.pendingDescriptor ?? state.currentDescriptor,
+                    descriptor
+                )
+            ) {
                 throw new Error(
                     'A persistent target key cannot use multiple descriptors in one frame'
                 );
             }
-            const pending = state.pendingRecord;
-            if (pending === null) throw new Error('Persistent target staging is incomplete');
-            state.lastAcquiredFrameIndex = frameIndex;
-            return pending;
+            const acquired = state.pendingRecord ?? state.currentRecord;
+            if (acquired === null) throw new Error('Persistent target state is incomplete');
+            return acquired;
         }
         if (
             state.currentOwner !== null &&
@@ -181,6 +192,7 @@ export class ScriptableRenderPipelineResources {
             throw new Error('Cannot release a persistent target used by the active frame');
         }
         state.pendingRelease = true;
+        this.#framePersistentStates.add(state);
         return true;
     }
 
@@ -206,8 +218,8 @@ export class ScriptableRenderPipelineResources {
                 registryGeneration: registry.generation,
                 generation: 1,
                 pendingDescriptor: null,
-                pendingHandles: [],
-                pendingInitialized: [],
+                pendingHandles: null,
+                pendingInitialized: null,
                 frameHandles: null,
                 frameInitialized: null,
                 frameWriteIndex: -1,
@@ -223,6 +235,7 @@ export class ScriptableRenderPipelineResources {
         if (state.pendingRelease) {
             throw new Error('Cannot acquire a history texture pending release in this frame');
         }
+        this.#frameHistoryStates.add(state);
         if (state.frameHandles !== null) {
             if (
                 !sameHistoryTextureRecipe(state.pendingDescriptor ?? state.descriptor, descriptor)
@@ -275,7 +288,7 @@ export class ScriptableRenderPipelineResources {
 
     /** Resolve final history validity from the submitted schedule, including its last discard. */
     finalizeHistoryWrites(graph: CompiledRenderGraph): void {
-        for (const state of this.#historyStates) {
+        for (const state of this.#frameHistoryStates) {
             if (state.writtenGraphTexture === null) continue;
             const resource = graph.resourceByHandle.get(state.writtenGraphTexture);
             state.wroteThisFrame = resource?.writtenByGraph === true;
@@ -305,22 +318,18 @@ export class ScriptableRenderPipelineResources {
             throw new Error('Cannot release a history texture used by the active frame');
         }
         state.pendingRelease = true;
+        this.#frameHistoryStates.add(state);
         return true;
     }
 
     beginFrame(frameIndex: number, registry: ResourceRegistry): void {
-        if (this.#frameBindGroups.size !== 0) {
-            throw new Error('Scriptable frame bind groups escaped their previous frame');
-        }
-        for (const state of this.#persistentStates) {
-            if (state.pendingOwner !== null) {
-                throw new Error('Persistent target staging escaped its previous frame');
-            }
-        }
-        for (const state of this.#historyStates) {
-            if (state.frameHandles !== null || state.pendingHandles.length !== 0) {
-                throw new Error('History texture staging escaped its previous frame');
-            }
+        if (
+            this.#activeFrameIndex !== -1 ||
+            this.#frameBindGroups.size !== 0 ||
+            this.#framePersistentStates.size !== 0 ||
+            this.#frameHistoryStates.size !== 0
+        ) {
+            throw new Error('Scriptable resources still belong to an active frame');
         }
         this.#activeFrameIndex = frameIndex;
         this.#activeRegistry = registry;
@@ -351,7 +360,8 @@ export class ScriptableRenderPipelineResources {
         }
         this.#frameBindGroups.clear();
         this.retryDeferredPersistentCleanup(cache, failures);
-        for (const state of this.#persistentStates) {
+        this.retryDeferredHistoryReleases(failures);
+        for (const state of this.#framePersistentStates) {
             const pendingOwner = state.pendingOwner;
             if (pendingOwner !== null) {
                 if (submitted) {
@@ -385,7 +395,8 @@ export class ScriptableRenderPipelineResources {
             }
             this.removeEmptyPersistentState(state);
         }
-        for (const state of this.#historyStates) {
+        this.#framePersistentStates.clear();
+        for (const state of this.#frameHistoryStates) {
             const frameHandles = state.frameHandles;
             const frameInitialized = state.frameInitialized;
             if (frameHandles !== null && frameInitialized !== null) {
@@ -402,15 +413,11 @@ export class ScriptableRenderPipelineResources {
                     }
                     if (state.pendingDescriptor !== null) {
                         for (const handle of state.handles) {
-                            try {
-                                registry.release(handle);
-                            } catch (error) {
-                                failures.push(error);
-                            }
+                            this.releaseHistoryHandle(registry, handle, failures);
                         }
                         state.descriptor = state.pendingDescriptor;
-                        state.handles = state.pendingHandles;
-                        state.initialized = state.pendingInitialized;
+                        state.handles = frameHandles;
+                        state.initialized = frameInitialized;
                         state.registryGeneration = registry.generation;
                         state.generation += 1;
                         state.committedIndex = state.storedThisFrame ? state.frameWriteIndex : -1;
@@ -418,7 +425,7 @@ export class ScriptableRenderPipelineResources {
                         state.committedIndex = state.frameWriteIndex;
                     }
                 } else if (state.pendingDescriptor !== null) {
-                    for (const handle of state.pendingHandles) {
+                    for (const handle of frameHandles) {
                         try {
                             registry.discardUnsubmitted(handle);
                         } catch (error) {
@@ -428,8 +435,8 @@ export class ScriptableRenderPipelineResources {
                 }
             }
             state.pendingDescriptor = null;
-            state.pendingHandles = [];
-            state.pendingInitialized = [];
+            state.pendingHandles = null;
+            state.pendingInitialized = null;
             state.frameHandles = null;
             state.frameInitialized = null;
             state.frameWriteIndex = -1;
@@ -440,11 +447,7 @@ export class ScriptableRenderPipelineResources {
             if (state.pendingRelease) {
                 if (submitted) {
                     for (const handle of state.handles) {
-                        try {
-                            registry.release(handle);
-                        } catch (error) {
-                            failures.push(error);
-                        }
+                        this.releaseHistoryHandle(registry, handle, failures);
                     }
                     state.handles = [];
                     state.initialized = [];
@@ -455,6 +458,7 @@ export class ScriptableRenderPipelineResources {
             }
             this.removeEmptyHistoryState(state);
         }
+        this.#frameHistoryStates.clear();
         this.#activeFrameIndex = -1;
         this.#activeRegistry = null;
         if (failures.length !== 0) {
@@ -477,6 +481,7 @@ export class ScriptableRenderPipelineResources {
         const failures = this.#cleanupFailures;
         failures.length = 0;
         this.retryDeferredPersistentCleanup(cache, failures);
+        this.retryDeferredHistoryReleases(failures);
         for (const state of this.#persistentStates) {
             const pendingOwner = state.pendingOwner;
             if (pendingOwner !== null) {
@@ -498,7 +503,7 @@ export class ScriptableRenderPipelineResources {
         this.#persistentStates.clear();
         this.#persistentByKey = new WeakMap();
         for (const state of this.#historyStates) {
-            for (const handle of state.pendingHandles) {
+            for (const handle of state.pendingHandles ?? []) {
                 try {
                     registry.discardUnsubmitted(handle);
                 } catch (error) {
@@ -506,11 +511,7 @@ export class ScriptableRenderPipelineResources {
                 }
             }
             for (const handle of state.handles) {
-                try {
-                    registry.release(handle);
-                } catch (error) {
-                    failures.push(error);
-                }
+                this.releaseHistoryHandle(registry, handle, failures);
             }
         }
         this.#historyStates.clear();
@@ -550,6 +551,43 @@ export class ScriptableRenderPipelineResources {
                 this.#deferredPersistentCleanupOwners.delete(owner);
             } catch (error) {
                 failures.push(error);
+            }
+        }
+    }
+
+    private releaseHistoryHandle(
+        registry: ResourceRegistry,
+        handle: ResourceRegistryHandle<RHITexture>,
+        failures: unknown[]
+    ): void {
+        try {
+            registry.release(handle);
+        } catch (error) {
+            let pending = this.#deferredHistoryReleases.get(registry);
+            if (pending === undefined) {
+                pending = new Set();
+                this.#deferredHistoryReleases.set(registry, pending);
+            }
+            pending.add(handle);
+            failures.push(error);
+        }
+    }
+
+    private retryDeferredHistoryReleases(failures: unknown[]): void {
+        for (const [registry, handles] of this.#deferredHistoryReleases) {
+            // Destroying a registry already releases all of its remaining resources.
+            if (registry.state !== 'destroyed') {
+                for (const handle of handles) {
+                    try {
+                        registry.release(handle);
+                        handles.delete(handle);
+                    } catch (error) {
+                        failures.push(error);
+                    }
+                }
+            }
+            if (registry.state === 'destroyed' || handles.size === 0) {
+                this.#deferredHistoryReleases.delete(registry);
             }
         }
     }
@@ -608,8 +646,18 @@ export class ScriptableRenderPipelineResources {
                 );
             }
         } catch (error) {
-            for (const handle of handles) registry.discardUnsubmitted(handle);
-            throw error;
+            const failures: unknown[] = [error];
+            for (const handle of handles) {
+                try {
+                    registry.discardUnsubmitted(handle);
+                } catch (cleanupError) {
+                    failures.push(cleanupError);
+                }
+            }
+            if (failures.length === 1) throw error;
+            throw new AggregateError(failures, 'History texture allocation and cleanup failed', {
+                cause: error
+            });
         }
         return handles;
     }

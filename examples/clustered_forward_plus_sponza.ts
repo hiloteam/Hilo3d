@@ -1,4 +1,5 @@
 import * as Hilo3d from '../src/Hilo3d';
+import { installPageLifecycle, type ExamplePageLifecycle } from './shared/pageLifecycle';
 
 const ATRIUM_WIDTH = 27.4;
 const MAX_LIGHTS = 192;
@@ -17,6 +18,11 @@ const RUNNER_HALF_WIDTH = 1.18;
 const RUNNER_MIN_HEIGHT = 0.85;
 const RUNNER_MAX_HEIGHT = 5.05;
 const RUNNER_TRAVEL_SPEED = 0.38;
+const countFormatter = new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1
+});
+let sceneLifecycle: ExamplePageLifecycle | undefined;
 
 interface ResourceProgress {
     readonly url: string;
@@ -437,9 +443,7 @@ function tupleVector(
 }
 
 function formatCount(value: number): string {
-    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
-        value
-    );
+    return countFormatter.format(value);
 }
 
 function viewportPixelRatio(): number {
@@ -622,13 +626,34 @@ async function run(): Promise<void> {
     const fallbackObjectCount = requireElement('#fallbackObjectCount', HTMLElement);
     const excludedMeshCount = requireElement('#excludedMeshCount', HTMLElement);
     const overflowCount = requireElement('#overflowCount', HTMLElement);
+    const ticker = new Hilo3d.Ticker(60);
+    let ready = false;
+    let ownedStage: Hilo3d.Stage<'webgpu'> | null = null;
+    const lifecycle = installPageLifecycle({
+        pause(): void {
+            ticker.stop();
+        },
+        resume(): void {
+            if (ready) ticker.start();
+        },
+        dispose(): void {
+            ownedStage?.destroy();
+        }
+    });
+    sceneLifecycle = lifecycle;
+    const isDisposed = (): boolean => lifecycle.disposed;
+    const events = new AbortController();
+    const eventOptions = { signal: events.signal };
+    lifecycle.onDispose(() => {
+        events.abort();
+    });
 
     const modelUrl = new URL('./models/Sponza/glTF/Sponza.gltf', location.href).href;
     document.body.dataset['asset'] = 'khronos-sponza';
 
     const loader = new Hilo3d.GLTFLoader();
     loader.on('progress', event => {
-        if (!isResourceProgress(event.detail)) return;
+        if (lifecycle.disposed || !isResourceProgress(event.detail)) return;
         const { loaded, total, url } = event.detail;
         const name = url.slice(url.lastIndexOf('/') + 1) || 'resource';
         loadingTitle.textContent = `Streaming ${name}`;
@@ -641,16 +666,28 @@ async function run(): Promise<void> {
             loadingProgress.style.width = '38%';
         }
     });
+    lifecycle.onDispose(() => loader.off());
 
     const model = await loader.load({
         src: modelUrl,
         isProgressive: true,
         ignoreTextureError: false
     });
-    loadingTitle.textContent = 'Resolving PBR materials';
-    loadingDetail.textContent = `${String(model.textures.length)} textures · ${String(model.meshes.length)} scene meshes`;
-    loadingProgress.style.width = '78%';
-    await model.ready;
+    if (!isDisposed()) {
+        loadingTitle.textContent = 'Resolving PBR materials';
+        loadingDetail.textContent = `${String(model.textures.length)} textures · ${String(model.meshes.length)} scene meshes`;
+        loadingProgress.style.width = '78%';
+    }
+    try {
+        await model.ready;
+    } finally {
+        lifecycle.onDispose(() => {
+            model.anim?.destroy();
+            model.node.destroy(ownedStage?.renderer);
+            for (const texture of model.textures) texture.destroy();
+        });
+    }
+    if (isDisposed()) return;
     normalizeModel(model);
     for (const mesh of model.meshes) mesh.frustumTest = cullingEnabled;
 
@@ -718,6 +755,11 @@ async function run(): Promise<void> {
         renderingProfile: 'high-end',
         renderPipeline: factory
     });
+    ownedStage = stage;
+    if (isDisposed()) {
+        stage.destroy();
+        return;
+    }
     model.node.name = 'Khronos Sponza atrium';
     model.node.addTo(stage);
 
@@ -759,6 +801,9 @@ async function run(): Promise<void> {
         zoomSpeed: 0.82,
         panSpeed: 0.55
     });
+    lifecycle.onDispose(() => {
+        controls.dispose();
+    });
     controls.setView(tupleVector(firstView.position, cameraPosition), cameraTarget);
 
     let activeLightCount = initialLightCount;
@@ -767,6 +812,7 @@ async function run(): Promise<void> {
     let tourElapsed = 0;
     let pulseElapsed = 0;
     let activeViewIndex = 0;
+    let tourSegment = -1;
 
     function setLightCount(value: number): void {
         activeLightCount = Math.max(24, Math.min(MAX_LIGHTS, Math.round(value / 24) * 24));
@@ -805,6 +851,7 @@ async function run(): Promise<void> {
         if (viewpoint === undefined)
             throw new RangeError(`Unknown Sponza viewpoint ${String(index)}`);
         activeViewIndex = index;
+        tourSegment = -1;
         document.body.dataset['tourView'] = viewpoint.label;
         controls.setView(
             tupleVector(viewpoint.position, cameraPosition),
@@ -820,29 +867,41 @@ async function run(): Promise<void> {
     setLightCount(initialLightCount);
     setTourEnabled(tourEnabled);
     setMotionEnabled(motionEnabled);
-    lightControl.addEventListener('input', () => {
-        setLightCount(Number(lightControl.value));
-    });
-    tourToggle.addEventListener('click', () => {
-        setTourEnabled(!tourEnabled);
-    });
-    motionToggle.addEventListener('click', () => {
-        setMotionEnabled(!motionEnabled);
-    });
-    viewButton.addEventListener('click', nextView);
+    lightControl.addEventListener(
+        'input',
+        () => {
+            setLightCount(Number(lightControl.value));
+        },
+        eventOptions
+    );
+    tourToggle.addEventListener(
+        'click',
+        () => {
+            setTourEnabled(!tourEnabled);
+        },
+        eventOptions
+    );
+    motionToggle.addEventListener(
+        'click',
+        () => {
+            setMotionEnabled(!motionEnabled);
+        },
+        eventOptions
+    );
+    viewButton.addEventListener('click', nextView, eventOptions);
 
     const cancelTour = (): void => {
         if (tourEnabled) setTourEnabled(false);
     };
-    stage.canvas.addEventListener('pointerdown', cancelTour);
-    stage.canvas.addEventListener('wheel', cancelTour, { passive: true });
+    stage.canvas.addEventListener('pointerdown', cancelTour, eventOptions);
+    stage.canvas.addEventListener('wheel', cancelTour, { ...eventOptions, passive: true });
 
     const handleKeyDown = (event: KeyboardEvent): void => {
         if (event.target instanceof HTMLInputElement) return;
         if (event.code === 'KeyT') setTourEnabled(!tourEnabled);
         else if (event.code === 'KeyV') nextView();
     };
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, eventOptions);
 
     const sceneAnimation: Hilo3d.Tickable = {
         tick(deltaTime): void {
@@ -873,7 +932,10 @@ async function run(): Promise<void> {
             }
             const segmentAmount = smootherStep(segment - Math.floor(segment));
             activeViewIndex = startIndex;
-            document.body.dataset['tourView'] = `${startView.label} → ${endView.label}`;
+            if (tourSegment !== startIndex) {
+                tourSegment = startIndex;
+                document.body.dataset['tourView'] = `${startView.label} → ${endView.label}`;
+            }
             controls.setView(
                 interpolateTourPosition(
                     startView.position,
@@ -887,7 +949,6 @@ async function run(): Promise<void> {
         }
     };
 
-    const ticker = new Hilo3d.Ticker(60);
     ticker.addTick(sceneAnimation);
     ticker.addTick(Hilo3d.Tween);
     ticker.addTick(Hilo3d.Animation);
@@ -895,10 +956,11 @@ async function run(): Promise<void> {
 
     let diagnosticsPending = false;
     const refreshDiagnostics = async (): Promise<void> => {
-        if (diagnosticsPending) return;
+        if (diagnosticsPending || lifecycle.disposed) return;
         diagnosticsPending = true;
         try {
             const diagnostics = await factory.readDiagnostics();
+            if (!lifecycle.active) return;
             metricLights.textContent = String(activeLightCount + runners.length);
             metricObjects.textContent = formatCount(diagnostics.visibleObjectCount);
             metricLinks.textContent = formatCount(diagnostics.clusterLightIndexCount);
@@ -917,44 +979,43 @@ async function run(): Promise<void> {
     const diagnosticsTick = ticker.interval(() => {
         void refreshDiagnostics().catch(showFatalError);
     }, 1200);
+    lifecycle.onDispose(() => {
+        ticker.removeTick(diagnosticsTick);
+    });
 
     const handleResize = (): void => {
+        if (!lifecycle.active) return;
         const width = Math.max(window.innerWidth, 1);
         const height = Math.max(window.innerHeight, 1);
         camera.aspect = width / height;
         stage.resize(width, height, viewportPixelRatio());
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize, eventOptions);
 
     backendLabel.textContent = `${stage.renderer.backend.toUpperCase()} · ${String(modelBuckets.length)} PBR buckets`;
     controlsFieldset.disabled = false;
     stage.tick(16);
     await stage.renderer.waitForIdle();
+    if (isDisposed()) return;
     await refreshDiagnostics();
-    ticker.start();
+    if (isDisposed()) return;
+    ready = true;
+    if (lifecycle.active) ticker.start();
     loadingProgress.style.width = '100%';
     loadingTitle.textContent = 'Atrium ready';
     loadingDetail.textContent = `${String(activeLightCount + runners.length)} local lights are clustered on the GPU.`;
     document.body.dataset['forwardPlusReady'] = 'true';
-    requestAnimationFrame(() => {
-        loadingPanel.classList.add('isHidden');
+    const hideLoadingFrame = requestAnimationFrame(() => {
+        if (!lifecycle.disposed) loadingPanel.classList.add('isHidden');
     });
-
-    const dispose = (): void => {
-        window.removeEventListener('resize', handleResize);
-        window.removeEventListener('keydown', handleKeyDown);
-        stage.canvas.removeEventListener('pointerdown', cancelTour);
-        stage.canvas.removeEventListener('wheel', cancelTour);
-        ticker.removeTick(diagnosticsTick);
-        ticker.stop();
-        controls.dispose();
-        // The browsing context owns its page-scoped WebGPU device during navigation. Explicitly
-        // destroying it here would reject still-settling submission fences during beforeunload.
-    };
-    window.addEventListener('beforeunload', dispose, { once: true });
+    lifecycle.onDispose(() => {
+        cancelAnimationFrame(hideLoadingFrame);
+    });
 }
 
 function showFatalError(error: unknown): void {
+    if (sceneLifecycle?.disposed) return;
+    sceneLifecycle?.dispose();
     const failure = error instanceof Error ? error : new Error(String(error));
     const loadingPanel = document.querySelector<HTMLElement>('#loadingPanel');
     const errorPanel = document.querySelector<HTMLElement>('#errorPanel');

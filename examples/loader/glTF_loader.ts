@@ -2,7 +2,9 @@ import * as Hilo3d from '../../src/Hilo3d';
 import { createExampleContext, loadEnvironmentMaps, parseQuery } from '../shared/init';
 import { environmentMaterialDefaults } from '../shared/environment';
 
-const { camera, stage, ambientLight } = await createExampleContext();
+const context = await createExampleContext();
+const { camera, stage, ambientLight, lifecycle } = context;
+const isDisposed = (): boolean => lifecycle.disposed;
 new Hilo3d.AxisHelper({ size: 1 }).addTo(stage);
 
 interface ModelInfo extends Hilo3d.GLTFLoadRequest {
@@ -14,6 +16,12 @@ interface ModelInfo extends Hilo3d.GLTFLoadRequest {
 }
 
 const models: Readonly<Record<string, ModelInfo>> = {
+    BoomBox: {
+        name: 'BoomBox',
+        scale: 1,
+        src: '../models/BoomBox/BoomBox.gltf',
+        ambient: 0.8
+    },
     Tmall: {
         name: 'Tmall',
         scale: 0.001,
@@ -119,11 +127,25 @@ function addDebugBounds(model: Hilo3d.GLTFModel): void {
 async function showModel(modelInfo: ModelInfo): Promise<void> {
     const loader = new Hilo3d.GLTFLoader();
     const environment = await loadEnvironmentMaps();
+    context.onDispose(() => {
+        environment.brdfLUT.destroy();
+        environment.diffuseEnvMap.destroy();
+        environment.specularEnvMap.destroy();
+        environment.skyboxMap.destroy();
+    });
+    if (isDisposed()) return;
     const model = await loader.load({
         ...modelInfo,
         pbrMaterialDefaults: environmentMaterialDefaults(environment)
     });
+    context.onDispose(() => {
+        model.anim?.destroy();
+        model.node.destroy(stage.renderer);
+        for (const texture of model.textures) texture.destroy();
+    });
+    if (isDisposed()) return;
     await model.ready;
+    if (isDisposed()) return;
     currentModel = model;
     stage.addChild(model.node);
     model.node.setScale(modelInfo.scale);
@@ -133,6 +155,7 @@ async function showModel(modelInfo: ModelInfo): Promise<void> {
 }
 
 function reportAsyncError(error: unknown): void {
+    if (isDisposed()) return;
     queueMicrotask(() => {
         throw error;
     });
@@ -151,6 +174,7 @@ function selectedModelInfo(): ModelInfo {
     };
     return {
         ...base,
+        ...(source ? { name: 'url', src: source } : {}),
         scale: positiveQueryNumber(query['scale'], base.scale, 'scale'),
         ambient: positiveQueryNumber(query['ambient'], base.ambient ?? 0.5, 'ambient')
     };

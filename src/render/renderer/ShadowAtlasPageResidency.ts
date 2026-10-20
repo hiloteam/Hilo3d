@@ -1,4 +1,8 @@
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import type { RHISubmission } from '../rhi/core';
 import type { ShadowAtlasContentDecision } from './ShadowAtlasContentCache';
 import type { ShadowAtlasScenePlan } from './ShadowAtlasSceneAdapter';
@@ -329,7 +333,7 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         this.#state.residentPageCount = 0;
     }
 
-    prepareCommit(_submission: RHISubmission): void {
+    prepareCommit(_submission: RHIUploadBatchCommitContext): void {
         this.assertAlive();
         if (!this.#transactionActive) {
             throw new Error('Shadow page residency has no staged transaction to commit');

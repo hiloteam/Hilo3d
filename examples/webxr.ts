@@ -8,10 +8,11 @@ const XR_LAYER_OPTIONS = Object.freeze({
     stencil: false
 });
 
-const { camera, stage, renderer, ticker } = await createExampleContext({
+const context = await createExampleContext({
     backend: 'webgl2',
     stage: XR_LAYER_OPTIONS
 });
+const { camera, stage, renderer, ticker } = context;
 
 interface WebGL2NativeExtension {
     readonly state: { bindSystemFramebuffer(): void };
@@ -146,7 +147,10 @@ let xrSession: XRSession | null = null;
 let xrReferenceSpace: XRReferenceSpace | null = null;
 let lastTimestamp = 0;
 let webGLContextLost = false;
-let windowFrameRequested = false;
+let windowFrame: number | null = null;
+let xrFrame: number | null = null;
+let sessionGeneration = 0;
+let startingSession = false;
 const ignoredSessionEnds = new WeakSet<XRSession>();
 
 function updateController(frame: XRFrame): void {
@@ -195,29 +199,35 @@ function handleSelectEnd(): void {
 }
 
 function reportAsyncError(error: unknown): void {
+    if (context.lifecycle.disposed) return;
     queueMicrotask(() => {
         throw error;
     });
 }
 
+function pageIsActive(): boolean {
+    return context.lifecycle.active;
+}
+
 function onWindowFrame(timestamp: DOMHighResTimeStamp): void {
-    windowFrameRequested = false;
-    if (xrSession || webGLContextLost) return;
+    windowFrame = null;
+    if (!context.lifecycle.active || xrSession || webGLContextLost) return;
     stage.tick(timestamp - lastTimestamp);
     lastTimestamp = timestamp;
     requestWindowFrame();
 }
 
 function requestWindowFrame(): void {
-    if (windowFrameRequested || xrSession || webGLContextLost) return;
-    windowFrameRequested = true;
-    requestAnimationFrame(onWindowFrame);
+    if (!context.lifecycle.active || windowFrame !== null || xrSession || webGLContextLost) return;
+    windowFrame = requestAnimationFrame(onWindowFrame);
 }
 
 function onXRFrame(timestamp: DOMHighResTimeStamp, frame: XRFrame): void {
     const session = xrSession;
     const referenceSpace = xrReferenceSpace;
-    if (!session || !referenceSpace || webGLContextLost) return;
+    if (frame.session !== session) return;
+    xrFrame = null;
+    if (!context.lifecycle.active || !referenceSpace || webGLContextLost) return;
 
     const layer = session.renderState.baseLayer;
     if (!(layer instanceof XRWebGLLayer)) throw new Error('XR session has no WebGL base layer.');
@@ -243,7 +253,7 @@ function onXRFrame(timestamp: DOMHighResTimeStamp, frame: XRFrame): void {
         });
     }
     lastTimestamp = timestamp;
-    session.requestAnimationFrame(onXRFrame);
+    xrFrame = session.requestAnimationFrame(onXRFrame);
 }
 
 function handleSessionEnd(event: Event): void {
@@ -252,13 +262,16 @@ function handleSessionEnd(event: Event): void {
         ignoredSessionEnds.delete(endedSession);
         return;
     }
+    if (endedSession !== xrSession) return;
+    if (endedSession !== null) detachSession(endedSession);
     xrSession = null;
     xrReferenceSpace = null;
-    if (webGLContextLost) return;
+    if (!context.lifecycle.active || webGLContextLost) return;
     restoreWindowPresentation();
 }
 
 function restoreWindowPresentation(): void {
+    if (!context.lifecycle.active) return;
     camera.updateProjectionMatrix();
     camera.position.set(0, 0, 3);
     renderer.clearColor.set(0.3, 0.35, 0.35, 1);
@@ -269,10 +282,11 @@ function restoreWindowPresentation(): void {
 }
 
 function restoreWindowPresentationAfterXRFailure(): void {
-    if (!webGLContextLost) restoreWindowPresentation();
+    if (context.lifecycle.active && !webGLContextLost) restoreWindowPresentation();
 }
 
 function handleWebGLContextLost(): void {
+    if (context.lifecycle.disposed) return;
     if (webGLContextLost) return;
     webGLContextLost = true;
     const session = xrSession;
@@ -289,39 +303,98 @@ function handleWebGLContextLost(): void {
 }
 
 function handleWebGLContextRestored(): void {
+    if (context.lifecycle.disposed) return;
     webGLContextLost = false;
     if (xrSession === null) restoreWindowPresentation();
 }
 
 async function beginXRSession(): Promise<void> {
+    if (!pageIsActive() || xrSession !== null || startingSession) return;
     if (webGLContextLost) throw new Error('WebGL2 context recovery is in progress.');
     const xr = navigator.xr;
     if (!xr) throw new Error('WebXR is not available in this browser.');
-    const session = await xr.requestSession('immersive-ar');
-    xrSession = session;
-    session.addEventListener('end', handleSessionEnd, { once: true });
-    session.addEventListener('selectstart', handleSelectStart);
-    session.addEventListener('selectend', handleSelectEnd);
+    const generation = ++sessionGeneration;
+    startingSession = true;
+    let session: XRSession | null = null;
     try {
-        xrReferenceSpace = await session.requestReferenceSpace('local');
+        session = await xr.requestSession('immersive-ar');
+        if (!pageIsActive() || generation !== sessionGeneration) {
+            await session.end();
+            return;
+        }
+        xrSession = session;
+        session.addEventListener('end', handleSessionEnd, { once: true });
+        session.addEventListener('selectstart', handleSelectStart);
+        session.addEventListener('selectend', handleSelectEnd);
+        const referenceSpace = await session.requestReferenceSpace('local');
+        if (!sessionIsCurrent(session, generation)) return;
+        xrReferenceSpace = referenceSpace;
         await native.makeXRCompatible();
+        if (!sessionIsCurrent(session, generation)) return;
         await session.updateRenderState({
             baseLayer: native.createXRWebGLLayer(session, XR_LAYER_OPTIONS)
         });
-        session.requestAnimationFrame(onXRFrame);
+        if (!sessionIsCurrent(session, generation)) return;
+        lastTimestamp = performance.now();
+        xrFrame = session.requestAnimationFrame(onXRFrame);
     } catch (error) {
-        ignoredSessionEnds.add(session);
-        if (xrSession === session) {
-            xrSession = null;
-            xrReferenceSpace = null;
+        if (session !== null) {
+            ignoredSessionEnds.add(session);
+            detachSession(session);
+            if (xrSession === session) {
+                xrSession = null;
+                xrReferenceSpace = null;
+            }
+            try {
+                await session.end();
+            } catch {
+                // Preserve the initialization failure; the session may already be ending.
+            }
         }
-        try {
-            await session.end();
-        } catch {
-            // Preserve the initialization failure; the session may already be ending.
-        }
+        if (!pageIsActive() || generation !== sessionGeneration) return;
         restoreWindowPresentationAfterXRFailure();
         throw error;
+    } finally {
+        if (generation === sessionGeneration) startingSession = false;
+    }
+}
+
+function sessionIsCurrent(session: XRSession, generation: number): boolean {
+    return context.lifecycle.active && generation === sessionGeneration && session === xrSession;
+}
+
+function detachSession(session: XRSession): void {
+    session.removeEventListener('end', handleSessionEnd);
+    session.removeEventListener('selectstart', handleSelectStart);
+    session.removeEventListener('selectend', handleSelectEnd);
+    if (session === xrSession && xrFrame !== null) {
+        session.cancelAnimationFrame(xrFrame);
+        xrFrame = null;
+    }
+}
+
+function suspendPresentation(): void {
+    sessionGeneration++;
+    startingSession = false;
+    if (windowFrame !== null) {
+        cancelAnimationFrame(windowFrame);
+        windowFrame = null;
+    }
+    const session = xrSession;
+    if (session !== null) {
+        detachSession(session);
+        xrSession = null;
+        xrReferenceSpace = null;
+        void session.end().catch((error: unknown) => {
+            if (context.lifecycle.active) reportAsyncError(error);
+        });
+    }
+    handleSelectEnd();
+}
+
+function resumePresentation(event: PageTransitionEvent): void {
+    if (event.persisted && context.lifecycle.active && !webGLContextLost) {
+        restoreWindowPresentation();
     }
 }
 
@@ -329,7 +402,9 @@ async function initializeXRButton(): Promise<void> {
     const xr = navigator.xr;
     const button = document.createElement('button');
     button.style.cssText = 'position:absolute;bottom:10px;left:50%;z-index:9999;';
-    if (!xr || !(await xr.isSessionSupported('immersive-ar'))) {
+    const supported = xr !== undefined && (await xr.isSessionSupported('immersive-ar'));
+    if (context.lifecycle.disposed) return;
+    if (!supported) {
         button.textContent = 'WebXR AR unavailable';
         button.disabled = true;
     } else {
@@ -339,9 +414,21 @@ async function initializeXRButton(): Promise<void> {
         });
     }
     document.body.append(button);
+    context.onDispose(() => {
+        button.remove();
+    });
 }
 
 ticker.removeTick(stage);
+window.addEventListener('pagehide', suspendPresentation);
+window.addEventListener('pageshow', resumePresentation);
+context.onDispose(() => {
+    suspendPresentation();
+    window.removeEventListener('pagehide', suspendPresentation);
+    window.removeEventListener('pageshow', resumePresentation);
+    renderer.off('webglContextLost', handleWebGLContextLost);
+    renderer.off('webglContextRestored', handleWebGLContextRestored);
+});
 renderer.on('webglContextLost', handleWebGLContextLost);
 renderer.on('webglContextRestored', handleWebGLContextRestored);
 lastTimestamp = performance.now();

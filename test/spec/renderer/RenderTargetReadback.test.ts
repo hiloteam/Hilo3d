@@ -6,11 +6,12 @@ import { RenderTargetReadback } from '../../../src/render/renderer/RenderTargetR
 import { RenderTargetResourceCache } from '../../../src/render/renderer/RenderTargetResourceCache';
 import { ResourceRegistry } from '../../../src/render/renderer/ResourceRegistry';
 import { SubmissionResourceTracker } from '../../../src/render/renderer/SubmissionResourceTracker';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     FakeWebGLRHIBackend,
     FakeWebGPURHIBackend,
     type FakeRHIBackend,
+    type FakeRHIBuffer,
     type FakeRHIDevice
 } from '../rhi/portable/FakeRHIBackend';
 
@@ -34,6 +35,36 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('RenderTargetReadback on %s', (_name, createBackend) => {
+    it('tracks submitted work and releases its extracted buffer before rejecting publication failure', async () => {
+        const backend = createBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const resources = new RenderTargetResourceCache(registry);
+        const submissions = new SubmissionResourceTracker(registry);
+        const readback = new RenderTargetReadback(resources, submissions);
+        const target = resources.prepare({}, { width: 4, height: 3, colorFormats: ['rgba8unorm'] });
+        const failure = new Error('publication failed');
+        vi.spyOn(readback.frame.uploads, 'commit').mockImplementationOnce(() => {
+            throw failure;
+        });
+        const buffers = vi.spyOn(device, 'createBuffer');
+        const track = vi.spyOn(submissions, 'track');
+        await expect(readback.read(frameContext(device, 1), target)).rejects.toThrow(failure);
+        const staging = buffers.mock.results[0]?.value as FakeRHIBuffer | undefined;
+        expect(staging?.destroyed).toBe(true);
+        expect(staging?.nativeReleased).toBe(backend.executionMode === 'immediate');
+        expect(track).toHaveBeenCalledOnce();
+        await complete(backend);
+        await submissions.waitForIdle();
+        expect(staging?.nativeReleased).toBe(true);
+        readback.destroy();
+        resources.destroy();
+        registry.collect(1);
+        submissions.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('copies an arbitrary MRT region and strips the aligned staging-row padding', async () => {
         const backend = createBackend();
         const device = backend.createDevice();

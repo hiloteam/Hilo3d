@@ -31,6 +31,9 @@ submission. See [rendering architecture](./RENDERING_ARCHITECTURE.md).
   WebGPU; explicit WebGL2 or incompatible canvas options fail at creation.
 - A factory may create its renderer-local runtime asynchronously during renderer creation. Frame
   recording and pass callbacks are synchronous; promise-like results are rejected.
+- Creation methods expire when that factory invocation settles. Concurrent initialization is
+  rejected; a factory result arriving after host destruction is cleaned up without reviving the host
+  or destroying a runtime already owned by another renderer.
 - Factories/configuration can be shared, but mutable runtimes, resource keys, caches and parameter
   pools belong to one renderer. Reusing an already attached feature runtime is rejected.
 - Contexts and pass/feature facades are leased to an invocation or callback. Saving one for a later
@@ -67,6 +70,12 @@ Feature runtimes receive callback-scoped scene resources and culling results. Re
 instead of allocating draw descriptors in execution. The default pipeline also hosts optional GPU
 particle features; these remain inactive when no supported emitters are present.
 
+Optional requirement, scale and notification methods are captured once during feature runtime
+creation. Change the state read by these methods rather than replacing the methods after attachment.
+Forward stores only implemented callbacks in its dispatch lists. GPU addon depth requirements are
+queried once across opaque/transparent phases and skipped on unsupported devices; requirement
+searches stop after a qualifying node, and portable raster discovery prunes hidden subtrees.
+
 ## Scene and graph operations
 
 | Operation                         | Contract                                                                                                                                       |
@@ -91,12 +100,30 @@ draw and readonly storage raster, use [Compute and storage](./COMPUTE_AND_STORAG
 - `execute`: emit commands using the prepared resources and declared scope.
 - Successful submission commits staged uploads, cache revisions, resource use and temporal state.
   `frameSubmitted()` advances runtime history; discarded frames invoke rollback hooks.
-- Hardware commands already emitted cannot be undone. Failure still aborts the frame and preserves
-  the last committed CPU/history state so the next frame can retry deterministically.
+- Submission, discard and destruction hooks finish synchronously. A failing feature or addon does
+  not prevent the remaining owners from being notified and cleaned up; errors are reported after
+  that work. Rejected asynchronous phase callbacks are observed as well as rejected synchronously.
+- Before submission, failure aborts the frame and preserves committed CPU/history state. After
+  submission, publication errors do not undo accepted GPU work: resource tracking and ownership
+  transfer finish before errors reach the caller. A submission already marked failed does not
+  advance runtime/history state.
+
+Timeline observers consume immutable snapshots outside the recording/command scope. Their optional
+Promises are observed and reported through the timeline error path; they are not awaited as part of
+frame submission and do not extend the lifetime of recording contexts.
 
 Destroy and device/context recovery remain submission-aware. Persistent resource identity is stable
 while backend generations change. History is invalidated when its recipe or generation changes;
 never consume a stale device's view or infer successful submission from recording alone.
+
+Persistent targets must use one descriptor per key throughout an application frame, including when
+the first acquisition reuses an existing allocation. History resize and release keep failed cleanup
+ownership for a later retry. Frame completion visits only resources acquired or released in that
+frame; it does not scan every dormant persistent target and history.
+
+Texture view reuse still aggregates every requested parent usage. Read, copy, storage and attachment
+roles share a view only when they resolve to the same physical texture; MSAA attachment and resolve
+textures remain distinct.
 
 ## Shader and performance contract
 
@@ -109,6 +136,13 @@ There are no per-backend feature stacks. Draw execution does not allocate facade
 descriptors, proxy materials or a second command stream. Reusable JavaScript fullscreen parameter
 storage does not imply native bind groups referencing transient views can survive the frame; those
 are destroyed after their submission fence.
+
+Execute facades and their unique lease tokens are created during preparation; execution activates
+them once and invalidates them on exit. Persistent scriptable bind-group cache hits compare existing
+recipes directly without rebuilding recipe objects. Destroying a storage buffer invalidates only
+groups indexed by that dependency, and native retirement continues to wait for the submission fence.
+Compute uniform buffers are prepared and enlisted for upload only when the graph keeps their pass;
+setup records the source and range without creating the native buffer.
 
 These are structural constraints, not a claim of measured zero allocation or no timing regression.
 The old plan's proposed `benchmark:srp:*` commands are not implemented. A dedicated, reviewed

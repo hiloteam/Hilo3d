@@ -197,14 +197,10 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
     },
     'canvas_texture.html': {
         title: 'Canvas Texture Dashboard',
-        description: 'Turn a live Canvas 2D dashboard into a continuously updated Hilo3D texture.',
+        description:
+            'Draw a Canvas 2D dashboard at up to 30 Hz and upload its texture only when the canvas changes.',
         category: 'textures',
         featured: true
-    },
-    'canvas_texture_animation.html': {
-        title: 'Canvas Texture Animation',
-        description: 'Stream a procedural Canvas 2D aquarium into a portable animated texture.',
-        category: 'textures'
     },
     'cascaded_shadows.html': {
         title: 'Little Sunshine — Toy Shadow Garden',
@@ -466,11 +462,6 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
             'Two comets shed granular wakes while three luminous ribbon and trail systems follow independent inclinations, directions, and periods.',
         category: 'particles'
     },
-    'pbr.html': {
-        title: 'PBR Model Basics',
-        description: 'Load one glTF model with PBR materials and the shared HDR environment.',
-        category: 'materials'
-    },
     'pbr2.html': {
         title: 'PBR Material Lab',
         description:
@@ -601,7 +592,8 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
     },
     'shader_material.html': {
         title: 'Custom Shader Material',
-        description: 'Bind a custom GLSL shader to registered uniform blocks and texture samplers.',
+        description:
+            'Bind portable GLSL to registered std140 uniform blocks and texture samplers, and update reusable buffers each frame.',
         category: 'materials'
     },
     'shadow.html': {
@@ -675,11 +667,6 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
         description: 'Compare alpha blending and render order across overlapping colored boxes.',
         category: 'materials'
     },
-    'uniformBufferObject.html': {
-        title: 'Uniform Buffer Objects',
-        description: 'Update custom std140 parameters shared by a portable shader.',
-        category: 'advanced'
-    },
     'update_sub_texture.html': {
         title: 'Partial Texture Updates',
         description: 'Upload changing image regions without replacing the full texture.',
@@ -701,11 +688,6 @@ const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
             'Enter Khronos Sponza as a neon reliquary where temporal froxels, local fog volumes, clustered spotlights, and depth-aware visibility turn light into architecture.',
         category: 'lighting',
         backend: 'webgpu'
-    },
-    'webgl_support.html': {
-        title: 'Graphics Backend Support',
-        description: 'Inspect the explicitly selected backend and its active rendering context.',
-        category: 'advanced'
     },
     'webxr.html': {
         title: 'WebXR Session',

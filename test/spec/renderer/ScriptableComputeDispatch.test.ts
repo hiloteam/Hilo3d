@@ -279,6 +279,7 @@ describe('ScriptableComputeDispatch', () => {
         fixture.uploads.flush(frame);
         dispatch.execute(contexts.execute(frame));
         expect(fixture.services.frameBindGroups.active.size).toBe(0);
+        fixture.uploads.validateSubmission(fixture.device);
         const submission = fixture.device.graphicsQueue.endFrame(frame);
         fixture.uploads.commit(submission);
 

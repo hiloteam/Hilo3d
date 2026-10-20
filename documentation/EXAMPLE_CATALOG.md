@@ -1,6 +1,6 @@
 # 示例目录整理
 
-核对日期：2026-10-18。范围：102 个 HTML 入口，其中 100 个场景示例、两个画廊入口。
+核对日期：2026-10-20。范围：98 个 HTML 入口，其中 96 个场景示例、两个画廊入口。
 
 ## 整理结果
 
@@ -9,7 +9,10 @@
   Matter 材质展厅后现为 28 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
-- 每个示例有独立用途。既有场景保留原 URL，当前共有 100 个场景；目前没有证据支持删除其中某个页面而不损失教学或回归覆盖。
+- 删除四个没有独立 API 教学价值的页面：Canvas 动画并入 Canvas 仪表盘，独立 UBO 页面并入自定义 Shader，最小 PBR 加载并入 glTF
+  Loader，后端名称显示由共享 Stats 承担。当前保留 96 个场景；按实际能力和回归覆盖评估增删，不为旧 URL 保留重复页面。
+- 删除未被入口、脚本或测试引用的 `NormalTangentHelper.ts` 和
+  `postalUi.ts`；保留仍被场景引用的模型、纹理及来源说明。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
 - 静态构建删除 Blender 创作源文件的复制路径，运行时资产保留；仓库中的原始创作文件与授权说明保留。
 - 画廊提供多词搜索、中文主题关键词、主题/后端筛选、URL 状态、浏览器前进后退、手机键盘导航和加载失败重试。主题数量和筛选结果遵循当前 Highlights
@@ -31,16 +34,41 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 
 ## 相似示例的保留理由
 
-| 示例组                                                                | 不同用途                                                                                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `geometry_dynamic` / `geometry_dynamic2`                              | 单顶点变形与整个顶点/索引/法线缓冲替换；分别明确命名为 Dynamic Vertex Deformation / Dynamic Buffer Replacement。 |
-| `pbr` / `pbr2` / `pbr_layered_materials` / `gltf_material_extensions` | 最小 glTF PBR 加载、基础材质参数实验、引擎原生分层材质、标准 glTF 扩展资产。                                     |
-| `canvas_texture` / `canvas_texture_animation`                         | 仪表盘绘制与连续动画画布上传；内容用途不同。                                                                     |
-| `animation` / `custom_anim_state` / `2d_sprite_animation`             | 动画混合、自定义 UV 状态绑定、SpriteFrame 精灵动画。                                                             |
-| `raycast` / `raycast_node` / `mesh_picker` / `mouse_event`            | 射线交点、命中节点、GPU 拾取、场景指针事件。                                                                     |
-| `ground_truth_ambient_occlusion` / `gtao_acceptance_lab`              | 展示场景与确定性验收夹具；后者从精选移入诊断主题。                                                               |
-| `snow` / `compute_particles` / `particle_*`                           | 底层实例属性、WebGPU compute、独立粒子 addon；不相互替代。                                                       |
-| `index.html` / `list.html`                                            | 兼容入口重定向与实际画廊；保留查询参数和锚点。                                                                   |
+| 示例组                                                                               | 不同用途                                                                                                         |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `geometry_dynamic` / `geometry_dynamic2`                                             | 单顶点变形与整个顶点/索引/法线缓冲替换；分别明确命名为 Dynamic Vertex Deformation / Dynamic Buffer Replacement。 |
+| `loader/glTF_loader` / `pbr2` / `pbr_layered_materials` / `gltf_material_extensions` | glTF PBR 加载与相机选择、基础材质参数实验、引擎原生分层材质、标准 glTF 扩展资产。                                |
+| `animation` / `custom_anim_state` / `2d_sprite_animation`                            | 动画混合、自定义 UV 状态绑定、SpriteFrame 精灵动画。                                                             |
+| `raycast` / `raycast_node` / `mesh_picker` / `mouse_event`                           | 射线交点、命中节点、GPU 拾取、场景指针事件。                                                                     |
+| `ground_truth_ambient_occlusion` / `gtao_acceptance_lab`                             | 展示场景与确定性验收夹具；后者从精选移入诊断主题。                                                               |
+| `snow` / `compute_particles` / `particle_*`                                          | 底层实例属性、WebGPU compute、独立粒子 addon；不相互替代。                                                       |
+| `index.html` / `list.html`                                                           | 兼容入口重定向与实际画廊；保留查询参数和锚点。                                                                   |
+
+## 删除与覆盖迁移
+
+| 删除项                              | 保留位置与覆盖                                                                                                                                                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `canvas_texture_animation.html/.ts` | `canvas_texture` 保留 Canvas 2D → 源纹理 → 平面材质的同一路径；两页仅绘画内容不同。保留的仪表盘将绘画限制在 30 Hz，并显式标记 dirty，只在内容变化后上传，继续进入完整双后端页面矩阵。                                                |
+| `uniformBufferObject.html/.ts`      | `shader_material` 已包含注册 std140 layout、复用两个 UniformBuffer、每帧更新参数和矩阵，以及独立 sampler；补充布局对齐和上传说明后继续进入双后端页面矩阵。                                                                           |
+| `pbr.html/.ts`                      | BoomBox 加入 `loader/glTF_loader` 的模型列表；该页双后端测试使用 `model=BoomBox`，保留 ORM、法线与自发光资产加载路径。页面默认仍为 Tmall，glTF Viewer 和加载进度页继续覆盖 Tmall。BoomBox 纹理也被 `normal_map` 使用，因此保留资产。 |
+| `webgl_support.html/.ts`            | 原页面没有探测能力，仅在创建成功后显示选中的后端；该信息已由共享 Stats 显示。显式后端选择、启动失败与不允许混用后端的合同保留在共享初始化及完整浏览器矩阵。                                                                          |
+
+自动发现仍覆盖所有 HTML，目录合同独立核对页面身份、元数据与完整后端组合。场景移除减少八个重复 page/backend 组合，当前总数为 180；这不代表尚未运行的浏览器检查已通过。
+
+## 运行时维护
+
+- 通用页面使用 `createExampleContext`；需要自行配置灯光、后处理和诊断的页面可使用
+  `createExampleStage`。创建前建立页面所有权，初始化取消时释放迟到的 Stage。
+- `pagehide.persisted` 暂停调度并保留资源，`pageshow.persisted`
+  恢复原有启动/暂停意图；最终退出先停止ticker，再执行 `onDispose`
+  场景清理，最后释放 Stage。模型、动画、离屏目标、事件监听和媒体源由所属页面登记清理。
+- 异步模型替换、纹理加载和 GPU
+  readback 在发布结果前检查所属页面或请求代次；最终销毁后的回调不能重新启动渲染。后处理 kernel 对比串行执行，视频解码、网格创建和自动播放授权分别处理。
+- Canvas 仪表盘最多每秒重绘/标记上传 30 次；场景仍独立渲染。重复材质、粒子/物理临时数组复用，路径标记只在路径变化时更新；诊断读数和 DOM按需更新，保留真实渲染及交互测试。
+- 自定义图像 shader 使用 `hiloTextureUV`；屏幕预览由内置 `screen.vert`
+  完成一次 render-target 转换。新增合同覆盖源代码边界和真实 Naga 翻译，双后端编译、管线创建和方向性像素检查仍由浏览器矩阵负责。
+
+本轮 Node 合同、类型和构建检查与浏览器证据分别记录。当前运行环境拒绝本地浏览器服务监听（`listen EPERM`），因此不据此批准视觉基线或声称帧率提升。
 
 ## 全量用途清单
 
@@ -67,13 +95,12 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | [geometry_primitives](../examples/geometry_primitives.html)                                         | 精选 | geometry        | Compare built-in box and sphere meshes with a custom line-mode ring in one polished scene.                                                                                                                      |
 | [geometry_color](../examples/geometry_color.html)                                                   | 保留 | geometry        | Interpolate per-vertex RGB colors across a plane.                                                                                                                                                               |
 | [wireframe](../examples/wireframe.html)                                                             | 保留 | geometry        | Inspect a loaded glTF model as a triangle wireframe.                                                                                                                                                            |
-| [shader_material](../examples/shader_material.html)                                                 | 保留 | materials       | Bind a custom GLSL shader to registered uniform blocks and texture samplers.                                                                                                                                    |
+| [shader_material](../examples/shader_material.html)                                                 | 保留 | materials       | Bind portable GLSL to registered std140 uniform blocks and texture samplers, and update reusable buffers each frame.                                                                                            |
 | [fog](../examples/fog.html)                                                                         | 保留 | materials       | Observe distance-based fog blending across textured objects.                                                                                                                                                    |
 | [gltf_material_extensions](../examples/gltf_material_extensions.html)                               | 精选 | materials       | Inspect four curated Khronos glTF assets with anisotropy, clearcoat, iridescence, transmission and thickness-aware volume.                                                                                      |
 | [pbr_layered_materials](../examples/pbr_layered_materials.html)                                     | 精选 | materials       | Toggle anisotropy, clearcoat, transmission and volume across a cinematic engine-owned HDR material studio.                                                                                                      |
 | [normal_map](../examples/normal_map.html)                                                           | 保留 | materials       | Compare surface detail under a moving point light using a tangent-space normal map.                                                                                                                             |
 | [pbr2](../examples/pbr2.html)                                                                       | 精选 | materials       | Read metallic and roughness response across a controlled 30-sample HDR material studio.                                                                                                                         |
-| [pbr](../examples/pbr.html)                                                                         | 保留 | materials       | Load one glTF model with PBR materials and the shared HDR environment.                                                                                                                                          |
 | [shaderToy](../examples/shaderToy.html)                                                             | 保留 | materials       | Run an interactive fragment shader with pointer and time inputs.                                                                                                                                                |
 | [mat1_soft_matter](../examples/mat1_soft_matter.html)                                               | 精选 | materials       | Explore velvet sheen, backlit amber petals and ivory subsurface wax in a sculptural gallery, with live material comparisons and close-up views.                                                                 |
 | [transparent](../examples/transparent.html)                                                         | 保留 | materials       | Compare alpha blending and render order across overlapping colored boxes.                                                                                                                                       |
@@ -92,8 +119,7 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | [stormfront_observatory](../examples/stormfront_observatory.html)                                   | 精选 | lighting        | Unseal a gilded Khronos dragon beneath a Rayleigh–Mie–ozone storm sky with GPU histogram exposure, temporal half-resolution clouds, cloud shadows, aerial perspective, and froxel light shafts.                 |
 | [shadow_residency_sanctum](../examples/shadow_residency_sanctum.html)                               | 保留 | lighting        | Enter a procedural moonlit nave where moving GPU Scene casters, fair page circulation, camera-layer isolation, CSM cadence, volumetric shafts, SSR, GTAO, and bloom exercise submission-aware shadow residency. |
 | [rain_tea_garden](../examples/rain_tea_garden.html)                                                 | 精选 | lighting        | Visit a Blender-authored anime garden after the rain: warm tea-house light, DDGI color bounce, shadowed mist, fallen-petal decals and layered transparent glass under morning or evening light.                 |
-| [canvas_texture_animation](../examples/canvas_texture_animation.html)                               | 保留 | textures        | Stream a procedural Canvas 2D aquarium into a portable animated texture.                                                                                                                                        |
-| [canvas_texture](../examples/canvas_texture.html)                                                   | 精选 | textures        | Turn a live Canvas 2D dashboard into a continuously updated Hilo3D texture.                                                                                                                                     |
+| [canvas_texture](../examples/canvas_texture.html)                                                   | 精选 | textures        | Draw a Canvas 2D dashboard at up to 30 Hz and upload its texture only when the canvas changes.                                                                                                                  |
 | [compressed_texture](../examples/compressed_texture.html)                                           | 保留 | textures        | Display local KTX textures supported by the active device and report unsupported formats.                                                                                                                       |
 | [textureLod](../examples/textureLod.html)                                                           | 保留 | textures        | Choose mip levels explicitly while sampling an environment texture.                                                                                                                                             |
 | [update_sub_texture](../examples/update_sub_texture.html)                                           | 保留 | textures        | Upload changing image regions without replacing the full texture.                                                                                                                                               |
@@ -147,11 +173,9 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | [physics/rapier_materials](../examples/physics/rapier_materials.html)                               | 保留 | physics         | Release four matched samples in calibrated bounce instruments and compare four independent friction ramps with live rebound and travel measurements.                                                            |
 | [physics/rapier_bridge](../examples/physics/rapier_bridge.html)                                     | 保留 | physics         | Load a miniature suspension bridge and watch segmented decking, dynamic cable links and spring hangers distribute weight through real constraints.                                                              |
 | [frustum_test](../examples/frustum_test.html)                                                       | 保留 | advanced        | Orbit a field of 700 meshes to inspect camera-frustum visibility and draw counts.                                                                                                                               |
-| [webgl_support](../examples/webgl_support.html)                                                     | 保留 | advanced        | Inspect the explicitly selected backend and its active rendering context.                                                                                                                                       |
 | [gtao_acceptance_lab](../examples/gtao_acceptance_lab.html)                                         | 保留 | advanced        | Validate contact scale, thin geometry, depth edges, normal detail, material response, and temporal rejection in a deterministic dual-backend GTAO fixture.                                                      |
 | [resourceManagerTest](../examples/resourceManagerTest.html)                                         | 保留 | advanced        | Replace meshes and inspect tracked, active, and pending GPU resources.                                                                                                                                          |
 | [texture_image_release](../examples/texture_image_release.html)                                     | 保留 | advanced        | Release decoded images after upload and periodically replace the source texture.                                                                                                                                |
-| [uniformBufferObject](../examples/uniformBufferObject.html)                                         | 保留 | advanced        | Update custom std140 parameters shared by a portable shader.                                                                                                                                                    |
 
 <!-- /catalog -->
 

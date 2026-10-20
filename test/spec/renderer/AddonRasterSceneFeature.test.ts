@@ -148,7 +148,7 @@ describe('Automatic portable render-node bridge', () => {
                     { cause: failure }
                 );
             }
-            expect(failure.cause.message).toBe('Render node raster record must be synchronous.');
+            expect(failure.cause.message).toBe('Render node raster record must be synchronous');
             expect(discarded).toHaveBeenCalledOnce();
         } finally {
             renderer.destroy();

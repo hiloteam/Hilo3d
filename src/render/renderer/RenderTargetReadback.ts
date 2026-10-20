@@ -130,6 +130,7 @@ export class RenderTargetReadback {
             staging = execution.getExtractedBuffer(planState.extracted);
             this.resources.markUsed(target, context.frameIndex);
             const tracking = this.submissions.track(context.frameIndex, execution.submission);
+            execution.throwCompletionError();
             await tracking;
             await staging.mapAsync('read', 0, planState.byteLength);
             const mapped = new Uint8Array(staging.getMappedRange(0, planState.byteLength));

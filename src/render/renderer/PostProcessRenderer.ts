@@ -329,6 +329,7 @@ export class PostProcessRenderer {
                 execution.submission
             );
             surface.present();
+            execution.throwCompletionError();
             return Object.freeze({
                 execution,
                 tracking,

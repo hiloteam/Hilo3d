@@ -26,7 +26,11 @@ import type { Std140Layout, Std140WriteResult } from './ubo/Std140Layout';
 import { getMeshPickingIdentity } from './PickingIdentity';
 import type { RendererViewport } from './Renderer';
 import type { SemanticFrameState } from './frame/SemanticFrameState';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from './frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from './frame/RHIUploadBatch';
 import type { RHISubmission } from './rhi/core';
 import { getTransformHistoryRevision } from '../core/TransformHistory';
 import { getMaterialDecalHistoryRevision } from './decals/DecalMaterialBinding';
@@ -539,7 +543,7 @@ class BuiltInUniformBlockManager implements RHIUploadBatchParticipant {
             .set('u_frameIndex', this.frameIndex);
     }
 
-    prepareCommit(_submission: RHISubmission): void {
+    prepareCommit(_submission: RHIUploadBatchCommitContext): void {
         // History snapshots are CPU-side and require no pre-submission work.
     }
 

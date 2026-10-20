@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 
 const TARGET_WIDTH = 960;
 const TARGET_HEIGHT = 540;
@@ -1185,6 +1189,7 @@ class CrystalRayTracingPipelineFactory implements Hilo3d.RenderPipelineFactory {
 }
 
 class OrbitController implements Hilo3d.Tickable {
+    readonly #lifetime = new AbortController();
     readonly #camera = new Float32Array([0.06, 0.23, 5.35, 0]);
     readonly #target = new Float32Array([0, 0.9, -0.12, 1.14]);
     readonly #render = new Float32Array([0, 0.012, 5.45, 0]);
@@ -1203,24 +1208,33 @@ class OrbitController implements Hilo3d.Tickable {
     }
 
     attach(canvas: HTMLCanvasElement): void {
-        canvas.addEventListener('pointerdown', event => {
-            if (event.button !== 0) return;
-            this.#dragging = true;
-            this.#pointerId = event.pointerId;
-            this.#lastX = event.clientX;
-            this.#lastY = event.clientY;
-            canvas.setPointerCapture(event.pointerId);
-        });
-        canvas.addEventListener('pointermove', event => {
-            if (!this.#dragging || event.pointerId !== this.#pointerId) return;
-            const deltaX = event.clientX - this.#lastX;
-            const deltaY = event.clientY - this.#lastY;
-            this.#lastX = event.clientX;
-            this.#lastY = event.clientY;
-            this.#yaw -= deltaX * 0.0042;
-            this.#pitch = Math.max(-0.08, Math.min(0.55, this.#pitch + deltaY * 0.0032));
-            this.resetAccumulation();
-        });
+        const options = { signal: this.#lifetime.signal };
+        canvas.addEventListener(
+            'pointerdown',
+            event => {
+                if (event.button !== 0) return;
+                this.#dragging = true;
+                this.#pointerId = event.pointerId;
+                this.#lastX = event.clientX;
+                this.#lastY = event.clientY;
+                canvas.setPointerCapture(event.pointerId);
+            },
+            options
+        );
+        canvas.addEventListener(
+            'pointermove',
+            event => {
+                if (!this.#dragging || event.pointerId !== this.#pointerId) return;
+                const deltaX = event.clientX - this.#lastX;
+                const deltaY = event.clientY - this.#lastY;
+                this.#lastX = event.clientX;
+                this.#lastY = event.clientY;
+                this.#yaw -= deltaX * 0.0042;
+                this.#pitch = Math.max(-0.08, Math.min(0.55, this.#pitch + deltaY * 0.0032));
+                this.resetAccumulation();
+            },
+            options
+        );
         const releasePointer = (event: PointerEvent): void => {
             if (event.pointerId !== this.#pointerId) return;
             this.#dragging = false;
@@ -1229,8 +1243,8 @@ class OrbitController implements Hilo3d.Tickable {
             }
             this.#pointerId = -1;
         };
-        canvas.addEventListener('pointerup', releasePointer);
-        canvas.addEventListener('pointercancel', releasePointer);
+        canvas.addEventListener('pointerup', releasePointer, options);
+        canvas.addEventListener('pointercancel', releasePointer, options);
         canvas.addEventListener(
             'wheel',
             event => {
@@ -1241,14 +1255,22 @@ class OrbitController implements Hilo3d.Tickable {
                 );
                 this.resetAccumulation();
             },
-            { passive: false }
+            { passive: false, signal: this.#lifetime.signal }
         );
-        canvas.addEventListener('dblclick', () => {
-            this.#yaw = 0.06;
-            this.#pitch = 0.23;
-            this.#distance = 5.35;
-            this.resetAccumulation();
-        });
+        canvas.addEventListener(
+            'dblclick',
+            () => {
+                this.#yaw = 0.06;
+                this.#pitch = 0.23;
+                this.#distance = 5.35;
+                this.resetAccumulation();
+            },
+            options
+        );
+    }
+
+    dispose(): void {
+        this.#lifetime.abort();
     }
 
     resetAccumulation(): void {
@@ -1324,7 +1346,7 @@ const camera = new Hilo3d.PerspectiveCamera({
     far: 20,
     z: 5.8
 });
-const stage = await Hilo3d.Stage.create({
+const runtime = await createExampleStage({
     backend: 'webgpu',
     container,
     camera,
@@ -1334,75 +1356,78 @@ const stage = await Hilo3d.Stage.create({
     antialias: false,
     alpha: false,
     renderPipeline: factory
+}).catch((error: unknown) => {
+    if (error instanceof ExampleInitializationCancelledError) return null;
+    throw error;
 });
-const target = stage.renderer.createRenderTarget({
-    label: 'Hilo3D path-tracing presentation target',
-    width: TARGET_WIDTH,
-    height: TARGET_HEIGHT,
-    colorAttachments: [{ format: 'rgba8unorm', clearValue: CLEAR_COLOR }],
-    depthStencilAttachment: false
-});
-const accumulation = stage.renderer.createStorageBuffer({
-    label: 'Hilo3D path-tracing progressive accumulation',
-    byteLength: ACCUMULATION_BYTE_LENGTH,
-    usage: ['storage'],
-    initialData: new Float32Array(TARGET_WIDTH * TARGET_HEIGHT * PIXEL_RECORD_VEC4S * 4),
-    recovery: 'cpu-shadow'
-});
-factory.runtime.attachResources({ accumulation });
-stage.renderer.setRenderTarget(target, {
-    present: true,
-    takeOwnership: true,
-    // PRESENT_PASS already applies ACES and its display transfer.
-    colorEncoding: 'srgb'
-});
+if (runtime !== null) {
+    const { stage, ticker, lifecycle } = runtime;
+    const target = stage.renderer.createRenderTarget({
+        label: 'Hilo3D path-tracing presentation target',
+        width: TARGET_WIDTH,
+        height: TARGET_HEIGHT,
+        colorAttachments: [{ format: 'rgba8unorm', clearValue: CLEAR_COLOR }],
+        depthStencilAttachment: false
+    });
+    const accumulation = stage.renderer.createStorageBuffer({
+        label: 'Hilo3D path-tracing progressive accumulation',
+        byteLength: ACCUMULATION_BYTE_LENGTH,
+        usage: ['storage'],
+        initialData: new Float32Array(TARGET_WIDTH * TARGET_HEIGHT * PIXEL_RECORD_VEC4S * 4),
+        recovery: 'cpu-shadow'
+    });
+    factory.runtime.attachResources({ accumulation });
+    stage.renderer.setRenderTarget(target, {
+        present: true,
+        takeOwnership: true,
+        // PRESENT_PASS already applies ACES and its display transfer.
+        colorEncoding: 'srgb'
+    });
 
-const controller = new OrbitController(sampleElement);
-controller.attach(stage.canvas);
-
-async function stepAndRead(frames: number): Promise<RayTracingEvidence> {
-    if (!Number.isSafeInteger(frames) || frames < 1 || frames > 256) {
-        throw new RangeError('Ray-tracing test steps must be an integer in [1, 256]');
-    }
-    controller.resetAccumulation();
-    for (let frame = 0; frame < frames; frame += 1) {
-        controller.tick(1000 / 60);
-        stage.tick(1000 / 60);
-    }
-    await stage.renderer.waitForIdle();
-    const readback = await target.readColorAttachment();
-    return analyzeFrame(readback.data, stage.renderer.backend, frames);
-}
-
-const testMode = new URLSearchParams(window.location.search).has('test');
-if (testMode) {
-    window.__HILO3D_RAYTRACING_TEST_API__ = { step: stepAndRead };
-    window.__HILO3D_RAYTRACING_RESULT__ = await stepAndRead(2);
-    document.body.dataset['rayTracingReady'] = 'true';
-} else {
-    controller.tick(1000 / 60);
-    stage.tick(1000 / 60);
-    const ticker = new Hilo3d.Ticker(60);
+    const controller = new OrbitController(sampleElement);
+    controller.attach(stage.canvas);
+    const testMode = new URLSearchParams(window.location.search).has('test');
+    ticker.removeTick(stage);
     ticker.addTick(controller);
     ticker.addTick(stage);
-    ticker.start();
-    window.addEventListener(
-        'pagehide',
-        () => {
-            ticker.stop();
-        },
-        { once: true }
-    );
-}
-
-window.addEventListener(
-    'pagehide',
-    () => {
+    lifecycle.onDispose(() => {
+        controller.dispose();
         accumulation.destroy();
-        stage.destroy();
-    },
-    { once: true }
-);
+        delete window.__HILO3D_RAYTRACING_TEST_API__;
+    });
+
+    async function stepAndRead(frames: number): Promise<RayTracingEvidence> {
+        if (!Number.isSafeInteger(frames) || frames < 1 || frames > 256) {
+            throw new RangeError('Ray-tracing test steps must be an integer in [1, 256]');
+        }
+        controller.resetAccumulation();
+        for (let frame = 0; frame < frames; frame += 1) {
+            controller.tick(1000 / 60);
+            stage.tick(1000 / 60);
+        }
+        await stage.renderer.waitForIdle();
+        if (lifecycle.disposed) throw new Error('Example was disposed during readback');
+        const readback = await target.readColorAttachment();
+        return analyzeFrame(readback.data, stage.renderer.backend, frames);
+    }
+
+    try {
+        if (testMode) {
+            window.__HILO3D_RAYTRACING_TEST_API__ = { step: stepAndRead };
+            const result = await stepAndRead(2);
+            if (!lifecycle.disposed) {
+                window.__HILO3D_RAYTRACING_RESULT__ = result;
+                document.body.dataset['rayTracingReady'] = 'true';
+            }
+        } else {
+            controller.tick(1000 / 60);
+            stage.tick(1000 / 60);
+            ticker.start();
+        }
+    } catch (error) {
+        if (!lifecycle.disposed) throw error;
+    }
+}
 
 declare global {
     interface Window {
