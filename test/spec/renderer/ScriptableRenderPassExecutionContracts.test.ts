@@ -19,6 +19,8 @@ import type {
 import { RHIBufferUsage } from '../../../src/render/rhi/core';
 import { FakeRHICommandContext, FakeWebGPURHIBackend } from '../rhi/portable/FakeRHIBackend';
 
+vi.mock('../../../src/render/internal/ScriptableRenderPipelineValidation', { spy: true });
+
 class PassFixture {
     readonly backend = new FakeWebGPURHIBackend();
     readonly device = this.backend.createDevice();
@@ -214,7 +216,8 @@ describe('Scriptable pass callback execution contracts', () => {
         vi.spyOn(ScriptableRenderPipelineContextImpl.prototype, 'resolveBuffer').mockReturnValue(
             internal
         );
-        const normalizedRange = vi.spyOn(validation, 'normalizeBufferRange');
+        const normalizedRange = vi.mocked(validation.normalizeBufferRange);
+        normalizedRange.mockClear();
         const clear = vi.spyOn(FakeRHICommandContext.prototype, 'clearBuffer');
         item.slot.begin(
             item.owner,

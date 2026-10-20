@@ -11,9 +11,9 @@ import type {
 } from '../../../src/render/pipeline/ScriptableRenderGraph';
 import { TextureCopyPass } from '../../../src/render/pipeline/passes/TextureCopyPass';
 
-const clearHistory: ScriptableRenderPass<RenderGraphTextureHandle> = {
+const clearHistory: ScriptableRenderPass<{ readonly texture: RenderGraphTextureHandle }> = {
     name: 'initialize shared history',
-    setup(builder, texture): void {
+    setup(builder, { texture }): void {
         builder.useColorAttachment({
             texture,
             loadOp: 'clear',
@@ -44,7 +44,7 @@ describe.each(['webgl2', 'webgpu'] as const)('graph import identity on %s', back
                 handles.push(history.current);
                 historyValidity.push(history.valid);
                 if (invocation++ % 2 === 0) {
-                    context.graph.addPass(clearHistory, history.current);
+                    context.graph.addPass(clearHistory, { texture: history.current });
                 } else {
                     context.graph.addPass(copy, {
                         source: history.current,

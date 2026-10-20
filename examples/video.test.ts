@@ -84,6 +84,13 @@ function transition(type: 'pagehide' | 'pageshow', persisted: boolean): void {
     window.dispatchEvent(Object.assign(new Event(type), { persisted }));
 }
 
+async function loadVideoExample(scenario: string): Promise<void> {
+    // Native browser modules retain their URL cache across vi.resetModules().
+    const url = new URL('./video.ts', import.meta.url);
+    url.searchParams.set('scenario', scenario);
+    await import(/* @vite-ignore */ url.href);
+}
+
 function fixture() {
     const video = new TestVideo();
     const body = typeof document === 'undefined' ? new EventTarget() : document.body;
@@ -129,7 +136,7 @@ describe('video example lifecycle', () => {
             state.video.paused = false;
             return playback.promise;
         });
-        await import('./video');
+        await loadVideoExample('pending-playback');
         await vi.waitFor(() => {
             expect(state.video.play).toHaveBeenCalledOnce();
         });
@@ -155,7 +162,7 @@ describe('video example lifecycle', () => {
         const state = fixture();
         state.video.play.mockRejectedValue(new DOMException('Gesture required', 'NotAllowedError'));
         const videoEvents = vi.spyOn(state.video, 'addEventListener');
-        await import('./video');
+        await loadVideoExample('gesture-fallback');
         await vi.waitFor(() => {
             expect(videoEvents).toHaveBeenCalledWith('canplaythrough', expect.any(Function));
         });
@@ -189,7 +196,7 @@ describe('video example lifecycle', () => {
         const state = fixture();
         const response = deferred<Response>();
         state.fetch.mockReturnValue(response.promise);
-        await import('./video');
+        await loadVideoExample('late-response');
         expect(state.fetch).toHaveBeenCalledOnce();
         transition('pagehide', false);
         const blob = vi.fn(() => Promise.resolve(new Blob(['late video'])));
