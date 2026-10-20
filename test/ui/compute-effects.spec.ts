@@ -151,7 +151,12 @@ test('keeps count, reorder, and indirect arguments GPU-only in the public exampl
     expect(source).toContain('let breathingTarget = homePosition');
     expect(source).toContain('let vortex = tangent');
     expect(source).toContain('blend: Hilo3d.MaterialBlendPreset.STRAIGHT_ALPHA_ADDITIVE');
-    expect(source).toContain('new Hilo3d.Ticker(60)');
+    expect(source).toContain('const runtime = await createExampleStage({');
+    const lifecycleSource = readFileSync(
+        fileURLToPath(new URL('../../examples/shared/createExampleStage.ts', import.meta.url)),
+        'utf8'
+    );
+    expect(lifecycleSource).toContain('new ExampleTicker(60)');
     expect(source.match(/new Hilo3d\.RenderPassParameterPool/gu)).toHaveLength(3);
     expect(source).toContain('context.acquirePassParameters');
     expect(source).toContain(
