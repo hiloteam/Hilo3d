@@ -18,6 +18,7 @@ import { FakeWebGLRHIBackend } from '../rhi/portable/FakeRHIBackend';
 function submit(device: ReturnType<FakeWebGLRHIBackend['createDevice']>, batch: RHIUploadBatch) {
     const commands = device.graphicsQueue.beginFrame();
     batch.flush(commands);
+    batch.validateSubmission(device);
     const submission = device.graphicsQueue.endFrame(commands);
     batch.commit(submission);
     return submission;
