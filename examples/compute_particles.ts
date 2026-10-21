@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 
 const TARGET_WIDTH = 1280;
 const TARGET_HEIGHT = 720;
@@ -1585,6 +1589,7 @@ function particleInitialData(): Float32Array {
 }
 
 class InteractionController implements Hilo3d.Tickable {
+    readonly #lifetime = new AbortController();
     readonly #pointer = new Float32Array(4);
     readonly #motion = new Float32Array(4);
     readonly #time = new Float32Array([0, 1 / 60, TARGET_ASPECT, 0]);
@@ -1615,6 +1620,7 @@ class InteractionController implements Hilo3d.Tickable {
     }
 
     attach(canvas: HTMLCanvasElement): void {
+        const options = { signal: this.#lifetime.signal };
         const updatePointer = (event: PointerEvent): void => {
             const bounds = canvas.getBoundingClientRect();
             const x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
@@ -1632,33 +1638,57 @@ class InteractionController implements Hilo3d.Tickable {
             this.#revision += 1;
         };
 
-        canvas.addEventListener('pointerenter', updatePointer);
-        canvas.addEventListener('pointermove', updatePointer);
-        canvas.addEventListener('pointerdown', event => {
-            updatePointer(event);
-            this.#pulse = 1;
-            canvas.setPointerCapture(event.pointerId);
-        });
-        canvas.addEventListener('pointerup', event => {
-            updatePointer(event);
-            this.#pointer[3] = 0;
-            if (canvas.hasPointerCapture(event.pointerId))
-                canvas.releasePointerCapture(event.pointerId);
-        });
-        canvas.addEventListener('pointercancel', () => {
-            this.#pointer[2] = 0;
-            this.#pointer[3] = 0;
-            this.#revision += 1;
-        });
-        canvas.addEventListener('pointerleave', event => {
-            if (event.buttons !== 0) return;
-            this.#pointer[2] = 0;
-            this.#pointer[3] = 0;
-            this.#revision += 1;
-        });
-        canvas.addEventListener('contextmenu', event => {
-            event.preventDefault();
-        });
+        canvas.addEventListener('pointerenter', updatePointer, options);
+        canvas.addEventListener('pointermove', updatePointer, options);
+        canvas.addEventListener(
+            'pointerdown',
+            event => {
+                updatePointer(event);
+                this.#pulse = 1;
+                canvas.setPointerCapture(event.pointerId);
+            },
+            options
+        );
+        canvas.addEventListener(
+            'pointerup',
+            event => {
+                updatePointer(event);
+                this.#pointer[3] = 0;
+                if (canvas.hasPointerCapture(event.pointerId))
+                    canvas.releasePointerCapture(event.pointerId);
+            },
+            options
+        );
+        canvas.addEventListener(
+            'pointercancel',
+            () => {
+                this.#pointer[2] = 0;
+                this.#pointer[3] = 0;
+                this.#revision += 1;
+            },
+            options
+        );
+        canvas.addEventListener(
+            'pointerleave',
+            event => {
+                if (event.buttons !== 0) return;
+                this.#pointer[2] = 0;
+                this.#pointer[3] = 0;
+                this.#revision += 1;
+            },
+            options
+        );
+        canvas.addEventListener(
+            'contextmenu',
+            event => {
+                event.preventDefault();
+            },
+            options
+        );
+    }
+
+    dispose(): void {
+        this.#lifetime.abort();
     }
 
     tick(deltaTime: number): void {
@@ -1832,7 +1862,7 @@ const container = document.querySelector<HTMLElement>('#container');
 if (!container) throw new Error('Particle example container is missing');
 const factory = new QuantumParticlePipelineFactory();
 const camera = new Hilo3d.PerspectiveCamera({ aspect: TARGET_ASPECT, near: 0.1, far: 10, z: 2 });
-const stage = await Hilo3d.Stage.create({
+const runtime = await createExampleStage({
     backend: 'webgpu',
     container,
     camera,
@@ -1842,74 +1872,77 @@ const stage = await Hilo3d.Stage.create({
     antialias: false,
     alpha: false,
     renderPipeline: factory
+}).catch((error: unknown) => {
+    if (error instanceof ExampleInitializationCancelledError) return null;
+    throw error;
 });
-const target = stage.renderer.createRenderTarget({
-    width: TARGET_WIDTH,
-    height: TARGET_HEIGHT,
-    colorAttachments: [{ clearValue: BACKGROUND_COLOR }]
-});
-const particles = stage.renderer.createStorageBuffer({
-    label: 'Persistent interactive Hilo3D particle state',
-    byteLength: PARTICLE_BUFFER_BYTE_LENGTH,
-    usage: ['storage'],
-    initialData: particleInitialData(),
-    // Device loss deliberately restarts from the deterministic seed; per-frame GPU state is never
-    // mirrored back to the CPU shadow.
-    recovery: 'cpu-shadow'
-});
-factory.runtime.attachResources({ particles });
-stage.renderer.setRenderTarget(target, {
-    present: true,
-    takeOwnership: true,
-    // The custom pipeline authors and blends its final field in display-referred space.
-    colorEncoding: 'srgb'
-});
+if (runtime !== null) {
+    const { stage, ticker, lifecycle } = runtime;
+    const target = stage.renderer.createRenderTarget({
+        width: TARGET_WIDTH,
+        height: TARGET_HEIGHT,
+        colorAttachments: [{ clearValue: BACKGROUND_COLOR }]
+    });
+    const particles = stage.renderer.createStorageBuffer({
+        label: 'Persistent interactive Hilo3D particle state',
+        byteLength: PARTICLE_BUFFER_BYTE_LENGTH,
+        usage: ['storage'],
+        initialData: particleInitialData(),
+        // Device loss deliberately restarts from the deterministic seed; per-frame GPU state is never
+        // mirrored back to the CPU shadow.
+        recovery: 'cpu-shadow'
+    });
+    factory.runtime.attachResources({ particles });
+    stage.renderer.setRenderTarget(target, {
+        present: true,
+        takeOwnership: true,
+        // The custom pipeline authors and blends its final field in display-referred space.
+        colorEncoding: 'srgb'
+    });
 
-const controller = new InteractionController();
-controller.attach(stage.canvas);
-
-async function stepAndRead(frames: number): Promise<ParticleEvidence> {
-    if (!Number.isSafeInteger(frames) || frames < 1 || frames > 240) {
-        throw new RangeError('Particle test steps must be an integer in [1, 240]');
-    }
-    for (let frame = 0; frame < frames; frame += 1) {
-        controller.tick(1000 / 60);
-        stage.tick(1000 / 60);
-    }
-    await stage.renderer.waitForIdle();
-    const readback = await target.readColorAttachment();
-    return analyzeFrame(readback.data, stage.renderer.backend, controller);
-}
-
-const testMode = new URLSearchParams(window.location.search).has('test');
-if (testMode) {
-    window.__HILO3D_PARTICLE_TEST_API__ = { step: stepAndRead };
-    window.__HILO3D_PARTICLE_RESULT__ = await stepAndRead(1);
-    document.body.dataset['particleFieldReady'] = 'true';
-} else {
-    controller.tick(1000 / 60);
-    stage.tick(1000 / 60);
-    const ticker = new Hilo3d.Ticker(60);
+    const controller = new InteractionController();
+    controller.attach(stage.canvas);
+    const testMode = new URLSearchParams(window.location.search).has('test');
+    ticker.removeTick(stage);
     ticker.addTick(controller);
     ticker.addTick(stage);
-    ticker.start();
-    window.addEventListener(
-        'pagehide',
-        () => {
-            ticker.stop();
-        },
-        { once: true }
-    );
-}
-
-window.addEventListener(
-    'pagehide',
-    () => {
+    lifecycle.onDispose(() => {
+        controller.dispose();
         particles.destroy();
-        stage.destroy();
-    },
-    { once: true }
-);
+        delete window.__HILO3D_PARTICLE_TEST_API__;
+    });
+
+    async function stepAndRead(frames: number): Promise<ParticleEvidence> {
+        if (!Number.isSafeInteger(frames) || frames < 1 || frames > 240) {
+            throw new RangeError('Particle test steps must be an integer in [1, 240]');
+        }
+        for (let frame = 0; frame < frames; frame += 1) {
+            controller.tick(1000 / 60);
+            stage.tick(1000 / 60);
+        }
+        await stage.renderer.waitForIdle();
+        if (lifecycle.disposed) throw new Error('Example was disposed during readback');
+        const readback = await target.readColorAttachment();
+        return analyzeFrame(readback.data, stage.renderer.backend, controller);
+    }
+
+    try {
+        if (testMode) {
+            window.__HILO3D_PARTICLE_TEST_API__ = { step: stepAndRead };
+            const result = await stepAndRead(1);
+            if (!lifecycle.disposed) {
+                window.__HILO3D_PARTICLE_RESULT__ = result;
+                document.body.dataset['particleFieldReady'] = 'true';
+            }
+        } else {
+            controller.tick(1000 / 60);
+            stage.tick(1000 / 60);
+            ticker.start();
+        }
+    } catch (error) {
+        if (!lifecycle.disposed) throw error;
+    }
+}
 
 declare global {
     interface Window {

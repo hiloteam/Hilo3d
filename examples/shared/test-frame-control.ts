@@ -10,6 +10,8 @@ export interface TestFrameControl {
     waitForFrames(count: number): Promise<void>;
     pause(): Promise<void>;
     resume(): void;
+    /** Gate automatic resumption while the owning page is suspended in BFCache. */
+    setSuspended(suspended: boolean): void;
     dispose(): void;
 }
 
@@ -20,46 +22,94 @@ export function createTestFrameControl(
     paceFrames = true
 ): TestFrameControl {
     let capturing = false;
+    let suspended = false;
     let pending = false;
     let disposed = false;
-    const observers = new Map<{ tick(): void }, () => void>();
+    let failure: Error | undefined;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let finishIdleWindow: (() => void) | undefined;
+    const observers = new Map<{ tick(): void }, (reason: unknown) => void>();
+    const captures = new Set<(reason: unknown) => void>();
+
+    function resumeWhenReady(): void {
+        if (!pending && !capturing && !suspended && !disposed && !failure) ticker.resume();
+    }
+
+    function cancelIdleWindow(): void {
+        if (idleTimer !== undefined) clearTimeout(idleTimer);
+        idleTimer = undefined;
+        const finish = finishIdleWindow;
+        finishIdleWindow = undefined;
+        finish?.();
+    }
+
+    function rejectWaits(reason: unknown): void {
+        ticker.removeTick(frame);
+        for (const [observer, reject] of observers) {
+            ticker.removeTick(observer);
+            reject(reason);
+        }
+        observers.clear();
+        for (const reject of captures) reject(reason);
+        captures.clear();
+        cancelIdleWindow();
+    }
+
+    function fail(error: unknown): void {
+        if (disposed || failure) return;
+        failure =
+            error instanceof Error
+                ? error
+                : new Error('Test frame submission failed', { cause: error });
+        ticker.stop();
+        rejectWaits(failure);
+        queueMicrotask(() => {
+            throw error;
+        });
+    }
+
     const frame = {
         tick(): void {
-            if (pending || disposed) return;
+            if (pending || disposed || failure) return;
             pending = true;
             ticker.pause();
             // Drain after the whole ticker callback list, including user callbacks, finishes.
             void Promise.resolve()
-                .then(waitForIdle)
-                .then(
-                    () =>
-                        new Promise<void>(resolve => {
-                            setTimeout(resolve, 50);
-                        })
-                )
+                .then(() => {
+                    if (!disposed && !failure) return waitForIdle();
+                    return undefined;
+                })
+                .then(() => {
+                    if (disposed || failure) return;
+                    return new Promise<void>(resolve => {
+                        finishIdleWindow = resolve;
+                        idleTimer = setTimeout(() => {
+                            idleTimer = undefined;
+                            finishIdleWindow = undefined;
+                            resolve();
+                        }, 50);
+                    });
+                })
                 .then(() => {
                     pending = false;
-                    if (!capturing && !disposed) ticker.resume();
+                    resumeWhenReady();
                 })
-                .catch((error: unknown) => {
-                    if (disposed) return;
-                    ticker.stop();
-                    queueMicrotask(() => {
-                        throw error;
-                    });
-                });
+                .catch(fail);
         }
     };
     if (paceFrames) ticker.addTick(frame);
     return {
         waitForFrames(count: number): Promise<void> {
-            if (!Number.isInteger(count) || count < 1 || count > 60 || disposed) {
+            if (failure) return Promise.reject(failure);
+            if (disposed) return Promise.reject(new Error('Test frame control disposed'));
+            if (!Number.isInteger(count) || count < 1 || count > 60) {
                 return Promise.reject(new Error('Test frame wait requires 1 to 60 live frames'));
             }
             return new Promise<void>((resolve, reject) => {
                 let remaining = count;
                 const observer = {
                     tick(): void {
+                        if (disposed || failure) return;
                         remaining--;
                         if (remaining === 0) {
                             ticker.removeTick(observer);
@@ -68,29 +118,42 @@ export function createTestFrameControl(
                         }
                     }
                 };
-                observers.set(observer, () => {
-                    reject(new Error('Test frame control disposed'));
-                });
+                observers.set(observer, reject);
                 ticker.addTick(observer);
             });
         },
-        async pause(): Promise<void> {
+        pause(): Promise<void> {
+            if (failure) return Promise.reject(failure);
+            if (disposed) return Promise.reject(new Error('Test frame control disposed'));
             capturing = true;
             ticker.pause();
-            await waitForIdle();
+            return new Promise<void>((resolve, reject) => {
+                captures.add(reject);
+                void Promise.resolve()
+                    .then(() => {
+                        if (!disposed && !failure) return waitForIdle();
+                        return undefined;
+                    })
+                    .then(() => {
+                        captures.delete(reject);
+                        if (!disposed && !failure) resolve();
+                    })
+                    .catch(fail);
+            });
         },
         resume(): void {
             capturing = false;
-            if (!pending && !disposed) ticker.resume();
+            resumeWhenReady();
+        },
+        setSuspended(value: boolean): void {
+            if (suspended === value) return;
+            suspended = value;
+            if (!suspended) resumeWhenReady();
         },
         dispose(): void {
+            if (disposed) return;
             disposed = true;
-            ticker.removeTick(frame);
-            for (const [observer, reject] of observers) {
-                ticker.removeTick(observer);
-                reject();
-            }
-            observers.clear();
+            rejectWaits(new Error('Test frame control disposed'));
         }
     };
 }

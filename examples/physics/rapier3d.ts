@@ -270,7 +270,7 @@ const gravityButton = exhibit.action('gravity', '月球重力', () => {
 // Double-click is an object impulse interaction. Camera gestures remain owned by OrbitControls.
 const canvas = stage.canvas;
 const ray = new Hilo3d.Ray();
-canvas.addEventListener('dblclick', (event: MouseEvent) => {
+const applyPointerImpulse = (event: MouseEvent): void => {
     const rect = canvas.getBoundingClientRect();
     ray.fromCamera(
         exhibit.camera,
@@ -285,6 +285,10 @@ canvas.addEventListener('dblclick', (event: MouseEvent) => {
     body?.applyImpulse({ x: ray.direction.x * 1.8, y: 1.7, z: ray.direction.z * 1.8 });
     document.body.dataset['picked'] = String(Number(document.body.dataset['picked'] ?? 0) + 1);
     exhibit.setStatus('射线命中刚体 · 已施加定向冲量');
+};
+canvas.addEventListener('dblclick', applyPointerImpulse);
+exhibit.onDispose(() => {
+    canvas.removeEventListener('dblclick', applyPointerImpulse);
 });
 physics.on('collisionstart', () => {
     contactCount++;
@@ -302,11 +306,12 @@ ticker.addTick({
         lastReadout += deltaTime;
         if (lastReadout < 120) return;
         lastReadout = 0;
-        const toppled = dominoes.filter(body => {
+        let toppled = 0;
+        for (const body of dominoes) {
             const { x, z } = body.pose.rotation;
             // Fallen neighbours can support each other above the floor; measure tilt, independent of yaw.
-            return 1 - 2 * (x * x + z * z) < 0.65;
-        }).length;
+            if (1 - 2 * (x * x + z * z) < 0.65) toppled++;
+        }
         exhibit.setMetric('dominoes', '连锁倒下', `${String(toppled)} / 29`);
         exhibit.setMetric('contacts', '碰撞事件', String(contactCount));
         exhibit.setMetric('bodies', '动态刚体', String(resettable.length));

@@ -17,14 +17,22 @@ const mixTexture = new Hilo3d.LazyTexture({
     src: new URL('./image/brdfLUT.png', import.meta.url).href
 });
 let elapsedTime = 0;
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
+const lightColor = new Float32Array(3);
+// Portable custom shaders keep numeric parameters in registered std140 blocks. Samplers alone
+// remain in `uniforms`; the same block layout and dirty-range updates serve both backends.
 Hilo3d.registerUniformBlockBinding('ShaderMaterialModelBlock');
 Hilo3d.registerUniformBlockBinding('ShaderMaterialAnimationBlock');
 const modelLayout = Hilo3d.createStd140Layout({ u_modelViewProjectionMatrix: 'mat4' });
 const materialLayout = Hilo3d.createStd140Layout({ u_time: 'float', u_lightColor: 'vec3' });
+// The layout computes std140 alignment (including vec3 padding); reuse these buffers each frame.
 const modelBlock = Hilo3d.UniformBuffer.fromSchema(modelLayout);
 const materialBlock = Hilo3d.UniformBuffer.fromSchema(materialLayout, {
     u_time: 0,
-    u_lightColor: [0, 0, 0]
+    u_lightColor: lightColor
 });
 const modelViewProjection = new Hilo3d.Matrix4();
 const mesh = new Hilo3d.Mesh({
@@ -55,6 +63,7 @@ const mesh = new Hilo3d.Mesh({
         },
         fs: `#version 300 es
                 precision highp float;
+                ${portableCoordinateShader}
                 in vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
                 uniform sampler2D u_mixTexture;
@@ -66,8 +75,8 @@ const mesh = new Hilo3d.Mesh({
                 void main(void) {
                     float uOffset = sin(u_time * 0.0005);
                     float vOffset = cos(u_time * 0.0003);
-                    vec4 diffuse = texture(u_diffuse, vec2(v_texcoord0.x + uOffset, v_texcoord0.y + vOffset));
-                    vec4 mixTexture = texture(u_mixTexture, v_texcoord0);
+                    vec4 diffuse = texture(u_diffuse, hiloTextureUV(vec2(v_texcoord0.x + uOffset, v_texcoord0.y + vOffset)));
+                    vec4 mixTexture = texture(u_mixTexture, hiloTextureUV(v_texcoord0));
                     fragmentColor = mix(vec4(diffuse.r, diffuse.g, u_lightColor.b, 1), mixTexture, 0.05);
                 }
             `,
@@ -91,7 +100,8 @@ const mesh = new Hilo3d.Mesh({
 mesh.onUpdate = deltaTime => {
     elapsedTime += deltaTime;
     materialBlock.set('u_time', elapsedTime);
-    materialBlock.set('u_lightColor', [0, 0, Math.random() - 0.5]);
+    lightColor[2] = Math.sin(elapsedTime * 0.001) * 0.5 + 0.5;
+    materialBlock.set('u_lightColor', lightColor);
 };
 mesh.on('beforeRender', () => {
     camera.getModelProjectionMatrix(mesh, modelViewProjection);

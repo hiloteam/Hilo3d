@@ -26,8 +26,55 @@ import type {
     RenderPipelineRequirements
 } from '../pipeline/RenderPipeline';
 import { snapshotRenderPipelineInvocationPolicy } from '../pipeline/RenderPipelineFactory';
+import { assertSynchronousResult } from './ScriptableRenderPipelineValidation';
 
-const attachedPipelineRuntimes = new WeakSet();
+// Claims survive destruction: a disposed or rejected candidate must never be attached again.
+const claimedPipelineRuntimes = new WeakSet();
+
+function isRuntimeObject(candidate: unknown): candidate is object {
+    return (typeof candidate === 'object' && candidate !== null) || typeof candidate === 'function';
+}
+
+function destroyPipelineCandidate(candidate: object): void {
+    const destroy: unknown = Reflect.get(candidate, 'destroy');
+    if (typeof destroy !== 'function') return;
+    assertSynchronousResult(
+        'Render pipeline destroy()',
+        Reflect.apply(destroy as (...args: never[]) => unknown, candidate, [])
+    );
+}
+
+function validatePipelineRuntime(candidate: object): RenderPipeline {
+    const name: unknown = Reflect.get(candidate, 'name');
+    if (typeof name !== 'string' || name.length === 0) {
+        throw new TypeError('Render pipeline runtime name must be non-empty');
+    }
+    if (
+        typeof Reflect.get(candidate, 'record') !== 'function' ||
+        typeof Reflect.get(candidate, 'destroy') !== 'function'
+    ) {
+        throw new TypeError('Render pipeline runtime must implement record() and destroy()');
+    }
+    for (const hook of ['frameSubmitted', 'frameDiscarded', 'recordRenderGraphTimeline']) {
+        const method: unknown = Reflect.get(candidate, hook);
+        if (method !== undefined && typeof method !== 'function') {
+            throw new TypeError(`Render pipeline ${hook} must be a function`);
+        }
+    }
+    const usesTimeline: unknown = Reflect.get(candidate, 'usesRenderGraphTimeline');
+    if (usesTimeline !== undefined && typeof usesTimeline !== 'boolean') {
+        throw new TypeError('Render pipeline usesRenderGraphTimeline must be a boolean');
+    }
+    if (
+        usesTimeline === true &&
+        typeof Reflect.get(candidate, 'recordRenderGraphTimeline') !== 'function'
+    ) {
+        throw new TypeError(
+            'Render pipeline using the Render Graph timeline must implement recordRenderGraphTimeline()'
+        );
+    }
+    return candidate as RenderPipeline;
+}
 
 /** @internal Renderer-owned lifecycle invoked around the single application graph transaction. */
 export interface RenderPipelineHostLifecycle {
@@ -99,6 +146,7 @@ export class RenderPipelineHost {
     #recording = false;
     #aborted = false;
     #destroyed = false;
+    #initializing = false;
     #runtime: RenderPipeline | null = null;
     #capabilities: RenderPipelineCapabilities | null = null;
     #minimumCapabilities: RenderPipelineCapabilities | null = null;
@@ -131,95 +179,94 @@ export class RenderPipelineHost {
         deviceCapabilities: RHICapabilities
     ): Promise<void> {
         this.assertAlive();
-        if (this.#runtime !== null) throw new Error('RenderPipelineHost is already initialized');
-        const capabilities = createRenderPipelineCapabilities(deviceCapabilities);
-        const requirements = factory.requirements ?? {};
-        const invocationPolicy = snapshotRenderPipelineInvocationPolicy(factory.invocationPolicy);
-        validateRenderPipelineRequirements(requirements, capabilities, deviceCapabilities);
-        const candidate: unknown = await factory.create(
-            Object.freeze({
-                capabilities,
-                createRenderTarget: this.lifecycle.createPipelineRenderTarget.bind(this.lifecycle),
-                createStorageBuffer: this.lifecycle.createPipelineStorageBuffer.bind(
-                    this.lifecycle
-                ),
-                warmupStorageGraphicsShaders: this.lifecycle.warmupStorageGraphicsShaders.bind(
-                    this.lifecycle
-                )
-            })
-        );
-        if (
-            ((typeof candidate === 'object' && candidate !== null) ||
-                typeof candidate === 'function') &&
-            attachedPipelineRuntimes.has(candidate)
-        ) {
-            throw new Error('Render pipeline runtime is already attached to another Renderer');
+        if (this.#runtime !== null || this.#initializing) {
+            throw new Error('RenderPipelineHost is already initialized or initializing');
         }
-        let runtime: RenderPipeline;
+        this.#initializing = true;
+        let creationActive = true;
+        const assertCreationActive = (): void => {
+            this.assertAlive();
+            if (!creationActive) {
+                throw new Error('Render pipeline creation context is no longer active');
+            }
+        };
         try {
-            if (
-                (typeof candidate !== 'object' && typeof candidate !== 'function') ||
-                candidate === null
-            ) {
+            const capabilities = createRenderPipelineCapabilities(deviceCapabilities);
+            const requirements = factory.requirements ?? {};
+            const invocationPolicy = snapshotRenderPipelineInvocationPolicy(
+                factory.invocationPolicy
+            );
+            validateRenderPipelineRequirements(requirements, capabilities, deviceCapabilities);
+            let candidate: unknown;
+            try {
+                candidate = await factory.create(
+                    Object.freeze({
+                        capabilities,
+                        createRenderTarget: (
+                            parameters: Readonly<RenderTargetParameters>
+                        ): RenderTarget => {
+                            assertCreationActive();
+                            return this.lifecycle.createPipelineRenderTarget(parameters);
+                        },
+                        createStorageBuffer: (
+                            descriptor: Readonly<StorageBufferDescriptor>
+                        ): StorageBuffer => {
+                            assertCreationActive();
+                            return this.lifecycle.createPipelineStorageBuffer(descriptor);
+                        },
+                        warmupStorageGraphicsShaders: (
+                            shaders: readonly StorageGraphicsShader[],
+                            batchSize?: number
+                        ): Promise<void> => {
+                            assertCreationActive();
+                            return this.lifecycle.warmupStorageGraphicsShaders(shaders, batchSize);
+                        }
+                    })
+                );
+            } finally {
+                creationActive = false;
+            }
+            if (!isRuntimeObject(candidate)) {
                 throw new TypeError('Render pipeline factory must create a runtime object');
             }
-            const name: unknown = Reflect.get(candidate, 'name');
-            if (typeof name !== 'string' || name.length === 0) {
-                throw new TypeError('Render pipeline runtime name must be non-empty');
+            // Ownership is checked before getters, cancellation, validation, or cleanup. A late
+            // factory must never destroy a singleton already owned by a different host.
+            if (claimedPipelineRuntimes.has(candidate)) {
+                throw new Error('Render pipeline runtime is already attached to another Renderer');
             }
-            if (
-                typeof Reflect.get(candidate, 'record') !== 'function' ||
-                typeof Reflect.get(candidate, 'destroy') !== 'function'
-            ) {
-                throw new TypeError(
-                    'Render pipeline runtime must implement record() and destroy()'
-                );
-            }
-            const usesTimeline: unknown = Reflect.get(candidate, 'usesRenderGraphTimeline');
-            if (usesTimeline !== undefined && typeof usesTimeline !== 'boolean') {
-                throw new TypeError('Render pipeline usesRenderGraphTimeline must be a boolean');
-            }
-            if (
-                usesTimeline === true &&
-                typeof Reflect.get(candidate, 'recordRenderGraphTimeline') !== 'function'
-            ) {
-                throw new TypeError(
-                    'Render pipeline using the Render Graph timeline must implement recordRenderGraphTimeline()'
-                );
-            }
-            runtime = candidate as RenderPipeline;
-        } catch (validationError) {
-            let cleanupError: unknown;
-            if (
-                ((typeof candidate === 'object' && candidate !== null) ||
-                    typeof candidate === 'function') &&
-                typeof Reflect.get(candidate, 'destroy') === 'function'
-            ) {
+            claimedPipelineRuntimes.add(candidate);
+            let runtime: RenderPipeline;
+            try {
+                this.assertAlive();
+                runtime = validatePipelineRuntime(candidate);
+                this.assertAlive();
+            } catch (validationError) {
+                let cleanupFailed = false;
+                let cleanupFailure: unknown;
                 try {
-                    Reflect.apply(
-                        Reflect.get(candidate, 'destroy') as (...args: never[]) => unknown,
-                        candidate,
-                        []
-                    );
+                    destroyPipelineCandidate(candidate);
                 } catch (error) {
-                    cleanupError = error;
+                    cleanupFailed = true;
+                    cleanupFailure = error;
                 }
+                if (cleanupFailed) {
+                    throw new AggregateError(
+                        [validationError, cleanupFailure],
+                        'Render pipeline validation and cleanup both failed',
+                        { cause: validationError }
+                    );
+                }
+                throw validationError;
             }
-            if (cleanupError !== undefined) {
-                throw new AggregateError(
-                    [validationError, cleanupError],
-                    'Render pipeline validation and cleanup both failed',
-                    { cause: validationError }
-                );
-            }
-            throw validationError;
+            this.#runtime = runtime;
+            this.#capabilities = capabilities;
+            this.#minimumCapabilities = capabilities;
+            this.#requirements = requirements;
+            this.#invocationPolicy = invocationPolicy;
+        } finally {
+            creationActive = false;
+            this.#initializing = false;
         }
-        attachedPipelineRuntimes.add(runtime);
-        this.#runtime = runtime;
-        this.#capabilities = capabilities;
-        this.#minimumCapabilities = capabilities;
-        this.#requirements = requirements;
-        this.#invocationPolicy = invocationPolicy;
     }
 
     validateReplacementDevice(deviceCapabilities: RHICapabilities): void {
@@ -295,13 +342,7 @@ export class RenderPipelineHost {
                 this.#runtimeOwner
             );
             contextCreated = true;
-            const result: unknown = runtime.record(context);
-            if (
-                ((typeof result === 'object' && result !== null) || typeof result === 'function') &&
-                typeof Reflect.get(result, 'then') === 'function'
-            ) {
-                throw new TypeError('Render pipeline record() must be synchronous');
-            }
+            assertSynchronousResult('Render pipeline record()', runtime.record(context));
             completed = true;
         } catch (error) {
             this.abort(error);
@@ -334,6 +375,7 @@ export class RenderPipelineHost {
         let additionalFailures: unknown[] | null = null;
         let failureCount = 0;
         let submitted = false;
+        let submissionSucceeded = false;
         let lifecycleStarted = false;
         try {
             lifecycleStarted = true;
@@ -379,17 +421,24 @@ export class RenderPipelineHost {
                 timelineSink,
                 this.#reportTimelineError
             );
+            let completionFailures: unknown[] | undefined;
             submitted = true;
-            let submissionCallbackFailed = false;
-            let submissionCallbackFailure: unknown;
+            submissionSucceeded = execution.submission.status !== 'failed';
             try {
-                this.#runtime?.frameSubmitted?.(frameIndex);
+                if (submissionSucceeded) {
+                    assertSynchronousResult(
+                        'Render pipeline frameSubmitted()',
+                        this.#runtime?.frameSubmitted?.(frameIndex)
+                    );
+                } else {
+                    assertSynchronousResult(
+                        'Render pipeline frameDiscarded()',
+                        this.#runtime?.frameDiscarded?.(frameIndex)
+                    );
+                }
             } catch (error) {
-                submissionCallbackFailed = true;
-                submissionCallbackFailure = error;
+                (completionFailures ??= []).push(error);
             }
-            let completionFailed = false;
-            let completionFailure: unknown;
             try {
                 this.lifecycle.completeFrame(
                     frameIndex,
@@ -397,53 +446,51 @@ export class RenderPipelineHost {
                     this.#frame.uploads.pendingCount
                 );
             } catch (error) {
-                completionFailed = true;
-                completionFailure = error;
+                (completionFailures ??= []).push(error);
             }
-            let timelineFailed = false;
-            let timelineFailure: unknown;
             try {
-                execution.throwTimelineError();
+                execution.throwCompletionError();
             } catch (error) {
-                timelineFailed = true;
-                timelineFailure = error;
+                (completionFailures ??= []).push(error);
             }
-            if (timelineFailed && (submissionCallbackFailed || completionFailed)) {
-                const errors: unknown[] = [];
-                if (submissionCallbackFailed) errors.push(submissionCallbackFailure);
-                if (completionFailed) errors.push(completionFailure);
-                errors.push(timelineFailure);
-                throw new AggregateError(errors, 'Submitted frame completion callbacks failed', {
-                    cause: errors[0]
-                });
-            }
-            if (submissionCallbackFailed && completionFailed) {
+            if (completionFailures?.length === 1) throw completionFailures[0];
+            if (completionFailures !== undefined) {
                 throw new AggregateError(
-                    [submissionCallbackFailure, completionFailure],
-                    'Render pipeline submission callback and frame completion both failed',
-                    { cause: submissionCallbackFailure }
+                    completionFailures,
+                    'Submitted frame completion callbacks failed',
+                    {
+                        cause: completionFailures[0]
+                    }
                 );
             }
-            if (completionFailed) throw completionFailure;
-            if (submissionCallbackFailed) throw submissionCallbackFailure;
-            if (timelineFailed) throw timelineFailure;
         } catch (error) {
             firstFailure = error;
             failureCount = 1;
             if (lifecycleStarted) {
+                if (!submitted) {
+                    try {
+                        assertSynchronousResult(
+                            'Render pipeline frameDiscarded()',
+                            this.#runtime?.frameDiscarded?.(frameIndex)
+                        );
+                    } catch (cleanupError) {
+                        additionalFailures = [error, cleanupError];
+                        failureCount++;
+                    }
+                }
                 try {
-                    if (!submitted) this.#runtime?.frameDiscarded?.(frameIndex);
                     this.lifecycle.failFrame(error);
                 } catch (cleanupError) {
-                    additionalFailures = [error, cleanupError];
-                    failureCount = 2;
+                    additionalFailures ??= [error];
+                    additionalFailures.push(cleanupError);
+                    failureCount++;
                 }
             }
         } finally {
             this.#activeScope = null;
             if (lifecycleStarted) {
                 try {
-                    this.lifecycle.endFrame(submitted);
+                    this.lifecycle.endFrame(submissionSucceeded);
                 } catch (cleanupError) {
                     if (failureCount === 0) {
                         firstFailure = cleanupError;
@@ -496,7 +543,7 @@ export class RenderPipelineHost {
         this.#pipelineInvocationActive = false;
         const failures: unknown[] = [];
         try {
-            runtime?.destroy();
+            assertSynchronousResult('Render pipeline destroy()', runtime?.destroy());
         } catch (error) {
             failures.push(error);
         }

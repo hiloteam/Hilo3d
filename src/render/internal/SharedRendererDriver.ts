@@ -616,7 +616,8 @@ class SharedRendererDriver
     completeFrame(frameIndex: number, execution: RGExecutionResult, uploadCount: number): void {
         this.#lastSubmissionDone = execution.submission.done;
         const resources = this.requireResources();
-        if (this.#scriptableResourcesFrameStarted) {
+        const submissionSucceeded = execution.submission.status !== 'failed';
+        if (submissionSucceeded && this.#scriptableResourcesFrameStarted) {
             this.#scriptablePipelineResources.finalizeHistoryWrites(execution.graph);
         }
         for (const target of this.#usedTargets) {
@@ -626,6 +627,7 @@ class SharedRendererDriver
         if (this.hasFullscreenFrameWork()) {
             void resources.postProcess.fullscreen.trackSubmission(frameIndex, execution.submission);
         }
+        if (!submissionSucceeded) return;
         if (this.hasSurfaceWork() && this.requireSurface().state === 'acquired') {
             this.requireSurface().present();
         }
@@ -1265,7 +1267,8 @@ class SharedRendererDriver
                         processor.registry.resolve(prepared.texture).descriptor,
                         () => processor.registry.resolve(prepared.texture),
                         'persistent',
-                        true
+                        true,
+                        prepared.texture
                     );
                 });
                 scope.graph.addPass(textureUploadPass, handles);
@@ -1544,7 +1547,11 @@ class SharedRendererDriver
     storageBufferDestroyed(buffer: RendererStorageBuffer): void {
         if (!this.#storageBuffers.delete(buffer)) return;
         const resources = this.#resources;
-        if (resources !== null) resources.storageBuffers.detach(buffer);
+        if (resources !== null) {
+            const handle = resources.storageBuffers.getCachedHandle(buffer);
+            if (handle !== null) resources.scriptableBindGroups.invalidateResource(handle);
+            resources.storageBuffers.detach(buffer);
+        }
     }
 
     assertRenderTargetMutationAllowed(operation: string): void {

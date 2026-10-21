@@ -490,7 +490,7 @@ describe.each([
                 scope.graph.addPass(template, undefined);
             })
         ).toThrow(/changed after its first use/u);
-        await complete(backend);
+        expect(device.graphicsQueue.pendingSubmission()).toBeUndefined();
         expect(cache.active).toBe(false);
         expect(cache.diagnostics(uv, 'vertex')?.committedRevision).toBe(committedAliasRevision);
 

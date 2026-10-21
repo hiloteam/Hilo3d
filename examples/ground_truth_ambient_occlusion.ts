@@ -433,6 +433,14 @@ const mobileCameraPosition = new Hilo3d.Vector3(11.2, 4.65, 16.4);
 const viewTarget = new Hilo3d.Vector3(1.55, 0.18, -4.62);
 const initialCameraPosition = mobileLayout.matches ? mobileCameraPosition : desktopCameraPosition;
 
+const dragonModel = await new Hilo3d.GLTFLoader().load({
+    // Keep the external dragon.bin URI adjacent to its glTF in production builds. Resolving
+    // against import.meta.url would make Vite emit only the JSON into the hashed assets directory.
+    src: new URL('./models/dragon/dragon.gltf', location.href).href,
+    pbrMaterialDefaults: environment
+});
+await dragonModel.ready;
+
 const { stage, renderer, directionLight, ambientLight, orbitControls, ticker } =
     await createExampleContext({
         autoStart: false,
@@ -542,13 +550,6 @@ addPlinth(2.68, 0.3, warmIvory, -1.06, -4.93);
 addPlinth(2.28, 0.38, bronzeLine, -0.72, -4.96);
 addPlinth(2.14, 0.24, warmIvory, -0.43, -4.98);
 
-const dragonModel = await new Hilo3d.GLTFLoader().load({
-    // Keep the external dragon.bin URI adjacent to its glTF in production builds. Resolving
-    // against import.meta.url would make Vite emit only the JSON into the hashed assets directory.
-    src: new URL('./models/dragon/dragon.gltf', location.href).href,
-    pbrMaterialDefaults: environment
-});
-await dragonModel.ready;
 for (const mesh of dragonModel.meshes) {
     mesh.material = dragonClay;
     mesh.pointerEnabled = false;

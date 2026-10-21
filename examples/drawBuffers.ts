@@ -2,9 +2,10 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createTexturePreview } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = await createExampleContext({
+const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
+const { camera, stage, renderer } = context;
 const diffuseTexture = new Hilo3d.LazyTexture({
     src: new URL('./image/UV_Grid_Sm.jpg', import.meta.url).href
 });
@@ -16,6 +17,10 @@ boxGeometry.setAllRectUV([
     [0, 0]
 ]);
 
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
 const vertexShader = `#version 300 es
         precision highp float;
         in vec3 a_position;
@@ -39,6 +44,7 @@ const vertexShader = `#version 300 es
     `;
 const fragmentShader = `#version 300 es
         precision highp float;
+        ${portableCoordinateShader}
         uniform sampler2D u_diffuse;
         in vec2 v_texcoord0;
         in vec3 v_normal;
@@ -49,7 +55,7 @@ const fragmentShader = `#version 300 es
         layout(location = 3) out vec4 facingOutput;
 
         void main(void) {
-            vec3 diffuse = texture(u_diffuse, v_texcoord0).rgb;
+            vec3 diffuse = texture(u_diffuse, hiloTextureUV(v_texcoord0)).rgb;
             diffuseOutput = vec4(diffuse, 1.0);
             normalOutput = vec4(v_normal, 1.0);
             positionOutput = vec4(v_fragPos, 1.0);
@@ -124,6 +130,11 @@ const renderTarget = renderer.createRenderTarget({
     height: renderer.height,
     colorAttachments: Array.from({ length: 4 }, () => ({ format: 'rgba8unorm' as const })),
     label: 'DrawBuffers.gbuffer'
+});
+context.onDispose(() => {
+    renderTarget.destroy();
+    sceneNode.destroy(renderer, true);
+    diffuseTexture.destroy();
 });
 
 const previewRects = [

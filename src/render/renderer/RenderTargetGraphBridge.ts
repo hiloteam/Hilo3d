@@ -262,7 +262,9 @@ export class RenderTargetGraphBridge {
                     `${record.label} color ${String(index)}${record.sampleCount === 4 ? ' resolve' : ''}`,
                     color.readableDescriptor,
                     () => registry.resolve(readableHandle),
-                    'persistent'
+                    'persistent',
+                    true,
+                    readableHandle
                 );
                 cached.readableColors[index] = readableTexture;
             }
@@ -285,7 +287,9 @@ export class RenderTargetGraphBridge {
                     `${record.label} color ${String(index)}`,
                     color.textureDescriptor,
                     () => registry.resolve(textureHandle),
-                    'persistent'
+                    'persistent',
+                    true,
+                    textureHandle
                 );
             }
             let resolveTarget: RGTextureHandle | null = null;
@@ -338,7 +342,9 @@ export class RenderTargetGraphBridge {
                         `${record.label} depth-stencil`,
                         depth.textureDescriptor,
                         () => registry.resolve(depthHandle),
-                        'persistent'
+                        'persistent',
+                        true,
+                        depthHandle
                     );
                     cached.depthStencil = depthStencilAttachment;
                 }
@@ -423,7 +429,9 @@ export class RenderTargetGraphBridge {
                     `${record.label} color ${String(dependency.attachmentIndex)}${record.sampleCount === 4 ? ' resolve' : ''}`,
                     color.readableDescriptor,
                     () => registry.resolve(readableHandle),
-                    'persistent'
+                    'persistent',
+                    true,
+                    readableHandle
                 );
                 cached.readableColors[dependency.attachmentIndex] = readable;
             }
@@ -447,7 +455,9 @@ export class RenderTargetGraphBridge {
                 `${record.label} sampled depth-stencil`,
                 depth.textureDescriptor,
                 () => registry.resolve(depthHandle),
-                'persistent'
+                'persistent',
+                true,
+                depthHandle
             );
             cached.depthStencil = depthStencil;
         }

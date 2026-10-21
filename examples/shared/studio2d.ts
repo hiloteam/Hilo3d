@@ -1,5 +1,7 @@
 import * as Hilo3d from '../../src/Hilo3d';
 import { resolveExampleBackend } from './backend';
+import { ExampleTicker } from './ExampleTicker';
+import { installPageLifecycle } from './pageLifecycle';
 
 const EXHIBITS = [
     [
@@ -244,6 +246,7 @@ export interface StudioScene {
     readonly studio: Studio;
     addLayout(layout: (width: number, height: number) => void): void;
     start(): void;
+    dispose(): void;
 }
 
 /** Resize from the actual canvas pane, including responsive chrome and embedded galleries. */
@@ -251,22 +254,50 @@ export async function createStudioScene(
     studio: Studio,
     cameras?: readonly Hilo3d.Camera[]
 ): Promise<StudioScene> {
-    const activeCameras = cameras ?? [new Hilo3d.Camera2D({ width: 1000, height: 620 })];
-    const stage = await Hilo3d.Stage.create({
-        backend: resolveExampleBackend(),
-        container: studio.container,
-        cameras: activeCameras,
-        width: Math.max(1, studio.container.clientWidth),
-        height: Math.max(1, studio.container.clientHeight),
-        pixelRatio: Math.min(devicePixelRatio || 1, 2),
-        antialias: true,
-        alpha: false,
-        useInstanced: true,
-        clearColor: new Hilo3d.Color(0.009, 0.026, 0.033)
+    let ticker: ExampleTicker | undefined = undefined;
+    let observer: ResizeObserver | undefined = undefined;
+    let started = false;
+    let resumeScene: (() => void) | undefined;
+    const lifecycle = installPageLifecycle({
+        pause(): void {
+            ticker?.suspend();
+            observer?.disconnect();
+        },
+        resume(): void {
+            resumeScene?.();
+        },
+        dispose(): void {
+            ticker?.dispose();
+            observer?.disconnect();
+        }
     });
-    const ticker = new Hilo3d.Ticker(60);
+    const activeCameras = cameras ?? [new Hilo3d.Camera2D({ width: 1000, height: 620 })];
+    let stage: Hilo3d.Stage;
+    try {
+        stage = await Hilo3d.Stage.create({
+            backend: resolveExampleBackend(),
+            container: studio.container,
+            cameras: activeCameras,
+            width: Math.max(1, studio.container.clientWidth),
+            height: Math.max(1, studio.container.clientHeight),
+            pixelRatio: Math.min(devicePixelRatio || 1, 2),
+            antialias: true,
+            alpha: false,
+            useInstanced: true,
+            clearColor: new Hilo3d.Color(0.009, 0.026, 0.033)
+        });
+    } catch (error) {
+        lifecycle.dispose();
+        throw error;
+    }
+    lifecycle.onDispose(() => stage.destroy());
+    const sceneTicker = new ExampleTicker(60);
+    ticker = sceneTicker;
+    if (!lifecycle.active) sceneTicker.suspend();
+    if (lifecycle.disposed) sceneTicker.dispose();
     const layouts: ((width: number, height: number) => void)[] = [];
     const resize = (): void => {
+        if (!lifecycle.active) return;
         const width = Math.max(1, studio.container.clientWidth);
         const height = Math.max(1, studio.container.clientHeight);
         stage.resize(width, height);
@@ -276,34 +307,37 @@ export async function createStudioScene(
         }
         for (const layout of layouts) layout(width, height);
     };
-    const observer = new ResizeObserver(resize);
-    observer.observe(studio.container);
-    let started = false;
-    window.addEventListener('pagehide', () => {
-        ticker.pause();
-        observer.disconnect();
-    });
-    window.addEventListener('pageshow', event => {
-        if (event.persisted) {
-            observer.observe(studio.container);
-            ticker.resume();
-        }
+    const sceneObserver = new ResizeObserver(resize);
+    observer = sceneObserver;
+    if (lifecycle.active) sceneObserver.observe(studio.container);
+    resumeScene = (): void => {
+        sceneObserver.observe(studio.container);
+        resize();
+        sceneTicker.restore();
+    };
+    lifecycle.onDispose(() => {
+        layouts.length = 0;
+        resumeScene = undefined;
     });
     return {
         stage,
-        ticker,
+        ticker: sceneTicker,
         studio,
         addLayout(layout): void {
+            if (lifecycle.disposed) return;
             layouts.push(layout);
             layout(studio.container.clientWidth, studio.container.clientHeight);
         },
         start(): void {
-            if (started) return;
+            if (started || lifecycle.disposed) return;
             started = true;
             resize();
-            ticker.addTick(stage);
-            ticker.start();
+            sceneTicker.addTick(stage);
+            sceneTicker.start();
             studio.ready(stage.renderer.backend);
+        },
+        dispose(): void {
+            lifecycle.dispose();
         }
     };
 }

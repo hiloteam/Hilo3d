@@ -12,6 +12,7 @@ function submitEmptyFrame(
 ) {
     const context = device.graphicsQueue.beginFrame();
     batch.flush(context);
+    batch.validateSubmission(device);
     return device.graphicsQueue.endFrame(context);
 }
 

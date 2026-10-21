@@ -185,6 +185,36 @@ for (const backend of ['webgl2', 'webgpu'] as const) {
                 `glTF replacement graphics errors on ${backend}`
             );
 
+            await page.evaluate(() => {
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+            });
+            await waitForStableAnimationFrames(page);
+            const suspended = await currentProgress(page, backend);
+            await waitForStableAnimationFrames(page);
+            expect(await currentProgress(page, backend)).toEqual(suspended);
+            await expect(page.locator('body')).toHaveAttribute('data-model-ready', 'true');
+            await page.evaluate(() => {
+                window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            });
+            await expectActionProgress(
+                page,
+                backend,
+                suspended,
+                'glTF Viewer resumes retained model'
+            );
+            await page.evaluate(() => {
+                window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }));
+            });
+            await waitForStableAnimationFrames(page);
+            const disposed = await currentProgress(page, backend);
+            await waitForStableAnimationFrames(page);
+            expect(await currentProgress(page, backend)).toEqual(disposed);
+            await assertFinalGraphicsHealth(
+                page,
+                backend,
+                'glTF Viewer remains stopped after disposal'
+            );
+
             await page.goto('about:blank');
             failures.assertEmpty(`glTF Viewer lifecycle failures on ${backend}`);
         } finally {

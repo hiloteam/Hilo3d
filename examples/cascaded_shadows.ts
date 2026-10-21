@@ -676,14 +676,9 @@ setView('courtyard');
 setSceneMotion(true);
 ticker.start();
 document.body.dataset['csmReady'] = 'true';
-window.addEventListener(
-    'pagehide',
-    () => {
-        window.removeEventListener('keydown', handleKeyboard);
-        window.removeEventListener('resize', resizeView);
-        stage.canvas.removeEventListener('pointerdown', stopTour);
-        stage.canvas.removeEventListener('wheel', stopTour);
-        sceneContext.dispose();
-    },
-    { once: true }
-);
+sceneContext.onDispose(() => {
+    window.removeEventListener('keydown', handleKeyboard);
+    window.removeEventListener('resize', resizeView);
+    stage.canvas.removeEventListener('pointerdown', stopTour);
+    stage.canvas.removeEventListener('wheel', stopTour);
+});

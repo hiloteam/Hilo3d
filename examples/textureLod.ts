@@ -15,6 +15,10 @@ const diffuseTexture = new Hilo3d.LazyTexture({
     minFilter: Hilo3d.constants.LINEAR_MIPMAP_LINEAR
 });
 let elapsedTime = 0;
+const portableCoordinateShader = Hilo3d.Shader.shaders['method/portableCoordinates.glsl'];
+if (portableCoordinateShader === undefined) {
+    throw new Error('Portable coordinate shader helpers are unavailable');
+}
 Hilo3d.registerUniformBlockBinding('TextureLodModelBlock');
 Hilo3d.registerUniformBlockBinding('TextureLodMaterialBlock');
 const modelLayout = Hilo3d.createStd140Layout({ u_modelViewProjectionMatrix: 'mat4' });
@@ -44,6 +48,7 @@ const mesh = new Hilo3d.Mesh({
         },
         fs: `#version 300 es
                 precision highp float;
+                ${portableCoordinateShader}
                 in vec2 v_texcoord0;
                 uniform sampler2D u_diffuse;
                 layout(std140) uniform TextureLodMaterialBlock {
@@ -54,7 +59,7 @@ const mesh = new Hilo3d.Mesh({
                 void main(void) {
                     float uOffset = cos(u_time * 0.0001) + .5;
                     float level = (sin(u_time * 0.0013) * 0.5 + 0.5) * 9.;
-                    vec4 diffuse = textureLod(u_diffuse, vec2(v_texcoord0.x + uOffset, v_texcoord0.y), level);
+                    vec4 diffuse = textureLod(u_diffuse, hiloTextureUV(vec2(v_texcoord0.x + uOffset, v_texcoord0.y)), level);
                     fragmentColor = diffuse;
                 }
             `,

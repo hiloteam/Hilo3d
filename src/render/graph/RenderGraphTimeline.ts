@@ -68,7 +68,8 @@ interface MutablePassTimeline {
 /** @internal Frame-scoped recorder retained until optional GPU readback settles. */
 export class RenderGraphTimelineRecorder {
     readonly #passes: MutablePassTimeline[] = [];
-    readonly #resources: RenderGraphResourceLifetimeSnapshot[] = [];
+    #resources: readonly RenderGraphResourceLifetimeSnapshot[] = Object.freeze([]);
+    #timestampPassCount = 0;
     #recordDurationMs = 0;
     #compileDurationMs = 0;
     #prepareDurationMs = 0;
@@ -96,11 +97,7 @@ export class RenderGraphTimelineRecorder {
     }
 
     get timestampPassCount(): number {
-        let count = 0;
-        for (const pass of this.#passes) {
-            if (pass.kind !== null) count++;
-        }
-        return count;
+        return this.#timestampPassCount;
     }
 
     setRecordDuration(durationMs: number): void {
@@ -121,13 +118,15 @@ export class RenderGraphTimelineRecorder {
 
     captureGraph(graph: CompiledRenderGraph): void {
         this.#passes.length = 0;
+        this.#timestampPassCount = 0;
         for (const pass of graph.passes) {
             const kind = pass.template.timestampKind?.(pass.params) ?? null;
             this.#passes.push({ name: pass.name, kind, cpuDurationMs: 0, gpuDurationMs: null });
+            if (kind !== null) this.#timestampPassCount++;
         }
-        this.#resources.length = 0;
+        const resources: RenderGraphResourceLifetimeSnapshot[] = [];
         for (const resource of graph.resources) {
-            this.#resources.push(
+            resources.push(
                 Object.freeze({
                     name: resource.name,
                     kind: resource.kind,
@@ -137,6 +136,7 @@ export class RenderGraphTimelineRecorder {
                 })
             );
         }
+        this.#resources = Object.freeze(resources);
     }
 
     passKind(index: number): RGPassTimestampKind | null {
@@ -196,7 +196,7 @@ export class RenderGraphTimelineRecorder {
                 executeDurationMs: this.#executeDurationMs,
                 gpuStatus: this.#gpuStatus,
                 passes: Object.freeze(passes),
-                resources: Object.freeze([...this.#resources])
+                resources: this.#resources
             })
         );
         if (notification !== undefined) {

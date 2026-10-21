@@ -17,7 +17,7 @@ interface ExhibitOptions {
 
 export interface ExhibitRuntime extends Pick<
     ExampleContext,
-    'stage' | 'camera' | 'ticker' | 'orbitControls'
+    'stage' | 'camera' | 'ticker' | 'orbitControls' | 'onDispose'
 > {
     readonly material: (color: number, roughness?: number, metallic?: number) => Hilo3d.PBRMaterial;
     readonly box: (
@@ -241,40 +241,59 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
         direction: new Hilo3d.Vector3(0.7, -0.3, 0.8)
     }).addTo(stage);
     const maps = await loadDefaultEnvironmentMaps();
+    context.onDispose(() => maps.diffuseEnvMap.destroy());
+    context.onDispose(() => maps.specularEnvMap.destroy());
     const brdfLUT = await new Hilo3d.TextureLoader().load({
         src: new URL('../image/brdfLUT.png', import.meta.url).href
     });
+    context.onDispose(() => brdfLUT.destroy());
     const materials = new Map<string, Hilo3d.PBRMaterial>();
     const geometries = new Map<string, Hilo3d.Geometry>();
     const sphere = new Hilo3d.SphereGeometry({ radius: 1, widthSegments: 36, heightSegments: 24 });
     const cylinder = cylinderGeometry();
     const metricElements = new Map<string, HTMLElement>();
+    const sceneStatus = requireElement('#scene-status');
+    const liveState = requireElement('#live-state');
+    const engineInfo = requireElement('#engine-info');
     const world =
         stage.systems.getOptional(PHYSICS_WORLD_3D_SERVICE) ??
         stage.systems.get(PHYSICS_WORLD_2D_SERVICE);
+    engineInfo.textContent = `${stage.renderer.backend.toUpperCase()} / ${String(Math.round(1 / world.fixedTimeStep))} HZ`;
+    const inputEvents = new AbortController();
+    context.onDispose(() => {
+        inputEvents.abort();
+    });
     const action = (id: string, label: string, callback: () => void): HTMLButtonElement => {
         const button = document.createElement('button');
         button.id = id;
         button.type = 'button';
         button.textContent = label;
-        button.addEventListener('click', callback);
+        button.addEventListener('click', callback, { signal: inputEvents.signal });
         requireElement('#scene-actions').appendChild(button);
         return button;
     };
     const pause = requireElement('#pause');
-    pause.addEventListener('click', () => {
-        world.paused = !world.paused;
-        pause.textContent = world.paused ? '继续运行' : '暂停';
-        pause.setAttribute('aria-pressed', String(world.paused));
-        document.body.dataset['paused'] = String(world.paused);
-    });
+    pause.addEventListener(
+        'click',
+        () => {
+            world.paused = !world.paused;
+            pause.textContent = world.paused ? '继续运行' : '暂停';
+            pause.setAttribute('aria-pressed', String(world.paused));
+            document.body.dataset['paused'] = String(world.paused);
+        },
+        { signal: inputEvents.signal }
+    );
     const slow = requireElement('#slow');
-    slow.addEventListener('click', () => {
-        world.timeScale = world.timeScale === 1 ? 0.25 : 1;
-        slow.setAttribute('aria-pressed', String(world.timeScale !== 1));
-        slow.textContent = world.timeScale === 1 ? '慢动作' : '0.25 ×';
-        document.body.dataset['timeScale'] = String(world.timeScale);
-    });
+    slow.addEventListener(
+        'click',
+        () => {
+            world.timeScale = world.timeScale === 1 ? 0.25 : 1;
+            slow.setAttribute('aria-pressed', String(world.timeScale !== 1));
+            slow.textContent = world.timeScale === 1 ? '慢动作' : '0.25 ×';
+            document.body.dataset['timeScale'] = String(world.timeScale);
+        },
+        { signal: inputEvents.signal }
+    );
     const home = new Hilo3d.Vector3(...options.camera);
     const target = new Hilo3d.Vector3(...options.target);
     const resizeCamera = (): void => {
@@ -289,7 +308,9 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
             .querySelector<HTMLElement>('.chapter-link[aria-current="page"]')
             ?.scrollIntoView({ block: 'nearest', inline: 'center' });
     };
-    requireElement('#camera-home').addEventListener('click', resizeCamera);
+    requireElement('#camera-home').addEventListener('click', resizeCamera, {
+        signal: inputEvents.signal
+    });
     window.addEventListener('resize', resizeCamera);
     resizeCamera();
     let diagnosticTime = 0;
@@ -300,30 +321,23 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
             diagnosticTime = 0;
             const diagnostics = world.getDiagnostics();
             document.body.dataset['physicsSteps'] = String(diagnostics.simulatedSteps);
-            requireElement('#live-state').textContent = world.paused
-                ? 'SIMULATION PAUSED'
-                : 'LIVE SIMULATION';
-            requireElement('#engine-info').textContent =
-                `${stage.renderer.backend.toUpperCase()} / ${String(Math.round(1 / world.fixedTimeStep))} HZ`;
+            const status = world.paused ? 'SIMULATION PAUSED' : 'LIVE SIMULATION';
+            if (liveState.textContent !== status) liveState.textContent = status;
         }
     });
-    window.addEventListener('pagehide', (event: PageTransitionEvent) => {
-        if (event.persisted) {
-            ticker.stop();
-            return;
-        }
+    context.onDispose(() => {
         window.removeEventListener('resize', resizeCamera);
-        context.dispose();
-    });
-    window.addEventListener('pageshow', (event: PageTransitionEvent) => {
-        if (event.persisted) ticker.start();
     });
 
+    let started = false;
     const runtime: ExhibitRuntime = {
         stage,
         camera,
         ticker,
         orbitControls,
+        onDispose(cleanup): void {
+            context.onDispose(cleanup);
+        },
         action,
         material(color, roughness = 0.32, metallic = 0.12): Hilo3d.PBRMaterial {
             const key = [color, roughness, metallic].join('/');
@@ -432,12 +446,14 @@ export async function createPhysicsExhibit(options: ExhibitOptions): Promise<Exh
                 requireElement('#metrics').appendChild(item);
                 metricElements.set(key, output);
             }
-            output.textContent = value;
+            if (output.textContent !== value) output.textContent = value;
         },
         setStatus(text): void {
-            requireElement('#scene-status').textContent = text;
+            if (sceneStatus.textContent !== text) sceneStatus.textContent = text;
         },
         start(): void {
+            if (started || context.lifecycle.disposed) return;
+            started = true;
             document.body.dataset['exampleReady'] = 'true';
             document.body.dataset['paused'] = 'false';
             document.body.dataset['timeScale'] = '1';

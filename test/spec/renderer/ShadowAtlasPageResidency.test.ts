@@ -68,6 +68,7 @@ describe('ShadowAtlasPageResidency', () => {
         });
         const firstCommands = device.graphicsQueue.beginFrame();
         firstBatch.flush(firstCommands);
+        firstBatch.validateSubmission(device);
         const firstSubmission = device.graphicsQueue.endFrame(firstCommands);
         firstBatch.commit(firstSubmission);
         await firstSubmission.done;
@@ -101,6 +102,7 @@ describe('ShadowAtlasPageResidency', () => {
         expect(stagedReplacement.updateRegions).toEqual([failedRegion]);
         const replacementCommands = device.graphicsQueue.beginFrame();
         replacementBatch.flush(replacementCommands);
+        replacementBatch.validateSubmission(device);
         const replacementSubmission = device.graphicsQueue.endFrame(replacementCommands);
         replacementBatch.commit(replacementSubmission);
         await replacementSubmission.done;
@@ -124,6 +126,7 @@ describe('ShadowAtlasPageResidency', () => {
         groupedPages.stage(plan, decision('allocation', 1), [true], groupedAllocationBatch);
         const groupedAllocationCommands = device.graphicsQueue.beginFrame();
         groupedAllocationBatch.flush(groupedAllocationCommands);
+        groupedAllocationBatch.validateSubmission(device);
         const groupedAllocationSubmission =
             device.graphicsQueue.endFrame(groupedAllocationCommands);
         groupedAllocationBatch.commit(groupedAllocationSubmission);
@@ -171,6 +174,7 @@ describe('ShadowAtlasPageResidency', () => {
         const submit = async (batch: RHIUploadBatch): Promise<void> => {
             const commands = device.graphicsQueue.beginFrame();
             batch.flush(commands);
+            batch.validateSubmission(device);
             const submission = device.graphicsQueue.endFrame(commands);
             batch.commit(submission);
             await submission.done;

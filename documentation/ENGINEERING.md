@@ -272,23 +272,23 @@ Restored 事件顺序正确、选中的 `RenderTarget`
 identity 不变、已释放 texture 能重新上传，恢复后实际 draw/queue/readback 成功，且恢复前后 scene
 pixel 逐字节完全相等并区别于 clear color。
 
-### 102 个 HTML 的后端适用矩阵
+### HTML 入口的后端适用矩阵
 
 Playwright 递归扫描 `examples/`
-自动生成页面清单，不维护容易漏项的手工白名单。当前有 102 个 HTML，包含 100 个示例和两个画廊入口；86 个页面执行双后端，WebXR 执行 WebGL
-2，15 个页面执行 WebGPU，共 188 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
+自动生成页面清单，不维护容易漏项的手工白名单。当前有 98 个 HTML，包含 96 个示例和两个画廊入口；82 个页面执行双后端，WebXR 执行 WebGL
+2，15 个页面执行 WebGPU，共 180 个 page/backend 组合。WebGPU-only 范围包含 Bloom、两个 Clustered
 Forward+ 灯光场景、动态 GI、雨后茶寮、体积光、大气天气、阴影驻留、SSR、TAA、四个 compute 场景和 GPU 粒子星云；准确路径由
 `test/ui/example-paths.ts` 的 `WEBGPU_ONLY_EXAMPLE_PATHS`
 与独立合同锁定。这些是创建前的显式能力边界，不是初始化失败后的 runtime fallback。
 
 任何示例的后端适用范围发生变化时，必须同步更新
 `examples/shared/catalog.ts`、`test/ui/example-paths.ts` 和 `test/ui/example-paths.contract.ts`
-中的显式数量与例外集合，并在提交前运行
+中的 reviewed 数量与例外集合，并在提交前运行
 `npm run test:ui:contract`。画廊在任一首选后端下都展示完整 catalog，并为单后端条目标记 `WebGPU only`
 或
 `WebGL 2 only`；选择不兼容条目时，iframe 使用该条目唯一支持的后端。已有双后端页面改为单后端时，总 page/backend 测试组合数会减少一，但画廊条目总数保持不变。
 
-画廊对 99 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 27 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
+画廊对 96 个示例逐项维护标题、用途、主题与后端要求；缺失元数据、重复路径、已删除页面的残留条目都会令合同失败。默认展示 28 个精选；主题数量、搜索与后端筛选始终限定在当前 Highlights 或 All
 examples 集合内。主题数量同时反映搜索和后端条件，无结果的未选主题不显示；多词搜索支持顺序无关匹配及中文主题关键词。
 `q`、`category`、`collection`、`compatible`
 保存在画廊 URL 中，不传给示例；切换示例会清除上一个示例的专属参数。手机侧栏关闭后使用 `inert`
@@ -617,7 +617,7 @@ npm run validate
 
 `validate` 按顺序执行：清理生成物、旧 JavaScript/旧工具配置门禁、格式检查、typed
 lint、全部 TypeScript project
-references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、102 个 HTML 后端适用矩阵（86 个双后端、WebXR 显式 WebGL
+references、浏览器单测与覆盖率、库构建、两类 ESM 类型消费、98 个 HTML 后端适用矩阵（82 个双后端、WebXR 显式 WebGL
 2-only、15 个 compute、Clustered、GI、时序与粒子页面（包括 Bloom）显式 WebGPU-only）、双后端交互、WebGPU 深度运行时、双后端视觉回归、全部示例构建、TypeDoc 验证、API 签名比较、npm 包契约验证和 pack 文件检查。任一步失败都会阻止 CI 与发布。
 
 其中 shader 静态门禁会扫描 `src/shader/` 和示例中的 shader 源码：禁止 GLSL 1.00

@@ -33,7 +33,11 @@ function clipRect(rect: ScreenRect): readonly [number, number, number, number] {
     return [left, right, bottom, top];
 }
 
-/** Create a camera-independent screen-space mesh that participates in a normal scene render. */
+/**
+ * Create a camera-independent screen-space mesh that participates in a normal scene render.
+ * `screen.vert` converts geometry UVs with hiloRenderTargetUV once; fragments receive native
+ * render-target sampler coordinates and must not repeat that conversion.
+ */
 export function createScreenMesh(parameters: ScreenMeshParameters): Hilo3d.Mesh {
     const [left, right, bottom, top] = clipRect(
         parameters.rect ?? { x: 0, y: 0, width: 1, height: 1 }
@@ -94,6 +98,7 @@ export function createTexturePreview(
             uniform sampler2D u_texture;
             layout(location = 0) out vec4 fragmentColor;
             void main(void) {
+                // screen.vert already normalized this render-target coordinate.
                 fragmentColor = texture(u_texture, v_texcoord0);
             }
         `

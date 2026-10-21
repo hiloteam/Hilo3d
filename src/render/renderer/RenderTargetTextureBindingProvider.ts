@@ -1,7 +1,11 @@
 import { rebaseTextureExternalAllocation, type default as Texture } from '../../texture/Texture';
 import { isTexturePixelData, texturePixelDataToTypedArray } from '../../texture/texturePixelData';
 import { RGBA, UNSIGNED_BYTE } from '../../constants/webgl';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import {
     RHITextureUsage,
     isRHIExternalImageSource,
@@ -168,7 +172,7 @@ export class RenderTargetTextureBindingProvider
         }
     }
 
-    prepareCommit(submission: RHISubmission): void {
+    prepareCommit(submission: RHIUploadBatchCommitContext): void {
         const pending = this.#pending;
         if (pending === null) return;
         if (submission.status === 'failed') {
@@ -198,10 +202,10 @@ export class RenderTargetTextureBindingProvider
         }
     }
 
-    commit(submission: RHISubmission): void {
+    commit(submission: RHISubmission, prepared = false): void {
         const pending = this.#pending;
         if (pending === null) return;
-        this.prepareCommit(submission);
+        if (!prepared) this.prepareCommit(submission);
         this.#committedRevision = pending.sourceRevision;
         this.#allocation = pending;
         this.#pending = null;

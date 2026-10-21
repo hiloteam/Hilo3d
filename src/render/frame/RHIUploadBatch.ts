@@ -20,14 +20,18 @@ import {
 } from '../rhi/core';
 import type { FrameArena } from './FrameArena';
 
-type UploadBatchState = 'recording' | 'flushed';
+type UploadBatchState = 'recording' | 'flushed' | 'validated' | 'committed';
+
+/** Queue identity before submission, or the resulting submission during direct cache commits. */
+export type RHIUploadBatchCommitContext = Pick<RHISubmission, 'deviceId' | 'deviceGeneration'> &
+    Partial<Pick<RHISubmission, 'status' | 'error'>>;
 
 /** A stable renderer cache enlisted in the upload batch's frame transaction. */
 export interface RHIUploadBatchParticipant {
     /** Validate source stability and submission ownership without mutating committed state. */
-    prepareCommit(submission: RHISubmission): void;
-    /** Commit staged revisions after graph execution returned a submission. */
-    commit(submission: RHISubmission): void;
+    prepareCommit(context: RHIUploadBatchCommitContext): void;
+    /** Publish staged revisions. `prepared` skips validation already completed before submission. */
+    commit(submission: RHISubmission, prepared?: boolean): void;
     /** Discard staged metadata after build, prepare, or execute failure. */
     rollback(): void;
 }
@@ -110,6 +114,8 @@ export class RHIUploadBatch {
     #participantCount = 0;
     #viewStorageGeneration: number;
     #state: UploadBatchState = 'recording';
+    #validatedDeviceId = -1;
+    #validatedDeviceGeneration = -1;
 
     constructor(readonly arena: FrameArena) {
         this.#viewStorageGeneration = arena.storageGeneration;
@@ -437,23 +443,55 @@ export class RHIUploadBatch {
         this.#state = 'flushed';
     }
 
-    /** Commit every enlisted logical cache only after the graph returned a submission. */
-    commit(submission: RHISubmission): void {
+    /** Validate logical sources after pass execution, while the queue can still abort. */
+    validateSubmission(device: RHIDevice): void {
         if (this.#state !== 'flushed') {
-            throw new Error('RHI upload batch cannot commit before it is flushed');
+            throw new Error('RHI upload batch must be flushed before submission validation');
         }
+        for (let index = 0; index < this.#participantCount; index += 1) {
+            this.#participants[index]?.prepareCommit(device.graphicsQueue);
+        }
+        this.#validatedDeviceId = device.id;
+        this.#validatedDeviceGeneration = device.generation;
+        this.#state = 'validated';
+    }
+
+    /** Publish every participant after submission; one failure cannot skip later cleanup. */
+    commit(submission: RHISubmission): void {
+        if (this.#state !== 'validated') {
+            throw new Error('RHI upload batch cannot commit before submission validation');
+        }
+        if (submission.status === 'failed') {
+            this.rollback();
+            throw submission.error instanceof Error
+                ? submission.error
+                : new Error('Cannot commit a failed RHI submission', { cause: submission.error });
+        }
+        if (
+            submission.deviceId !== this.#validatedDeviceId ||
+            submission.deviceGeneration !== this.#validatedDeviceGeneration
+        ) {
+            throw new Error('Upload batch submission belongs to another device or generation');
+        }
+        this.#state = 'committed';
+        let failures: unknown[] | undefined;
         try {
             for (let index = 0; index < this.#participantCount; index += 1) {
-                this.#participants[index]?.prepareCommit(submission);
+                try {
+                    this.#participants[index]?.commit(submission, true);
+                } catch (error) {
+                    (failures ??= []).push(error);
+                }
             }
-            for (let index = 0; index < this.#participantCount; index += 1) {
-                this.#participants[index]?.commit(submission);
-            }
-        } catch (error) {
-            this.rollback();
-            throw error;
+        } finally {
+            this.clearParticipants();
         }
-        this.clearParticipants();
+        if (failures?.length === 1) throw failures[0];
+        if (failures !== undefined) {
+            throw new AggregateError(failures, 'Submitted upload participants failed to commit', {
+                cause: failures[0]
+            });
+        }
     }
 
     /** Roll back cache metadata; already-issued immediate hardware writes are retried next frame. */

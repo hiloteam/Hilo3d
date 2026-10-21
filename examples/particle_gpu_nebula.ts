@@ -1,11 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
 import { createExampleContext } from './shared/init';
-import {
-    createParticleTexture,
-    installExampleDisposal,
-    requireElement
-} from './shared/particleShowcase';
+import { createParticleTexture, requireElement } from './shared/particleShowcase';
 
 const testMode = new URLSearchParams(window.location.search).get('test') === '1';
 const stormCapacity = testMode ? 4_096 : 24_576;
@@ -537,6 +533,3 @@ horizon.onUpdate = deltaTime => {
 };
 
 document.body.dataset['particleExampleReady'] = 'true';
-installExampleDisposal(() => {
-    context.dispose();
-});

@@ -94,7 +94,8 @@ import {
     assertSynchronousResult,
     finiteViewport,
     graphBufferUsage,
-    normalizeBufferRange
+    normalizeBufferRange,
+    validateBufferRange
 } from './ScriptableRenderPipelineValidation';
 import type { ScriptableRenderPipelineResources } from './ScriptableRenderPipelineResources';
 import type { ScriptableRenderPipelineContextImpl } from './ScriptableRenderPipelineContext';
@@ -748,6 +749,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
     #activeSetupLease: ScriptablePassCallbackLease | null = null;
     #activePrepareLease: ScriptablePassCallbackLease | null = null;
     #activeExecuteLease: ScriptablePassCallbackLease | null = null;
+    #preparedExecuteLease: ScriptablePassCallbackLease | null = null;
+    #preparedExecuteContext: ScriptableRenderPassContextLease | null = null;
     readonly #prepareFullscreenDraw = (context: RGPrepareContext): void => {
         const fullscreenDraw = this.#fullscreenDraw;
         if (!this.#activeFullscreenDraw || fullscreenDraw === null) return;
@@ -806,6 +809,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         this.#pass = pass;
         this.#parameters = parameters;
         this.#capabilities = capabilities;
+        this.#preparedExecuteLease = null;
+        this.#preparedExecuteContext = null;
         this.#rangeCount = 0;
         this.#hasRasterAttachments = false;
         this.#hasTargetShape = false;
@@ -919,6 +924,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             this.#activeSetupLease = null;
             this.#activePrepareLease = null;
             this.#activeExecuteLease = null;
+            this.#preparedExecuteLease = null;
+            this.#preparedExecuteContext = null;
         }
     }
 
@@ -1599,6 +1606,8 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
     }
 
     private prepare(context: RGPrepareContext): void {
+        this.#preparedExecuteLease = null;
+        this.#preparedExecuteContext = null;
         const pass = this.requirePass();
         const parameters = this.requireParameters();
         this.requireOwner().services.recordScriptablePass(1);
@@ -1622,23 +1631,34 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
             }
         }
         if (this.#hasRasterAttachments) this.draw.prepareForExecute(context, pass.name);
+        // Allocate one immutable facade per invocation before command emission. Never reuse
+        // its token: a retained context must stay invalid when this high-water slot is reused.
+        const lease = Object.freeze({});
+        this.#preparedExecuteLease = lease;
+        this.#preparedExecuteContext = new ScriptableRenderPassContextLease(this, lease);
     }
 
     private execute(context: RGPassContext): void {
         const pass = this.requirePass();
         const parameters = this.requireParameters();
+        const lease = this.#preparedExecuteLease;
+        const callbackContext = this.#preparedExecuteContext;
+        this.#preparedExecuteLease = null;
+        this.#preparedExecuteContext = null;
+        if (lease === null || callbackContext === null) {
+            throw new Error('Scriptable pass execution was not prepared');
+        }
         this.#executionContext = context;
         this.#previousDraw = null;
         this.#encoder = this.#hasRasterAttachments ? this.draw.beginExecute(context) : null;
         const failures = this.#executionFailures;
         failures.length = 0;
-        const lease = Object.freeze({});
         this.#activeExecuteLease = lease;
         try {
             try {
                 assertSynchronousResult(
                     `${pass.name}.execute()`,
-                    pass.execute(new ScriptableRenderPassContextLease(this, lease), parameters)
+                    pass.execute(callbackContext, parameters)
                 );
             } finally {
                 this.#activeExecuteLease = null;
@@ -2360,19 +2380,17 @@ export class ScriptablePassSlot implements ScriptablePassAdapterTarget {
         if (this.#encoder !== null) {
             throw new Error('Buffer clears cannot execute inside a raster pass');
         }
-        const range = normalizeBufferRange(
-            this.requireOwner().requireBuffer(handle),
-            byteOffset,
-            byteLength,
-            'Buffer clear'
-        );
+        const bufferSize = this.requireOwner().requireBuffer(handle).byteLength;
+        const offset = byteOffset ?? 0;
+        const length = byteLength ?? bufferSize - offset;
+        validateBufferRange(bufferSize, offset, length, 'Buffer clear');
         let command: MutableBufferClearCommand | undefined;
         for (let index = 0; index < this.#bufferClearDeclarationCount; index += 1) {
             const candidate = this.bufferClearCommands[index];
             if (
                 candidate?.handle === handle &&
-                candidate.byteOffset === range.byteOffset &&
-                candidate.byteLength === range.byteLength
+                candidate.byteOffset === offset &&
+                candidate.byteLength === length
             ) {
                 command = candidate;
                 break;

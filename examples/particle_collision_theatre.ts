@@ -2,11 +2,7 @@ import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
 import { createExampleContext } from './shared/init';
 import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
-import {
-    createParticleTexture,
-    installExampleDisposal,
-    requireElement
-} from './shared/particleShowcase';
+import { createParticleTexture, requireElement } from './shared/particleShowcase';
 
 type RainPayload = Readonly<{
     position: Particle.ParticleVector3;
@@ -87,11 +83,14 @@ new Hilo3d.PointLight({
 }).addTo(stage);
 
 const { diffuseEnvMap, specularEnvMap } = await loadDefaultEnvironmentMaps();
+context.onDispose(() => diffuseEnvMap.destroy());
+context.onDispose(() => specularEnvMap.destroy());
 const brdfLUT = await new Hilo3d.TextureLoader().load({
     src: new URL('./image/brdfLUT.png', import.meta.url).href,
     wrapS: Hilo3d.constants.CLAMP_TO_EDGE,
     wrapT: Hilo3d.constants.CLAMP_TO_EDGE
 });
+context.onDispose(() => brdfLUT.destroy());
 const studioEnvironment = Object.freeze({
     brdfLUT,
     diffuseEnvMap: Object.freeze({ texture: diffuseEnvMap, encoding: 'srgb' as const }),
@@ -976,6 +975,13 @@ const pauseButton = requireElement('#pause-button', HTMLButtonElement);
 const restartButton = requireElement('#restart-button', HTMLButtonElement);
 const totals: Record<string, number> = {};
 let rainBurstIndex = 0;
+let readbackGeneration = 0;
+let readbackFailed = false;
+const inputEvents = new AbortController();
+context.onDispose(() => {
+    inputEvents.abort();
+    readbackGeneration++;
+});
 
 function rainRandom(index: number, channel: number): number {
     let value = (Math.imul(index + 1, 0x9e3779b1) ^ Math.imul(channel + 17, 0x85ebca6b)) >>> 0;
@@ -1018,73 +1024,109 @@ function launchMeteorRain(): void {
     });
 }
 
-burstButton.addEventListener('click', () => {
-    launchMeteorRain();
-});
-pauseButton.addEventListener('click', () => {
-    if (particles.playing) {
-        particles.pause();
-        pauseButton.textContent = 'Play';
-    } else {
-        particles.play();
+burstButton.addEventListener(
+    'click',
+    () => {
+        launchMeteorRain();
+    },
+    { signal: inputEvents.signal }
+);
+pauseButton.addEventListener(
+    'click',
+    () => {
+        if (particles.playing) {
+            particles.pause();
+            pauseButton.textContent = 'Play';
+        } else {
+            particles.play();
+            pauseButton.textContent = 'Pause';
+        }
+    },
+    { signal: inputEvents.signal }
+);
+restartButton.addEventListener(
+    'click',
+    () => {
+        readbackGeneration++;
+        readbackFailed = false;
+        particles.restart();
+        rainChannel.drain();
+        rainBurstIndex = 0;
         pauseButton.textContent = 'Pause';
-    }
-});
-restartButton.addEventListener('click', () => {
-    particles.restart();
-    rainChannel.drain();
-    rainBurstIndex = 0;
-    pauseButton.textContent = 'Pause';
-    for (const key of Object.keys(totals)) totals[key] = 0;
-});
+        for (const key of Object.keys(totals)) totals[key] = 0;
+    },
+    { signal: inputEvents.signal }
+);
 
 const canvas = stage.renderer.domElement;
 if (canvas === null) throw new Error('Particle collision theatre requires a presentation canvas');
 let pointerStart: Readonly<{ id: number; x: number; y: number }> | null = null;
-canvas.addEventListener('pointerdown', event => {
-    if (event.button === 0) {
-        pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
-    }
-});
-canvas.addEventListener('pointerup', event => {
-    if (pointerStart?.id !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
-    pointerStart = null;
-    if (distance <= 6) launchMeteorRain();
-});
-canvas.addEventListener('pointercancel', () => {
-    pointerStart = null;
-});
+canvas.addEventListener(
+    'pointerdown',
+    event => {
+        if (event.button === 0) {
+            pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        }
+    },
+    { signal: inputEvents.signal }
+);
+canvas.addEventListener(
+    'pointerup',
+    event => {
+        if (pointerStart?.id !== event.pointerId) return;
+        const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+        pointerStart = null;
+        if (distance <= 6) launchMeteorRain();
+    },
+    { signal: inputEvents.signal }
+);
+canvas.addEventListener(
+    'pointercancel',
+    () => {
+        pointerStart = null;
+    },
+    { signal: inputEvents.signal }
+);
 
 let readingEvents = false;
 let lastRead = 0;
 particles.onUpdate = () => {
     const now = performance.now();
-    if (readingEvents || now - lastRead < 140) return;
+    if (readbackFailed || readingEvents || now - lastRead < 140) return;
     lastRead = now;
     readingEvents = true;
-    void particles.readEvents(12_288).then(aggregate => {
-        for (const [name, count] of Object.entries(aggregate.counts)) {
-            totals[name] = (totals[name] ?? 0) + count;
-        }
-        const impactCount =
-            lanes.reduce((sum, lane) => sum + (totals[lane.event] ?? 0), 0) +
-            (totals['impact-rain'] ?? 0);
-        readout.textContent = [
-            'THE IMPACT REGISTER',
-            `${String(impactCount).padStart(6, '0')}  encounters`,
-            `${String(particles.aliveCount).padStart(6, '0')}  sparks in motion`,
-            '',
-            'Click the field to release rain'
-        ].join('\n');
-        readingEvents = false;
-    });
+    const generation = readbackGeneration;
+    void particles
+        .readEvents(12_288)
+        .then(
+            aggregate => {
+                if (context.lifecycle.disposed || generation !== readbackGeneration) return;
+                for (const [name, count] of Object.entries(aggregate.counts)) {
+                    totals[name] = (totals[name] ?? 0) + count;
+                }
+                const impactCount =
+                    lanes.reduce((sum, lane) => sum + (totals[lane.event] ?? 0), 0) +
+                    (totals['impact-rain'] ?? 0);
+                readout.textContent = [
+                    'THE IMPACT REGISTER',
+                    `${String(impactCount).padStart(6, '0')}  encounters`,
+                    `${String(particles.aliveCount).padStart(6, '0')}  sparks in motion`,
+                    '',
+                    'Click the field to release rain'
+                ].join('\n');
+            },
+            (error: unknown) => {
+                if (!context.lifecycle.disposed && generation === readbackGeneration) {
+                    readbackFailed = true;
+                    const reason = error instanceof Error ? error.message : String(error);
+                    readout.textContent = `THE IMPACT REGISTER\nEvent readback failed: ${reason}\nRestart to retry`;
+                    console.error('Particle event readback failed', error);
+                }
+            }
+        )
+        .finally(() => {
+            readingEvents = false;
+        });
 };
 
 document.body.dataset['particleExampleReady'] = 'true';
-installExampleDisposal(() => {
-    brdfLUT.destroy();
-    diffuseEnvMap.destroy();
-    specularEnvMap.destroy();
-    context.dispose();
-});

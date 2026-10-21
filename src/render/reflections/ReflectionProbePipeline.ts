@@ -38,6 +38,7 @@ import type {
     RenderPipelineDepthStencilAttachment
 } from '../pipeline/ScriptableRenderGraph';
 import type { RendererListHandle } from '../pipeline/RendererList';
+import { assertSynchronousResult } from '../internal/ScriptableRenderPipelineValidation';
 
 /** Bounded dynamic reflection capture around an existing shared rendering pipeline. */
 export interface ReflectionProbePipelineOptions {
@@ -220,20 +221,21 @@ class ReflectionProbePipeline implements RenderPipeline {
     #lastFrame = -1;
     #cursor = 0;
     #pending: PendingCapture | null = null;
+    #destroyed = false;
 
     constructor(
         readonly inner: RenderPipeline,
         readonly options: Readonly<Settings>,
         context: RenderPipelineCreateContext
     ) {
-        this.#filters = Array.from({ length: options.levels }, (_, index) =>
-            createReflectionFilterPass(
-                options.resolution,
-                index / (options.levels - 1),
-                options.samples
-            )
-        );
         try {
+            this.#filters = Array.from({ length: options.levels }, (_, index) =>
+                createReflectionFilterPass(
+                    options.resolution,
+                    index / (options.levels - 1),
+                    options.samples
+                )
+            );
             for (const probe of options.probes) {
                 const state = reflectionProbeState(probe);
                 if (state.owner !== null)
@@ -288,7 +290,21 @@ class ReflectionProbePipeline implements RenderPipeline {
                 });
             }
         } catch (error) {
-            this.destroy();
+            let cleanupFailure: unknown;
+            let cleanupFailed = false;
+            try {
+                this.destroy();
+            } catch (failure) {
+                cleanupFailed = true;
+                cleanupFailure = failure;
+            }
+            if (cleanupFailed) {
+                throw new AggregateError(
+                    [error, cleanupFailure],
+                    'Reflection pipeline creation and cleanup failed',
+                    { cause: error }
+                );
+            }
             throw error;
         }
     }
@@ -298,18 +314,12 @@ class ReflectionProbePipeline implements RenderPipeline {
     }
 
     record(context: RenderPipelineContext): void {
+        if (this.#destroyed) throw new Error('Cannot record a destroyed reflection pipeline');
         if (context.frameIndex !== this.#lastFrame) {
             this.#lastFrame = context.frameIndex;
             this.recordCaptures(context);
         }
-        const result: unknown = this.inner.record(context);
-        if (
-            result !== null &&
-            (typeof result === 'object' || typeof result === 'function') &&
-            typeof Reflect.get(result, 'then') === 'function'
-        ) {
-            throw new TypeError('Wrapped reflection pipeline record() must be synchronous');
-        }
+        assertSynchronousResult('Wrapped reflection pipeline record()', this.inner.record(context));
     }
 
     private recordCaptures(context: RenderPipelineContext): void {
@@ -443,7 +453,33 @@ class ReflectionProbePipeline implements RenderPipeline {
     }
 
     frameSubmitted(frameIndex: number): void {
-        this.inner.frameSubmitted?.(frameIndex);
+        let publicationFailure: unknown;
+        let publicationFailed = false;
+        try {
+            this.publishCapture();
+        } catch (error) {
+            publicationFailed = true;
+            publicationFailure = error;
+        }
+        try {
+            assertSynchronousResult(
+                'Wrapped reflection pipeline frameSubmitted()',
+                this.inner.frameSubmitted?.(frameIndex)
+            );
+        } catch (error) {
+            if (publicationFailed) {
+                throw new AggregateError(
+                    [publicationFailure, error],
+                    'Reflection pipeline submission callbacks failed',
+                    { cause: error }
+                );
+            }
+            throw error;
+        }
+        if (publicationFailed) throw publicationFailure;
+    }
+
+    private publishCapture(): void {
         const pending = this.#pending;
         this.#pending = null;
         if (pending === null) return;
@@ -454,10 +490,12 @@ class ReflectionProbePipeline implements RenderPipeline {
             capture.revision = pending.revision;
             return;
         }
-        capture.front = capture.front === 0 ? 1 : 0;
-        const target = capture.filtered[capture.front];
+        const front = capture.front === 0 ? 1 : 0;
+        const target = capture.filtered[front];
+        const texture = target.getColorTexture();
         const state = reflectionProbeState(capture.probe);
-        state.texture = target.getColorTexture();
+        capture.front = front;
+        state.texture = texture;
         state.atlasWidth = target.width;
         state.atlasHeight = target.height;
         state.maxLod = this.options.levels - 1;
@@ -474,14 +512,23 @@ class ReflectionProbePipeline implements RenderPipeline {
     frameDiscarded(frameIndex: number): void {
         this.#pending = null;
         this.#lastFrame = -1;
-        this.inner.frameDiscarded?.(frameIndex);
+        assertSynchronousResult(
+            'Wrapped reflection pipeline frameDiscarded()',
+            this.inner.frameDiscarded?.(frameIndex)
+        );
     }
 
-    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
-        this.inner.recordRenderGraphTimeline?.(snapshot);
+    recordRenderGraphTimeline(
+        snapshot: Readonly<RenderGraphTimelineSnapshot>
+    ): void | Promise<void> {
+        return this.inner.recordRenderGraphTimeline?.(snapshot);
     }
 
     destroy(): void {
+        if (this.#destroyed) return;
+        this.#destroyed = true;
+        this.#pending = null;
+        const failures: unknown[] = [];
         for (const probe of this.options.probes) {
             const state = reflectionProbeState(probe);
             if (state.owner === this) {
@@ -489,9 +536,28 @@ class ReflectionProbePipeline implements RenderPipeline {
                 state.owner = null;
             }
         }
-        for (const target of this.#targets) target.destroy();
+        for (const target of this.#targets) {
+            try {
+                target.destroy();
+            } catch (error) {
+                failures.push(error);
+            }
+        }
         this.#targets.length = 0;
-        this.inner.destroy();
+        this.#captures.length = 0;
+        this.#excluded.length = 0;
+        try {
+            const inner: { destroy(): unknown } = this.inner;
+            assertSynchronousResult('Wrapped reflection pipeline destroy()', inner.destroy());
+        } catch (error) {
+            failures.push(error);
+        }
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) {
+            throw new AggregateError(failures, 'Reflection pipeline cleanup failed', {
+                cause: failures[0]
+            });
+        }
     }
 }
 

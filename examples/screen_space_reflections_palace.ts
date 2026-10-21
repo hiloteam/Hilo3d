@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 import { loadDefaultEnvironmentMaps } from './shared/defaultEnvironment';
 
 interface ReflectionPalaceEvidence {
@@ -144,7 +148,7 @@ const camera = new Hilo3d.PerspectiveCamera({
 });
 
 document.body.dataset['ssrPhase'] = 'creating-stage';
-const stage = await Hilo3d.Stage.create<'webgpu'>({
+const runtime = await createExampleStage<'webgpu'>({
     backend: 'webgpu',
     container,
     camera,
@@ -156,189 +160,196 @@ const stage = await Hilo3d.Stage.create<'webgpu'>({
     clearColor: new Hilo3d.Color(0.0012, 0.001, 0.0018),
     renderingProfile: 'high-end',
     renderPipeline: factory
+}).catch((error: unknown) => {
+    if (error instanceof ExampleInitializationCancelledError) return null;
+    throw error;
 });
-document.body.dataset['ssrPhase'] = 'building-atelier';
+if (runtime !== null) {
+    const { stage, ticker, lifecycle } = runtime;
+    document.body.dataset['ssrPhase'] = 'building-atelier';
 
-new Hilo3d.AmbientLight({
-    amount: 0.18,
-    color: new Hilo3d.Color(0.25, 0.28, 0.36)
-}).addTo(stage);
-new Hilo3d.DirectionalLight({
-    amount: 1.65,
-    color: new Hilo3d.Color(1, 0.86, 0.76),
-    direction: new Hilo3d.Vector3(-0.34, -0.91, -0.2)
-}).addTo(stage);
+    new Hilo3d.AmbientLight({
+        amount: 0.18,
+        color: new Hilo3d.Color(0.25, 0.28, 0.36)
+    }).addTo(stage);
+    new Hilo3d.DirectionalLight({
+        amount: 1.65,
+        color: new Hilo3d.Color(1, 0.86, 0.76),
+        direction: new Hilo3d.Vector3(-0.34, -0.91, -0.2)
+    }).addTo(stage);
 
-new Hilo3d.PointLight({
-    amount: 3.8,
-    range: 12,
-    color: new Hilo3d.Color(1, 0.78, 0.64),
-    x: 3.8,
-    y: 3.2,
-    z: 1.6
-}).addTo(stage);
+    new Hilo3d.PointLight({
+        amount: 3.8,
+        range: 12,
+        color: new Hilo3d.Color(1, 0.78, 0.64),
+        x: 3.8,
+        y: 3.2,
+        z: 1.6
+    }).addTo(stage);
 
-const floor = new Hilo3d.Mesh({
-    geometry: floorGeometry,
-    material: floorMaterial,
-    y: -1.76,
-    z: -4.4,
-    rotationX: -90,
-    pointerEnabled: false,
-    frustumTest: false
-}).addTo(stage);
-floor.receiveShadows = false;
+    const floor = new Hilo3d.Mesh({
+        geometry: floorGeometry,
+        material: floorMaterial,
+        y: -1.76,
+        z: -4.4,
+        rotationX: -90,
+        pointerEnabled: false,
+        frustumTest: false
+    }).addTo(stage);
+    floor.receiveShadows = false;
 
-new Hilo3d.Mesh({
-    geometry: gpuEvidenceGeometry,
-    material: gpuEvidenceMaterial,
-    y: -1.94,
-    z: -5.4,
-    pointerEnabled: false
-}).addTo(stage);
+    new Hilo3d.Mesh({
+        geometry: gpuEvidenceGeometry,
+        material: gpuEvidenceMaterial,
+        y: -1.94,
+        z: -5.4,
+        pointerEnabled: false
+    }).addTo(stage);
 
-new Hilo3d.Mesh({
-    geometry: new Hilo3d.SphereGeometry({ radius: 30, widthSegments: 64, heightSegments: 32 }),
-    material: new Hilo3d.PBRMaterial({
-        unlit: true,
-        baseColor: new Hilo3d.Color(0.008, 0.0068, 0.01),
-        metallic: 0,
-        roughness: 1,
-        cullMode: 'front'
-    }),
-    y: 0.5,
-    z: -5.4,
-    pointerEnabled: false,
-    frustumTest: false
-}).addTo(stage);
+    new Hilo3d.Mesh({
+        geometry: new Hilo3d.SphereGeometry({ radius: 30, widthSegments: 64, heightSegments: 32 }),
+        material: new Hilo3d.PBRMaterial({
+            unlit: true,
+            baseColor: new Hilo3d.Color(0.008, 0.0068, 0.01),
+            metallic: 0,
+            roughness: 1,
+            cullMode: 'front'
+        }),
+        y: 0.5,
+        z: -5.4,
+        pointerEnabled: false,
+        frustumTest: false
+    }).addTo(stage);
 
-const carBounds = carModel.node.getBounds();
-if (carBounds === undefined) throw new Error('Khronos Car Concept has no renderable bounds');
-const carLargestDimension = Math.max(carBounds.width, carBounds.height, carBounds.depth);
-if (!Number.isFinite(carLargestDimension) || carLargestDimension <= 0) {
-    throw new RangeError('Khronos Car Concept has invalid bounds');
-}
-const carScale = 7.7 / carLargestDimension;
-carModel.node.setScale(carScale);
-carModel.node.setPosition(
-    -carBounds.x * carScale + 1.05,
-    -carBounds.y * carScale + carBounds.height * carScale * 0.5 - 1.755,
-    -carBounds.z * carScale - 5.4
-);
-carModel.node.rotationY = -16;
-for (const mesh of carModel.meshes) {
-    mesh.pointerEnabled = false;
-    mesh.frustumTest = false;
-}
-carModel.node.addTo(stage);
-
-const controls = new Hilo3d.OrbitControls(stage, {
-    camera,
-    target: new Hilo3d.Vector3(0.15, -0.85, -5.35),
-    enablePan: false,
-    enableZoom: false,
-    minDistance: 12.5,
-    maxDistance: 18,
-    minPolarAngle: Math.PI * 0.34,
-    maxPolarAngle: Math.PI * 0.495,
-    rotateSpeed: 0.42,
-    zoomSpeed: 0.68
-});
-const heroView = new Hilo3d.Vector3(10.8, 2.15, 6.55);
-const heroTarget = new Hilo3d.Vector3(0.15, -0.85, -5.35);
-controls.setView(heroView, heroTarget);
-
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(stage);
-
-async function stepFrames(frameCount: number): Promise<void> {
-    ticker.stop();
-    for (let frame = 0; frame < frameCount; frame += 1) {
-        stage.tick(1000 / 60);
-        await stage.renderer.waitForIdle();
+    const carBounds = carModel.node.getBounds();
+    if (carBounds === undefined) throw new Error('Khronos Car Concept has no renderable bounds');
+    const carLargestDimension = Math.max(carBounds.width, carBounds.height, carBounds.depth);
+    if (!Number.isFinite(carLargestDimension) || carLargestDimension <= 0) {
+        throw new RangeError('Khronos Car Concept has invalid bounds');
     }
-}
-
-function toggleReflections(): void {
-    const nextUrl = new URL(location.href);
-    if (reflectionsEnabled) nextUrl.searchParams.set('ssr', 'false');
-    else nextUrl.searchParams.delete('ssr');
-    location.assign(nextUrl);
-}
-
-ssrToggle.setAttribute('aria-pressed', String(reflectionsEnabled));
-ssrToggleLabel.textContent = reflectionsEnabled ? 'SSR on' : 'SSR off';
-ssrToggle.addEventListener('click', toggleReflections);
-
-const resize = (): void => {
-    camera.aspect = innerWidth / Math.max(innerHeight, 1);
-    camera.fov = cameraFieldOfView(camera.aspect);
-    stage.resize(innerWidth, innerHeight, renderPixelRatio(innerWidth, innerHeight));
-};
-window.addEventListener('resize', resize);
-
-document.body.dataset['ssrPhase'] = 'warming-history';
-await stepFrames(reflectionsEnabled ? 20 : 4);
-const diagnostics = await factory.readDiagnostics();
-window.__HILO3D_SSR_PALACE_RESULT__ = {
-    backend: 'webgpu',
-    objectCount: diagnostics.objectCount,
-    fallbackObjectCount: diagnostics.fallbackObjectCount,
-    visibleObjectCount: diagnostics.visibleObjectCount,
-    hiZValid: diagnostics.hiZValid,
-    activeTileCount: diagnostics.screenSpaceReflectionActiveTileCount,
-    activePixelCount: diagnostics.screenSpaceReflectionActivePixelCount,
-    hitPixelCount: diagnostics.screenSpaceReflectionHitPixelCount,
-    missPixelCount: diagnostics.screenSpaceReflectionMissPixelCount,
-    uncertainPixelCount: diagnostics.screenSpaceReflectionUncertainPixelCount,
-    backfaceRejectedPixelCount: diagnostics.screenSpaceReflectionBackfaceRejectedPixelCount,
-    historyAcceptedPixelCount: diagnostics.screenSpaceReflectionHistoryAcceptedPixelCount,
-    historyRejectedPixelCount: diagnostics.screenSpaceReflectionHistoryRejectedPixelCount,
-    resolutionScale: 0.5,
-    screenSpaceReflections: reflectionsEnabled,
-    temporalAA: true,
-    surfaceFinish: 'smoked lacquer',
-    heroAsset: 'Khronos Car Concept'
-};
-window.__HILO3D_SSR_PALACE_TEST_API__ = {
-    async settle(frames = 8): Promise<void> {
-        await stepFrames(frames);
-    },
-    async moveCamera(): Promise<void> {
-        controls.setView(new Hilo3d.Vector3(9.35, 1.08, 5.05), heroTarget);
-        await stepFrames(1);
-    },
-    async setGrazingCamera(): Promise<void> {
-        controls.setView(new Hilo3d.Vector3(9.85, -0.49, 5.45), heroTarget);
-        await stepFrames(1);
-    },
-    async moveHero(deltaX = 0.32): Promise<void> {
-        carModel.node.x += deltaX;
-        await stepFrames(1);
-    },
-    async setFloorRoughness(value: number): Promise<number> {
-        floorMaterial.roughness = value;
-        await stepFrames(2);
-        return (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount;
+    const carScale = 7.7 / carLargestDimension;
+    carModel.node.setScale(carScale);
+    carModel.node.setPosition(
+        -carBounds.x * carScale + 1.05,
+        -carBounds.y * carScale + carBounds.height * carScale * 0.5 - 1.755,
+        -carBounds.z * carScale - 5.4
+    );
+    carModel.node.rotationY = -16;
+    for (const mesh of carModel.meshes) {
+        mesh.pointerEnabled = false;
+        mesh.frustumTest = false;
     }
-};
-statusLabel.textContent = reflectionsEnabled
-    ? 'reflection history stable'
-    : 'environment reflections only';
-document.body.dataset['ssrReady'] = 'true';
-document.body.dataset['ssrPhase'] = 'ready';
-if (!testMode) ticker.start();
+    carModel.node.addTo(stage);
 
-window.addEventListener(
-    'pagehide',
-    () => {
+    const controls = new Hilo3d.OrbitControls(stage, {
+        camera,
+        target: new Hilo3d.Vector3(0.15, -0.85, -5.35),
+        enablePan: false,
+        enableZoom: false,
+        minDistance: 12.5,
+        maxDistance: 18,
+        minPolarAngle: Math.PI * 0.34,
+        maxPolarAngle: Math.PI * 0.495,
+        rotateSpeed: 0.42,
+        zoomSpeed: 0.68
+    });
+    const heroView = new Hilo3d.Vector3(10.8, 2.15, 6.55);
+    const heroTarget = new Hilo3d.Vector3(0.15, -0.85, -5.35);
+    controls.setView(heroView, heroTarget);
+
+    ticker.removeTick(stage);
+    lifecycle.onDispose(() => {
         window.removeEventListener('resize', resize);
-        ticker.stop();
         controls.dispose();
-        stage.destroy();
-    },
-    { once: true }
-);
+    });
+    const isDisposed = (): boolean => lifecycle.disposed;
+    ticker.addTick(stage);
+
+    async function stepFrames(frameCount: number): Promise<void> {
+        ticker.stop();
+        for (let frame = 0; frame < frameCount; frame += 1) {
+            if (isDisposed()) throw new Error('Example was disposed during frame settling');
+            stage.tick(1000 / 60);
+            await stage.renderer.waitForIdle();
+        }
+    }
+
+    function toggleReflections(): void {
+        const nextUrl = new URL(location.href);
+        if (reflectionsEnabled) nextUrl.searchParams.set('ssr', 'false');
+        else nextUrl.searchParams.delete('ssr');
+        location.assign(nextUrl);
+    }
+
+    ssrToggle.setAttribute('aria-pressed', String(reflectionsEnabled));
+    ssrToggleLabel.textContent = reflectionsEnabled ? 'SSR on' : 'SSR off';
+    ssrToggle.addEventListener('click', toggleReflections);
+
+    const resize = (): void => {
+        camera.aspect = innerWidth / Math.max(innerHeight, 1);
+        camera.fov = cameraFieldOfView(camera.aspect);
+        stage.resize(innerWidth, innerHeight, renderPixelRatio(innerWidth, innerHeight));
+    };
+    window.addEventListener('resize', resize);
+
+    try {
+        document.body.dataset['ssrPhase'] = 'warming-history';
+        await stepFrames(reflectionsEnabled ? 20 : 4);
+        if (isDisposed()) throw new Error('Example was disposed during initialization');
+        const diagnostics = await factory.readDiagnostics();
+        if (isDisposed()) throw new Error('Example was disposed during initialization');
+        window.__HILO3D_SSR_PALACE_RESULT__ = {
+            backend: 'webgpu',
+            objectCount: diagnostics.objectCount,
+            fallbackObjectCount: diagnostics.fallbackObjectCount,
+            visibleObjectCount: diagnostics.visibleObjectCount,
+            hiZValid: diagnostics.hiZValid,
+            activeTileCount: diagnostics.screenSpaceReflectionActiveTileCount,
+            activePixelCount: diagnostics.screenSpaceReflectionActivePixelCount,
+            hitPixelCount: diagnostics.screenSpaceReflectionHitPixelCount,
+            missPixelCount: diagnostics.screenSpaceReflectionMissPixelCount,
+            uncertainPixelCount: diagnostics.screenSpaceReflectionUncertainPixelCount,
+            backfaceRejectedPixelCount: diagnostics.screenSpaceReflectionBackfaceRejectedPixelCount,
+            historyAcceptedPixelCount: diagnostics.screenSpaceReflectionHistoryAcceptedPixelCount,
+            historyRejectedPixelCount: diagnostics.screenSpaceReflectionHistoryRejectedPixelCount,
+            resolutionScale: 0.5,
+            screenSpaceReflections: reflectionsEnabled,
+            temporalAA: true,
+            surfaceFinish: 'smoked lacquer',
+            heroAsset: 'Khronos Car Concept'
+        };
+        window.__HILO3D_SSR_PALACE_TEST_API__ = {
+            async settle(frames = 8): Promise<void> {
+                await stepFrames(frames);
+            },
+            async moveCamera(): Promise<void> {
+                controls.setView(new Hilo3d.Vector3(9.35, 1.08, 5.05), heroTarget);
+                await stepFrames(1);
+            },
+            async setGrazingCamera(): Promise<void> {
+                controls.setView(new Hilo3d.Vector3(9.85, -0.49, 5.45), heroTarget);
+                await stepFrames(1);
+            },
+            async moveHero(deltaX = 0.32): Promise<void> {
+                carModel.node.x += deltaX;
+                await stepFrames(1);
+            },
+            async setFloorRoughness(value: number): Promise<number> {
+                floorMaterial.roughness = value;
+                await stepFrames(2);
+                return (await factory.readDiagnostics()).screenSpaceReflectionActivePixelCount;
+            }
+        };
+        statusLabel.textContent = reflectionsEnabled
+            ? 'reflection history stable'
+            : 'environment reflections only';
+        document.body.dataset['ssrReady'] = 'true';
+        document.body.dataset['ssrPhase'] = 'ready';
+        if (!testMode) ticker.start();
+    } catch (error) {
+        if (!isDisposed()) throw error;
+    }
+}
 
 declare global {
     interface Window {

@@ -1,7 +1,7 @@
 import * as Hilo3d from '../src/Hilo3d';
 import * as Particle from '@hilo/addon-particle';
 import { createExampleContext } from './shared/init';
-import { createParticleTexture, installExampleDisposal } from './shared/particleShowcase';
+import { createParticleTexture } from './shared/particleShowcase';
 
 const context = await createExampleContext({
     autoStart: false,
@@ -492,7 +492,6 @@ fitOrbit();
 window.addEventListener('resize', fitOrbit);
 context.ticker.start();
 document.body.dataset['particleExampleReady'] = 'true';
-installExampleDisposal(() => {
+context.onDispose(() => {
     window.removeEventListener('resize', fitOrbit);
-    context.dispose();
 });

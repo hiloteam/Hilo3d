@@ -1,7 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 
-const { stage } = await createExampleContext();
+const context = await createExampleContext();
+const { stage, lifecycle } = context;
 
 const loader = new Hilo3d.GLTFLoader();
 loader
@@ -9,10 +10,17 @@ loader
         src: './models/Tmall/Tmall.gltf'
     })
     .then(model => {
+        context.onDispose(() => {
+            model.anim?.destroy();
+            model.node.destroy(stage.renderer);
+            for (const texture of model.textures) texture.destroy();
+        });
+        if (lifecycle.disposed) return;
         model.node.setScale(0.002);
         stage.addChild(model.node);
     })
     .catch((error: unknown) => {
+        if (lifecycle.disposed) return;
         queueMicrotask(() => {
             throw error;
         });
@@ -21,6 +29,9 @@ loader
 const meshPickerHelper = new Hilo3d.MeshPicker({
     stage
 });
+context.onDispose(() => {
+    meshPickerHelper.destroy();
+});
 
 interface SelectedMeshState {
     mesh: Hilo3d.Mesh;
@@ -28,6 +39,7 @@ interface SelectedMeshState {
 }
 
 let selection: SelectedMeshState | null = null;
+let selectionRevision = 0;
 
 function clearSelection(): void {
     if (!selection) return;
@@ -36,9 +48,12 @@ function clearSelection(): void {
 }
 
 stage.canvas.addEventListener('click', event => {
+    if (!lifecycle.active) return;
+    const revision = ++selectionRevision;
     void meshPickerHelper
         .getSelection(event.offsetX, event.offsetY)
         .then(meshes => {
+            if (!lifecycle.active || revision !== selectionRevision) return;
             const mesh = meshes[0];
             if (!mesh || mesh === selection?.mesh) {
                 clearSelection();
@@ -53,6 +68,7 @@ stage.canvas.addEventListener('click', event => {
             mesh.setScale(mesh.scaleX * 1.08, mesh.scaleY * 1.08, mesh.scaleZ * 1.08);
         })
         .catch((error: unknown) => {
+            if (lifecycle.disposed) return;
             queueMicrotask(() => {
                 throw error;
             });

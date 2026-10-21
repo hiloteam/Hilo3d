@@ -601,14 +601,15 @@ let waitRemaining = 0;
 let nextAutoDestination = 0;
 
 function updatePathDots(): void {
-    pathDots.forEach((dot, index) => {
+    for (let index = 0; index < pathDots.length; index++) {
+        const dot = pathDots[index];
+        if (dot === undefined) continue;
         const tile = route[index + routeIndex];
         dot.visible = showRoute && tile !== undefined;
-        if (tile) {
-            const [x, y] = tileCenter(tile);
-            dot.setPosition(x, y, 0);
+        if (dot.visible && tile !== undefined) {
+            dot.setPosition((tile.column + 0.5) * TILE_SIZE, (tile.row + 0.5) * TILE_SIZE, 0);
         }
-    });
+    }
 }
 
 function setCourierFrame(row: number, frame: number): void {
@@ -642,13 +643,15 @@ function planRoute(destination: TilePoint, clicked: boolean): void {
 const courierController = {
     tick(deltaTime: number): void {
         const safeDelta = Math.min(Math.max(deltaTime, 0), 50) * speed;
-        yMetric.value = String(Math.round(courier.y));
-        stepsMetric.value = String(Math.max(0, route.length - routeIndex));
-        updatePathDots();
+        const yValue = String(Math.round(courier.y));
+        if (yMetric.value !== yValue) yMetric.value = yValue;
+        const stepsValue = String(Math.max(0, route.length - routeIndex));
+        if (stepsMetric.value !== stepsValue) stepsMetric.value = stepsValue;
         if (pose !== '自由寻路') return;
         if (routeIndex >= route.length) {
             if (route.length > 0) {
                 route = [];
+                updatePathDots();
                 destinationMarker.visible = false;
                 waitRemaining = 650;
                 walkFrame = 0;
@@ -665,11 +668,13 @@ const courierController = {
             return;
         }
 
+        const previousRouteIndex = routeIndex;
         let remainingDistance = (CHARACTER_SPEED * safeDelta) / 1000;
         while (remainingDistance > 0 && routeIndex < route.length) {
             const target = route[routeIndex];
             if (!target) break;
-            const [targetX, targetY] = tileCenter(target);
+            const targetX = (target.column + 0.5) * TILE_SIZE;
+            const targetY = (target.row + 0.5) * TILE_SIZE;
             const dx = targetX - courier.x;
             const dy = targetY - courier.y;
             const distance = Math.hypot(dx, dy);
@@ -687,6 +692,7 @@ const courierController = {
                 remainingDistance = 0;
             }
         }
+        if (routeIndex !== previousRouteIndex) updatePathDots();
         courier.zIndex = sorting ? Math.round(courier.y) : 1000;
         frameElapsed += safeDelta;
         if (frameElapsed >= FRAME_DURATION) {

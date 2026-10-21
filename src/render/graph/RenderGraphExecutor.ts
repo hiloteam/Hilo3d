@@ -21,6 +21,7 @@ import type {
     RGTextureHandle
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
+import { assertSynchronousGraphCallback } from './RenderGraphCallback';
 import { RenderGraphGPUProfiler, type RenderGraphGPUProfileFrame } from './RenderGraphGPUProfiler';
 import type { RenderGraphTimelineRecorder } from './RenderGraphTimeline';
 
@@ -82,7 +83,9 @@ function assertImportedBufferDescriptor(
 }
 
 interface PreparedRGResource {
-    compiled: CompiledRGResource;
+    handle: RGResourceHandle;
+    kind: CompiledRGResource['kind'];
+    extracted: boolean;
     texture: RHITexture | null;
     textureView: RHITextureView | null;
     buffer: RHIBuffer | null;
@@ -210,7 +213,9 @@ class RenderGraphExecutorWorkspace {
         let prepared = this.#resourceStorage[index];
         if (!prepared) {
             prepared = {
-                compiled: resource,
+                handle: resource.handle,
+                kind: resource.kind,
+                extracted: resource.extracted,
                 texture: null,
                 textureView: null,
                 buffer: null,
@@ -221,7 +226,9 @@ class RenderGraphExecutorWorkspace {
             this.#resourceStorage.push(prepared);
             this.growthCount++;
         } else {
-            prepared.compiled = resource;
+            prepared.handle = resource.handle;
+            prepared.kind = resource.kind;
+            prepared.extracted = resource.extracted;
             prepared.texture = null;
             prepared.textureView = null;
             prepared.buffer = null;
@@ -268,7 +275,7 @@ class RenderGraphExecutorWorkspace {
         for (const resource of this.resources) {
             if (!resource.owned) {
                 resource.textureView?.destroy();
-            } else if (resource.compiled.extracted) {
+            } else if (resource.extracted) {
                 resource.textureView?.destroy();
             } else if (resource.poolEntry) {
                 if (succeeded) pool.release(resource.poolEntry);
@@ -302,8 +309,10 @@ export interface RGExecutionResult {
     readonly submission: RHISubmission;
     /** Reused caller-owned counters when supplied; snapshot before starting another frame. */
     readonly diagnostics: RHIFrameDiagnostics;
-    /** Report initial observer failures only after the owner has committed the submitted frame. */
-    throwTimelineError(): void;
+    /** @internal Retain post-submission publication failures until the owner finishes cleanup. */
+    captureCompletionError(error: unknown): void;
+    /** Report publication/observer failures after the owner has tracked the submitted frame. */
+    throwCompletionError(): void;
     getExtractedTexture(handle: RGTextureHandle): RHITexture;
     getExtractedBuffer(handle: RGBufferHandle): RHIBuffer;
 }
@@ -312,6 +321,8 @@ export interface RGExecutionOptions {
     readonly frameIndex?: number;
     readonly diagnostics?: RHIFrameDiagnostics;
     readonly prePassCommands?: { flush(context: RHICommandContext): void };
+    /** @internal Validate frame transactions after all callbacks and before queue submission. */
+    readonly preSubmitCommands?: { validateSubmission(device: RHIDevice): void };
     /** @internal Frame-owner cancellation gate checked before submission and between callbacks. */
     readonly abortSignal?: { throwIfAborted(): void };
     /** @internal Enables pass markers, CPU phases and automatic WebGPU timestamp queries. */
@@ -410,7 +421,7 @@ class RGPassContextImpl extends RGDeclaredResourceContext implements RGPassConte
 }
 
 class RGExecutionResultImpl implements RGExecutionResult {
-    #timelineFailure: { readonly error: unknown } | null = null;
+    #completionErrors: unknown[] | null = null;
 
     constructor(
         readonly graph: CompiledRenderGraph,
@@ -419,12 +430,15 @@ class RGExecutionResultImpl implements RGExecutionResult {
         private readonly extracted: ReadonlyMap<RGResourceHandle, ExtractedRGResource> | null
     ) {}
 
-    captureTimelineError(error: unknown): void {
-        this.#timelineFailure = { error };
+    captureCompletionError(error: unknown): void {
+        if (this.#completionErrors === null) this.#completionErrors = [error];
+        else this.#completionErrors.push(error);
     }
 
-    throwTimelineError(): void {
-        if (this.#timelineFailure !== null) throw this.#timelineFailure.error;
+    throwCompletionError(): void {
+        if (this.#completionErrors === null) return;
+        if (this.#completionErrors.length === 1) throw this.#completionErrors[0];
+        throw new AggregateError(this.#completionErrors, 'Submitted frame completion failed');
     }
 
     getExtractedTexture(handle: RGTextureHandle): RHITexture {
@@ -453,7 +467,7 @@ function discardPreparedResource(
         resource.textureView?.destroy();
         return;
     }
-    if (!includeExtracted && resource.compiled.extracted) {
+    if (!includeExtracted && resource.extracted) {
         resource.textureView?.destroy();
         return;
     }
@@ -546,7 +560,7 @@ export class RenderGraphExecutor {
         device: RHIDevice,
         options: RGExecutionOptions = {}
     ): RGExecutionResult {
-        if (this.#destroyed) throw new Error('Render graph executor is destroyed');
+        this.throwIfUnavailable(options);
         this.#transientPool.beginFrame(device);
         const workspace = this.acquireWorkspace();
         const timeline = options.timeline;
@@ -632,18 +646,26 @@ export class RenderGraphExecutor {
         // shell would revive a stale reference in a later frame. Only their unreachable backing
         // workspace is leased at the submission high-water mark.
         const prepareContext = new RGDeclaredResourceContext(preparedByHandle);
+        let gpuProfile: RenderGraphGPUProfileFrame | null = null;
         try {
             for (const pass of graph.passes) {
                 prepareContext.setPass(pass);
-                pass.template.prepare?.(prepareContext, pass.params);
-                options.abortSignal?.throwIfAborted();
+                assertSynchronousGraphCallback(
+                    pass.template.prepare?.(prepareContext, pass.params),
+                    'prepare',
+                    pass.name
+                );
+                this.throwIfUnavailable(options);
             }
             prepareContext.setPass(null);
+            this.throwIfUnavailable(options);
+            gpuProfile = timeline === undefined ? null : this.#gpuProfiler.begin(device, timeline);
             if (timeline !== undefined) {
                 timeline.setPrepareDuration(performance.now() - prepareStart);
             }
         } catch (error) {
             prepareContext.setPass(null);
+            gpuProfile?.abort();
             releaseBeforeFrame(preparedList, this.#transientPool);
             this.#releaseWorkspace(workspace);
             throw error;
@@ -652,13 +674,14 @@ export class RenderGraphExecutor {
         const queue = device.graphicsQueue;
         let context: RHICommandContext;
         try {
-            options.abortSignal?.throwIfAborted();
+            this.throwIfUnavailable(options);
             context = queue.beginFrame({
                 label: 'Render Graph frame',
                 ...(options.frameIndex === undefined ? {} : { frameIndex: options.frameIndex }),
                 ...(options.diagnostics === undefined ? {} : { diagnostics: options.diagnostics })
             });
         } catch (error) {
+            gpuProfile?.abort();
             releaseBeforeFrame(preparedList, this.#transientPool);
             this.#releaseWorkspace(workspace);
             throw error;
@@ -669,14 +692,12 @@ export class RenderGraphExecutor {
         }
         context.diagnostics.transientAllocations += transientAllocations;
         const passContext = new RGPassContextImpl(context, preparedByHandle);
-        let gpuProfile: RenderGraphGPUProfileFrame | null = null;
         let submission: RHISubmission;
         let extracted: Map<RGResourceHandle, ExtractedRGResource> | null = null;
         const executeStart = timeline === undefined ? 0 : performance.now();
         try {
-            gpuProfile = timeline === undefined ? null : this.#gpuProfiler.begin(device, timeline);
             options.prePassCommands?.flush(context);
-            options.abortSignal?.throwIfAborted();
+            this.throwIfUnavailable(options);
             for (let passIndex = 0; passIndex < graph.passes.length; passIndex += 1) {
                 const pass = graph.passes[passIndex];
                 if (pass === undefined) continue;
@@ -687,25 +708,31 @@ export class RenderGraphExecutor {
                 passContext.setProfiledPass(pass, timestampWrites);
                 const passStart = timeline === undefined ? 0 : performance.now();
                 if (timeline !== undefined) context.insertDebugMarker(`RenderGraph: ${pass.name}`);
-                pass.template.execute(passContext, pass.params);
+                assertSynchronousGraphCallback(
+                    pass.template.execute(passContext, pass.params),
+                    'execute',
+                    pass.name
+                );
                 if (timeline !== undefined) {
                     timeline.setPassCPUTime(passIndex, performance.now() - passStart);
                 }
-                options.abortSignal?.throwIfAborted();
+                this.throwIfUnavailable(options);
             }
             passContext.setPass(null);
-            options.abortSignal?.throwIfAborted();
+            this.throwIfUnavailable(options);
             gpuProfile?.resolve(context);
             for (const resource of preparedList) {
-                if (resource.compiled.extracted) {
+                if (resource.extracted) {
                     extracted ??= new Map<RGResourceHandle, ExtractedRGResource>();
-                    extracted.set(resource.compiled.handle, {
-                        kind: resource.compiled.kind,
+                    extracted.set(resource.handle, {
+                        kind: resource.kind,
                         texture: resource.texture,
                         buffer: resource.buffer
                     });
                 }
             }
+            options.preSubmitCommands?.validateSubmission(device);
+            this.throwIfUnavailable(options);
             submission = queue.endFrame(context);
         } catch (error) {
             passContext.setPass(null);
@@ -720,6 +747,17 @@ export class RenderGraphExecutor {
             throw error;
         }
 
+        // An already failed submission cannot transfer extracted-resource ownership to callers.
+        // endFrame has still closed the command scope, so cleanup must never call abortFrame.
+        if (submission.status === 'failed') {
+            gpuProfile?.abort();
+            discardPrepared(preparedList, this.#transientPool, true);
+            this.#releaseWorkspace(workspace);
+            throw submission.error instanceof Error
+                ? submission.error
+                : new Error('Render graph submission failed', { cause: submission.error });
+        }
+
         // endFrame is the irreversible submission boundary. Arm cleanup before notifying any
         // consumers, and return their failures separately so frame owners can commit first.
         const result = new RGExecutionResultImpl(graph, submission, context.diagnostics, extracted);
@@ -730,7 +768,7 @@ export class RenderGraphExecutor {
                 gpuProfile?.submitted(submission);
                 timeline.publish();
             } catch (error) {
-                result.captureTimelineError(error);
+                result.captureCompletionError(error);
             }
         }
         return result;
@@ -745,5 +783,10 @@ export class RenderGraphExecutor {
         }
         workspace.begin();
         return workspace;
+    }
+
+    private throwIfUnavailable(options: RGExecutionOptions): void {
+        if (this.#destroyed) throw new Error('Render graph executor is destroyed');
+        options.abortSignal?.throwIfAborted();
     }
 }

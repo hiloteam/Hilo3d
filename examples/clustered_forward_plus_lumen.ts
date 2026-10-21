@@ -1,5 +1,6 @@
 import * as Hilo3d from '../src/Hilo3d';
 import { createLumenRoundedBox } from './shared/lumenGeometry';
+import { installPageLifecycle, type ExamplePageLifecycle } from './shared/pageLifecycle';
 
 type Triple = readonly [number, number, number];
 type PaletteName = 'nocturne' | 'ember' | 'spectrum';
@@ -158,7 +159,7 @@ function pixelRatio(): number {
     );
 }
 
-let stopScene: (() => void) | undefined;
+let sceneLifecycle: ExamplePageLifecycle | undefined;
 
 async function run(): Promise<void> {
     if (parameters.get('backend') === 'webgl2') {
@@ -180,13 +181,42 @@ async function run(): Promise<void> {
     const metricLinks = element('#metricLinks', HTMLElement);
     const metricVisible = element('#metricVisible', HTMLElement);
     const metricOverflow = element('#metricOverflow', HTMLElement);
+    const ticker = new Hilo3d.Ticker(60);
+    let ready = false;
+    let ownedStage: Hilo3d.Stage<'webgpu'> | null = null;
+    const lifecycle = installPageLifecycle({
+        pause(): void {
+            ticker.stop();
+        },
+        resume(): void {
+            if (ready && !testMode) ticker.start();
+        },
+        dispose(): void {
+            ownedStage?.destroy();
+        }
+    });
+    sceneLifecycle = lifecycle;
+    const isDisposed = (): boolean => lifecycle.disposed;
+    const events = new AbortController();
+    lifecycle.onDispose(() => {
+        events.abort();
+    });
     element('#loadingTitle', HTMLElement).textContent = '雕琢光的形状';
     element('#loadingDetail', HTMLElement).textContent = '正在载入 Blender 雕塑与 PBR 材质…';
     const model = await new Hilo3d.GLTFLoader().load({
         src: new URL('./models/Lumen/orbital-bloom.glb', import.meta.url).href,
         ignoreTextureError: false
     });
-    await model.ready;
+    try {
+        await model.ready;
+    } finally {
+        lifecycle.onDispose(() => {
+            model.anim?.destroy();
+            model.node.destroy(ownedStage?.renderer);
+            for (const texture of model.textures) texture.destroy();
+        });
+    }
+    if (isDisposed()) return;
     const bounds = model.node.getBounds();
     if (bounds === undefined || bounds.height <= 0)
         throw new Error('The sculpture has no usable bounds.');
@@ -479,6 +509,11 @@ async function run(): Promise<void> {
         clearColor: new Hilo3d.Color(0.012, 0.022, 0.038),
         renderPipeline: factory
     });
+    ownedStage = stage;
+    if (isDisposed()) {
+        stage.destroy();
+        return;
+    }
     stage.canvas.setAttribute(
         'aria-label',
         '光之庭：192 盏实时灯光照亮环形展庭与树脂雕塑，可拖动旋转视角'
@@ -511,6 +546,9 @@ async function run(): Promise<void> {
         rotateSpeed: 0.55,
         zoomSpeed: 0.75,
         panSpeed: 0.6
+    });
+    lifecycle.onDispose(() => {
+        controls.dispose();
     });
     const views = [
         [5.8, 7.4, 18.3],
@@ -587,38 +625,62 @@ async function run(): Promise<void> {
         }
         document.body.dataset['palette'] = value;
     }
-    lightControl.addEventListener('input', () => {
-        activeLights = Math.min(
-            MAX_LIGHTS,
-            Math.max(0, Math.round(Number(lightControl.value) / 24) * 24)
-        );
-        updateLamps();
-    });
-    intensityControl.addEventListener('input', () => {
-        intensity = Number(intensityControl.value) / 100;
-        updateLamps();
-    });
-    motionToggle.addEventListener('click', () => {
-        motionEnabled = !motionEnabled;
-        updateLamps();
-    });
-    element('#viewButton', HTMLButtonElement).addEventListener('click', () => {
-        view = (view + 1) % views.length;
-        showView();
-    });
-    diagnosticsToggle.addEventListener('click', () => {
-        const panel = element('#diagnosticsPanel', HTMLElement);
-        panel.hidden = !panel.hidden;
-        diagnosticsToggle.setAttribute('aria-pressed', String(!panel.hidden));
-    });
+    const eventOptions = { signal: events.signal };
+    lightControl.addEventListener(
+        'input',
+        () => {
+            activeLights = Math.min(
+                MAX_LIGHTS,
+                Math.max(0, Math.round(Number(lightControl.value) / 24) * 24)
+            );
+            updateLamps();
+        },
+        eventOptions
+    );
+    intensityControl.addEventListener(
+        'input',
+        () => {
+            intensity = Number(intensityControl.value) / 100;
+            updateLamps();
+        },
+        eventOptions
+    );
+    motionToggle.addEventListener(
+        'click',
+        () => {
+            motionEnabled = !motionEnabled;
+            updateLamps();
+        },
+        eventOptions
+    );
+    element('#viewButton', HTMLButtonElement).addEventListener(
+        'click',
+        () => {
+            view = (view + 1) % views.length;
+            showView();
+        },
+        eventOptions
+    );
+    diagnosticsToggle.addEventListener(
+        'click',
+        () => {
+            const panel = element('#diagnosticsPanel', HTMLElement);
+            panel.hidden = !panel.hidden;
+            diagnosticsToggle.setAttribute('aria-pressed', String(!panel.hidden));
+        },
+        eventOptions
+    );
     for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-palette]')) {
-        button.addEventListener('click', () => {
-            const value = button.dataset['palette'];
-            if (value === 'nocturne' || value === 'ember' || value === 'spectrum')
-                changePalette(value);
-        });
+        button.addEventListener(
+            'click',
+            () => {
+                const value = button.dataset['palette'];
+                if (value === 'nocturne' || value === 'ember' || value === 'spectrum')
+                    changePalette(value);
+            },
+            eventOptions
+        );
     }
-    const ticker = new Hilo3d.Ticker(60);
     const animation: Hilo3d.Tickable = {
         tick(deltaTime): void {
             if (!motionEnabled) return;
@@ -628,13 +690,15 @@ async function run(): Promise<void> {
     };
     ticker.addTick(animation);
     ticker.addTick(stage);
-    let disposed = false;
     async function evidence(): Promise<LumenEvidence> {
+        if (lifecycle.disposed) throw new Error('Lumen has been disposed.');
         const data = await factory.readDiagnostics();
-        metricLinks.textContent = data.clusterLightIndexCount.toLocaleString('en-US');
-        metricVisible.textContent = `${String(data.visibleObjectCount)} / ${String(data.objectCount)}`;
-        metricOverflow.textContent = String(data.clusterOverflowCount);
-        metricFps.textContent = testMode ? '—' : String(ticker.getMeasuredFPS());
+        if (lifecycle.active) {
+            metricLinks.textContent = data.clusterLightIndexCount.toLocaleString('en-US');
+            metricVisible.textContent = `${String(data.visibleObjectCount)} / ${String(data.objectCount)}`;
+            metricOverflow.textContent = String(data.clusterOverflowCount);
+            metricFps.textContent = testMode ? '—' : String(ticker.getMeasuredFPS());
+        }
         return {
             backend: 'webgpu',
             activeLights,
@@ -663,6 +727,7 @@ async function run(): Promise<void> {
     }
     async function settle(frames = 6): Promise<LumenEvidence> {
         for (let frame = 0; frame < frames; frame++) {
+            if (lifecycle.disposed) throw new Error('Lumen has been disposed.');
             if (testMode) animation.tick(1000 / 60);
             stage.tick(1000 / 60);
             await stage.renderer.waitForIdle();
@@ -671,52 +736,43 @@ async function run(): Promise<void> {
     }
     let diagnosticsPending = false;
     const diagnosticTick = ticker.interval(() => {
-        if (diagnosticsPending || disposed) return;
+        if (diagnosticsPending || !lifecycle.active) return;
         diagnosticsPending = true;
         void evidence()
             .catch((error: unknown) => {
-                if (!disposed) showFailure(error);
+                if (!lifecycle.disposed) showFailure(error);
             })
             .finally(() => {
                 diagnosticsPending = false;
             });
     }, 1500);
+    lifecycle.onDispose(() => {
+        ticker.removeTick(diagnosticTick);
+    });
     const resize = (): void => {
+        if (!lifecycle.active) return;
         camera.aspect = innerWidth / Math.max(innerHeight, 1);
         stage.resize(Math.max(innerWidth, 1), Math.max(innerHeight, 1), pixelRatio());
     };
-    window.addEventListener('resize', resize);
-    stopScene = (): void => {
-        disposed = true;
-        ticker.removeTick(diagnosticTick);
-        ticker.stop();
-        controls.dispose();
-        window.removeEventListener('resize', resize);
-    };
-    window.addEventListener(
-        'pagehide',
-        () => {
-            stopScene?.();
-            // Allow an outstanding diagnostic fence to settle before releasing the device.
-            void stage.renderer
-                .waitForIdle()
-                .then(() => stage.destroy())
-                .catch(() => stage.destroy());
-        },
-        { once: true }
-    );
+    window.addEventListener('resize', resize, eventOptions);
     updateLamps();
     changePalette('nocturne');
     await settle(4);
+    if (isDisposed()) return;
     window.__HILO3D_LUMEN_TEST_API__ = { settle };
+    lifecycle.onDispose(() => {
+        delete window.__HILO3D_LUMEN_TEST_API__;
+    });
     fieldset.disabled = false;
     loading.hidden = true;
     document.body.dataset['lumenReady'] = 'true';
-    if (!testMode) ticker.start();
+    ready = true;
+    if (lifecycle.active && !testMode) ticker.start();
 }
 
 function showFailure(error: unknown): void {
-    stopScene?.();
+    if (sceneLifecycle?.disposed) return;
+    sceneLifecycle?.dispose();
     const failure = error instanceof Error ? error : new Error(String(error));
     document.body.dataset['lumenReady'] = 'error';
     element('#loadingPanel', HTMLElement).hidden = false;

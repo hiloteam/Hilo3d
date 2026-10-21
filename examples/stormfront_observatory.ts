@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 
 const TAU = Math.PI * 2;
 const search = new URLSearchParams(location.search);
@@ -377,7 +381,7 @@ async function main(): Promise<void> {
         far: 220_000,
         depthMode: 'reversed'
     });
-    const stage = await Hilo3d.Stage.create<'webgpu'>({
+    const runtime = await createExampleStage<'webgpu'>({
         backend: 'webgpu',
         container,
         camera,
@@ -389,7 +393,12 @@ async function main(): Promise<void> {
         clearColor: new Hilo3d.Color(0.002, 0.004, 0.005),
         renderingProfile: 'high-end',
         renderPipeline: factory
+    }).catch((error: unknown) => {
+        if (error instanceof ExampleInitializationCancelledError) return null;
+        throw error;
     });
+    if (runtime === null) return;
+    const { stage, ticker, lifecycle } = runtime;
 
     const sceneMeshes: Hilo3d.Mesh[] = [];
     const addMesh = (
@@ -607,12 +616,23 @@ async function main(): Promise<void> {
             }
         }
     };
-    const ticker = new Hilo3d.Ticker(60);
+    ticker.removeTick(stage);
     ticker.addTick(animate);
     ticker.addTick(stage);
+    const resize = (): void => {
+        if (testMode) return;
+        camera.aspect = innerWidth / Math.max(innerHeight, 1);
+        stage.resize(innerWidth, innerHeight, Math.min(devicePixelRatio, 1.4));
+    };
+    window.addEventListener('resize', resize);
+    lifecycle.onDispose(() => {
+        window.removeEventListener('resize', resize);
+        controls.dispose();
+    });
     const stepFrames = async (count: number): Promise<void> => {
         ticker.stop();
         for (let frame = 0; frame < count; frame += 1) {
+            if (lifecycle.disposed) return;
             animate.tick(1000 / 60);
             stage.tick(1000 / 60);
             await stage.renderer.waitForIdle();
@@ -622,8 +642,15 @@ async function main(): Promise<void> {
     loadingTitle.textContent = 'Waiting for the eye to adapt';
     loadingDetail.textContent =
         'Resolving blue-noise clouds, cloud shadows, and the amber key light.';
-    await stepFrames(testMode ? 5 : 12);
-    const diagnostics = await factory.readDiagnostics();
+    const diagnostics = await (async () => {
+        await stepFrames(testMode ? 5 : 12);
+        if (lifecycle.disposed) return null;
+        return factory.readDiagnostics();
+    })().catch((error: unknown) => {
+        if (lifecycle.disposed) return null;
+        throw error;
+    });
+    if (diagnostics === null || lifecycle.disposed) return;
     exposureReadout.textContent = `${diagnostics.autoExposureEV >= 0 ? '+' : ''}${diagnostics.autoExposureEV.toFixed(2)} EV`;
     loadingProgress.style.width = '100%';
     document.body.dataset['stormfrontReady'] = 'true';
@@ -643,21 +670,6 @@ async function main(): Promise<void> {
             await stepFrames(4);
         }
     };
-    const resize = (): void => {
-        if (testMode) return;
-        camera.aspect = innerWidth / Math.max(innerHeight, 1);
-        stage.resize(innerWidth, innerHeight, Math.min(devicePixelRatio, 1.4));
-    };
-    window.addEventListener('resize', resize);
-    window.addEventListener(
-        'pagehide',
-        () => {
-            ticker.stop();
-            controls.dispose();
-            stage.destroy();
-        },
-        { once: true }
-    );
 
     errorPanel.hidden = true;
     errorMessage.textContent = '';

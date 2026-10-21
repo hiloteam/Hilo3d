@@ -138,7 +138,11 @@ import {
     isTexturePixelData,
     texturePixelDataToTypedArray
 } from '../../texture/texturePixelData';
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import {
     RHITextureUsage,
     getRHIExternalImageSourceDimensions,
@@ -1327,7 +1331,7 @@ export class TextureResourceCache implements RHIUploadBatchParticipant {
     }
 
     /** Validation half of the upload batch's two-phase commit. */
-    prepareCommit(submission: RHISubmission): void {
+    prepareCommit(submission: RHIUploadBatchCommitContext): void {
         if (this.#state !== 'active') return;
         if (submission.status === 'failed') {
             const error = submission.error;
@@ -1368,36 +1372,39 @@ export class TextureResourceCache implements RHIUploadBatchParticipant {
     }
 
     /** Commit staged handles and revisions only after graph execution returned a submission. */
-    commit(submission: RHISubmission): void {
+    commit(submission: RHISubmission, prepared = false): void {
         if (this.#state !== 'active') return;
-        this.prepareCommit(submission);
-        const committedRecords: TextureResourceRecord[] = [];
-        for (const pending of this.#pending.values()) {
-            const record = pending.record;
-            this.markHandlesUsed(pending.handles, this.#frameIndex);
-            if (pending.shapeReplacement) this.releaseTexturePair(record.handles);
-            if (pending.samplerReplacement) this.releaseSampler(record.sampler);
-            record.handles = pending.handles;
-            record.shape = Object.freeze({
-                width: pending.snapshot.width,
-                height: pending.snapshot.height,
-                layers: pending.snapshot.layers,
-                mipLevelCount: pending.snapshot.mipLevelCount,
-                viewDimension: pending.snapshot.viewDimension,
-                rhiFormat: pending.snapshot.rhiFormat
-            });
-            record.sampler = pending.sampler;
-            record.sampler.submitted = true;
-            record.snapshot = pending.snapshot;
-            record.committedRevision = pending.snapshot.revision;
-            record.registryGeneration = pending.registryGeneration;
-            committedRecords.push(record);
+        if (!prepared) this.prepareCommit(submission);
+        try {
+            const committedRecords: TextureResourceRecord[] = [];
+            for (const pending of this.#pending.values()) {
+                const record = pending.record;
+                this.markHandlesUsed(pending.handles, this.#frameIndex);
+                if (pending.shapeReplacement) this.releaseTexturePair(record.handles);
+                if (pending.samplerReplacement) this.releaseSampler(record.sampler);
+                record.handles = pending.handles;
+                record.shape = Object.freeze({
+                    width: pending.snapshot.width,
+                    height: pending.snapshot.height,
+                    layers: pending.snapshot.layers,
+                    mipLevelCount: pending.snapshot.mipLevelCount,
+                    viewDimension: pending.snapshot.viewDimension,
+                    rhiFormat: pending.snapshot.rhiFormat
+                });
+                record.sampler = pending.sampler;
+                record.sampler.submitted = true;
+                record.snapshot = pending.snapshot;
+                record.committedRevision = pending.snapshot.revision;
+                record.registryGeneration = pending.registryGeneration;
+                committedRecords.push(record);
+            }
+            for (const record of committedRecords) {
+                if (!record.source.releaseImageIfAllowed()) continue;
+                record.snapshot = this.snapshotSource(record.source, record.snapshot.compare);
+            }
+        } finally {
+            this.finishTransaction();
         }
-        for (const record of committedRecords) {
-            if (!record.source.releaseImageIfAllowed()) continue;
-            record.snapshot = this.snapshotSource(record.source, record.snapshot.compare);
-        }
-        this.finishTransaction();
     }
 
     /** Keep committed handles/revisions unchanged so failed uploads are retried next frame. */

@@ -242,7 +242,6 @@ const forbiddenSharedResourceRules = [
 ] as const;
 const backendNeutralExampleExclusions = new Set([
     'examples/shared/init.ts',
-    'examples/webgl_support.ts',
     // WebXR is explicitly scoped to XRWebGLLayer/WebGL2 until a separate WebXR migration.
     'examples/webxr.ts'
 ]);

@@ -2,7 +2,8 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { getDefaultSkyboxFaceUrls } from './shared/defaultEnvironment';
 
-const { stage } = await createExampleContext();
+const context = await createExampleContext();
+const { stage, lifecycle } = context;
 
 // basic loader will cache all requests,
 // if you want to release image memory,
@@ -22,6 +23,11 @@ void cubeTextureLoader
         minFilter: Hilo3d.constants.webgl.LINEAR_MIPMAP_LINEAR
     })
     .then(skyboxMap => {
+        if (lifecycle.disposed) {
+            skyboxMap.destroy();
+            return;
+        }
+        context.onDispose(() => skyboxMap.destroy());
         const skybox = new Hilo3d.Mesh({
             geometry: new Hilo3d.BoxGeometry(),
             material: new Hilo3d.BasicMaterial({
@@ -49,24 +55,27 @@ const texture = new Hilo3d.LazyTexture({
 });
 
 let angle = 0;
+let elapsed = 0;
+let replacementPending = false;
+let idx = 0;
 const axis = new Hilo3d.Vector3(1, 1, 1).normalize();
 const textureBox = new Hilo3d.Mesh({
     geometry: boxGeometry,
     material: new Hilo3d.BasicMaterial({ diffuse: texture })
 });
-textureBox.onUpdate = () => {
-    angle += Hilo3d.math.DEG2RAD;
+textureBox.onUpdate = deltaTime => {
+    angle += deltaTime * Hilo3d.math.DEG2RAD * 0.06;
     textureBox.quaternion.setAxisAngle(axis, angle);
-};
-stage.addChild(textureBox);
-
-let idx = 0;
-setInterval(function () {
+    elapsed += deltaTime;
+    if (elapsed < 3000 || replacementPending) return;
+    elapsed %= 3000;
+    replacementPending = true;
     void imageLoader
         .load({
             src: ++idx % 2 ? './models/Tmall/baseColor.png' : imageUrl('UV_Grid_Sm.jpg')
         })
         .then(img => {
+            if (lifecycle.disposed) return;
             if (!(img instanceof HTMLImageElement)) {
                 throw new TypeError('Replacement texture request did not return an image');
             }
@@ -74,6 +83,11 @@ setInterval(function () {
             texture.needUpdate = true;
         })
         .catch((error: unknown) => {
-            console.error('Failed to replace texture image', error);
+            if (!lifecycle.disposed) console.error('Failed to replace texture image', error);
+        })
+        .finally(() => {
+            replacementPending = false;
         });
-}, 3000);
+};
+stage.addChild(textureBox);
+context.onDispose(() => texture.destroy());

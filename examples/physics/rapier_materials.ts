@@ -166,6 +166,8 @@ for (const [index, sample] of frictionLanes.entries()) {
 let releaseStep = physics.getDiagnostics().simulatedSteps;
 let releaseCount = 1;
 let lastMetricStep = -1;
+const heightReadouts: string[] = new Array<string>(bounceStations.length);
+const distanceReadouts: string[] = new Array<string>(frictionLanes.length);
 
 function replay(): void {
     experiments.reset();
@@ -181,29 +183,32 @@ function updateReadouts(): void {
     let contactCount = 0;
     let highRebound = 0;
     let longestSlide = 0;
-    const heights: string[] = [];
-    const distances: string[] = [];
-    for (const [index, station] of bounceStations.entries()) {
-        const height = Math.max(0, station.body.pose.position.y - impactSurfaceY - ballRadius);
+    for (let index = 0; index < bounceStations.length; index++) {
+        const station = bounceStations[index];
+        if (station === undefined) continue;
+        const position = station.body.pose.position;
+        const height = Math.max(0, position.y - impactSurfaceY - ballRadius);
         const indicator = bounceIndicators[index];
-        if (indicator) indicator.y = station.body.pose.position.y;
+        if (indicator) indicator.y = position.y;
         if (station.contacts === 1) station.reboundHeight = Math.max(station.reboundHeight, height);
         contactCount += station.contacts;
         highRebound = Math.max(highRebound, station.reboundHeight);
-        heights.push(height.toFixed(3));
+        heightReadouts[index] = height.toFixed(3);
     }
-    for (const [index, sample] of frictionLanes.entries()) {
+    for (let index = 0; index < frictionLanes.length; index++) {
+        const sample = frictionLanes[index];
+        if (sample === undefined) continue;
         const distance = materialSlideDistance(sample);
         const indicator = slideIndicators[index];
         if (indicator) indicator.x = -3.3 + distance;
         longestSlide = Math.max(longestSlide, distance);
-        distances.push(distance.toFixed(3));
+        distanceReadouts[index] = distance.toFixed(3);
     }
     document.body.dataset['physicsSteps'] = String(steps);
     document.body.dataset['physicsRelease'] = String(releaseCount);
     document.body.dataset['physicsContacts'] = String(contactCount);
-    document.body.dataset['physicsHeights'] = heights.join(',');
-    document.body.dataset['physicsSlides'] = distances.join(',');
+    document.body.dataset['physicsHeights'] = heightReadouts.join(',');
+    document.body.dataset['physicsSlides'] = distanceReadouts.join(',');
     document.body.dataset['physicsElapsed'] = elapsed.toFixed(3);
     if (lastMetricStep >= 0 && steps - lastMetricStep < 12) return;
     lastMetricStep = steps;

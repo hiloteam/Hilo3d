@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 
 const ATRIUM_WIDTH = 27.4;
 const MAX_VIEWPORT_WIDTH = 2560;
@@ -690,7 +694,7 @@ async function run(): Promise<void> {
         far: 70,
         depthMode: 'reversed'
     });
-    const stage = await Hilo3d.Stage.create<'webgpu'>({
+    const runtime = await createExampleStage<'webgpu'>({
         backend: 'webgpu',
         container,
         camera,
@@ -703,7 +707,12 @@ async function run(): Promise<void> {
         useInstanced: true,
         renderingProfile: 'high-end',
         renderPipeline: factory
+    }).catch((error: unknown) => {
+        if (error instanceof ExampleInitializationCancelledError) return null;
+        throw error;
     });
+    if (runtime === null) return;
+    const { stage, ticker, lifecycle } = runtime;
     model.node.name = 'Khronos Sponza neon reliquary';
     model.node.addTo(stage);
 
@@ -740,6 +749,7 @@ async function run(): Promise<void> {
     let motionEnabled = !testMode && searchParameters.get('motion') !== 'false' && motionPreference;
     let tourEnabled = !testMode && searchParameters.get('tour') !== 'false' && motionPreference;
     let activeViewIndex = 0;
+    let displayedTourSegment = -1;
     let elapsed = 0;
     let tourElapsed = 0;
 
@@ -752,6 +762,7 @@ async function run(): Promise<void> {
 
     function setTourEnabled(value: boolean): void {
         tourEnabled = value;
+        displayedTourSegment = -1;
         tourToggle.setAttribute('aria-pressed', String(value));
         tourState.textContent = value ? 'Live' : 'Held';
         document.body.dataset['cameraTour'] = String(value);
@@ -860,7 +871,10 @@ async function run(): Promise<void> {
             }
             const amount = smootherStep(segment - Math.floor(segment));
             activeViewIndex = startIndex;
-            document.body.dataset['composition'] = `${startView.label} → ${endView.label}`;
+            if (displayedTourSegment !== startIndex) {
+                displayedTourSegment = startIndex;
+                document.body.dataset['composition'] = `${startView.label} → ${endView.label}`;
+            }
             controls.setView(
                 interpolateTourPosition(
                     startView.position,
@@ -874,18 +888,27 @@ async function run(): Promise<void> {
         }
     };
 
-    const ticker = new Hilo3d.Ticker(60);
+    ticker.removeTick(stage);
     ticker.addTick(sceneAnimation);
     ticker.addTick(Hilo3d.Tween);
     ticker.addTick(Hilo3d.Animation);
     ticker.addTick(stage);
+    lifecycle.onDispose(() => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('keydown', handleKeyDown);
+        stage.canvas.removeEventListener('pointerdown', cancelTour);
+        stage.canvas.removeEventListener('wheel', cancelTour);
+        controls.dispose();
+    });
+    const isDisposed = (): boolean => lifecycle.disposed;
 
     let diagnosticsPending = false;
     const refreshDiagnostics = async (): Promise<void> => {
-        if (diagnosticsPending) return;
+        if (diagnosticsPending || isDisposed()) return;
         diagnosticsPending = true;
         try {
             const diagnostics = await factory.readDiagnostics();
+            if (isDisposed()) return;
             metricFroxels.textContent = formatCount(diagnostics.volumetricFroxelCount);
             metricHistory.textContent = diagnostics.volumetricHistoryUsed ? 'Stable' : 'Priming';
             metricLights.textContent = String(totalLightCount);
@@ -898,12 +921,15 @@ async function run(): Promise<void> {
             diagnosticsPending = false;
         }
     };
-    const diagnosticsTick = ticker.interval(() => {
-        void refreshDiagnostics().catch(showFatalError);
+    ticker.interval(() => {
+        void refreshDiagnostics().catch((error: unknown) => {
+            if (!isDisposed()) showFatalError(error);
+        });
     }, 1000);
 
     const stepFrames = async (frameCount: number): Promise<void> => {
         for (let frame = 0; frame < frameCount; frame += 1) {
+            if (isDisposed()) return;
             stage.tick(1000 / 60);
             await stage.renderer.waitForIdle();
         }
@@ -919,9 +945,17 @@ async function run(): Promise<void> {
 
     backendLabel.textContent = `${stage.renderer.backend.toUpperCase()} · ${String(modelBucketPlan.buckets.length)} PBR buckets`;
     controlsFieldset.disabled = false;
-    await stepFrames(volumetricEnabled ? 3 : 2);
-    await refreshDiagnostics();
-    const evidence = await factory.readDiagnostics();
+    const evidence = await (async () => {
+        await stepFrames(volumetricEnabled ? 3 : 2);
+        if (isDisposed()) return null;
+        await refreshDiagnostics();
+        if (isDisposed()) return null;
+        return factory.readDiagnostics();
+    })().catch((error: unknown) => {
+        if (isDisposed()) return null;
+        throw error;
+    });
+    if (evidence === null || isDisposed()) return;
     window.__HILO3D_VOLUMETRIC_RELIQUARY_RESULT__ = {
         backend: 'webgpu',
         volumetricLighting: volumetricEnabled,
@@ -946,17 +980,6 @@ async function run(): Promise<void> {
     requestAnimationFrame(() => {
         loadingPanel.classList.add('isHidden');
     });
-
-    const dispose = (): void => {
-        window.removeEventListener('resize', handleResize);
-        window.removeEventListener('keydown', handleKeyDown);
-        stage.canvas.removeEventListener('pointerdown', cancelTour);
-        stage.canvas.removeEventListener('wheel', cancelTour);
-        ticker.removeTick(diagnosticsTick);
-        ticker.stop();
-        controls.dispose();
-    };
-    window.addEventListener('beforeunload', dispose, { once: true });
 }
 
 function showFatalError(error: unknown): void {

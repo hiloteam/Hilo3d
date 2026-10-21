@@ -180,7 +180,3 @@ export function requireElement<ElementType extends Element>(
         throw new Error(`Missing particle UI element ${selector}`);
     return element;
 }
-
-export function installExampleDisposal(dispose: () => void): void {
-    window.addEventListener('pagehide', dispose, { once: true });
-}

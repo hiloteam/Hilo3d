@@ -2,9 +2,10 @@ import * as Hilo3d from '../src/Hilo3d';
 import { createExampleContext } from './shared/init';
 import { createScreenMesh } from './shared/ScreenMesh';
 
-const { camera, stage, renderer } = await createExampleContext({
+const context = await createExampleContext({
     stage: { renderPipeline: new Hilo3d.ForwardRenderPipelineFactory() }
 });
+const { camera, stage, renderer } = context;
 
 const boxGeometry = new Hilo3d.BoxGeometry();
 boxGeometry.setAllRectUV([
@@ -57,6 +58,10 @@ const depthTarget = renderer.createRenderTarget({
     label: 'DepthTexture.scene'
 });
 const sampledDepthTexture = depthTarget.getDepthTexture();
+context.onDispose(() => {
+    depthTarget.destroy();
+    depthNode.destroy(renderer);
+});
 if (!sampledDepthTexture) throw new Error('Depth target has no sampleable attachment.');
 sampledDepthTexture.minFilter = Hilo3d.constants.NEAREST;
 sampledDepthTexture.magFilter = Hilo3d.constants.NEAREST;

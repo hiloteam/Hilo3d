@@ -43,8 +43,14 @@ function sameStringList(first: readonly string[], second: readonly string[]): bo
     return true;
 }
 
-export interface PooledRGResource {
+interface ResourceBucket {
     readonly key: number;
+    firstIdle: PooledRGResource | null;
+    entryCount: number;
+}
+
+export interface PooledRGResource {
+    readonly bucket: ResourceBucket;
     readonly compiled: CompiledRGPhysicalResource;
     readonly deviceId: number;
     readonly deviceGeneration: number;
@@ -55,7 +61,9 @@ export interface PooledRGResource {
     idleSinceFrame: number;
     previousIdle: PooledRGResource | null;
     nextIdle: PooledRGResource | null;
-    inUse: boolean;
+    previousBucket: PooledRGResource | null;
+    nextBucket: PooledRGResource | null;
+    state: 'in-use' | 'idle' | 'discarded';
 }
 
 function mixPoolKey(hash: number, value: number): number {
@@ -135,7 +143,9 @@ function samePooledResourceDescriptor(
 }
 
 export class TransientResourcePool {
-    readonly #entries = new Map<number, PooledRGResource[]>();
+    // Only idle entries are searchable. Including leased entries makes N identical allocations
+    // scan O(N²) records, and the cost keeps growing with in-flight submissions.
+    readonly #buckets = new Map<number, ResourceBucket>();
     #ownerDeviceId: number | null = null;
     #ownerDeviceGeneration: number | null = null;
     #destroyed = false;
@@ -176,39 +186,27 @@ export class TransientResourcePool {
     ): void {
         this.useDevice(device);
         const key = resourcePoolKey(resource);
-        let entries = this.#entries.get(key);
-        if (entries) {
-            for (let index = entries.length - 1; index >= 0; index -= 1) {
-                const entry = entries[index];
-                if (!entry) continue;
-                const staleGeneration =
-                    entry.deviceId === device.id && entry.deviceGeneration !== device.generation;
-                const destroyed =
-                    (entry.texture?.destroyed ?? false) ||
-                    (entry.textureView?.destroyed ?? false) ||
-                    (entry.buffer?.destroyed ?? false);
-                if (!entry.inUse && (staleGeneration || destroyed)) {
-                    this.discard(entry);
-                }
-            }
-            for (const entry of entries) {
-                if (
-                    !entry.inUse &&
-                    samePooledResourceDescriptor(entry, resource) &&
-                    entry.deviceId === device.id &&
-                    entry.deviceGeneration === device.generation &&
-                    !(entry.texture?.destroyed ?? false) &&
-                    !(entry.buffer?.destroyed ?? false)
-                ) {
-                    this.removeIdle(entry);
-                    entry.inUse = true;
-                    result.poolEntry = entry;
-                    result.allocated = false;
-                    return;
-                }
+        let bucket = this.#buckets.get(key);
+        let candidate = bucket?.firstIdle ?? null;
+        while (candidate !== null) {
+            const entry = candidate;
+            candidate = entry.nextBucket;
+            if (
+                entry.deviceId !== device.id ||
+                entry.deviceGeneration !== device.generation ||
+                (entry.texture?.destroyed ?? false) ||
+                (entry.textureView?.destroyed ?? false) ||
+                (entry.buffer?.destroyed ?? false)
+            ) {
+                this.discard(entry);
+            } else if (samePooledResourceDescriptor(entry, resource)) {
+                this.removeIdle(entry);
+                entry.state = 'in-use';
+                result.poolEntry = entry;
+                result.allocated = false;
+                return;
             }
         }
-        entries = this.#entries.get(key);
 
         let texture: RHITexture | null = null;
         let textureView: RHITextureView | null = null;
@@ -226,8 +224,16 @@ export class TransientResourcePool {
             buffer?.destroy();
             throw error;
         }
+        // Retain empty bucket heads while their allocations are leased. Removing/reinserting
+        // the Map entry every frame would create tombstones and periodic backing-store growth.
+        bucket = this.#buckets.get(key);
+        if (bucket === undefined) {
+            bucket = { key, firstIdle: null, entryCount: 0 };
+            this.#buckets.set(key, bucket);
+        }
+        bucket.entryCount++;
         const entry: PooledRGResource = {
-            key,
+            bucket,
             compiled: resource,
             deviceId: device.id,
             deviceGeneration: device.generation,
@@ -238,15 +244,16 @@ export class TransientResourcePool {
             idleSinceFrame: 0,
             previousIdle: null,
             nextIdle: null,
-            inUse: true
+            previousBucket: null,
+            nextBucket: null,
+            state: 'in-use'
         };
-        if (entries) entries.push(entry);
-        else this.#entries.set(key, [entry]);
         result.poolEntry = entry;
         result.allocated = true;
     }
 
     release(entry: PooledRGResource): void {
+        if (entry.state !== 'in-use') return;
         // A mapped-at-creation buffer can be unmapped or remapped to a subrange by its frame.
         // Neither backend can synchronously restore the original whole-buffer mapping contract,
         // so it is a one-frame allocation even though ordinary transient buffers are reusable.
@@ -262,7 +269,10 @@ export class TransientResourcePool {
             this.discard(entry);
             return;
         }
-        entry.inUse = false;
+        entry.state = 'idle';
+        entry.nextBucket = entry.bucket.firstIdle;
+        if (entry.nextBucket !== null) entry.nextBucket.previousBucket = entry;
+        entry.bucket.firstIdle = entry;
         entry.idleSinceFrame = this.#frameIndex;
         entry.previousIdle = this.#newestIdle;
         entry.nextIdle = null;
@@ -281,18 +291,22 @@ export class TransientResourcePool {
     }
 
     discard(entry: PooledRGResource): void {
-        if (!entry.inUse) this.removeIdle(entry);
+        if (entry.state === 'discarded') return;
+        if (entry.state === 'idle') this.removeIdle(entry);
+        entry.state = 'discarded';
+        entry.bucket.entryCount--;
+        if (entry.bucket.entryCount === 0) this.#buckets.delete(entry.bucket.key);
         entry.textureView?.destroy();
         entry.texture?.destroy();
         entry.buffer?.destroy();
-        const entries = this.#entries.get(entry.key);
-        if (!entries) return;
-        const index = entries.indexOf(entry);
-        if (index >= 0) entries.splice(index, 1);
-        if (entries.length === 0) this.#entries.delete(entry.key);
     }
 
     private removeIdle(entry: PooledRGResource): void {
+        if (entry.previousBucket !== null) entry.previousBucket.nextBucket = entry.nextBucket;
+        else entry.bucket.firstIdle = entry.nextBucket;
+        if (entry.nextBucket !== null) entry.nextBucket.previousBucket = entry.previousBucket;
+        entry.previousBucket = null;
+        entry.nextBucket = null;
         if (entry.previousIdle !== null) entry.previousIdle.nextIdle = entry.nextIdle;
         else this.#oldestIdle = entry.nextIdle;
         if (entry.nextIdle !== null) entry.nextIdle.previousIdle = entry.previousIdle;

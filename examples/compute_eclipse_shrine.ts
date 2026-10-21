@@ -1,4 +1,8 @@
 import * as Hilo3d from '../src/Hilo3d';
+import {
+    createExampleStage,
+    ExampleInitializationCancelledError
+} from './shared/createExampleStage';
 import { environmentMaterialDefaults } from './shared/environment';
 import { loadEnvironmentMaps } from './shared/init';
 
@@ -861,8 +865,15 @@ function createRingGeometry(segments = 160): Hilo3d.Geometry {
     return geometry;
 }
 
-function createScene(stage: Hilo3d.Stage): Promise<Hilo3d.Node> {
+function createScene(stage: Hilo3d.Stage, isDisposed: () => boolean): Promise<Hilo3d.Node | null> {
     return loadEnvironmentMaps().then(environment => {
+        if (isDisposed()) {
+            environment.diffuseEnvMap.destroy();
+            environment.specularEnvMap.destroy();
+            environment.skyboxMap.destroy();
+            environment.brdfLUT.destroy();
+            return null;
+        }
         const root = new Hilo3d.Node({ name: 'Eclipse Shrine sculptural assembly' }).addTo(stage);
         const coreMaterial = new Hilo3d.PBRMaterial({
             ...environmentMaterialDefaults(environment),
@@ -1327,7 +1338,7 @@ async function main(): Promise<void> {
             opaqueTexture: false,
             features: [computeFeature]
         });
-    const stage = await Hilo3d.Stage.create({
+    const runtime = await createExampleStage({
         backend: 'webgpu',
         container,
         camera,
@@ -1341,7 +1352,12 @@ async function main(): Promise<void> {
         useInstanced: !IS_TEST_MODE,
         clearColor: new Hilo3d.Color(0.0015, 0.0025, 0.008),
         renderPipeline
+    }).catch((error: unknown) => {
+        if (error instanceof ExampleInitializationCancelledError) return null;
+        throw error;
     });
+    if (runtime === null) return;
+    const { stage, ticker, lifecycle } = runtime;
     if (IS_TEST_MODE) document.documentElement.classList.remove('test-mode');
     document.body.dataset['eclipseShrinePhase'] = 'creating-resources';
 
@@ -1360,6 +1376,12 @@ async function main(): Promise<void> {
         recovery: 'cpu-shadow'
     });
     const particleResources = { particles, argumentsBuffer };
+    let controller: EclipseController | null = null;
+    lifecycle.onDispose(() => {
+        controller?.dispose();
+        particles.destroy();
+        argumentsBuffer.destroy();
+    });
     if (testPipelineFactory === null) {
         computeFeature.runtime.attach(particleResources);
     } else {
@@ -1379,7 +1401,12 @@ async function main(): Promise<void> {
         })
             .setScale(42)
             .addTo(stage);
-        await createScene(stage);
+        try {
+            await createScene(stage, () => lifecycle.disposed);
+        } catch (error) {
+            if (!lifecycle.disposed) throw error;
+        }
+        if (lifecycle.disposed) return;
     }
 
     new Hilo3d.AmbientLight({
@@ -1423,13 +1450,13 @@ async function main(): Promise<void> {
         amberLight.z = Math.sin(-lightTime * 0.31 + 2.2) * 2.6;
     };
 
-    const controller = new EclipseController(camera, stage, paletteButtons);
+    controller = new EclipseController(camera, stage, paletteButtons);
     controller.tick(1000 / 60);
     document.body.dataset['eclipseShrinePhase'] = 'submitting-first-frame';
     stage.tick(1000 / 60);
     document.body.dataset['eclipseShrinePhase'] = 'running';
 
-    const ticker = new Hilo3d.Ticker(60);
+    ticker.removeTick(stage);
     ticker.addTick(controller);
     ticker.addTick(stage);
     ticker.start();
@@ -1443,18 +1470,6 @@ async function main(): Promise<void> {
         indirectLayers: 3,
         drawCount: stage.renderer.renderInfo.drawCount
     };
-
-    window.addEventListener(
-        'pagehide',
-        () => {
-            ticker.stop();
-            controller.dispose();
-            particles.destroy();
-            argumentsBuffer.destroy();
-            stage.destroy();
-        },
-        { once: true }
-    );
 }
 
 void main().catch((error: unknown) => {

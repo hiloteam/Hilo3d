@@ -144,18 +144,20 @@ type MutableCompilerStorageDiagnostics = {
     ]: RenderGraphCompilerStorageDiagnostics[Key];
 };
 
-type RGHazardKey = string;
+type RGHazardKey = number;
 
 class RenderGraphCompilerWorkspace {
     readonly normalizedResources: CompiledRGResource[] = [];
     readonly resourceByHandle = new Map<RGResourceHandle, CompiledRGResource>();
-    readonly resourceWriters = new Map<RGResourceHandle, number>();
-    readonly lastPreferredGraphWriter = new Map<RGHazardKey, number>();
+    readonly textureAccessByHandle = new Map<RGTextureAccessHandle, CompiledRGTextureAccess>();
+    readonly depthStencilByPass: (ValidatedDepthStencilAttachment | undefined)[] = [];
     readonly preferredGraphWriterReads = new Set<RGResourceHandle>();
     readonly hazardKeysByHandle = new Map<RGResourceHandle, readonly RGHazardKey[]>();
-    readonly lastWriter = new Map<RGHazardKey, number>();
     readonly readersSinceWrite = new Map<RGHazardKey, Set<number>>();
-    readonly contentAvailable = new Map<RGHazardKey, boolean>();
+    lastWriter = new Int32Array(0);
+    lastPreferredGraphWriter = new Int32Array(0);
+    contentAvailable = new Uint8Array(0);
+    hazardCount = 0;
     readonly passIndexByHandle = new Map<RGPassHandle, number>();
     readonly outgoing: Set<number>[] = [];
     readonly incoming: Set<number>[] = [];
@@ -185,13 +187,12 @@ class RenderGraphCompilerWorkspace {
     begin(resourceCount: number, passCount: number): void {
         this.normalizedResources.length = 0;
         this.resourceByHandle.clear();
-        this.resourceWriters.clear();
-        this.lastPreferredGraphWriter.clear();
+        this.textureAccessByHandle.clear();
+        this.depthStencilByPass.length = 0;
+        this.hazardCount = 0;
         this.preferredGraphWriterReads.clear();
         this.hazardKeysByHandle.clear();
-        this.lastWriter.clear();
         this.readersSinceWrite.clear();
-        this.contentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
@@ -230,6 +231,20 @@ class RenderGraphCompilerWorkspace {
         }
     }
 
+    reserveHazards(): void {
+        if (this.lastWriter.length < this.hazardCount) {
+            let capacity = Math.max(1, this.lastWriter.length);
+            while (capacity < this.hazardCount) capacity *= 2;
+            this.lastWriter = new Int32Array(capacity);
+            this.lastPreferredGraphWriter = new Int32Array(capacity);
+            this.contentAvailable = new Uint8Array(capacity);
+            this.diagnostics.growthCount++;
+        }
+        this.lastWriter.fill(-1, 0, this.hazardCount);
+        this.lastPreferredGraphWriter.fill(-1, 0, this.hazardCount);
+        this.contentAvailable.fill(0, 0, this.hazardCount);
+    }
+
     acquireReaderSet(handle: RGHazardKey): Set<number> {
         let readers = this.readersSinceWrite.get(handle);
         if (readers) return readers;
@@ -248,13 +263,11 @@ class RenderGraphCompilerWorkspace {
     release(): void {
         this.normalizedResources.length = 0;
         this.resourceByHandle.clear();
-        this.resourceWriters.clear();
-        this.lastPreferredGraphWriter.clear();
+        this.textureAccessByHandle.clear();
+        this.depthStencilByPass.length = 0;
         this.preferredGraphWriterReads.clear();
         this.hazardKeysByHandle.clear();
-        this.lastWriter.clear();
         this.readersSinceWrite.clear();
-        this.contentAvailable.clear();
         this.passIndexByHandle.clear();
         this.roots.clear();
         this.scratchReadSet.clear();
@@ -390,12 +403,18 @@ interface CompiledRGTextureAccess {
     readonly width: number;
     readonly height: number;
     readonly depthOrArrayLayers: number;
+    readonly hazardBase: number;
+    readonly hazardCount: number;
+    readonly keys: readonly RGHazardKey[];
+    readonly depthKeys: readonly RGHazardKey[];
+    readonly stencilKeys: readonly RGHazardKey[];
 }
 
-function requireTextureAccess(
+function createTextureAccess(
     resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>,
     handle: RGTextureAccessHandle,
-    passName: string
+    passName: string,
+    hazardBase: number
 ): CompiledRGTextureAccess {
     const resource = resources.get(handle);
     if (resource?.kind !== 'texture' && resource?.kind !== 'texture-view') {
@@ -418,6 +437,33 @@ function requireTextureAccess(
             ? normalizeRHITextureViewDescriptorForTextureDescriptor(texture.descriptor)
             : resource.descriptor;
     const mipScale = 2 ** view.baseMipLevel;
+    const layers =
+        texture.descriptor.dimension === '3d' ? 1 : texture.descriptor.size.depthOrArrayLayers;
+    const hasDepth = rhiTextureFormatHasDepth(texture.descriptor.format);
+    const hasStencil = rhiTextureFormatHasStencil(texture.descriptor.format);
+    const aspects = hasDepth && hasStencil ? 2 : 1;
+    const keys: RGHazardKey[] = [];
+    const depthKeys: RGHazardKey[] = [];
+    const stencilKeys: RGHazardKey[] = [];
+    // A parent owns a contiguous numeric range. Views select indices from that same
+    // range, so overlap never depends on allocating or comparing identity strings.
+    const selectedLayers = texture.descriptor.dimension === '3d' ? 1 : view.arrayLayerCount;
+    for (let mip = view.baseMipLevel; mip < view.baseMipLevel + view.mipLevelCount; mip += 1) {
+        for (let offset = 0; offset < selectedLayers; offset += 1) {
+            const layer = view.baseArrayLayer + offset;
+            const key = hazardBase + (mip * layers + layer) * aspects;
+            if (hasDepth && view.aspect !== 'stencil-only') {
+                keys.push(key);
+                depthKeys.push(key);
+            }
+            if (hasStencil && view.aspect !== 'depth-only') {
+                const stencilKey = key + (hasDepth ? 1 : 0);
+                keys.push(stencilKey);
+                stencilKeys.push(stencilKey);
+            }
+            if (!hasDepth && !hasStencil) keys.push(key);
+        }
+    }
     return {
         resource,
         texture,
@@ -427,42 +473,29 @@ function requireTextureAccess(
         depthOrArrayLayers:
             texture.descriptor.dimension === '3d'
                 ? Math.max(1, Math.floor(texture.descriptor.size.depthOrArrayLayers / mipScale))
-                : view.arrayLayerCount
+                : view.arrayLayerCount,
+        hazardBase,
+        hazardCount: texture.descriptor.mipLevelCount * layers * aspects,
+        keys,
+        depthKeys,
+        stencilKeys
     };
 }
 
-function textureAccessAspects(
-    access: CompiledRGTextureAccess
-): readonly ('color' | 'depth' | 'stencil')[] {
-    if (access.view.aspect === 'depth-only') return ['depth'];
-    if (access.view.aspect === 'stencil-only') return ['stencil'];
-    const depth = rhiTextureFormatHasDepth(access.view.format);
-    const stencil = rhiTextureFormatHasStencil(access.view.format);
-    if (depth && stencil) return ['depth', 'stencil'];
-    if (depth) return ['depth'];
-    if (stencil) return ['stencil'];
-    return ['color'];
-}
-
-function createTextureHazardKeys(access: CompiledRGTextureAccess): readonly RGHazardKey[] {
-    const keys: RGHazardKey[] = [];
-    const layers = access.texture.descriptor.dimension === '3d' ? 1 : access.view.arrayLayerCount;
-    const aspects = textureAccessAspects(access);
-    for (
-        let mip = access.view.baseMipLevel;
-        mip < access.view.baseMipLevel + access.view.mipLevelCount;
-        mip += 1
-    ) {
-        for (let layerOffset = 0; layerOffset < layers; layerOffset += 1) {
-            const layer = access.view.baseArrayLayer + layerOffset;
-            for (const aspect of aspects) {
-                keys.push(
-                    `${String(access.texture.handle)}:${String(mip)}:${String(layer)}:${aspect}`
-                );
-            }
-        }
+function requireTextureAccess(
+    accesses: ReadonlyMap<RGTextureAccessHandle, CompiledRGTextureAccess>,
+    handle: RGTextureAccessHandle,
+    passName: string
+): CompiledRGTextureAccess {
+    const access = accesses.get(handle);
+    if (access === undefined) {
+        renderGraphFailure(
+            'invalid-handle',
+            `texture access ${String(handle)} is not in this graph`,
+            passName
+        );
     }
-    return Object.freeze(keys);
+    return access;
 }
 
 function requireHazardKeys(
@@ -479,14 +512,6 @@ function requireHazardKeys(
         );
     }
     return keys;
-}
-
-function filterHazardKeysByAspect(
-    keys: readonly RGHazardKey[],
-    aspect: 'depth' | 'stencil'
-): readonly RGHazardKey[] {
-    const suffix = `:${aspect}`;
-    return keys.filter(key => key.endsWith(suffix));
 }
 
 function validateLoadOp(value: unknown, path: string): asserts value is 'load' | 'clear' {
@@ -558,7 +583,7 @@ function validateAttachmentCompatibility(
 
 function validateColorAttachment(
     declaration: RGColorAttachmentDeclaration,
-    resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>,
+    resources: ReadonlyMap<RGTextureAccessHandle, CompiledRGTextureAccess>,
     passName: string,
     index: number
 ): {
@@ -676,11 +701,16 @@ function validateDepthStencilAspect(options: {
     };
 }
 
+interface ValidatedDepthStencilAttachment {
+    readonly resource: CompiledRGTextureAccess;
+    readonly access: DepthStencilAccess;
+}
+
 function validateDepthStencilAttachment(
     declaration: RGDepthStencilAttachmentDeclaration,
-    resources: ReadonlyMap<RGResourceHandle, CompiledRGResource>,
+    resources: ReadonlyMap<RGTextureAccessHandle, CompiledRGTextureAccess>,
     passName: string
-): { readonly resource: CompiledRGTextureAccess; readonly access: DepthStencilAccess } {
+): ValidatedDepthStencilAttachment {
     const path = `${passName}.depthStencilAttachment`;
     const resource = requireTextureAccess(resources, declaration.texture, passName);
     validateRenderAttachmentTexture(resource, `${path}.texture`, 'depth-stencil');
@@ -783,12 +813,9 @@ export class RenderGraphCompiler {
         const workspace = this.#workspace;
         const normalizedResources = workspace.normalizedResources;
         const resourceByHandle = workspace.resourceByHandle;
-        const resourceWriters = workspace.resourceWriters;
-        const lastPreferredGraphWriter = workspace.lastPreferredGraphWriter;
+        const textureAccessByHandle = workspace.textureAccessByHandle;
         const preferredGraphWriterReads = workspace.preferredGraphWriterReads;
-        const lastWriter = workspace.lastWriter;
         const readersSinceWrite = workspace.readersSinceWrite;
-        const contentAvailable = workspace.contentAvailable;
         const passIndexByHandle = workspace.passIndexByHandle;
         const outgoing = workspace.outgoing;
         const incoming = workspace.incoming;
@@ -802,24 +829,36 @@ export class RenderGraphCompiler {
             normalizedResources.push(normalized);
             resourceByHandle.set(normalized.handle, normalized);
             if (normalized.kind === 'buffer') {
-                const key = `buffer:${String(normalized.handle)}`;
-                const keys = Object.freeze([key]);
+                const keys = [workspace.hazardCount++];
                 workspace.hazardKeysByHandle.set(normalized.handle, keys);
-                contentAvailable.set(key, normalized.initiallyInitialized);
             } else {
-                const access = requireTextureAccess(
+                const base =
+                    normalized.kind === 'texture'
+                        ? workspace.hazardCount
+                        : requireTextureAccess(
+                              textureAccessByHandle,
+                              normalized.texture,
+                              normalized.name
+                          ).hazardBase;
+                const access = createTextureAccess(
                     resourceByHandle,
                     normalized.handle,
-                    normalized.name
+                    normalized.name,
+                    base
                 );
-                const keys = createTextureHazardKeys(access);
-                workspace.hazardKeysByHandle.set(normalized.handle, keys);
-                if (normalized.kind === 'texture') {
-                    const initialized =
-                        normalized.origin === 'imported' && normalized.initiallyInitialized;
-                    for (const key of keys) contentAvailable.set(key, initialized);
-                }
+                textureAccessByHandle.set(normalized.handle, access);
+                workspace.hazardKeysByHandle.set(normalized.handle, access.keys);
+                if (normalized.kind === 'texture') workspace.hazardCount += access.hazardCount;
             }
+        }
+        workspace.reserveHazards();
+        const lastWriter = workspace.lastWriter;
+        const lastPreferredGraphWriter = workspace.lastPreferredGraphWriter;
+        const contentAvailable = workspace.contentAvailable;
+        for (const resource of normalizedResources) {
+            if (resource.kind === 'texture-view' || !resource.initiallyInitialized) continue;
+            for (const key of requireHazardKeys(workspace, resource.handle))
+                contentAvailable[key] = 1;
         }
         for (const pass of snapshot.passes) passIndexByHandle.set(pass.handle, pass.index);
 
@@ -835,7 +874,7 @@ export class RenderGraphCompiler {
                     : resource;
             if (texture?.kind === 'texture' && texture.readFromLastGraphWriter) {
                 for (const key of keys) {
-                    lastPreferredGraphWriter.set(key, pass.index);
+                    lastPreferredGraphWriter[key] = pass.index;
                 }
             }
         };
@@ -849,23 +888,17 @@ export class RenderGraphCompiler {
             }
             const depthStencil = pass.depthStencilAttachment;
             if (depthStencil !== null) {
-                const { resource, access } = validateDepthStencilAttachment(
+                const validated = validateDepthStencilAttachment(
                     depthStencil,
-                    resourceByHandle,
+                    textureAccessByHandle,
                     pass.name
                 );
-                if (access.depth.writes || access.stencil.writes) {
-                    const keys = requireHazardKeys(workspace, resource.resource.handle, pass.name);
-                    capturePreferredWriter(
-                        resource.resource.handle,
-                        pass,
-                        keys.filter(
-                            key =>
-                                (access.depth.writes && key.endsWith(':depth')) ||
-                                (access.stencil.writes && key.endsWith(':stencil'))
-                        )
-                    );
-                }
+                workspace.depthStencilByPass[pass.index] = validated;
+                const { resource, access } = validated;
+                if (access.depth.writes)
+                    capturePreferredWriter(resource.resource.handle, pass, resource.depthKeys);
+                if (access.stencil.writes)
+                    capturePreferredWriter(resource.resource.handle, pass, resource.stencilKeys);
             }
         }
 
@@ -882,21 +915,22 @@ export class RenderGraphCompiler {
         };
         const readHazardDependencies = (keys: readonly RGHazardKey[], pass: RGPassNode): void => {
             for (const key of keys) {
-                const writer = lastWriter.get(key);
-                if (writer !== undefined) addContentDependency(writer, pass.index);
+                const writer = lastWriter[key];
+                if (writer !== undefined && writer >= 0) addContentDependency(writer, pass.index);
                 const readers = readersSinceWrite.get(key) ?? workspace.acquireReaderSet(key);
                 readers.add(pass.index);
             }
         };
         const writeHazardDependencies = (keys: readonly RGHazardKey[], pass: RGPassNode): void => {
             for (const key of keys) {
-                const writer = lastWriter.get(key);
-                if (writer !== undefined) addEdge(outgoing, incoming, writer, pass.index);
+                const writer = lastWriter[key];
+                if (writer !== undefined && writer >= 0)
+                    addEdge(outgoing, incoming, writer, pass.index);
                 for (const reader of readersSinceWrite.get(key) ?? []) {
                     addEdge(outgoing, incoming, reader, pass.index);
                 }
                 workspace.acquireReaderSet(key).clear();
-                lastWriter.set(key, pass.index);
+                lastWriter[key] = pass.index;
             }
         };
         const readResourceDependency = (
@@ -913,9 +947,9 @@ export class RenderGraphCompiler {
                 let usedPreferredWriter = false;
                 for (const key of requireHazardKeys(workspace, handle, pass.name)) {
                     const preferredWriter = preferLastGraphWriter
-                        ? lastPreferredGraphWriter.get(key)
+                        ? lastPreferredGraphWriter[key]
                         : undefined;
-                    if (preferredWriter !== undefined) {
+                    if (preferredWriter !== undefined && preferredWriter >= 0) {
                         addContentDependency(preferredWriter, pass.index);
                         usedPreferredWriter = true;
                     } else readHazardDependencies([key], pass);
@@ -929,7 +963,7 @@ export class RenderGraphCompiler {
         };
         const genericContentAvailable = (resource: CompiledRGResource): boolean => {
             for (const key of requireHazardKeys(workspace, resource.handle)) {
-                if (contentAvailable.get(key) !== true) return false;
+                if (contentAvailable[key] !== 1) return false;
             }
             return true;
         };
@@ -947,8 +981,8 @@ export class RenderGraphCompiler {
                 preferLastGraphWriter &&
                 preferredTexture?.kind === 'texture' &&
                 preferredTexture.readFromLastGraphWriter &&
-                requireHazardKeys(workspace, handle, pass.name).some(key =>
-                    lastPreferredGraphWriter.has(key)
+                requireHazardKeys(workspace, handle, pass.name).some(
+                    key => (lastPreferredGraphWriter[key] ?? -1) >= 0
                 )
             ) {
                 readResourceDependency(handle, pass, true);
@@ -969,13 +1003,12 @@ export class RenderGraphCompiler {
         ): CompiledRGResource => {
             const resource = requireResource(handle, pass);
             writeHazardDependencies(requireHazardKeys(workspace, handle, pass.name), pass);
-            resourceWriters.set(handle, pass.index);
             return resource;
         };
         const writeResource = (handle: RGResourceHandle, pass: RGPassNode): void => {
             writeResourceDependency(handle, pass);
             for (const key of requireHazardKeys(workspace, handle, pass.name)) {
-                contentAvailable.set(key, true);
+                contentAvailable[key] = 1;
             }
         };
 
@@ -1104,7 +1137,7 @@ export class RenderGraphCompiler {
                 if (!declaration) throw new Error('Render graph color attachment is unavailable');
                 const { source, resolve } = validateColorAttachment(
                     declaration,
-                    resourceByHandle,
+                    textureAccessByHandle,
                     pass.name,
                     index
                 );
@@ -1119,16 +1152,13 @@ export class RenderGraphCompiler {
                 if (declaration.loadOp === 'load') readResource(sourceHandle, pass);
                 writeResource(sourceHandle, pass);
                 for (const key of requireHazardKeys(workspace, sourceHandle, pass.name)) {
-                    contentAvailable.set(key, declaration.storeOp === 'store');
+                    contentAvailable[key] = declaration.storeOp === 'store' ? 1 : 0;
                 }
                 if (resolve) writeResource(resolve.resource.handle, pass);
             }
-            if (pass.depthStencilAttachment) {
-                const { resource, access } = validateDepthStencilAttachment(
-                    pass.depthStencilAttachment,
-                    resourceByHandle,
-                    pass.name
-                );
+            const depthStencil = workspace.depthStencilByPass[pass.index];
+            if (depthStencil !== undefined) {
+                const { resource, access } = depthStencil;
                 if (attachmentReference) {
                     validateAttachmentCompatibility(
                         attachmentReference,
@@ -1136,13 +1166,10 @@ export class RenderGraphCompiler {
                         `${pass.name}.depthStencilAttachment`
                     );
                 }
-                const resourceHandle = resource.resource.handle;
-                const resourceKeys = requireHazardKeys(workspace, resourceHandle, pass.name);
-                const depthKeys = filterHazardKeysByAspect(resourceKeys, 'depth');
-                const stencilKeys = filterHazardKeysByAspect(resourceKeys, 'stencil');
+                const { depthKeys, stencilKeys } = resource;
                 if (
                     access.depth.requiresLoad &&
-                    depthKeys.some(key => contentAvailable.get(key) !== true)
+                    depthKeys.some(key => contentAvailable[key] !== 1)
                 ) {
                     renderGraphFailure(
                         'uninitialized-read',
@@ -1152,7 +1179,7 @@ export class RenderGraphCompiler {
                 }
                 if (
                     access.stencil.requiresLoad &&
-                    stencilKeys.some(key => contentAvailable.get(key) !== true)
+                    stencilKeys.some(key => contentAvailable[key] !== 1)
                 ) {
                     renderGraphFailure(
                         'uninitialized-read',
@@ -1160,28 +1187,21 @@ export class RenderGraphCompiler {
                         pass.name
                     );
                 }
-                if (access.depth.requiresLoad || access.stencil.requiresLoad) {
-                    const readKeys: RGHazardKey[] = [];
-                    if (access.depth.requiresLoad) readKeys.push(...depthKeys);
-                    if (access.stencil.requiresLoad) readKeys.push(...stencilKeys);
-                    readHazardDependencies(readKeys, pass);
-                }
+                if (access.depth.requiresLoad) readHazardDependencies(depthKeys, pass);
+                if (access.stencil.requiresLoad) readHazardDependencies(stencilKeys, pass);
                 if (access.depth.writes || access.stencil.writes) {
-                    const writeKeys: RGHazardKey[] = [];
-                    if (access.depth.writes) writeKeys.push(...depthKeys);
-                    if (access.stencil.writes) writeKeys.push(...stencilKeys);
-                    writeHazardDependencies(writeKeys, pass);
                     if (access.depth.writes) {
+                        writeHazardDependencies(depthKeys, pass);
                         for (const key of depthKeys) {
-                            contentAvailable.set(key, access.depth.stores);
+                            contentAvailable[key] = access.depth.stores ? 1 : 0;
                         }
                     }
                     if (access.stencil.writes) {
+                        writeHazardDependencies(stencilKeys, pass);
                         for (const key of stencilKeys) {
-                            contentAvailable.set(key, access.stencil.stores);
+                            contentAvailable[key] = access.stencil.stores ? 1 : 0;
                         }
                     }
-                    resourceWriters.set(resourceHandle, pass.index);
                 }
             }
         }
@@ -1210,21 +1230,20 @@ export class RenderGraphCompiler {
                     `output ${String(output)} is not in this graph`
                 );
             }
-            const outputWriters = new Set<number>();
+            let hasWriter = false;
             for (const key of requireHazardKeys(workspace, output)) {
-                const writer = lastWriter.get(key);
-                if (writer !== undefined) outputWriters.add(writer);
+                const writer = lastWriter[key];
+                if (writer !== undefined && writer >= 0) {
+                    hasWriter = true;
+                    roots.add(writer);
+                }
             }
-            if (
-                !genericContentAvailable(resource) &&
-                (outputWriters.size === 0 || resource.extracted)
-            ) {
+            if (!genericContentAvailable(resource) && (!hasWriter || resource.extracted)) {
                 renderGraphFailure(
                     'uninitialized-read',
                     `output resource ${resource.name} is uninitialized or was discarded`
                 );
             }
-            for (const writer of outputWriters) roots.add(writer);
         }
         // RAW/load/read-write and explicit dependencies require their producers to survive.
         // WAR/WAW only order surviving accesses; an overwritten producer or unused reader
@@ -1243,12 +1262,12 @@ export class RenderGraphCompiler {
         const lastUse = workspace.lastUse;
         // Rebuild final availability from scheduled passes, because a culled discard/write
         // must not affect history or extracted-resource state reported after submission.
-        lastWriter.clear();
-        contentAvailable.clear();
+        lastWriter.fill(-1, 0, workspace.hazardCount);
+        contentAvailable.fill(0, 0, workspace.hazardCount);
         for (const resource of normalizedResources) {
             if (resource.kind === 'texture-view') continue;
             for (const key of requireHazardKeys(workspace, resource.handle)) {
-                contentAvailable.set(key, resource.initiallyInitialized);
+                contentAvailable[key] = resource.initiallyInitialized ? 1 : 0;
             }
         }
         const recordFinalWrite = (
@@ -1257,8 +1276,8 @@ export class RenderGraphCompiler {
             stored: boolean
         ): void => {
             for (const key of keys) {
-                lastWriter.set(key, sourceIndex);
-                contentAvailable.set(key, stored);
+                lastWriter[key] = sourceIndex;
+                contentAvailable[key] = stored ? 1 : 0;
             }
         };
         const compiledPasses: CompiledRGPass[] = [];
@@ -1293,29 +1312,17 @@ export class RenderGraphCompiler {
                     );
                 }
             }
-            if (pass.depthStencilAttachment) {
-                const { resource, access } = validateDepthStencilAttachment(
-                    pass.depthStencilAttachment,
-                    resourceByHandle,
-                    pass.name
-                );
+            const depthStencil = workspace.depthStencilByPass[pass.index];
+            if (depthStencil !== undefined) {
+                const { resource, access } = depthStencil;
                 (access.depth.writes || access.stencil.writes ? writes : reads).add(
                     resource.resource.handle
                 );
-                const keys = requireHazardKeys(workspace, resource.resource.handle);
                 if (access.depth.writes) {
-                    recordFinalWrite(
-                        filterHazardKeysByAspect(keys, 'depth'),
-                        sourceIndex,
-                        access.depth.stores
-                    );
+                    recordFinalWrite(resource.depthKeys, sourceIndex, access.depth.stores);
                 }
                 if (access.stencil.writes) {
-                    recordFinalWrite(
-                        filterHazardKeysByAspect(keys, 'stencil'),
-                        sourceIndex,
-                        access.stencil.stores
-                    );
+                    recordFinalWrite(resource.stencilKeys, sourceIndex, access.stencil.stores);
                 }
             }
             for (const handle of reads) {
@@ -1371,8 +1378,8 @@ export class RenderGraphCompiler {
                 Object.freeze({
                     ...resource,
                     lifetime,
-                    writtenByGraph: requireHazardKeys(workspace, resource.handle).some(key =>
-                        lastWriter.has(key)
+                    writtenByGraph: requireHazardKeys(workspace, resource.handle).some(
+                        key => (lastWriter[key] ?? -1) >= 0
                     ),
                     initializedAfterExecution: genericContentAvailable(resource)
                 })

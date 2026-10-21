@@ -1,13 +1,14 @@
 import * as Hilo3d from '../../../src/Hilo3d';
 import { createExampleContext } from '../../shared/init';
 
-const { camera, stage } = await createExampleContext();
+const context = await createExampleContext();
+const { camera, stage, lifecycle } = context;
 
 stage.addChild(new Hilo3d.AxisNetHelper({ size: 4 }));
 stage.addChild(new Hilo3d.AxisHelper());
 stage.rotationX = 30;
 const animationState = { difference: 0 };
-Hilo3d.Tween.to(
+const tween = Hilo3d.Tween.to(
     animationState,
     {
         difference: Math.PI * 2
@@ -17,10 +18,16 @@ Hilo3d.Tween.to(
         loop: true
     }
 ).start();
+context.onDispose(() => {
+    tween.stop();
+});
 
 const loader = new Hilo3d.ShaderMaterialLoader();
 const diffuseTexture = new Hilo3d.LazyTexture({
     src: new URL('../../image/UV_Grid_Sm.jpg', import.meta.url).href
+});
+context.onDispose(() => {
+    diffuseTexture.destroy();
 });
 Hilo3d.registerUniformBlockBinding('ShaderLoaderBlock');
 const shaderLayout = Hilo3d.createStd140Layout({ u_mat: 'mat4', u_diff: 'float' });
@@ -41,16 +48,15 @@ void loader
             }
         },
         uniformBlocks: { ShaderLoaderBlock: shaderBlock },
-        // cullFace: true,
         state: { wireframe: true }
     })
     .then(function (material) {
+        if (lifecycle.disposed) return;
         const geometry = new Hilo3d.PlaneGeometry({
             heightSegments: 100,
             widthSegments: 100
         });
         const plane = new Hilo3d.Mesh({
-            // rotationX: -90,
             material,
             geometry
         });
@@ -62,5 +68,6 @@ void loader
         stage.addChild(plane);
     })
     .catch((error: unknown) => {
+        if (lifecycle.disposed) return;
         console.error('Failed to load shader material', error);
     });

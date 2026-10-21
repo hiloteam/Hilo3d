@@ -3,6 +3,7 @@ import {
     requiresStableDepthComposition,
     withStableRasterCamera
 } from '../internal/StableRasterCamera';
+import { assertSynchronousResult } from '../internal/ScriptableRenderPipelineValidation';
 import {
     StableTransparentDepth,
     hasVisiblePostResolveDraws
@@ -99,7 +100,11 @@ export interface ForwardRenderFeatureRequirements extends RenderPipelineRequirem
     readonly sceneScale?: number;
 }
 
-/** Renderer-local feature state created by a reusable feature configuration. */
+/**
+ * Renderer-local feature state created by a reusable feature configuration.
+ * Optional requirement, scale and notification callbacks are captured during runtime creation.
+ * Callbacks are synchronous except for the optional timeline observer.
+ */
 export interface ForwardRenderPipelineFeatureRuntime {
     /** Request sampled scene depth for this frame before Forward allocates its attachments. */
     requiresSampledDepth?(context: RenderPipelineContext): boolean;
@@ -114,17 +119,22 @@ export interface ForwardRenderPipelineFeatureRuntime {
      * @returns An ignored synchronous value. Promise-like values are rejected before RHI execution.
      */
     record(context: ForwardRenderFeatureContext): unknown;
-    /** Commit feature-owned temporal CPU state after a valid frame submission. */
+    /** Commit temporal CPU state synchronously. Every feature is notified even if another throws. */
     frameSubmitted?(frameIndex: number): void;
-    /** Roll back feature-owned temporal CPU state when recording or submission is discarded. */
+    /** Roll back synchronously. Every feature is notified even if another rollback throws. */
     frameDiscarded?(frameIndex: number): void;
     /**
      * Return this frame's scene scale. The value must stay between the feature's declared
      * `sceneScale` floor and one. Omit for fixed-resolution features.
      */
     getSceneScale?(): number;
-    /** Consume asynchronous Render Graph CPU/GPU timing snapshots when adaptive work is enabled. */
-    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    /**
+     * Consume asynchronously delivered Render Graph CPU/GPU timing snapshots. All observers run;
+     * returned promises are observed and failures are aggregated for renderer diagnostics.
+     */
+    recordRenderGraphTimeline?(
+        snapshot: Readonly<RenderGraphTimelineSnapshot>
+    ): void | Promise<void>;
     /** Enable internal Render Graph timing when this feature actively consumes it. */
     readonly usesRenderGraphTimeline?: boolean;
     /** Release renderer-local feature state exactly once. */
@@ -220,6 +230,78 @@ interface CompiledFeature {
     readonly runtime: ForwardRenderPipelineFeatureRuntime;
 }
 
+interface CompiledFeatureCallback<Argument, Result = unknown> {
+    readonly label: string;
+    readonly callback: (argument: Argument) => Result;
+}
+
+interface CompiledSceneScaleCallback extends CompiledFeatureCallback<void> {
+    readonly minimumSceneScale: number;
+}
+
+interface CompiledRequirementCallback extends CompiledFeatureCallback<RenderPipelineContext> {
+    readonly kind: 'depth' | 'split';
+}
+
+function appendFeatureCallback<Argument, Result>(
+    callbacks: CompiledFeatureCallback<Argument, Result>[],
+    feature: CompiledFeature,
+    name: keyof ForwardRenderPipelineFeatureRuntime,
+    callback: ((argument: Argument) => Result) | undefined
+): void {
+    if (callback === undefined) return;
+    callbacks.push({
+        label: `Forward render feature ${feature.name} ${name}()`,
+        callback
+    });
+}
+
+function invokeFeatureCallbacks<Argument>(
+    callbacks: readonly CompiledFeatureCallback<Argument>[],
+    argument: Argument,
+    failureMessage: string
+): void {
+    let failures: unknown[] | null = null;
+    for (const entry of callbacks) {
+        try {
+            assertSynchronousResult(entry.label, entry.callback(argument));
+        } catch (error) {
+            (failures ??= []).push(error);
+        }
+    }
+    if (failures !== null) throw new AggregateError(failures, failureMessage);
+}
+
+function invokeTimelineCallbacks(
+    callbacks: readonly CompiledFeatureCallback<
+        Readonly<RenderGraphTimelineSnapshot>,
+        void | Promise<void>
+    >[],
+    snapshot: Readonly<RenderGraphTimelineSnapshot>
+): void | Promise<void> {
+    const failureMessage =
+        'Forward render features failed while consuming the Render Graph timeline';
+    let failures: unknown[] | null = null;
+    let pending: Promise<void>[] | null = null;
+    for (const entry of callbacks) {
+        try {
+            const result = entry.callback(snapshot);
+            if (result !== undefined) (pending ??= []).push(Promise.resolve(result));
+        } catch (error) {
+            (failures ??= []).push(error);
+        }
+    }
+    if (pending !== null) {
+        return Promise.allSettled(pending).then(results => {
+            for (const result of results) {
+                if (result.status === 'rejected') (failures ??= []).push(result.reason);
+            }
+            if (failures !== null) throw new AggregateError(failures, failureMessage);
+        });
+    }
+    if (failures !== null) throw new AggregateError(failures, failureMessage);
+}
+
 interface MutableRelativeExtent {
     readonly relativeTo: 'output';
     scale: number;
@@ -281,13 +363,6 @@ const INJECTION_POINTS: readonly ForwardRenderInjectionPoint[] = Object.freeze([
     'after-post-process',
     'before-output'
 ]);
-
-function isPromiseLike(value: unknown): boolean {
-    return (
-        ((typeof value === 'object' && value !== null) || typeof value === 'function') &&
-        typeof Reflect.get(value, 'then') === 'function'
-    );
-}
 
 function injectionPointIndex(point: ForwardRenderInjectionPoint): number {
     switch (point) {
@@ -878,6 +953,21 @@ function validateFeatureRuntime(
             `Forward render feature ${feature.name} runtime must implement record() and destroy()`
         );
     }
+    for (const hook of [
+        'requiresSampledDepth',
+        'requiresSplitScene',
+        'frameSubmitted',
+        'frameDiscarded',
+        'getSceneScale',
+        'recordRenderGraphTimeline'
+    ] as const) {
+        const callback: unknown = Reflect.get(candidate, hook);
+        if (callback !== undefined && typeof callback !== 'function') {
+            throw new TypeError(
+                `Forward render feature ${feature.name} ${hook} must be a function`
+            );
+        }
+    }
     const usesTimeline: unknown = Reflect.get(candidate, 'usesRenderGraphTimeline');
     if (usesTimeline !== undefined && typeof usesTimeline !== 'boolean') {
         throw new TypeError(
@@ -899,6 +989,14 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     readonly name = 'forward';
     readonly usesRenderGraphTimeline: boolean;
     readonly #groups: CompiledFeature[][] = INJECTION_POINTS.map(() => []);
+    readonly #requirementCallbacks: CompiledRequirementCallback[] = [];
+    readonly #sceneScaleCallbacks: CompiledSceneScaleCallback[] = [];
+    readonly #submittedCallbacks: CompiledFeatureCallback<number>[] = [];
+    readonly #discardedCallbacks: CompiledFeatureCallback<number>[] = [];
+    readonly #timelineCallbacks: CompiledFeatureCallback<
+        Readonly<RenderGraphTimelineSnapshot>,
+        void | Promise<void>
+    >[] = [];
     readonly #featureState = new ForwardFeatureState();
     readonly #scenePass = new SceneRenderPass('Forward scene');
     readonly #shadowPass = new ShadowRenderPass('Forward shadows');
@@ -1044,6 +1142,46 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
                 runtime
             });
             compiled.push(entry);
+            const requiresSampledDepth = runtime.requiresSampledDepth?.bind(runtime);
+            if (requiresSampledDepth !== undefined)
+                this.#requirementCallbacks.push({
+                    label: `Forward render feature ${feature.name} requiresSampledDepth()`,
+                    callback: requiresSampledDepth,
+                    kind: 'depth'
+                });
+            const requiresSplitScene = runtime.requiresSplitScene?.bind(runtime);
+            if (requiresSplitScene !== undefined)
+                this.#requirementCallbacks.push({
+                    label: `Forward render feature ${feature.name} requiresSplitScene()`,
+                    callback: requiresSplitScene,
+                    kind: 'split'
+                });
+            appendFeatureCallback(
+                this.#submittedCallbacks,
+                entry,
+                'frameSubmitted',
+                runtime.frameSubmitted?.bind(runtime)
+            );
+            appendFeatureCallback(
+                this.#discardedCallbacks,
+                entry,
+                'frameDiscarded',
+                runtime.frameDiscarded?.bind(runtime)
+            );
+            appendFeatureCallback(
+                this.#timelineCallbacks,
+                entry,
+                'recordRenderGraphTimeline',
+                runtime.recordRenderGraphTimeline?.bind(runtime)
+            );
+            const getSceneScale = runtime.getSceneScale?.bind(runtime);
+            if (getSceneScale !== undefined) {
+                this.#sceneScaleCallbacks.push({
+                    label: `Forward render feature ${feature.name} getSceneScale()`,
+                    callback: getSceneScale,
+                    minimumSceneScale: entry.minimumSceneScale
+                });
+            }
             this.#groups[injectionPointIndex(feature.injectionPoint)]?.push(entry);
             sampledColor ||= feature.requirements.sampledSceneColor;
             sampledDepth ||= feature.requirements.sampledDepth;
@@ -1051,7 +1189,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
             if (
                 (feature.injectionPoint === 'after-opaque' ||
                     feature.injectionPoint === 'before-transparent') &&
-                runtime.requiresSplitScene === undefined
+                requiresSplitScene === undefined
             ) {
                 unconditionalBoundaryFeature = true;
             }
@@ -1106,21 +1244,14 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         }
         this.#frameRequiresSampledDepth = this.#requiresSampledDepth;
         let frameSplitScene = this.#splitScene;
-        for (const feature of this.#compiledFeatures) {
-            const required = feature.runtime.requiresSampledDepth?.(context);
+        for (const entry of this.#requirementCallbacks) {
+            const required = entry.callback(context);
+            assertSynchronousResult(entry.label, required);
             if (required !== undefined && typeof required !== 'boolean') {
-                throw new TypeError(
-                    `Forward render feature ${feature.name} requiresSampledDepth must return boolean`
-                );
+                throw new TypeError(`${entry.label} must return boolean`);
             }
-            this.#frameRequiresSampledDepth ||= required ?? false;
-            const splitRequired = feature.runtime.requiresSplitScene?.(context);
-            if (splitRequired !== undefined && typeof splitRequired !== 'boolean') {
-                throw new TypeError(
-                    `Forward render feature ${feature.name} requiresSplitScene must return boolean`
-                );
-            }
-            frameSplitScene ||= splitRequired ?? false;
+            if (entry.kind === 'depth') this.#frameRequiresSampledDepth ||= required ?? false;
+            else frameSplitScene ||= required ?? false;
         }
         const sceneSampleCount: RenderTargetSampleCount =
             this.#frameRequiresSampledDepth || this.#samplesBetweenQueues
@@ -1251,32 +1382,51 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
     }
 
     frameSubmitted(frameIndex: number): void {
-        for (const feature of this.#compiledFeatures) {
-            feature.runtime.frameSubmitted?.(frameIndex);
-        }
+        invokeFeatureCallbacks(
+            this.#submittedCallbacks,
+            frameIndex,
+            'Forward render features failed after submission'
+        );
     }
 
     frameDiscarded(frameIndex: number): void {
-        for (const feature of this.#compiledFeatures) {
-            feature.runtime.frameDiscarded?.(frameIndex);
-        }
+        invokeFeatureCallbacks(
+            this.#discardedCallbacks,
+            frameIndex,
+            'Forward render features failed while discarding the frame'
+        );
     }
 
-    recordRenderGraphTimeline(snapshot: Readonly<RenderGraphTimelineSnapshot>): void {
-        for (const feature of this.#compiledFeatures) {
-            feature.runtime.recordRenderGraphTimeline?.(snapshot);
-        }
+    recordRenderGraphTimeline(
+        snapshot: Readonly<RenderGraphTimelineSnapshot>
+    ): void | Promise<void> {
+        return invokeTimelineCallbacks(this.#timelineCallbacks, snapshot);
     }
 
     destroy(): void {
         if (this.#destroyed) return;
         this.#destroyed = true;
-        this.#weightedTransparency?.destroy();
-        this.#stableTransparentDepth.destroy();
         const failures: unknown[] = [];
+        try {
+            this.#weightedTransparency?.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
+        try {
+            this.#stableTransparentDepth.destroy();
+        } catch (error) {
+            failures.push(error);
+        }
         for (let index = this.#compiledFeatures.length - 1; index >= 0; index -= 1) {
             try {
-                this.#compiledFeatures[index]?.runtime.destroy();
+                const feature = this.#compiledFeatures[index];
+                if (feature !== undefined) {
+                    const runtime: { destroy(): unknown } = feature.runtime;
+                    assertSynchronousResult(
+                        `Forward render feature ${feature.name} destroy()`,
+                        runtime.destroy()
+                    );
+                }
             } catch (error) {
                 failures.push(error);
             }
@@ -1586,10 +1736,7 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
         for (const feature of group) {
             const context = this.#featureState.beginCallback();
             try {
-                const result: unknown = feature.runtime.record(context);
-                if (isPromiseLike(result)) {
-                    throw new TypeError('record() must be synchronous');
-                }
+                assertSynchronousResult('record()', feature.runtime.record(context));
             } catch (error) {
                 throw new Error(`Forward render feature ${feature.name} failed at ${point}`, {
                     cause: error
@@ -1626,16 +1773,18 @@ class ScriptableForwardRenderPipeline implements RenderPipeline {
 
     private resolveSceneScale(): void {
         let resolved: number | null = null;
-        for (const feature of this.#compiledFeatures) {
-            const candidate = feature.runtime.getSceneScale?.();
+        for (const entry of this.#sceneScaleCallbacks) {
+            const candidate = entry.callback();
+            assertSynchronousResult(entry.label, candidate);
             if (candidate === undefined) continue;
             if (
+                typeof candidate !== 'number' ||
                 !Number.isFinite(candidate) ||
-                candidate < feature.minimumSceneScale ||
+                candidate < entry.minimumSceneScale ||
                 candidate > 1
             ) {
                 throw new RangeError(
-                    `Forward render feature ${feature.name} scene scale must stay between ${String(feature.minimumSceneScale)} and one`
+                    `${entry.label} scene scale must stay between ${String(entry.minimumSceneScale)} and one`
                 );
             }
             if (resolved !== null && Math.abs(resolved - candidate) > 1e-6) {
@@ -1786,11 +1935,10 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
         try {
             for (const feature of features) {
                 const candidate: unknown = feature.create(context);
-                if (isPromiseLike(candidate)) {
-                    throw new TypeError(
-                        `Forward render feature ${feature.name} create() must be synchronous`
-                    );
-                }
+                assertSynchronousResult(
+                    `Forward render feature ${feature.name} create()`,
+                    candidate
+                );
                 if (
                     ((typeof candidate === 'object' && candidate !== null) ||
                         typeof candidate === 'function') &&
@@ -1811,10 +1959,14 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
                         typeof Reflect.get(candidate, 'destroy') === 'function'
                     ) {
                         try {
-                            Reflect.apply(
+                            const cleanupResult: unknown = Reflect.apply(
                                 Reflect.get(candidate, 'destroy') as (...args: never[]) => unknown,
                                 candidate,
                                 []
+                            );
+                            assertSynchronousResult(
+                                `Forward render feature ${feature.name} destroy()`,
+                                cleanupResult
                             );
                         } catch (error) {
                             cleanupError = error;
@@ -1842,7 +1994,8 @@ export class ForwardRenderPipelineFactory implements RenderPipelineFactory {
             const failures: unknown[] = [creationError];
             for (let index = runtimes.length - 1; index >= 0; index -= 1) {
                 try {
-                    runtimes[index]?.destroy();
+                    const runtime: { destroy(): unknown } | undefined = runtimes[index];
+                    assertSynchronousResult('Forward render feature destroy()', runtime?.destroy());
                 } catch (error) {
                     failures.push(error);
                 }

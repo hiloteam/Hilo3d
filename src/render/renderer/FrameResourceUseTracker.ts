@@ -1,4 +1,8 @@
-import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
+import type {
+    RHIUploadBatch,
+    RHIUploadBatchParticipant,
+    RHIUploadBatchCommitContext
+} from '../frame/RHIUploadBatch';
 import type { RHIDeviceOwnedDestroyable, RHISubmission } from '../rhi/core';
 import type { ResourceRegistry, ResourceRegistryHandle } from './ResourceRegistry';
 
@@ -45,7 +49,7 @@ export class FrameResourceUseTracker implements RHIUploadBatchParticipant {
         this.#handles[this.#handleCount++] = handle;
     }
 
-    prepareCommit(submission: RHISubmission): void {
+    prepareCommit(submission: RHIUploadBatchCommitContext): void {
         this.assertActive();
         if (submission.status === 'failed') {
             throw new Error('Cannot commit resource uses for a failed submission');
@@ -59,8 +63,8 @@ export class FrameResourceUseTracker implements RHIUploadBatchParticipant {
         }
     }
 
-    commit(submission: RHISubmission): void {
-        this.prepareCommit(submission);
+    commit(submission: RHISubmission, prepared = false): void {
+        if (!prepared) this.prepareCommit(submission);
         try {
             for (let index = 0; index < this.#handleCount; index += 1) {
                 const handle = this.#handles[index];

@@ -2273,7 +2273,7 @@ export interface ForwardRenderPipelineFeatureRuntime {
     frameSubmitted?(frameIndex: number): void;
     getSceneScale?(): number;
     record(context: ForwardRenderFeatureContext): unknown;
-    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void | Promise<void>;
     requiresSampledDepth?(context: RenderPipelineContext): boolean;
     requiresSplitScene?(context: RenderPipelineContext): boolean;
     readonly usesRenderGraphTimeline?: boolean;
@@ -6743,7 +6743,7 @@ export interface RenderPipeline {
     frameSubmitted?(frameIndex: number): void;
     readonly name: string;
     record(context: RenderPipelineContext): unknown;
-    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void;
+    recordRenderGraphTimeline?(snapshot: Readonly<RenderGraphTimelineSnapshot>): void | Promise<void>;
     readonly usesRenderGraphTimeline?: boolean;
 }
 

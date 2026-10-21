@@ -96,6 +96,7 @@ export class RenderGraphFrame {
                 ? undefined
                 : new RenderGraphTimelineRecorder(context.frameIndex, timelineSink);
         let graph: RenderGraphBuilder | null = null;
+        let submitted = false;
         try {
             graph = this.#renderGraph.createBuilder();
             const recordStart = timeline === undefined ? 0 : performance.now();
@@ -119,15 +120,21 @@ export class RenderGraphFrame {
                 frameIndex: context.frameIndex,
                 diagnostics: this.diagnostics,
                 prePassCommands: this.uploads,
+                preSubmitCommands: this.uploads,
                 ...(timeline === undefined ? {} : { timeline }),
                 ...(onTimelineError === undefined ? {} : { onTimelineError }),
                 ...(abortSignal === undefined ? {} : { abortSignal })
             });
-            this.uploads.commit(execution.submission);
+            submitted = true;
             execution.diagnostics.frameArenaGrowths = this.arena.growthCount - growthsBeforeBuild;
+            try {
+                this.uploads.commit(execution.submission);
+            } catch (error) {
+                execution.captureCompletionError(error);
+            }
             return execution;
         } catch (error) {
-            this.uploads.rollback();
+            if (!submitted) this.uploads.rollback();
             throw error;
         } finally {
             try {

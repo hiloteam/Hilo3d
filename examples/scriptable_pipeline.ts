@@ -69,19 +69,23 @@ async function run(): Promise<void> {
             })
         }
     });
+    const isDisposed = (): boolean => context.lifecycle.disposed;
     stopScene = (): void => {
         context.dispose();
     };
+    context.onDispose(() => {
+        lifetime.abort();
+        delete window.__HILO3D_CHROMATIC_TEST__;
+    });
     context.stats.stop();
     context.stats.container.remove();
     context.stage.removeChild(context.directionLight);
     context.stage.removeChild(context.ambientLight);
     const scene = await createScriptablePipelineScene(context.stage);
-    stopScene = (): void => {
-        context.ticker.stop();
+    context.onDispose(() => {
         scene.dispose();
-        context.dispose();
-    };
+    });
+    if (isDisposed()) return;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     let motion = query.get('motion') !== '0' && !reducedMotion.matches;
     let elapsed = 0;
@@ -256,8 +260,10 @@ async function run(): Promise<void> {
     // Publish only after real scene, shadow and feature work has completed on the selected backend.
     context.stage.tick(0);
     await context.renderer.waitForIdle();
+    if (isDisposed()) return;
     context.stage.tick(0);
     await context.renderer.waitForIdle();
+    if (isDisposed()) return;
     window.__HILO3D_SCRIPTABLE_PIPELINE_RESULT__ = {
         backend: context.renderer.backend,
         drawCount: context.renderer.renderInfo.drawCount,
@@ -317,17 +323,8 @@ async function run(): Promise<void> {
     }
 }
 
-window.addEventListener(
-    'pagehide',
-    () => {
-        lifetime.abort();
-        delete window.__HILO3D_CHROMATIC_TEST__;
-        stopScene?.();
-    },
-    { once: true }
-);
-
 void run().catch((error: unknown) => {
+    if (lifetime.signal.aborted) return;
     lifetime.abort();
     stopScene?.();
     element('#loadingTitle', HTMLElement).textContent = '展馆暂时无法开启';

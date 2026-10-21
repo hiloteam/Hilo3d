@@ -332,6 +332,7 @@ function clearKeyboard(): void {
 window.addEventListener('keydown', keyDown);
 window.addEventListener('keyup', keyUp);
 window.addEventListener('blur', clearKeyboard);
+window.addEventListener('pagehide', clearKeyboard);
 const auto = exhibit.action('courier-auto', '巡游：开启', () => {
     courier.setAutomatic(!courier.automatic);
 });
@@ -376,6 +377,8 @@ for (const [id, text, x, z] of [
 let gait = 0;
 let lastX = courier.body.pose.position.x;
 let lastZ = courier.body.pose.position.z;
+const crateReadouts: string[] = new Array<string>(courier.crates.length);
+document.body.dataset['physicsScene'] = 'character';
 function presentCourier(): void {
     courier.sample();
     const position = courier.body.pose.position;
@@ -397,9 +400,12 @@ function presentCourier(): void {
         }
     }
     if (!courier.physics.paused && courier.physics.timeScale > 0) {
-        for (const [index, leg] of legs.entries())
+        for (let index = 0; index < legs.length; index++) {
+            const leg = legs[index];
+            if (leg === undefined) continue;
             leg.rotationX =
                 courier.grounded && travel > 0.0001 ? Math.sin(gait + index * Math.PI) * 13 : 0;
+        }
     }
     signal.material = courier.grounded ? glass : copper;
     groundMarker.position.set(
@@ -430,11 +436,9 @@ function presentCourier(): void {
     inspect.textContent = inspecting ? '全景路线' : '近看信使';
     inspect.setAttribute('aria-pressed', String(inspecting));
     const data = document.body.dataset;
-    data['physicsScene'] = 'character';
     data['physicsSteps'] = String(courier.physics.getDiagnostics().simulatedSteps);
-    data['courierPosition'] = [position.x, position.y, position.z]
-        .map(value => value.toFixed(4))
-        .join(',');
+    data['courierPosition'] =
+        `${position.x.toFixed(4)},${position.y.toFixed(4)},${position.z.toFixed(4)}`;
     data['courierGrounded'] = String(courier.grounded);
     data['courierJumps'] = String(courier.jumps);
     data['courierLandings'] = String(courier.landings);
@@ -442,9 +446,13 @@ function presentCourier(): void {
     data['courierAuto'] = String(courier.automatic);
     data['courierView'] = inspecting ? 'detail' : 'route';
     data['courierObstacle'] = courier.obstacleDistance?.toFixed(3) ?? 'clear';
-    data['courierCrates'] = courier.crates
-        .map(crate => (crate.body.pose.position.x - crate.position.x).toFixed(3))
-        .join(',');
+    for (let index = 0; index < courier.crates.length; index++) {
+        const crate = courier.crates[index];
+        if (crate !== undefined) {
+            crateReadouts[index] = (crate.body.pose.position.x - crate.position.x).toFixed(3);
+        }
+    }
+    data['courierCrates'] = crateReadouts.join(',');
     data['courierLaps'] = String(courier.laps);
     exhibit.setMetric('mode', '脚下状态', courier.grounded ? '已接地' : '腾空中');
     exhibit.setMetric(
@@ -486,6 +494,7 @@ await stage.systems.install({
                 window.removeEventListener('keydown', keyDown);
                 window.removeEventListener('keyup', keyUp);
                 window.removeEventListener('blur', clearKeyboard);
+                window.removeEventListener('pagehide', clearKeyboard);
                 window.removeEventListener('resize', resizeInspection);
                 cameraHome.removeEventListener('click', returnToRoute);
             }

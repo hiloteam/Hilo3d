@@ -69,6 +69,39 @@ async function complete(backend: FakeRHIBackend): Promise<void> {
 }
 
 describe('StorageBufferReadbackService', () => {
+    it('tracks submitted work and releases staging when CPU publication fails', async () => {
+        const backend = new FakeWebGPURHIBackend();
+        const device = backend.createDevice();
+        const registry = new ResourceRegistry(device);
+        const resources = new StorageBufferResourceCache(registry);
+        const submissions = new SubmissionResourceTracker(registry);
+        const service = new StorageBufferReadbackService(resources, submissions);
+        const source = sourceBuffer();
+        const failure = new Error('publication failed');
+        const commit = service.frame.uploads.commit.bind(service.frame.uploads);
+        vi.spyOn(service.frame.uploads, 'commit').mockImplementationOnce(submission => {
+            commit(submission);
+            throw failure;
+        });
+        const buffers = vi.spyOn(device, 'createBuffer');
+        await expect(service.read(frameContext(device, 1), source, 0, 4)).rejects.toThrow(failure);
+        const staging = buffers.mock.results
+            .map(result => result.value as FakeRHIBuffer)
+            .find(buffer => (buffer.usage & RHIBufferUsage.MAP_READ) !== 0);
+        expect(staging?.destroyed).toBe(true);
+        expect(staging?.nativeReleased).toBe(false);
+        expect(submissions.pendingSubmissionCount).toBe(1);
+        await complete(backend);
+        await submissions.waitForIdle();
+        expect(staging?.nativeReleased).toBe(true);
+        service.destroy();
+        resources.destroy();
+        registry.collect(1);
+        submissions.destroy();
+        registry.destroy();
+        backend.destroy();
+    });
+
     it('copies the requested range, waits for submission, maps it, and rejects foreign contexts', async () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();

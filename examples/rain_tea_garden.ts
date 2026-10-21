@@ -750,10 +750,11 @@ async function run(): Promise<void> {
     };
     sceneLifecycle.suspend = (): void => {
         ticker.stop();
-        void capture?.pause().catch(showFailure);
+        capture?.setSuspended(true);
     };
     sceneLifecycle.resume = (): void => {
         if (!disposed && !lifecyclePaused && sceneReady && !settling && !keepCapturePaused) {
+            capture?.setSuspended(false);
             capture?.resume();
             ticker.start();
         }

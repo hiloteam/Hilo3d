@@ -30,6 +30,7 @@ import type {
     RGBufferWriteUse
 } from './RenderGraphResource';
 import { renderGraphFailure } from './RenderGraphValidation';
+import { assertSynchronousGraphCallback } from './RenderGraphCallback';
 
 let nextBuilderGeneration = 1;
 let nextGraphHandle = 1;
@@ -59,9 +60,12 @@ export interface RenderPassTemplate<P> {
     readonly name: string;
     /** Native pass category used only by opt-in automatic GPU timestamp instrumentation. */
     timestampKind?(params: P): RGPassTimestampKind | null;
-    setup(builder: RGPassBuilder, params: P): void;
-    prepare?(context: RGPrepareContext, params: P): void;
-    execute(context: RGPassContext, params: P): void;
+    /** Declare accesses synchronously. Promise-like results are rejected. */
+    setup(builder: RGPassBuilder, params: P): unknown;
+    /** Prepare backend objects synchronously, before command recording. */
+    prepare?(context: RGPrepareContext, params: P): unknown;
+    /** Record commands synchronously. Promise-like results are rejected. */
+    execute(context: RGPassContext, params: P): unknown;
 }
 
 /** @internal Immutable-enough compiler input owned by a consumed builder. */
@@ -121,7 +125,7 @@ type MutableTextureDescriptor = Omit<
         height?: number;
         depthOrArrayLayers?: number;
     };
-    viewFormats?: RGTextureDescriptor['viewFormats'];
+    viewFormats?: NonNullable<RGTextureDescriptor['viewFormats']>;
     readonly viewFormatStorage: NonNullable<RGTextureDescriptor['viewFormats']>[number][];
 };
 type MutableBufferDescriptor = {
@@ -184,6 +188,40 @@ function bufferUseUsage(use: RGBufferReadUse | RGBufferWriteUse): RHIBufferUsage
     }
 }
 
+function importedTextureViewDimension(descriptor: RGTextureDescriptor): string {
+    const dimension = descriptor.dimension ?? '2d';
+    return (
+        descriptor.viewDimension ??
+        (dimension !== '2d'
+            ? dimension
+            : (descriptor.size.depthOrArrayLayers ?? 1) > 1
+              ? '2d-array'
+              : '2d')
+    );
+}
+
+function sameImportedTextureDescriptor(
+    first: RGTextureDescriptor,
+    second: RGTextureDescriptor
+): boolean {
+    const firstFormats = first.viewFormats;
+    const secondFormats = second.viewFormats;
+    return (
+        first.size.width === second.size.width &&
+        (first.size.height ?? 1) === (second.size.height ?? 1) &&
+        (first.size.depthOrArrayLayers ?? 1) === (second.size.depthOrArrayLayers ?? 1) &&
+        (first.dimension ?? '2d') === (second.dimension ?? '2d') &&
+        importedTextureViewDimension(first) === importedTextureViewDimension(second) &&
+        (first.mipLevelCount ?? 1) === (second.mipLevelCount ?? 1) &&
+        (first.sampleCount ?? 1) === (second.sampleCount ?? 1) &&
+        first.format === second.format &&
+        first.usage === second.usage &&
+        (firstFormats?.length ?? 0) === (secondFormats?.length ?? 0) &&
+        (firstFormats === undefined ||
+            firstFormats.every(format => secondFormats?.includes(format)))
+    );
+}
+
 const EMPTY_PASS_TEMPLATE: RenderPassTemplate<unknown> = Object.freeze({
     name: '<recycled>',
     setup(builder: RGPassBuilder, params: unknown) {
@@ -228,12 +266,14 @@ interface MutableRenderGraphBuildSnapshot {
 export class RenderGraphBuilderStorage {
     readonly resources: MutableResourceNode[] = [];
     readonly resourceByHandle = new Map<RGResourceHandle, MutableResourceNode>();
+    readonly importedTextures = new Map<object, MutableTextureResourceNode>();
+    readonly importedBuffers = new Map<object, MutableBufferResourceNode>();
     readonly passes: MutablePassNode[] = [];
     readonly passByHandle = new Map<RGPassHandle, MutablePassNode>();
     readonly outputs = new Set<RGResourceHandle>();
     readonly snapshot: MutableRenderGraphBuildSnapshot = {
         generation: 0,
-        resources: this.resources as RGResourceNode[],
+        resources: this.resources,
         passes: this.passes as RGPassNode[],
         outputs: this.outputs
     };
@@ -263,6 +303,8 @@ export class RenderGraphBuilderStorage {
         this.#passNodeCursor = 0;
         this.resources.length = 0;
         this.resourceByHandle.clear();
+        this.importedTextures.clear();
+        this.importedBuffers.clear();
         this.passes.length = 0;
         this.passByHandle.clear();
         this.outputs.clear();
@@ -545,6 +587,8 @@ export class RenderGraphBuilderStorage {
         }
         this.resources.length = 0;
         this.resourceByHandle.clear();
+        this.importedTextures.clear();
+        this.importedBuffers.clear();
         this.passes.length = 0;
         this.passByHandle.clear();
         this.outputs.clear();
@@ -672,25 +716,41 @@ export class RenderGraphBuilderStorage {
 }
 
 export class RGPassBuilder {
+    #open = true;
+
     /** @internal */
     constructor(
         private readonly graph: RenderGraphBuilder,
         private readonly pass: MutablePassNode
     ) {}
 
+    /** @internal End the declaration scope before its pooled pass node can be reused. */
+    close(): void {
+        this.#open = false;
+    }
+
+    private assertOpen(): void {
+        if (!this.#open) {
+            renderGraphFailure('invalid-state', 'pass builder is only valid during setup');
+        }
+    }
+
     readTexture(handle: RGTextureAccessHandle): RGTextureAccessHandle {
+        this.assertOpen();
         this.graph.requireTextureAccess(handle);
         this.addRead(handle);
         return handle;
     }
 
     writeTexture(handle: RGTextureAccessHandle): RGTextureAccessHandle {
+        this.assertOpen();
         this.graph.requireTextureAccess(handle);
         this.addWrite(handle);
         return handle;
     }
 
     readBuffer(handle: RGBufferHandle, use: RGBufferReadUse): RGBufferHandle {
+        this.assertOpen();
         this.graph.requireResource(handle, 'buffer');
         this.addRead(handle);
         this.graph.acquireBufferAccess(this.pass, handle, 'read', use);
@@ -698,6 +758,7 @@ export class RGPassBuilder {
     }
 
     writeBuffer(handle: RGBufferHandle, use: RGBufferWriteUse): RGBufferHandle {
+        this.assertOpen();
         this.graph.requireResource(handle, 'buffer');
         if (use === 'copy-destination' && this.pass.readWriteBuffers.includes(handle)) {
             for (const access of this.pass.bufferAccesses) {
@@ -719,6 +780,7 @@ export class RGPassBuilder {
 
     /** Preserve prior contents for storage access or an internal partial buffer clear. */
     readWriteBuffer(handle: RGBufferHandle, use: 'storage' | 'copy-destination'): RGBufferHandle {
+        this.assertOpen();
         this.graph.requireResource(handle, 'buffer');
         for (const access of this.pass.bufferAccesses) {
             if (access.buffer !== handle || access.use !== use) continue;
@@ -747,6 +809,7 @@ export class RGPassBuilder {
     }
 
     useColorAttachment(declaration: RGColorAttachmentDeclaration): void {
+        this.assertOpen();
         this.graph.requireTextureAccess(declaration.texture);
         this.addAttachment(declaration.texture);
         if (declaration.resolveTarget !== undefined) {
@@ -757,6 +820,7 @@ export class RGPassBuilder {
     }
 
     useDepthStencilAttachment(declaration: RGDepthStencilAttachmentDeclaration): void {
+        this.assertOpen();
         if (this.pass.depthStencilAttachment !== null) {
             renderGraphFailure(
                 'duplicate-access',
@@ -770,6 +834,7 @@ export class RGPassBuilder {
     }
 
     dependsOn(handle: RGPassHandle): void {
+        this.assertOpen();
         this.graph.requirePass(handle);
         if (handle === this.pass.handle) {
             renderGraphFailure('cycle', 'a pass cannot depend on itself', this.pass.name);
@@ -781,6 +846,7 @@ export class RGPassBuilder {
     }
 
     markSideEffect(): void {
+        this.assertOpen();
         this.pass.sideEffect = true;
     }
 
@@ -834,6 +900,7 @@ export class RenderGraphBuilder {
     readonly #releaseStorage: ((storage: RenderGraphBuilderStorage) => void) | null;
     #consumed = false;
     #recycled = false;
+    #settingUp = false;
 
     /** @internal RenderGraph supplies pooled storage; direct callers receive private storage. */
     constructor(
@@ -889,6 +956,7 @@ export class RenderGraphBuilder {
         return handle;
     }
 
+    /** Import once per physical identity; repeated imports share all graph hazards. */
     importTexture(name: string, texture: RHITexture, initiallyInitialized = true): RGTextureHandle {
         this.assertOpen();
         if (typeof initiallyInitialized !== 'boolean') {
@@ -897,8 +965,23 @@ export class RenderGraphBuilder {
                 'imported texture initialization state must be boolean'
             );
         }
+        const existing = this.#storage.importedTextures.get(texture);
+        if (existing !== undefined) {
+            this.assertImportInitialization(existing, initiallyInitialized);
+            if (
+                existing.resourceLifetime !== texture.lifetime ||
+                !sameImportedTextureDescriptor(existing.descriptor, texture.descriptor)
+            ) {
+                renderGraphFailure(
+                    'invalid-descriptor',
+                    'repeated texture imports must agree on descriptor and lifetime',
+                    name
+                );
+            }
+            return existing.handle;
+        }
         const handle = this.allocateResourceHandle() as RGTextureHandle;
-        this.#storage.acquireTextureNode(
+        const resource = this.#storage.acquireTextureNode(
             handle,
             name,
             'imported',
@@ -908,9 +991,11 @@ export class RenderGraphBuilder {
             texture.lifetime,
             initiallyInitialized
         );
+        this.#storage.importedTextures.set(texture, resource);
         return handle;
     }
 
+    /** Import once per physical identity; repeated imports share all graph hazards. */
     importBuffer(name: string, buffer: RHIBuffer, initiallyInitialized = true): RGBufferHandle {
         this.assertOpen();
         if (typeof initiallyInitialized !== 'boolean') {
@@ -919,8 +1004,26 @@ export class RenderGraphBuilder {
                 'imported buffer initialization state must be boolean'
             );
         }
+        const existing = this.#storage.importedBuffers.get(buffer);
+        if (existing !== undefined) {
+            this.assertImportInitialization(existing, initiallyInitialized);
+            if (
+                existing.resourceLifetime !== buffer.lifetime ||
+                existing.descriptor.size !== buffer.descriptor.size ||
+                existing.descriptor.usage !== buffer.descriptor.usage ||
+                (existing.descriptor.mappedAtCreation ?? false) !==
+                    buffer.descriptor.mappedAtCreation
+            ) {
+                renderGraphFailure(
+                    'invalid-descriptor',
+                    'repeated buffer imports must agree on descriptor and lifetime',
+                    name
+                );
+            }
+            return existing.handle;
+        }
         const handle = this.allocateResourceHandle() as RGBufferHandle;
-        this.#storage.acquireBufferNode(
+        const resource = this.#storage.acquireBufferNode(
             handle,
             name,
             'imported',
@@ -930,19 +1033,35 @@ export class RenderGraphBuilder {
             buffer.lifetime,
             initiallyInitialized
         );
+        this.#storage.importedBuffers.set(buffer, resource);
         return handle;
+    }
+
+    private assertImportInitialization(
+        resource: RGTextureResourceNode | RGBufferResourceNode,
+        initiallyInitialized: boolean
+    ): void {
+        if (resource.initiallyInitialized !== initiallyInitialized) {
+            renderGraphFailure(
+                'invalid-descriptor',
+                'repeated imports must agree on frame-start initialization',
+                resource.name
+            );
+        }
     }
 
     /**
      * Declares an externally-owned texture without acquiring it during graph construction.
      * `provider` runs only if the compiled graph keeps a pass that uses this resource.
+     * Repeated imports of one allocation must share `identity`, even across provider closures.
      */
     importTextureProvider(
         name: string,
         descriptor: RGTextureDescriptor,
         provider: RGImportedTextureProvider,
         lifetime: 'persistent' | 'frame' = 'frame',
-        initiallyInitialized = true
+        initiallyInitialized = true,
+        identity: object = provider
     ): RGTextureHandle {
         this.assertOpen();
         if (typeof initiallyInitialized !== 'boolean') {
@@ -951,8 +1070,23 @@ export class RenderGraphBuilder {
                 'imported texture initialization state must be boolean'
             );
         }
+        const existing = this.#storage.importedTextures.get(identity);
+        if (existing !== undefined) {
+            this.assertImportInitialization(existing, initiallyInitialized);
+            if (
+                existing.resourceLifetime !== lifetime ||
+                !sameImportedTextureDescriptor(existing.descriptor, descriptor)
+            ) {
+                renderGraphFailure(
+                    'invalid-descriptor',
+                    'repeated texture imports must agree on descriptor and lifetime',
+                    name
+                );
+            }
+            return existing.handle;
+        }
         const handle = this.allocateResourceHandle() as RGTextureHandle;
-        this.#storage.acquireTextureNode(
+        const resource = this.#storage.acquireTextureNode(
             handle,
             name,
             'imported',
@@ -962,6 +1096,7 @@ export class RenderGraphBuilder {
             lifetime,
             initiallyInitialized
         );
+        this.#storage.importedTextures.set(identity, resource);
         return handle;
     }
 
@@ -971,7 +1106,8 @@ export class RenderGraphBuilder {
         descriptor: RGBufferDescriptor,
         provider: RGImportedBufferProvider,
         lifetime: 'persistent' | 'frame' = 'frame',
-        initiallyInitialized = true
+        initiallyInitialized = true,
+        identity: object = provider
     ): RGBufferHandle {
         this.assertOpen();
         if (typeof initiallyInitialized !== 'boolean') {
@@ -980,8 +1116,26 @@ export class RenderGraphBuilder {
                 'imported buffer initialization state must be boolean'
             );
         }
+        const existing = this.#storage.importedBuffers.get(identity);
+        if (existing !== undefined) {
+            this.assertImportInitialization(existing, initiallyInitialized);
+            if (
+                existing.resourceLifetime !== lifetime ||
+                existing.descriptor.size !== descriptor.size ||
+                existing.descriptor.usage !== descriptor.usage ||
+                (existing.descriptor.mappedAtCreation ?? false) !==
+                    (descriptor.mappedAtCreation ?? false)
+            ) {
+                renderGraphFailure(
+                    'invalid-descriptor',
+                    'repeated buffer imports must agree on descriptor and lifetime',
+                    name
+                );
+            }
+            return existing.handle;
+        }
         const handle = this.allocateResourceHandle() as RGBufferHandle;
-        this.#storage.acquireBufferNode(
+        const resource = this.#storage.acquireBufferNode(
             handle,
             name,
             'imported',
@@ -991,6 +1145,7 @@ export class RenderGraphBuilder {
             lifetime,
             initiallyInitialized
         );
+        this.#storage.importedBuffers.set(identity, resource);
         return handle;
     }
 
@@ -1073,6 +1228,7 @@ export class RenderGraphBuilder {
 
     addPass<P>(template: RenderPassTemplate<P>, params: P): RGPassHandle {
         this.assertOpen();
+        this.assertOutsideSetup();
         if (template.name.length === 0) {
             renderGraphFailure('invalid-descriptor', 'pass template name must be non-empty');
         }
@@ -1083,12 +1239,17 @@ export class RenderGraphBuilder {
             template,
             params
         );
+        const passBuilder = new RGPassBuilder(this, pass);
+        this.#settingUp = true;
         try {
-            template.setup(new RGPassBuilder(this, pass), params);
+            assertSynchronousGraphCallback(template.setup(passBuilder, params), 'setup', pass.name);
             this.commitBufferUsages(pass);
         } catch (error) {
             this.#storage.rollbackPass(pass);
             throw error;
+        } finally {
+            passBuilder.close();
+            this.#settingUp = false;
         }
         return handle;
     }
@@ -1109,6 +1270,7 @@ export class RenderGraphBuilder {
     /** @internal Consume the builder exactly once for compilation. */
     finish(): RenderGraphBuildSnapshot {
         this.assertOpen();
+        this.assertOutsideSetup();
         this.#consumed = true;
         return this.#storage.snapshot;
     }
@@ -1122,6 +1284,7 @@ export class RenderGraphBuilder {
     /** @internal Invalidate a completed or abandoned build and release all retained references. */
     discard(): void {
         if (this.#recycled) return;
+        this.assertOutsideSetup();
         this.#consumed = true;
         this.#recycled = true;
         this.#storage.recycle();
@@ -1189,7 +1352,7 @@ export class RenderGraphBuilder {
         if (!resource || (kind !== undefined && resource.kind !== kind)) {
             renderGraphFailure('invalid-handle', `resource handle ${String(handle)} is invalid`);
         }
-        return resource as RGResourceNode;
+        return resource;
     }
 
     /** @internal */
@@ -1225,6 +1388,15 @@ export class RenderGraphBuilder {
     private assertOpen(): void {
         if (this.#consumed) {
             renderGraphFailure('invalid-state', 'render graph builder has already been consumed');
+        }
+    }
+
+    private assertOutsideSetup(): void {
+        if (this.#settingUp) {
+            renderGraphFailure(
+                'invalid-state',
+                'cannot add, consume or discard a graph during pass setup'
+            );
         }
     }
 }

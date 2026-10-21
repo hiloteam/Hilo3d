@@ -101,11 +101,11 @@ describe('Render Graph timeline failure boundaries', () => {
             }
         );
         expect(result.submission.status).toBe('succeeded');
-        expect(participant.commit).toHaveBeenCalledWith(result.submission);
+        expect(participant.commit).toHaveBeenCalledWith(result.submission, true);
         expect(participant.rollback).not.toHaveBeenCalled();
         expect(abort).not.toHaveBeenCalled();
         expect(() => {
-            result.throwTimelineError();
+            result.throwCompletionError();
         }).toThrow(failure);
         frame.execute(frameContext(device), scope => {
             recordColor(scope, false);
@@ -131,7 +131,7 @@ describe('Render Graph timeline failure boundaries', () => {
             }
         });
         expect(() => {
-            result.throwTimelineError();
+            result.throwCompletionError();
         }).toThrow(failure);
         expect(result.submission.status).toBe('pending');
         expect(abort).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe('Render Graph timeline failure boundaries', () => {
             report
         );
         expect(() => {
-            result.throwTimelineError();
+            result.throwCompletionError();
         }).not.toThrow();
         expect(result.submission.status).toBe('succeeded');
         await vi.waitFor(() => {
@@ -270,7 +270,7 @@ describe('Render Graph timeline failure boundaries', () => {
         backend.destroy();
     });
 
-    it('aborts the active frame and releases transient allocations if timestamp setup fails', () => {
+    it('fails timestamp preparation before opening a command frame and keeps transients reusable', () => {
         const backend = new FakeWebGPURHIBackend();
         const device = backend.createDevice();
         const frame = new RenderGraphFrame();
@@ -278,6 +278,7 @@ describe('Render Graph timeline failure boundaries', () => {
             throw new Error('query allocation failed');
         });
         const textures = vi.spyOn(device, 'createTexture');
+        const begin = vi.spyOn(device.graphicsQueue, 'beginFrame');
         const abort = vi.spyOn(device.graphicsQueue, 'abortFrame');
         expect(() =>
             frame.execute(frameContext(device), recordColor, undefined, {
@@ -286,8 +287,9 @@ describe('Render Graph timeline failure boundaries', () => {
                 }
             })
         ).toThrow('query allocation failed');
-        expect(abort).toHaveBeenCalledOnce();
-        expect((textures.mock.results[0]?.value as RHITexture | undefined)?.destroyed).toBe(true);
+        expect(begin).not.toHaveBeenCalled();
+        expect(abort).not.toHaveBeenCalled();
+        expect((textures.mock.results[0]?.value as RHITexture | undefined)?.destroyed).toBe(false);
         expect(frame.active).toBe(false);
         expect(queries).toHaveBeenCalledOnce();
         frame.destroy();

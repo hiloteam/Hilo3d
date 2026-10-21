@@ -1,39 +1,27 @@
 import * as Hilo3d from '../src/Hilo3d';
-import { resolveExampleBackend } from './shared/init';
-import Stats from './shared/stats';
+import { createExampleContext } from './shared/init';
 
 const container = document.getElementById('container');
 if (!container) throw new Error('Fog example requires #container');
-const camera = new Hilo3d.PerspectiveCamera({
-    aspect: innerWidth / innerHeight,
-    far: 200,
-    z: 10
-});
 const backgroundColor = new Hilo3d.Color(0.6, 0.8, 0.9);
-const stage = await Hilo3d.Stage.create<Hilo3d.RendererBackend>({
-    backend: resolveExampleBackend(),
+const context = await createExampleContext({
     container,
-    camera,
-    width: innerWidth,
-    height: innerHeight,
-    clearColor: backgroundColor,
-    useInstanced: true,
-    fog: new Hilo3d.Fog({
-        mode: 'EXP2',
-        start: 5,
-        end: 15,
-        density: 0.1,
-        color: backgroundColor
-    })
+    camera: { far: 200, z: 10 },
+    controls: { enablePan: true },
+    stage: {
+        clearColor: backgroundColor,
+        useInstanced: true,
+        renderPipeline: new Hilo3d.ForwardRenderPipelineFactory(),
+        fog: new Hilo3d.Fog({
+            mode: 'EXP2',
+            start: 5,
+            end: 15,
+            density: 0.1,
+            color: backgroundColor
+        })
+    }
 });
-
-const ticker = new Hilo3d.Ticker(60);
-ticker.addTick(stage);
-ticker.addTick(Hilo3d.Tween);
-ticker.start();
-
-new Stats(ticker, stage.renderer);
-new Hilo3d.OrbitControls(stage);
+const { stage, lifecycle } = context;
 
 function randInt(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min)) + min;
@@ -51,6 +39,10 @@ void loader
         return new Hilo3d.Texture({ image });
     })
     .then(function (diffuse) {
+        context.onDispose(() => {
+            diffuse.destroy();
+        });
+        if (lifecycle.disposed) return;
         const material = new Hilo3d.PBRMaterial({
             unlit: true,
             baseColorMap: diffuse,
@@ -87,5 +79,5 @@ void loader
         }
     })
     .catch((error: unknown) => {
-        console.error('Failed to initialize fog example', error);
+        if (!lifecycle.disposed) console.error('Failed to initialize fog example', error);
     });

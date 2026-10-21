@@ -275,7 +275,7 @@ describe.each([
                 });
             })
         ).toThrow(/changed after its first frame use/);
-        await complete(fixture);
+        expect(fixture.device.graphicsQueue.pendingSubmission()).toBeUndefined();
         expect(fixture.provider.committedRevision).toBe(baseline);
         expect(fixture.provider.pendingRevision).toBeNull();
 

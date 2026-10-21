@@ -104,6 +104,7 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                 this.build(scope, context, atlas, plan, options);
             });
             void this.submissions.track(context.frameIndex, result.submission);
+            result.throwCompletionError();
             return result;
         } finally {
             this.endComposition();
@@ -143,7 +144,9 @@ export class ShadowAtlasRenderer<Owner extends object = object> {
                 'shadow atlas',
                 atlas.textureDescriptor,
                 () => this.registry.resolve(atlas.texture),
-                'persistent'
+                'persistent',
+                true,
+                atlas.texture
             );
 
             let previousPass: RGPassHandle | null = null;

@@ -15,7 +15,6 @@ const { stage } = await createExampleContext({
 
 const texture = new Hilo3d.Texture({
     image: canvas,
-    autoUpdate: true,
     wrapS: Hilo3d.constants.webgl.CLAMP_TO_EDGE,
     wrapT: Hilo3d.constants.webgl.CLAMP_TO_EDGE
 });
@@ -30,14 +29,20 @@ const display = new Hilo3d.Mesh({
 });
 display.addTo(stage);
 
+const background = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+background.addColorStop(0, '#101b35');
+background.addColorStop(1, '#24114d');
+const cards = [
+    { label: 'Frame', value: '0', color: '#60a5fa' },
+    { label: 'Signal', value: '0%', color: '#a78bfa' },
+    { label: 'Mode', value: 'ESM', color: '#34d399' }
+];
+
 function drawInterface(elapsed: number): void {
     const width = canvas.width;
     const height = canvas.height;
     const pulse = (Math.sin(elapsed * 0.002) + 1) * 0.5;
 
-    const background = context.createLinearGradient(0, 0, width, height);
-    background.addColorStop(0, '#101b35');
-    background.addColorStop(1, '#24114d');
     context.fillStyle = background;
     context.fillRect(0, 0, width, height);
 
@@ -48,11 +53,6 @@ function drawInterface(elapsed: number): void {
     context.font = '18px system-ui, sans-serif';
     context.fillText('Live CanvasTexture dashboard', 28, 92);
 
-    const cards = [
-        { label: 'Frame', value: String(Math.floor(elapsed / 16.67)), color: '#60a5fa' },
-        { label: 'Signal', value: `${String(Math.round(pulse * 100))}%`, color: '#a78bfa' },
-        { label: 'Mode', value: 'ESM', color: '#34d399' }
-    ];
     cards.forEach((card, index) => {
         const y = 130 + index * 108;
         context.fillStyle = 'rgba(255, 255, 255, 0.08)';
@@ -64,7 +64,13 @@ function drawInterface(elapsed: number): void {
         context.fillText(card.label, 48, y + 30);
         context.fillStyle = '#ffffff';
         context.font = '600 28px system-ui, sans-serif';
-        context.fillText(card.value, 48, y + 64);
+        const value =
+            index === 0
+                ? String(Math.floor(elapsed / (1000 / 30)))
+                : index === 1
+                  ? `${String(Math.round(pulse * 100))}%`
+                  : card.value;
+        context.fillText(value, 48, y + 64);
     });
 
     context.strokeStyle = `rgba(96, 165, 250, ${String(0.45 + pulse * 0.5)})`;
@@ -72,12 +78,18 @@ function drawInterface(elapsed: number): void {
     context.beginPath();
     context.arc(width / 2, 535, 62, -Math.PI / 2, -Math.PI / 2 + pulse * Math.PI * 2);
     context.stroke();
+    texture.needUpdate = true;
 }
 
 let elapsed = 0;
+let nextCanvasUpdate = 1000 / 30;
 display.onUpdate = deltaTime => {
     elapsed += deltaTime;
-    drawInterface(elapsed);
+    // The scene can render at 60 Hz without redrawing and uploading an unchanged dashboard.
+    if (elapsed >= nextCanvasUpdate) {
+        drawInterface(elapsed);
+        nextCanvasUpdate = elapsed + 1000 / 30;
+    }
     display.rotationY = Math.sin(elapsed * 0.0006) * 12;
 };
 drawInterface(0);
