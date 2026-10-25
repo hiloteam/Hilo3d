@@ -1,3 +1,4 @@
+import { ShadowAtlasPacker } from './ShadowAtlasPacker';
 import type { RHICapabilities, RHITextureFormat, RHIViewport } from '../rhi/core';
 import {
     MAX_DIRECTIONAL_LIGHTS,
@@ -63,7 +64,7 @@ export interface ShadowAtlasPlan<Owner extends object = object> {
     readonly tileHeight: number;
     readonly columns: number;
     readonly rows: number;
-    /** Number of grid cells allocated by the deterministic square-ish layout. */
+    /** Allocated cells for uniform grids, or exact rectangle count for compact layouts. */
     readonly capacity: number;
     readonly format: RHITextureFormat;
 }
@@ -198,6 +199,7 @@ function clearMutableSlice<Owner extends object>(slice: MutableShadowAtlasSlice<
 export class ShadowAtlasPlanner<Owner extends object = object> {
     readonly format: RHITextureFormat;
     readonly maxSlices: number;
+    readonly #packer = new ShadowAtlasPacker();
     readonly #activeSlices: MutableShadowAtlasSlice<Owner>[] = [];
     readonly #slicePool: MutableShadowAtlasSlice<Owner>[] = [];
     readonly #owners = new Map<Owner, OwnerPlacement>();
@@ -309,15 +311,31 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             this.#seenOwners.clear();
         }
 
-        const columns = sliceCount === 0 ? 0 : Math.ceil(Math.sqrt(sliceCount));
-        const rows = sliceCount === 0 ? 0 : Math.ceil(sliceCount / columns);
-        const width = columns * tileWidth;
-        const height = rows * tileHeight;
-        if (width > maximumDimension || height > maximumDimension) {
-            throw new RangeError(
-                `Shadow atlas ${String(width)}x${String(height)} exceeds maxTextureDimension2D ${String(maximumDimension)}`
+        this.#packer.reset();
+        for (const request of requests.directional) {
+            for (let slice = 0; slice < (request.cascadeCount ?? 1); slice++) {
+                this.#packer.add(
+                    request.sliceWidths?.[slice] ?? request.width,
+                    request.sliceHeights?.[slice] ?? request.height
+                );
+            }
+        }
+        for (const request of requests.spot) {
+            this.#packer.add(
+                request.sliceWidths?.[0] ?? request.width,
+                request.sliceHeights?.[0] ?? request.height
             );
         }
+        for (const request of requests.point) {
+            for (let face = 0; face < 6; face++) {
+                this.#packer.add(
+                    request.sliceWidths?.[face] ?? request.width,
+                    request.sliceHeights?.[face] ?? request.height
+                );
+            }
+        }
+        this.#packer.pack(maximumDimension);
+        const { width, height, columns, rows } = this.#packer;
 
         this.advanceEpoch();
         this.resizeActiveSlices(sliceCount);
@@ -329,9 +347,6 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             MAX_DIRECTIONAL_SHADOW_CASCADES,
             1,
             physicalIndex,
-            columns,
-            tileWidth,
-            tileHeight,
             width,
             height
         );
@@ -342,9 +357,6 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             1,
             1,
             physicalIndex,
-            columns,
-            tileWidth,
-            tileHeight,
             width,
             height
         );
@@ -355,9 +367,6 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
             6,
             6,
             physicalIndex,
-            columns,
-            tileWidth,
-            tileHeight,
             width,
             height
         );
@@ -370,7 +379,7 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
         this.#state.tileHeight = tileHeight;
         this.#state.columns = columns;
         this.#state.rows = rows;
-        this.#state.capacity = columns * rows;
+        this.#state.capacity = this.#packer.capacity;
         return this.#plan;
     }
 
@@ -476,9 +485,6 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
         logicalStride: number,
         defaultSliceCount: number,
         initialPhysicalIndex: number,
-        columns: number,
-        tileWidth: number,
-        tileHeight: number,
         atlasWidth: number,
         atlasHeight: number
     ): number {
@@ -499,10 +505,9 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
                 if (slice === undefined) {
                     throw new Error('Shadow atlas slice storage is incomplete');
                 }
-                const column = physicalIndex % columns;
-                const row = Math.floor(physicalIndex / columns);
-                const x = column * tileWidth;
-                const y = row * tileHeight;
+                const rectangle = this.#packer.rectangles[physicalIndex];
+                if (rectangle === undefined) throw new Error('Shadow packing result is incomplete');
+                const { x, y, width: sliceWidth, height: sliceHeight } = rectangle;
                 slice.owner = request.owner;
                 slice.kind = kind;
                 slice.face = kind === 'point' ? subIndex : null;
@@ -511,8 +516,6 @@ export class ShadowAtlasPlanner<Owner extends object = object> {
                 slice.physicalIndex = physicalIndex;
                 slice.viewport.x = x;
                 slice.viewport.y = y;
-                const sliceWidth = request.sliceWidths?.[subIndex] ?? tileWidth;
-                const sliceHeight = request.sliceHeights?.[subIndex] ?? tileHeight;
                 slice.viewport.width = sliceWidth;
                 slice.viewport.height = sliceHeight;
                 slice.viewport.minDepth = 0;

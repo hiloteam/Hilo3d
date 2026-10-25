@@ -47,6 +47,14 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Rendering
 
+- Schedule dirty shadow slices by last successful complete update, preserving fairness across page
+  deferral and failed submissions, with bounded overdue progress above saturated soft budgets.
+  Invalidate cached shadows for geometry layout, UV decode and active morph-target changes, and
+  virtual pages for camera depth-range or depth-mode changes.
+- Cull CPU shadow casters per slice with conservative skin/morph/decode bounds and compact atlas
+  rectangles at their requested resolutions. Keep stable shader indices and submission-aware cache
+  invalidation when placements change.
+
 - Harden SRP initialization ownership, feature/addon callback completion and temporal publication
   across failure paths. Snapshot optional Forward hooks and aggregate observer failures without
   skipping remaining owners; public pipeline/feature timeline hooks explicitly return

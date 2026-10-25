@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import OrthographicCamera from '../../../src/camera/OrthographicCamera';
+import BasicMaterial from '../../../src/material/BasicMaterial';
 import Mesh from '../../../src/core/Mesh';
 import Node from '../../../src/core/Node';
 import Skeleton from '../../../src/core/Skeleton';
@@ -76,6 +78,47 @@ describe('Conservative shadow caster bounds', () => {
         expect(() => bounds.get(mesh)).toThrow(/finite/);
     });
 
+    it('culls per-slice bounds conservatively after decode, morph, mirrored transforms and opt-out', () => {
+        const camera = new OrthographicCamera({
+            left: -1,
+            right: 1,
+            bottom: -1,
+            top: 1,
+            near: 0.1,
+            far: 10
+        });
+        camera.setPosition(0, 0, 5).lookAt(new Vector3()).updateViewProjectionMatrix();
+        const geometry = new MorphGeometry({
+            vertices: new GeometryData(new Float32Array([-0.5, -0.5, 0, 0.5, 0.5, 0]), 3),
+            targets: { vertices: [delta(-4)] },
+            weights: [0]
+        });
+        const mesh = new Mesh({
+            geometry,
+            material: new BasicMaterial({ lightType: 'NONE' }),
+            x: 4
+        });
+        mesh.updateMatrixWorld();
+        const bounds = new ShadowCasterBounds();
+        bounds.begin();
+        expect(bounds.isVisible(mesh, camera)).toBe(false);
+        geometry.weights[0] = 1;
+        bounds.begin();
+        expect(bounds.isVisible(mesh, camera)).toBe(true);
+        geometry.weights[0] = 0;
+        geometry.positionDecodeMat = Array.from(
+            new Matrix4().fromTranslation(new Vector3(-4, 0, 0)).elements
+        );
+        bounds.begin();
+        expect(bounds.isVisible(mesh, camera)).toBe(true);
+        mesh.scaleX = -1;
+        mesh.updateMatrixWorld();
+        bounds.begin();
+        expect(bounds.isVisible(mesh, camera)).toBe(false);
+        mesh.frustumTest = false;
+        expect(bounds.isVisible(mesh, camera)).toBe(true);
+    });
+
     it('unions positive-weight joint boxes, updates poses and rejects invalid influence streams', () => {
         const geometry = new BoxGeometry();
         const count = geometry.vertices?.count ?? 0;
@@ -93,6 +136,7 @@ describe('Conservative shadow caster bounds', () => {
         const unused = new Node({ x: 1000 });
         const mesh = new SkinnedMesh({
             geometry,
+            material: new BasicMaterial({ lightType: 'NONE' }),
             skeleton: new Skeleton({
                 jointNodeList: [left, right, unused],
                 inverseBindMatrices: [new Matrix4(), new Matrix4(), new Matrix4()]
@@ -105,6 +149,17 @@ describe('Conservative shadow caster bounds', () => {
         const bounds = new ShadowCasterBounds();
         bounds.begin();
         expect(bounds.get(mesh)).toMatchObject({ xMin: -3.5, xMax: 5.5 });
+        const camera = new OrthographicCamera({
+            left: 3,
+            right: 7,
+            bottom: -1,
+            top: 1,
+            near: 0.1,
+            far: 10
+        });
+        camera.setPosition(0, 0, 5).lookAt(new Vector3()).updateViewProjectionMatrix();
+        expect(camera.isMeshVisible(mesh)).toBe(false);
+        expect(bounds.isVisible(mesh, camera)).toBe(true);
         right.x = 9;
         mesh.updateMatrixWorld();
         bounds.begin();

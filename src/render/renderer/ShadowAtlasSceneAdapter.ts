@@ -997,21 +997,10 @@ export class ShadowAtlasSceneAdapter {
             minimumResolution
         );
         this.validateCounts();
-        const tileWidth = this.stageTileDimension(defaultWidth, 'width');
-        const tileHeight = this.stageTileDimension(defaultHeight, 'height');
-        const tileAspect = tileWidth / tileHeight;
         // Keep every fallible scene/camera calculation before build(): the planner mutates its
         // reusable public plan only after its own validation succeeds.
         this.#casterBounds.begin();
-        this.stageCameras(
-            mainCamera,
-            tileWidth,
-            tileHeight,
-            tileAspect,
-            frameIndex,
-            cascadeUpdateIntervals,
-            options.casterMeshes
-        );
+        this.stageCameras(mainCamera, frameIndex, cascadeUpdateIntervals, options.casterMeshes);
 
         const atlas = this.planner.build(this.#stageRequests, capabilities);
         this.finishStagedLightBlock(atlas);
@@ -1286,20 +1275,6 @@ export class ShadowAtlasSceneAdapter {
         }
     }
 
-    private stageTileDimension(defaultValue: number, axis: 'width' | 'height'): number {
-        let maximum = this.totalRequestCount() === 0 ? defaultValue : 1;
-        for (const request of this.#stageDirectionalRequests) {
-            if (request[axis] > maximum) maximum = request[axis];
-        }
-        for (const request of this.#stageSpotRequests) {
-            if (request[axis] > maximum) maximum = request[axis];
-        }
-        for (const request of this.#stagePointRequests) {
-            if (request[axis] > maximum) maximum = request[axis];
-        }
-        return maximum;
-    }
-
     private extendDirectionalCasterDepth(
         camera: OrthographicCamera,
         meshes: readonly Mesh[]
@@ -1370,9 +1345,6 @@ export class ShadowAtlasSceneAdapter {
 
     private stageCameras(
         mainCamera: Camera,
-        tileWidth: number,
-        tileHeight: number,
-        tileAspect: number,
         frameIndex: number,
         cascadeUpdateIntervals: readonly number[] | undefined,
         casterMeshes: readonly Mesh[] | undefined
@@ -1415,8 +1387,9 @@ export class ShadowAtlasSceneAdapter {
                 }
                 const interval = cascadeUpdateIntervals?.[cascade] ?? 1;
                 const committedCamera = committed?.cameras[cascade];
-                const renderWidth = staged.request.sliceWidths?.[cascade] ?? tileWidth;
-                const renderHeight = staged.request.sliceHeights?.[cascade] ?? tileHeight;
+                const renderWidth = staged.request.sliceWidths?.[cascade] ?? staged.request.width;
+                const renderHeight =
+                    staged.request.sliceHeights?.[cascade] ?? staged.request.height;
                 staged.renderWidths[cascade] = renderWidth;
                 staged.renderHeights[cascade] = renderHeight;
                 const reuseCommitted =
@@ -1483,7 +1456,13 @@ export class ShadowAtlasSceneAdapter {
                 throw new Error('Spot shadow staging is incomplete');
             }
             light.updateMatrixWorld(true);
-            stageSpotCamera(staged.camera, light, mainCamera, tileAspect);
+            stageSpotCamera(
+                staged.camera,
+                light,
+                mainCamera,
+                (staged.request.sliceWidths?.[0] ?? staged.request.width) /
+                    (staged.request.sliceHeights?.[0] ?? staged.request.height)
+            );
             staged.lightSpaceMatrix.multiply(
                 staged.camera.viewProjectionMatrix,
                 mainCamera.worldMatrix
@@ -1527,16 +1506,16 @@ export class ShadowAtlasSceneAdapter {
         for (let index = 0; index < this.#stageDirectionalRequests.length; index += 1) {
             const request = this.#stageDirectionalRequests[index];
             this.#stageLightBlock.directionalMapSizes[index * 2] =
-                request?.sliceWidths?.[0] ?? atlas.tileWidth;
+                request?.sliceWidths?.[0] ?? request?.width ?? 0;
             this.#stageLightBlock.directionalMapSizes[index * 2 + 1] =
-                request?.sliceHeights?.[0] ?? atlas.tileHeight;
+                request?.sliceHeights?.[0] ?? request?.height ?? 0;
         }
         for (let index = 0; index < this.#stageSpotRequests.length; index += 1) {
             const request = this.#stageSpotRequests[index];
             this.#stageLightBlock.spotMapSizes[index * 2] =
-                request?.sliceWidths?.[0] ?? atlas.tileWidth;
+                request?.sliceWidths?.[0] ?? request?.width ?? 0;
             this.#stageLightBlock.spotMapSizes[index * 2 + 1] =
-                request?.sliceHeights?.[0] ?? atlas.tileHeight;
+                request?.sliceHeights?.[0] ?? request?.height ?? 0;
         }
         for (const slice of atlas.slices) {
             const offset = slice.sliceIndex * 4;

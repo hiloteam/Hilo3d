@@ -2156,13 +2156,19 @@ class SharedRendererDriver
         );
         const scope = this.#pipelineHost.requireActiveScope();
         const content = resources.shadowContent.stage(atlas, plan, cacheMeshes, scope.uploads);
-        const updates = resources.shadowUpdates.schedule(plan, content, context.frameIndex);
+        const updates = resources.shadowUpdates.schedule(
+            plan,
+            content,
+            context.frameIndex,
+            scope.uploads
+        );
         const pages = resources.shadowPages.stage(
             plan,
             content,
             updates.scheduledSlices,
             scope.uploads,
-            this.shadowUpdateMode
+            this.shadowUpdateMode,
+            updates.mandatorySlices
         );
         let completedUpdateCount = 0;
         for (let index = 0; index < content.sliceCount; index += 1) {
@@ -2180,6 +2186,7 @@ class SharedRendererDriver
             residentPages: pages.residentPageCount,
             budgetOverflowPages: pages.budgetOverflowCount
         });
+        resources.shadowUpdates.complete(pages.completedSlices);
         resources.shadowContent.deferUnscheduled(pages.completedSlices);
         resources.shadowRenderOptions.depthClearValue = depthClearValue(context.camera.depthMode);
         resources.shadowRenderOptions.dirtySlices = updates.scheduledSlices;
