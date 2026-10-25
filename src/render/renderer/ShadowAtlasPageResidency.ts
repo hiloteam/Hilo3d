@@ -195,7 +195,8 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         content: Readonly<ShadowAtlasContentDecision>,
         scheduledSlices: readonly boolean[],
         uploads: RHIUploadBatch,
-        updateMode: ShadowAtlasPageUpdateMode = 'paged'
+        updateMode: ShadowAtlasPageUpdateMode = 'paged',
+        mandatorySlices?: readonly boolean[]
     ): Readonly<ShadowAtlasPageResidencyDecision> {
         this.assertAlive();
         const selectedUpdateMode: unknown = updateMode;
@@ -206,7 +207,8 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
         if (
             content.sliceCount !== sliceCount ||
             content.updateIds.length !== sliceCount ||
-            scheduledSlices.length !== sliceCount
+            scheduledSlices.length !== sliceCount ||
+            (mandatorySlices !== undefined && mandatorySlices.length !== sliceCount)
         ) {
             throw new TypeError('Shadow page residency requires matching dense slice inputs');
         }
@@ -235,7 +237,10 @@ export class ShadowAtlasPageResidency implements RHIUploadBatchParticipant {
             this.configureSlice(record, slice.viewport);
             const reason = content.reasons[sliceIndex];
             const isMandatory =
-                reason === 'allocation' || reason === 'layout' || reason === 'light';
+                reason === 'allocation' ||
+                reason === 'layout' ||
+                reason === 'light' ||
+                mandatorySlices?.[sliceIndex] === true;
             const forceComplete = updateMode === 'full' || isMandatory;
             const pageCount = record.columns * record.rows;
             let missing = 0;

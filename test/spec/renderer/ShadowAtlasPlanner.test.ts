@@ -89,13 +89,13 @@ describe('ShadowAtlasPlanner', () => {
 
         expect(plan).toMatchObject({
             sliceCount: 8,
-            width: 384,
-            height: 192,
+            width: 128,
+            height: 128,
             tileWidth: 128,
             tileHeight: 64,
-            columns: 3,
+            columns: 4,
             rows: 3,
-            capacity: 9,
+            capacity: 8,
             format: 'depth24plus'
         });
         expect(plan.slices.map(slice => slice.kind)).toEqual([
@@ -122,22 +122,66 @@ describe('ShadowAtlasPlanner', () => {
         expect(plan.slices.map(slice => slice.sliceIndex)).toEqual([0, 32, 40, 41, 42, 43, 44, 45]);
         expect(plan.slices.map(slice => slice.physicalIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
         expect(plan.slices.map(slice => slice.viewport)).toEqual([
+            { x: 0, y: 64, width: 64, height: 32, minDepth: 0, maxDepth: 1 },
             { x: 0, y: 0, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 128, y: 0, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 256, y: 0, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 0, y: 64, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 128, y: 64, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 256, y: 64, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 0, y: 128, width: 128, height: 64, minDepth: 0, maxDepth: 1 },
-            { x: 128, y: 128, width: 128, height: 64, minDepth: 0, maxDepth: 1 }
+            { x: 64, y: 64, width: 32, height: 32, minDepth: 0, maxDepth: 1 },
+            { x: 96, y: 64, width: 32, height: 32, minDepth: 0, maxDepth: 1 },
+            { x: 0, y: 96, width: 32, height: 32, minDepth: 0, maxDepth: 1 },
+            { x: 32, y: 96, width: 32, height: 32, minDepth: 0, maxDepth: 1 },
+            { x: 64, y: 96, width: 32, height: 32, minDepth: 0, maxDepth: 1 },
+            { x: 96, y: 96, width: 32, height: 32, minDepth: 0, maxDepth: 1 }
         ]);
-        expect(plan.slices[0]?.uvRect).toEqual({ x: 0, y: 0, width: 1 / 3, height: 1 / 3 });
-        expect(plan.slices[7]?.uvRect).toEqual({
-            x: 1 / 3,
-            y: 2 / 3,
-            width: 1 / 3,
-            height: 1 / 3
-        });
+        expect(plan.slices[0]?.uvRect).toEqual({ x: 0, y: 0.5, width: 0.5, height: 0.25 });
+        expect(plan.slices[7]?.uvRect).toEqual({ x: 0.75, y: 0.75, width: 0.25, height: 0.25 });
+        planner.destroy();
+        backend.destroy();
+    });
+
+    it('packs decreasing cascades within device limits without overlap or changing ABI order', () => {
+        const backend = new FakeWebGLRHIBackend();
+        const device = backend.createDevice();
+        const planner = new ShadowAtlasPlanner<TestOwner>();
+        const requests: ShadowAtlasRequests<TestOwner> = {
+            directional: [
+                {
+                    owner: { name: 'sun' },
+                    width: 2048,
+                    height: 2048,
+                    cascadeCount: 4,
+                    sliceWidths: [2048, 1024, 512, 256],
+                    sliceHeights: [2048, 1024, 512, 256]
+                }
+            ],
+            spot: [],
+            point: []
+        };
+        const plan = planner.build(requests, withMaximumDimension(device.capabilities, 3072));
+        expect(plan.width * plan.height).toBeLessThanOrEqual(2048 * 3072);
+        expect(plan.slices.map(slice => slice.sliceIndex)).toEqual([0, 1, 2, 3]);
+        for (const left of plan.slices) {
+            expect(left.viewport.x + left.viewport.width).toBeLessThanOrEqual(plan.width);
+            expect(left.viewport.y + left.viewport.height).toBeLessThanOrEqual(plan.height);
+            for (const right of plan.slices) {
+                if (left === right) continue;
+                expect(
+                    left.viewport.x + left.viewport.width <= right.viewport.x ||
+                        right.viewport.x + right.viewport.width <= left.viewport.x ||
+                        left.viewport.y + left.viewport.height <= right.viewport.y ||
+                        right.viewport.y + right.viewport.height <= left.viewport.y
+                ).toBe(true);
+            }
+        }
+        const snapshot = snapshotPlan(plan);
+        expect(
+            snapshotPlan(planner.build(requests, withMaximumDimension(device.capabilities, 3072)))
+        ).toEqual(snapshot);
+        expect(() =>
+            planner.build(requests, withMaximumDimension(device.capabilities, 1024))
+        ).toThrow(/maxTextureDimension2D/);
+        expect(snapshotPlan(plan)).toEqual(snapshot);
+        expect(
+            snapshotPlan(planner.build(requests, withMaximumDimension(device.capabilities, 3072)))
+        ).toEqual(snapshot);
         planner.destroy();
         backend.destroy();
     });

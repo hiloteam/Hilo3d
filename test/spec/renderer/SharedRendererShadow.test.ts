@@ -105,8 +105,11 @@ describe('SharedRendererDriver shadow production wiring', () => {
         activeRenderers.push(renderer);
 
         const scene = new Node();
+        const geometry = new BoxGeometry();
+        // Finish lazy derived data before asserting cache reuse on the very next frame.
+        geometry.calculateNormals();
         const mesh = new Mesh({
-            geometry: new BoxGeometry(),
+            geometry,
             material: new BasicMaterial(),
             frustumTest: false
         });
@@ -203,7 +206,7 @@ describe('SharedRendererDriver shadow production wiring', () => {
         ]);
         expect(allPasses.labels.at(-1)).toBe('Forward linear-to-sRGB output transfer');
         expect(renderer.lightManager.shadowAtlas).toBe(atlasTexture);
-        expect(renderer.lightManager.shadowAtlasSize).toEqualishValues(96, 48, 1 / 96, 1 / 48);
+        expect(renderer.lightManager.shadowAtlasSize).toEqualishValues(32, 32, 1 / 32, 1 / 32);
         expect(diagnostics.snapshot().frame).toMatchObject({
             draws: 18,
             passes: 10,
@@ -248,6 +251,13 @@ describe('SharedRendererDriver shadow production wiring', () => {
             depthStencilAttachment: { format: 'depth24plus' }
         });
         const targetPasses = observePassLabels(rhiExtension(renderer).device);
+        renderer.renderToTarget(renderTarget, scene, camera);
+        await renderer.waitForIdle();
+        // This target changes the implicit directional resolution and compact placements.
+        expect(targetPasses.labels.filter(label => label.startsWith('Shadow atlas'))).toHaveLength(
+            7
+        );
+        targetPasses.labels.length = 0;
         renderer.renderToTarget(renderTarget, scene, camera);
         await renderer.waitForIdle();
         expect(targetPasses.labels.filter(label => label.startsWith('Shadow atlas'))).toHaveLength(

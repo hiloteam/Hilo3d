@@ -1,5 +1,6 @@
 import type Camera from '../../camera/Camera';
 import Mesh from '../../core/Mesh';
+import { ShadowCasterBounds } from './ShadowCasterBounds';
 import type { RHIUploadBatch, RHIUploadBatchParticipant } from '../frame/RHIUploadBatch';
 import type { RenderGraphFrameContext } from '../frame/RenderGraphFrameContext';
 import type { RHIMeshDrawTargetDescriptor } from './RHIDescriptorMapping';
@@ -23,6 +24,7 @@ interface ShadowOwnerRecord {
 export class ShadowAtlasMeshPreparer
     implements ShadowAtlasSlicePreparer<ShadowAtlasSceneLight>, RHIUploadBatchParticipant
 {
+    readonly #casterBounds = new ShadowCasterBounds();
     readonly #draws: PreparedDraw[] = [];
     readonly #sceneSlicesByPhysicalIndex: ShadowAtlasScenePlan['slices'][number][] = [];
     readonly #ownersByCamera = new Map<Camera, Map<Mesh, object>>();
@@ -60,6 +62,7 @@ export class ShadowAtlasMeshPreparer
             this.#sceneSlicesByPhysicalIndex[slice.physicalIndex] = slice;
             this.#configuredCameras.add(slice.camera);
         }
+        this.#casterBounds.begin();
         this.#configuredMeshes.clear();
         for (const mesh of meshes) {
             if (mesh.castShadows && mesh.material !== null) this.#configuredMeshes.add(mesh);
@@ -100,6 +103,7 @@ export class ShadowAtlasMeshPreparer
         for (const mesh of this.#meshes) {
             const sourceMaterial = mesh.material;
             if (!(mesh instanceof Mesh) || sourceMaterial === null || !mesh.castShadows) continue;
+            if (!this.#casterBounds.isVisible(mesh, sceneSlice.camera)) continue;
             const owner = this.ownerFor(sceneSlice.camera, mesh);
             this.#usedOwners.add(owner);
             this.#pendingDetachOwners.delete(owner);

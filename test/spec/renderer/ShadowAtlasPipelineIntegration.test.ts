@@ -217,7 +217,7 @@ describe.each([
     ['WebGL immediate', () => new FakeWebGLRHIBackend()],
     ['WebGPU deferred', () => new FakeWebGPURHIBackend()]
 ] as const)('shared shadow-atlas production pipeline on %s', (_name, createBackend) => {
-    it('keeps every instanced mesh in directional, spot, and point shadows while batching the main pass', async () => {
+    it('culls irrelevant shadow slices while retaining visible instances and batching the main pass', async () => {
         const backend = createBackend();
         const device = backend.createDevice();
         const renderer = rendererCore();
@@ -278,7 +278,18 @@ describe.each([
         await complete(backend, shadow.submission);
         await shadowRenderer.waitForIdle();
 
-        const expectedShadowDrawCount = scenePlan.atlas.sliceCount * meshes.length;
+        // The cube faces retain conservative edge intersections, not unrelated opposite faces.
+        const expectedMeshesBySlice = [
+            meshes,
+            meshes,
+            [meshes[2]],
+            [meshes[0]],
+            [],
+            meshes,
+            [meshes[1]],
+            []
+        ];
+        const expectedShadowDrawCount = 12;
         expect(shadow.diagnostics.drawCount).toBe(expectedShadowDrawCount);
         expect(labels).toHaveLength(scenePlan.atlas.sliceCount);
         expect(labels.filter(label => label.includes(' directional '))).toHaveLength(1);
@@ -299,16 +310,19 @@ describe.each([
             )
         ).toHaveLength(expectedShadowDrawCount);
         for (let sliceIndex = 0; sliceIndex < scenePlan.atlas.sliceCount; sliceIndex += 1) {
-            const offset = sliceIndex * meshes.length;
-            const calls = prepareShadow.mock.calls.slice(offset, offset + meshes.length);
-            expect(calls.map(call => call[1])).toEqual(meshes);
+            const expectedMeshes = expectedMeshesBySlice[sliceIndex] ?? [];
+            const offset = expectedMeshesBySlice
+                .slice(0, sliceIndex)
+                .reduce((sum, list) => sum + list.length, 0);
+            const calls = prepareShadow.mock.calls.slice(offset, offset + expectedMeshes.length);
+            expect(calls.map(call => call[1])).toEqual(expectedMeshes);
             expect(
                 new Set(
                     shadowDraws
-                        .slice(offset, offset + meshes.length)
+                        .slice(offset, offset + expectedMeshes.length)
                         .map(draw => uniformBufferOf(draw, 'ModelBlock'))
                 ).size
-            ).toBe(meshes.length);
+            ).toBe(expectedMeshes.length);
         }
 
         backend.resetExecutionLog();

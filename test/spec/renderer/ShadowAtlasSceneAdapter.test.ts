@@ -225,8 +225,8 @@ describe.each([
             sliceCount: 8,
             tileWidth: 64,
             tileHeight: 64,
-            width: 192,
-            height: 192
+            width: 96,
+            height: 128
         });
         expect(result.slices.map(slice => slice.kind)).toEqual([
             'directional',
@@ -251,14 +251,14 @@ describe.each([
             spotShadowCount: 1,
             pointShadowCount: 1
         });
-        expectNumbers(result.lightBlock.atlasSize, [192, 192, 1 / 192, 1 / 192]);
-        expectNumbers(result.lightBlock.directionalMapSizes.subarray(0, 2), [64, 64]);
-        expectNumbers(result.lightBlock.spotMapSizes.subarray(0, 2), [64, 64]);
+        expectNumbers(result.lightBlock.atlasSize, [96, 128, 1 / 96, 1 / 128]);
+        expectNumbers(result.lightBlock.directionalMapSizes.subarray(0, 2), [64, 32]);
+        expectNumbers(result.lightBlock.spotMapSizes.subarray(0, 2), [32, 64]);
         expectNumbers(result.lightBlock.directionalBiases.subarray(0, 2), [0.002, 0.04]);
         expectNumbers(result.lightBlock.spotBiases.subarray(0, 2), [0.003, 0.06]);
         expectNumbers(result.lightBlock.pointCameraPlanes.subarray(0, 2), [0.25, 25]);
-        expectNumbers(result.slices[0]?.atlasRect ?? [], [1 / 3, 1 / 3, 0, 0]);
-        expectNumbers(result.slices[7]?.atlasRect ?? [], [1 / 3, 1 / 3, 1 / 3, 2 / 3]);
+        expectNumbers(result.slices[0]?.atlasRect ?? [], [2 / 3, 0.25, 1 / 3, 0]);
+        expectNumbers(result.slices[7]?.atlasRect ?? [], [1 / 3, 0.25, 2 / 3, 0.75]);
         expect(
             result.slices.every(slice =>
                 Array.from(slice.lightSpaceMatrix.elements).every(value => Number.isFinite(value))

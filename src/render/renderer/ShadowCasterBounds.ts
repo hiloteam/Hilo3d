@@ -1,3 +1,5 @@
+import type Camera from '../../camera/Camera';
+import Frustum from '../../math/Frustum';
 import type Mesh from '../../core/Mesh';
 import SkinnedMesh from '../../core/SkinnedMesh';
 import type Geometry from '../../geometry/Geometry';
@@ -134,6 +136,8 @@ export class ShadowCasterBounds {
         { epoch: number; readonly bounds: ShadowCasterBoundsValue }
     >();
     readonly #matrix = new Matrix4();
+    readonly #visibilityMatrix = new Matrix4();
+    readonly #frustum = new Frustum();
     readonly #morphed = emptyBounds();
     #epoch = 0;
 
@@ -219,6 +223,34 @@ export class ShadowCasterBounds {
             throw new RangeError('Shadow caster bounds must remain finite');
         cached.epoch = this.#epoch;
         return result;
+    }
+
+    /** Conservatively cull canonical shadow geometry in local space, including skin/morph poses. */
+    isVisible(mesh: Mesh, camera: Camera): boolean {
+        const shader = mesh.material?.definition.getPass('shadow-caster')?.shader;
+        // Custom/procedural vertex paths and explicit opt-outs have no canonical CPU bounds.
+        if (
+            !mesh.frustumTest ||
+            shader?.kind !== 'builtin' ||
+            (shader.family !== 'basic' &&
+                shader.family !== 'pbr' &&
+                shader.family !== 'geometry') ||
+            mesh.geometry?.vertices?.stepMode !== 'vertex'
+        )
+            return true;
+        const bounds = this.get(mesh);
+        this.#visibilityMatrix.multiply(camera.viewProjectionMatrix, mesh.worldMatrix);
+        this.#frustum.fromMatrix(this.#visibilityMatrix);
+        for (const plane of this.#frustum.planes) {
+            const normal = plane.normal;
+            const x = normal.x >= 0 ? bounds.xMax : bounds.xMin;
+            const y = normal.y >= 0 ? bounds.yMax : bounds.yMin;
+            const z = normal.z >= 0 ? bounds.zMax : bounds.zMin;
+            const distance = normal.x * x + normal.y * y + normal.z * z + plane.distance;
+            const guard = 0.00001 * (1 + Math.abs(x) + Math.abs(y) + Math.abs(z));
+            if (distance < -guard) return false;
+        }
+        return true;
     }
 
     private streamBounds(stream: GeometryData, force = false): Readonly<ShadowCasterBoundsValue> {

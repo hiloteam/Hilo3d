@@ -1,4 +1,5 @@
 import Mesh from '../../core/Mesh';
+import { ShadowCasterBounds } from './ShadowCasterBounds';
 import SkinnedMesh from '../../core/SkinnedMesh';
 import type Geometry from '../../geometry/Geometry';
 import type GeometryData from '../../geometry/GeometryData';
@@ -41,6 +42,8 @@ interface CasterSnapshot {
     mesh: Mesh | null;
     geometry: Geometry | null;
     geometryMode: number;
+    geometryRevision: number;
+    readonly geometryLayouts: number[];
     material: Material | null;
     materialRevision: number;
     instanceCount: number;
@@ -95,6 +98,8 @@ function createCasterSnapshot(): CasterSnapshot {
         mesh: null,
         geometry: null,
         geometryMode: -1,
+        geometryRevision: -1,
+        geometryLayouts: [],
         material: null,
         materialRevision: -1,
         instanceCount: 0,
@@ -173,11 +178,20 @@ function collectGeometrySources(target: GeometryData[], geometry: Geometry | nul
     appendGeometrySource(target, geometry.skinIndices);
     appendGeometrySource(target, geometry.skinWeights);
     if (!(geometry instanceof MorphGeometry) || geometry.targets === null) return;
+    let targetKinds = 0;
+    for (const name in geometry.targets) {
+        if (Object.hasOwn(geometry.targets, name)) targetKinds++;
+    }
+    const maximumTargets = Math.floor(8 / targetKinds);
     for (const name in geometry.targets) {
         if (!Object.hasOwn(geometry.targets, name)) continue;
         const sources = geometry.targets[name];
         if (sources === undefined) continue;
-        for (const source of sources) appendGeometrySource(target, source);
+        // Resolve active slots before capturing revisions. Remapping equal weights changes the
+        // vertex inputs, and getMorphTarget also publishes the selected stream's revision.
+        for (let slot = 0; slot < Math.min(sources.length, maximumTargets); slot++) {
+            appendGeometrySource(target, geometry.getMorphTarget(name, slot) ?? null);
+        }
     }
 }
 
@@ -195,6 +209,9 @@ function collectNumericState(target: number[], mesh: Mesh): void {
     appendNumbers(target, mesh.worldMatrix.elements);
     const geometry = mesh.geometry;
     appendNumbers(target, geometry?.positionDecodeMat ?? null);
+    appendNumbers(target, geometry?.uvDecodeMat ?? null);
+    appendNumbers(target, geometry?.uv1DecodeMat ?? null);
+    appendNumbers(target, geometry?.normalDecodeMat ?? null);
     if (geometry instanceof MorphGeometry) appendNumbers(target, geometry.weights);
     else appendNumbers(target, null);
     if (mesh instanceof SkinnedMesh && mesh.skeleton !== null) {
@@ -218,15 +235,17 @@ function sameIdentities<T extends object>(
  * Submission-aware S0 content cache for stable shadow-atlas slices.
  *
  * The cache compares exact light/caster state, never a collision-prone hash. Rigid casters use the
- * shadow camera frustum to localize invalidation to intersecting slices; deformation and geometry
- * changes conservatively invalidate every slice until GPU caster culling owns those bounds.
+ * shadow camera frustum and canonical deformed bounds to localize invalidation to intersecting
+ * slices. Custom/procedural vertex paths retain conservative uncullable membership.
  */
 export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
+    readonly #casterBounds = new ShadowCasterBounds();
     readonly metrics = new RHICacheCounter();
     readonly #casters = new WeakMap<Mesh, CasterRecord>();
     readonly #activeCasterRecords = new Set<CasterRecord>();
     readonly #currentCasters: CasterRecord[] = [];
     readonly #geometryScratch: GeometryData[] = [];
+    readonly #layoutScratch: number[] = [];
     readonly #textureScratch: Texture<unknown>[] = [];
     readonly #numericScratch: number[] = [];
     readonly #slices: SliceRecord[] = [];
@@ -254,6 +273,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
             throw new TypeError('Shadow content cache requires a complete scene plan');
         }
         this.beginTransaction(uploads);
+        this.#casterBounds.begin();
         this.captureCasters(meshes);
         const sliceCount = plan.slices.length;
         this.#dirtySlices.length = sliceCount;
@@ -475,6 +495,17 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         const geometry = mesh.geometry;
         const material = mesh.material;
         collectGeometrySources(this.#geometryScratch, geometry);
+        this.#layoutScratch.length = 0;
+        for (const source of this.#geometryScratch) {
+            this.#layoutScratch.push(
+                source.size,
+                source.type,
+                source.stride,
+                source.offset,
+                source.normalized ? 1 : 0,
+                source.stepMode === 'instance' ? 1 : 0
+            );
+        }
         collectTextures(this.#textureScratch, material);
         collectNumericState(this.#numericScratch, mesh);
         const comparingPending =
@@ -514,6 +545,12 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         if (
             previous.geometry !== geometry ||
             previous.geometryMode !== (geometry?.mode ?? -1) ||
+            previous.geometryRevision !== (geometry?.revision ?? -1) ||
+            !sameNumbers(
+                previous.geometryLayouts,
+                this.#layoutScratch,
+                this.#layoutScratch.length
+            ) ||
             !sameIdentities(
                 previous.geometrySources,
                 this.#geometryScratch,
@@ -565,6 +602,8 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         target.mesh = mesh;
         target.geometry = geometry;
         target.geometryMode = geometry?.mode ?? -1;
+        target.geometryRevision = geometry?.revision ?? -1;
+        copyNumbers(target.geometryLayouts, this.#layoutScratch, this.#layoutScratch.length);
         target.material = material;
         target.materialRevision = material?.revision ?? -1;
         target.instanceCount = mesh.instanceCount;
@@ -666,18 +705,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         record: Readonly<CasterRecord>,
         slice: Readonly<ShadowAtlasSceneSlice>
     ): boolean {
-        const mesh = record.mesh;
-        const geometry = mesh.geometry;
-        if (
-            geometry === null ||
-            !mesh.frustumTest ||
-            mesh instanceof SkinnedMesh ||
-            geometry instanceof MorphGeometry ||
-            (record.pendingChanged && record.pendingReason === 'caster-geometry')
-        ) {
-            return true;
-        }
-        return slice.camera.isMeshVisible(mesh);
+        return this.#casterBounds.isVisible(record.mesh, slice.camera);
     }
 
     private sliceAt(index: number): SliceRecord {

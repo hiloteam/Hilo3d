@@ -113,16 +113,21 @@ mode、稳定投影与 raster/jittered 投影，因此 CPU skin/morph 与 GPU in
 atlas 中始终使用相同深度映射。
 
 LightBlock 为每个方向光保留 4 个稳定的逻辑 matrix/rect slot，Spot 与 Point 的 ABI
-base 不随当前 cascade 数变化；物理 atlas 只创建实际启用的 slice。这样运行时从 4 级改为 2 级不会改变其他灯光的 shader 索引，也不需要 backend 分支。扩展后的 LightBlock 为 16,288
+base 不随当前 cascade 数变化；物理 atlas 只创建实际启用的 slice，并按各灯光实际申请的宽高或 receiver-driven
+slice 尺寸做确定性紧凑打包；等尺寸 slice 保留规则网格。尺寸不变时复用布局，尺寸变化和重排通过原有 layout/allocation
+revision 触发必要重绘。投影、texel snapping 和 LightBlock map
+size 使用各自 slice 尺寸，其他灯光的最大尺寸不会改变本灯光投影。这样运行时从 4 级改为 2 级不会改变其他灯光的 shader 索引，也不需要 backend 分支。扩展后的 LightBlock 为 16,288
 bytes，仍低于 WebGL 2 保证的 16,384-byte minimum uniform-block
 capacity；WebGPU 使用相同 std140 布局和 GLSL→Naga→WGSL 产物。
 
 Shadow Atlas 现在还包含首版 S0 内容缓存。共享层按 atlas allocation、slice placement、light
-view-projection，以及 caster identity、transform、geometry stream、material/texture
-revision 和 skin/morph
-deformation 做精确快照；不使用可能碰撞的 hash。静态 slice 在后续有效帧中不再记录 Shadow
-Pass，刚体 caster/light 的变化只失效相交的 light slice；geometry
-bounds 变化、skin 和 morph 则保守失效全部相关 slice。脏 slice 通过同一 GLSL→Naga→WGSL/RHI 路径的 depth-only
+view-projection，以及 caster identity、transform、geometry revision、stream layout/data、UV
+decode、material/texture revision 和 skin/morph deformation（包括相同权重下的 active
+target 重映射）做精确快照；不使用可能碰撞的 hash。静态 slice 在后续有效帧中不再记录 Shadow
+Pass。内容缓存与 CPU depth preparation 使用同一保守 bounds 合同按 slice 视锥裁剪；position
+decode、skin/morph 和镜像/非均匀缩放都包含在内，离屏 caster 仍来自完整 scene/layer
+traversal。自定义或 procedural vertex path，以及
+`frustumTest: false`，保留不裁剪路径。caster 从 slice 进出时通过前后成员快照失效，不能留下旧影。脏 slice 通过同一 GLSL→Naga→WGSL/RHI 路径的 depth-only
 fullscreen triangle 在 viewport/scissor 内局部清理，Render Pass 使用 `load`
 保留其他 tile，避免整张 atlas clear 破坏缓存。内容 revision 只在有效 submission 后提交，graph
 build/prepare/execute 失败会回滚并在下一帧重试；atlas resize、detach、资源释放和 device/context
@@ -130,7 +135,10 @@ recovery 都会明确失效。Clustered GPU Scene 中的 rigid caster 由 comput
 slice 裁剪并写入固定 bucket indirect draw；不满足 GPU Scene 合同的 caster 仍走共享 CPU depth
 path。high-end profile 依据 receiver 覆盖缩放 local
 light 与远级联分辨率，以 1/2/4/8 帧 cadence 更新 CSM，并由确定性 slice/page
-budget 延后 caster-only 失效。每个 slice 再拆为 128 像素固定物理页；同帧相邻 dirty 页先合并为 scissor 矩形再重绘，完整 slice 因此只重复录制一次 caster 队列。预算可以延后整个 caster-only
+budget 延后 caster-only 失效。可调度 slice 优先更新上次成功更新最久的项，同龄时再按 receiver 优先级排序，避免持续动画使低优先级面长期饥饿；只有完整 page
+update 的有效提交会推进该时间，页延后和失败回滚不消耗轮次。持续 mandatory
+work 耗尽预算时，每次调度至多强制更新一个已超期的 caster slice，并在 page 层同步放行；因此两个 soft
+budget 都不能造成永久饥饿。每个 slice 再拆为 128 像素固定物理页；同帧相邻 dirty 页先合并为 scissor 矩形再重绘，完整 slice 因此只重复录制一次 caster 队列。预算可以延后整个 caster-only
 slice，但一旦选中就原子更新该 slice 的全部旧 revision 页，必要时允许越过软 page
 budget，避免连续运动时新旧姿势混合。`Renderer`/`Stage` 的 `shadowUpdateMode` 默认是
 `paged`；纯动画展示等全动态场景可设为 `full`，让本帧已调度的全部 slice 跳过 page
@@ -148,7 +156,8 @@ prefix/compact，并用固定上限的 GPU-authored indirect clear/depth draw �
 
 方向光使用 camera-centered、texel/page-snapped
 clipmap；默认四级，每级覆盖宽度倍增。页 identity 包含 light/map、绝对页坐标与提交感知 epoch，光方向、沿光线方向的 snapped
-depth slab、caster transform/material/coverage 或 geometry bounds 变化都会精确或保守失效。page
+depth slab、投影深度范围（包括 Camera far）或 depth mode、caster
+transform/material/coverage 或 geometry bounds 变化都会精确或保守失效。page
 table 使用 renderer-owned 双缓冲 history，physical residency 使用双 `StorageBuffer`；两者和 clipmap
 epoch 只在 `frameSubmitted()` 后轮换，graph/prepare/execute 失败保留上一提交状态，device
 recovery 通过无效 history 清空 residency 并重建 atlas。缺页和 deferred dirty 页回退到同帧 stable

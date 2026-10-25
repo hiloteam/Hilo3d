@@ -332,6 +332,10 @@ class DirectionalClipmapState {
     readonly #committedDepthCells = new Int32Array(MAX_DIRECTIONAL_VIRTUAL_LIGHTS);
     readonly #pendingDepthCells = new Int32Array(MAX_DIRECTIONAL_VIRTUAL_LIGHTS);
     #pendingFrame = -1;
+    #committedCameraFar = NaN;
+    #pendingCameraFar = NaN;
+    #committedReversedDepth = false;
+    #pendingReversedDepth = false;
 
     constructor(readonly settings: Readonly<VirtualShadowMapSettings>) {
         this.data = new ArrayBuffer(settings.clipmapVec4Count * 16);
@@ -391,6 +395,8 @@ class DirectionalClipmapState {
                 : settings.firstDirectionalClipmapExtent * 16
         );
 
+        this.#pendingCameraFar = cameraFar;
+        this.#pendingReversedDepth = shadows.depthMode === 'reversed';
         for (let lightIndex = 0; lightIndex < MAX_DIRECTIONAL_VIRTUAL_LIGHTS; lightIndex += 1) {
             const light =
                 lightIndex < lightCount ? shadows.directionalLights[lightIndex] : undefined;
@@ -431,6 +437,8 @@ class DirectionalClipmapState {
             const snappedPlaneZ = depthCell * depthWorldSize;
             this.#pendingDepthCells[lightIndex] = depthCell;
             const changed =
+                this.#committedCameraFar !== cameraFar ||
+                this.#committedReversedDepth !== this.#pendingReversedDepth ||
                 this.#committedLights[lightIndex] !== light ||
                 this.#committedDirections[directionOffset] !== direction.x ||
                 this.#committedDirections[directionOffset + 1] !== direction.y ||
@@ -487,6 +495,8 @@ class DirectionalClipmapState {
 
     frameSubmitted(frameIndex: number): void {
         if (frameIndex !== this.#pendingFrame) return;
+        this.#committedCameraFar = this.#pendingCameraFar;
+        this.#committedReversedDepth = this.#pendingReversedDepth;
         for (let index = 0; index < MAX_DIRECTIONAL_VIRTUAL_LIGHTS; index += 1) {
             this.#committedLights[index] = this.#pendingLights[index] ?? null;
             this.#committedEpochs[index] = this.#pendingEpochs[index] ?? 0;
