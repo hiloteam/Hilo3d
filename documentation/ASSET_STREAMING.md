@@ -88,9 +88,11 @@ residency into a new device epoch.
 
 The current implementation fetches whole KTX2 files and re-fetches on refinement (normal HTTP
 caching may reuse the response). It does not claim sparse HTTP range streaming, virtual textures,
-incremental tile uploads or a global budget covering all renderer allocations. Geometry
-pages/meshopt remain the next A0 slice after measured texture workloads. Compiled shader warmup is
-independent.
+incremental tile uploads or a global budget covering all renderer allocations. Geometry pages have a
+separate bounded owner, `GeometryPageManager`, and an offline meshoptimizer cooker. They use
+independent whole-page URLs and the Clustered GPU Scene's renderer-local arena; they do not change
+this texture manager's ownership or budgets. See
+[meshlet geometry and streaming](./MESHLET_GEOMETRY.md). Compiled shader warmup is independent.
 
 ## Validation and remaining evidence
 

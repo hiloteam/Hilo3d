@@ -26,6 +26,7 @@ export const PHYSICS_RELEASE_TEST_CASES = PHYSICS_RELEASE_TEST_EXAMPLES.flatMap(
 );
 export const WEBGL2_ONLY_EXAMPLE_PATHS = ['webxr.html'] as const;
 export const WEBGPU_ONLY_EXAMPLE_PATHS = [
+    'meshlet_strata.html',
     'bloom.html',
     'clustered_forward_plus_sponza.html',
     'clustered_forward_plus_lumen.html',
@@ -44,6 +45,7 @@ export const WEBGPU_ONLY_EXAMPLE_PATHS = [
 ] as const;
 export const NON_RENDERING_EXAMPLE_PATHS = [] as const;
 export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
+    'meshlet_strata.html',
     'mat1_soft_matter.html',
     'live2d.html',
     'scriptable_pipeline.html',
@@ -62,6 +64,7 @@ export const DEDICATED_RELEASE_TEST_EXAMPLE_PATHS = [
 export const EXAMPLE_QUERY_PARAMETERS: Readonly<
     Partial<Record<string, Readonly<Record<string, string>>>>
 > = {
+    'meshlet_strata.html': { test: '1' },
     'loader/glTF_loader.html': { model: 'BoomBox' },
     'audio_piano.html': { test: '1', quality: 'production' },
     'live2d.html': { test: '1' },

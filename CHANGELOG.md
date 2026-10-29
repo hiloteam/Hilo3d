@@ -29,6 +29,10 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Examples
 
+- Add STRATA, an original Blender-authored sandstone sculpture garden with streamed meshlet LODs,
+  camera-distance page demand, coarse/adaptive comparison, real residency counters and responsive
+  OrbitControls views. Preserve generated concepts, editable source and immutable page versions.
+
 - Remove duplicate Canvas-animation, standalone UBO, minimal PBR-loader and backend-name pages, plus
   two unused helpers. Keep BoomBox coverage in the glTF loader and std140 teaching in the custom
   shader; the reviewed catalog now contains 96 scenes and 180 page/backend combinations.
@@ -46,6 +50,18 @@ engine release and physical-device performance matrices remain separate, unrun g
   public OrbitControls, feature comparisons and explicit WebGPU capability handling.
 
 ### Rendering
+
+- Restrict shadow coverage textures to alpha-masked material variants; opaque textured GPU Scene
+  casters retain a position-only shadow ABI. Request meshlet pose-choice history capacity only when
+  temporal AA actually allocates it. Derive offline cone cutoffs from serialized Float32 triangle
+  planes to preserve conservative culling for nearly planar clusters.
+
+- Add opt-in `MeshletGeometry` buckets to Clustered Forward+: versioned rigid group LOD pages,
+  bounded geometry residency and uploads, GPU cluster selection/culling, fixed material-bucket
+  vertex pulling and complete-object fallback for missing pages or visibility overflow.
+- Add offline meshoptimizer cooking and strict page validation, plus the optional asset addon's
+  `GeometryPageManager` with coarse-page dependencies, shared leases, cancellation and independent
+  CPU/network/decode budgets. CPU page readiness and renderer GPU residency remain distinct.
 
 - Schedule dirty shadow slices by last successful complete update, preserving fairness across page
   deferral and failed submissions, with bounded overdue progress above saturated soft budgets.

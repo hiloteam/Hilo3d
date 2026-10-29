@@ -1,3 +1,7 @@
+import {
+    shadowCasterGeometry,
+    type ShadowCasterGeometryOverride
+} from './ShadowCasterGeometryScope';
 import type Camera from '../../camera/Camera';
 import Frustum from '../../math/Frustum';
 import type Mesh from '../../core/Mesh';
@@ -133,7 +137,11 @@ export class ShadowCasterBounds {
     readonly #skins = new WeakMap<Geometry, SkinInfluences>();
     readonly #meshes = new WeakMap<
         Mesh,
-        { epoch: number; readonly bounds: ShadowCasterBoundsValue }
+        {
+            epoch: number;
+            readonly bounds: ShadowCasterBoundsValue;
+            override: Readonly<ShadowCasterGeometryOverride> | null;
+        }
     >();
     readonly #matrix = new Matrix4();
     readonly #visibilityMatrix = new Matrix4();
@@ -147,9 +155,10 @@ export class ShadowCasterBounds {
 
     get(mesh: Mesh): Readonly<ShadowCasterBoundsValue> {
         let cached = this.#meshes.get(mesh);
-        if (cached?.epoch === this.#epoch) return cached.bounds;
+        const override = shadowCasterGeometry(mesh);
+        if (cached?.epoch === this.#epoch && cached.override === override) return cached.bounds;
         if (cached === undefined) {
-            cached = { epoch: -1, bounds: emptyBounds() };
+            cached = { epoch: -1, bounds: emptyBounds(), override: null };
             this.#meshes.set(mesh, cached);
         }
         const geometry = mesh.geometry;
@@ -221,6 +230,15 @@ export class ShadowCasterBounds {
             !Number.isFinite(result.zMax)
         )
             throw new RangeError('Shadow caster bounds must remain finite');
+        if (override !== null) {
+            result.xMin = Math.min(result.xMin, override.xMin);
+            result.xMax = Math.max(result.xMax, override.xMax);
+            result.yMin = Math.min(result.yMin, override.yMin);
+            result.yMax = Math.max(result.yMax, override.yMax);
+            result.zMin = Math.min(result.zMin, override.zMin);
+            result.zMax = Math.max(result.zMax, override.zMax);
+        }
+        cached.override = override;
         cached.epoch = this.#epoch;
         return result;
     }

@@ -1,0 +1,1622 @@
+{
+  "version": 1,
+  "materials": {
+    "sandstone": {
+      "color": [0.92, 0.93, 0.94],
+      "roughness": 0.88,
+      "metallic": 0,
+      "texture": "sandstone-weathered.png"
+    },
+    "limestone": {
+      "color": [0.95, 0.91, 0.82],
+      "roughness": 0.88,
+      "metallic": 0,
+      "texture": "limestone-quarry.png"
+    },
+    "chalk": {
+      "color": [0.93, 0.91, 0.85],
+      "roughness": 0.92,
+      "metallic": 0,
+      "texture": "limestone-quarry.png"
+    },
+    "bronze": {
+      "color": [0.42, 0.27, 0.105],
+      "roughness": 0.42,
+      "metallic": 0.65,
+      "texture": null
+    },
+    "recess": { "color": [0.19, 0.14, 0.085], "roughness": 0.94, "metallic": 0, "texture": null },
+    "sky": { "color": [1, 1, 1], "roughness": 1, "metallic": 0, "texture": "quarry-sky.png" }
+  },
+  "assets": [
+    {
+      "name": "arch",
+      "material": "sandstone",
+      "streamed": true,
+      "triangles": 91632,
+      "vertices": 45820,
+      "manifestURL": "./pages/arch/1b8095dd59a458dff5126b695bac5e56fe27af99f418123791388c443ef16894/manifest.json"
+    },
+    {
+      "name": "inlay",
+      "material": "bronze",
+      "streamed": false,
+      "triangles": 796,
+      "vertices": 404,
+      "geometryURL": "./geometry/inlay/f5cd24522382af89bf9837f7705c6bb99d11d0be9a0ac247bd37889049f8bcca/geometry.json"
+    },
+    {
+      "name": "monolith",
+      "material": "sandstone",
+      "streamed": true,
+      "triangles": 32480,
+      "vertices": 16242,
+      "manifestURL": "./pages/monolith/ff1850eff3dd0704341b6e4907eebbac7430441860661d7a2d577c928625ac3e/manifest.json"
+    },
+    {
+      "name": "boulder",
+      "material": "sandstone",
+      "streamed": true,
+      "triangles": 12320,
+      "vertices": 6162,
+      "manifestURL": "./pages/boulder/3ac3b7b060823bf5deed70c8760a93cc47495ac726cc1878270db2f00f8362e5/manifest.json"
+    },
+    {
+      "name": "block",
+      "material": "limestone",
+      "streamed": false,
+      "triangles": 92,
+      "vertices": 192,
+      "geometryURL": "./geometry/block/c3b509c3056552e3154b40537d59187823f7b2e610424bd7e5ebf57e62ba6265/geometry.json"
+    },
+    {
+      "name": "trim",
+      "material": "bronze",
+      "streamed": false,
+      "triangles": 92,
+      "vertices": 192,
+      "geometryURL": "./geometry/trim/c3b509c3056552e3154b40537d59187823f7b2e610424bd7e5ebf57e62ba6265/geometry.json"
+    },
+    {
+      "name": "quarry",
+      "material": "chalk",
+      "streamed": false,
+      "triangles": 5292,
+      "vertices": 2648,
+      "geometryURL": "./geometry/quarry/3a873c7387ff45cfaa5d937b370653ee2c03af4881fd7de9bf5d8a11b1d37611/geometry.json"
+    },
+    {
+      "name": "podium",
+      "material": "limestone",
+      "streamed": false,
+      "triangles": 3840,
+      "vertices": 6402,
+      "geometryURL": "./geometry/podium/dd0405ffd6601b50988065a014850e795f88f1470d11e20a5a54c990b7c171fd/geometry.json"
+    },
+    {
+      "name": "terrace",
+      "material": "limestone",
+      "streamed": false,
+      "triangles": 640,
+      "vertices": 962,
+      "geometryURL": "./geometry/terrace/e33bdbcd81c8a49d53680a38a261789b4150bba574e51676c3508288989241a5/geometry.json"
+    },
+    {
+      "name": "floor",
+      "material": "limestone",
+      "streamed": false,
+      "triangles": 3072,
+      "vertices": 1617,
+      "geometryURL": "./geometry/floor/c1052596754250b2b8d8f8bc4bf4ae5aaef11a49572c90c1c48fa894de6e6779/geometry.json"
+    },
+    {
+      "name": "gravel",
+      "material": "limestone",
+      "streamed": false,
+      "triangles": 71500,
+      "vertices": 42900,
+      "geometryURL": "./geometry/gravel/93cf5cd7ba3f104d5c93449a085546038878ee54fb2b14d3b851541e48afa295/geometry.json"
+    }
+  ],
+  "instances": [
+    {
+      "asset": "arch",
+      "name": "Sedimentary aperture",
+      "position": [-1.55, 3.68, 0],
+      "scale": [1.02, 1.06, 1.12],
+      "rotationY": 45
+    },
+    {
+      "asset": "inlay",
+      "name": "Bronze restoration seams",
+      "position": [-1.55, 3.68, 0],
+      "scale": [1.02, 1.06, 1.12],
+      "rotationY": 45
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 00",
+      "position": [-7.2, 2.1, 0.5],
+      "scale": [1, 0.77, 1],
+      "rotationY": 0
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 01",
+      "position": [7.3, 0.85, 0.2],
+      "scale": [1.12, 0.9, 1.12],
+      "rotationY": 0.9410639825810408
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 02",
+      "position": [-8.1, 0.25, -10],
+      "scale": [0.75, 0.75, 0.75],
+      "rotationY": 1.4189405158982702
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 03",
+      "position": [5.3, 0.25, -9],
+      "scale": [0.78, 0.78, 0.78],
+      "rotationY": 1.1984209248484743
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 04",
+      "position": [-7.4, 0.25, -17],
+      "scale": [0.78, 0.78, 0.78],
+      "rotationY": 0.3880439578926355
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 05",
+      "position": [6.2, 0.25, -17],
+      "scale": [0.8, 0.8, 0.8],
+      "rotationY": -0.6133264955693617
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 06",
+      "position": [-7.8, 0.25, -28],
+      "scale": [0.85, 0.85, 0.85],
+      "rotationY": -1.3128204132090768
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 07",
+      "position": [6.5, 0.25, -28],
+      "scale": [0.88, 0.88, 0.88],
+      "rotationY": -1.366150042563102
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 08",
+      "position": [-7.5, 0.25, -40],
+      "scale": [1, 1, 1],
+      "rotationY": -0.747066780509971
+    },
+    {
+      "asset": "monolith",
+      "name": "Carved standing stone 09",
+      "position": [6.5, 0.25, -40],
+      "scale": [1, 1, 1],
+      "rotationY": 0.23971938262017775
+    },
+    {
+      "asset": "boulder",
+      "name": "Weathered stone 0",
+      "position": [-3.9, 0.772, 5.5],
+      "scale": [1.1, 0.792, 1.1],
+      "rotationY": 14.32394487827058
+    },
+    {
+      "asset": "boulder",
+      "name": "Weathered stone 1",
+      "position": [-1.1, 0.44799999999999995, 6.4],
+      "scale": [0.65, 0.46799999999999997, 0.65],
+      "rotationY": -22.918311805232932
+    },
+    {
+      "asset": "boulder",
+      "name": "Weathered stone 2",
+      "position": [7.8, 0.5559999999999999, -6],
+      "scale": [0.8, 0.576, 0.8],
+      "rotationY": 68.75493541569878
+    },
+    {
+      "asset": "boulder",
+      "name": "Weathered stone 3",
+      "position": [-10, 0.988, -14],
+      "scale": [1.4, 1.008, 1.4],
+      "rotationY": 28.64788975654116
+    },
+    {
+      "asset": "boulder",
+      "name": "Weathered stone 4",
+      "position": [9, 0.8079999999999999, -26],
+      "scale": [1.15, 0.828, 1.15],
+      "rotationY": -51.56620156177409
+    },
+    {
+      "asset": "terrace",
+      "name": "Curved quarry terrace",
+      "position": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "rotationY": 0
+    },
+    {
+      "asset": "podium",
+      "name": "Concentric gallery steps",
+      "position": [-2, 0, 0],
+      "scale": [1.02, 1, 0.72],
+      "rotationY": 0
+    },
+    {
+      "asset": "floor",
+      "name": "Gallery floor",
+      "position": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 0",
+      "position": [-7.2, 1.85, 0.5],
+      "scale": [2.1, 0.5, 2],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 0",
+      "position": [-7.69, 1.9, 1.27],
+      "scale": [0.11, 3.3, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 1",
+      "position": [7.3, 0.425, 0.2],
+      "scale": [2.3520000000000003, 0.85, 2.24],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 1",
+      "position": [6.7512, 2.128, 1.0624],
+      "scale": [0.11, 3.696, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 2",
+      "position": [-8.1, 0.25, -10],
+      "scale": [1.5750000000000002, 0.5, 1.5],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 2",
+      "position": [-8.4675, 1.4249999999999998, -9.4225],
+      "scale": [0.11, 2.4749999999999996, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 3",
+      "position": [5.3, 0.25, -9],
+      "scale": [1.6380000000000001, 0.5, 1.56],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 3",
+      "position": [4.9178, 1.482, -8.3994],
+      "scale": [0.11, 2.574, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 4",
+      "position": [-7.4, 0.25, -17],
+      "scale": [1.6380000000000001, 0.5, 1.56],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 4",
+      "position": [-7.7822000000000005, 1.482, -16.3994],
+      "scale": [0.11, 2.574, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 5",
+      "position": [6.2, 0.25, -17],
+      "scale": [1.6800000000000002, 0.5, 1.6],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 5",
+      "position": [5.808, 1.52, -16.384],
+      "scale": [0.11, 2.64, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 6",
+      "position": [-7.8, 0.25, -28],
+      "scale": [1.785, 0.5, 1.7],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 6",
+      "position": [-8.2165, 1.615, -27.3455],
+      "scale": [0.11, 2.8049999999999997, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 7",
+      "position": [6.5, 0.25, -28],
+      "scale": [1.848, 0.5, 1.76],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 7",
+      "position": [6.0688, 1.672, -27.322400000000002],
+      "scale": [0.11, 2.904, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 8",
+      "position": [-7.5, 0.25, -40],
+      "scale": [2.1, 0.5, 2],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 8",
+      "position": [-7.99, 1.9, -39.23],
+      "scale": [0.11, 3.3, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Stone foot 9",
+      "position": [6.5, 0.25, -40],
+      "scale": [2.1, 0.5, 2],
+      "rotationY": 0
+    },
+    {
+      "asset": "trim",
+      "name": "Bronze inset 9",
+      "position": [6.01, 1.9, -39.23],
+      "scale": [0.11, 3.3, 0.08],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Left quarry terrace",
+      "position": [-9, 0.8, -3],
+      "scale": [5, 1.6, 12],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 0 0",
+      "position": [-10.9, 0.6632107512660087, -1],
+      "scale": [3.1, 1.2914215025320175, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 0 1",
+      "position": [-10.834301340128121, 1.989632253798026, -1.07],
+      "scale": [3.1, 1.2914215025320175, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 0 2",
+      "position": [-10.800939264430513, 3.3160537563300436, -1.1400000000000001],
+      "scale": [3.1, 1.2914215025320175, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 1 0",
+      "position": [-12.450000000000001, 0.7099080634495064, -1],
+      "scale": [3.1, 1.384816126899013, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 1 1",
+      "position": [-12.384301340128122, 2.129724190348519, -1.07],
+      "scale": [3.1, 1.384816126899013, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 1 2",
+      "position": [-12.350939264430513, 3.549540317247532, -1.1400000000000001],
+      "scale": [3.1, 1.384816126899013, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 1 3",
+      "position": [-12.366334436146396, 4.969356444146545, -1.21],
+      "scale": [3.1, 1.384816126899013, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 2 0",
+      "position": [-14, 0.7379264507596052, -1],
+      "scale": [3.1, 1.4408529015192104, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 2 1",
+      "position": [-13.93430134012812, 2.2137793522788156, -1.07],
+      "scale": [3.1, 1.4408529015192104, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 2 2",
+      "position": [-13.900939264430512, 3.6896322537980257, -1.1400000000000001],
+      "scale": [3.1, 1.4408529015192104, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 2 3",
+      "position": [-13.916334436146395, 5.165485155317236, -1.21],
+      "scale": [3.1, 1.4408529015192104, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 0 2 4",
+      "position": [-13.972909421169213, 6.641338056836447, -1.28],
+      "scale": [3.1, 1.4408529015192104, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 0 0",
+      "position": [-10.602914257857156, 0.5817478074120034, -9],
+      "scale": [3.1, 1.1284956148240068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 0 1",
+      "position": [-10.67142836975208, 1.74524342223601, -9.07],
+      "scale": [3.1, 1.1284956148240068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 0 2",
+      "position": [-10.713166007851099, 2.908739037060017, -9.14],
+      "scale": [3.1, 1.1284956148240068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 1 0",
+      "position": [-12.152914257857157, 0.6371233555590026, -9],
+      "scale": [3.1, 1.2392467111180052, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 1 1",
+      "position": [-12.221428369752081, 1.9113700666770077, -9.07],
+      "scale": [3.1, 1.2392467111180052, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 1 2",
+      "position": [-12.2631660078511, 3.185616777795013, -9.14],
+      "scale": [3.1, 1.2392467111180052, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 1 3",
+      "position": [-12.257584094863807, 4.459863488913018, -9.21],
+      "scale": [3.1, 1.2392467111180052, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 2 0",
+      "position": [-13.702914257857156, 0.6703486844472021, -9],
+      "scale": [3.1, 1.3056973688944042, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 2 1",
+      "position": [-13.77142836975208, 2.011046053341606, -9.07],
+      "scale": [3.1, 1.3056973688944042, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 2 2",
+      "position": [-13.813166007851098, 3.3517434222360105, -9.14],
+      "scale": [3.1, 1.3056973688944042, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 2 3",
+      "position": [-13.807584094863806, 4.692440791130415, -9.21],
+      "scale": [3.1, 1.3056973688944042, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 1 2 4",
+      "position": [-13.75743002319545, 6.033138160024818, -9.28],
+      "scale": [3.1, 1.3056973688944042, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 0 0",
+      "position": [-11.261002275681223, 0.533780798074727, -17],
+      "scale": [3.1, 1.032561596149454, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 0 1",
+      "position": [-11.191044022178666, 1.6013423942241811, -17.07],
+      "scale": [3.1, 1.032561596149454, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 0 2",
+      "position": [-11.141766200788567, 2.668903990373635, -17.14],
+      "scale": [3.1, 1.032561596149454, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 1 0",
+      "position": [-12.811002275681224, 0.5894605985560452, -17],
+      "scale": [3.1, 1.1439211971120904, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 1 1",
+      "position": [-12.741044022178666, 1.7683817956681356, -17.07],
+      "scale": [3.1, 1.1439211971120904, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 1 2",
+      "position": [-12.691766200788567, 2.9473029927802257, -17.14],
+      "scale": [3.1, 1.1439211971120904, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 1 3",
+      "position": [-12.68742313302088, 4.126224189892316, -17.21],
+      "scale": [3.1, 1.1439211971120904, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 2 0",
+      "position": [-14.361002275681223, 0.6228684788448362, -17],
+      "scale": [3.1, 1.2107369576896725, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 2 1",
+      "position": [-14.291044022178665, 1.8686054365345086, -17.07],
+      "scale": [3.1, 1.2107369576896725, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 2 2",
+      "position": [-14.241766200788566, 3.114342394224181, -17.14],
+      "scale": [3.1, 1.2107369576896725, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 2 3",
+      "position": [-14.23742313302088, 4.360079351913853, -17.21],
+      "scale": [3.1, 1.2107369576896725, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 2 2 4",
+      "position": [-14.280152457249327, 5.605816309603526, -17.28],
+      "scale": [3.1, 1.2107369576896725, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 0 0",
+      "position": [-10.749748674246142, 0.6228270414505512, -25],
+      "scale": [3.1, 1.2106540829011025, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 0 1",
+      "position": [-10.819750854436824, 1.8684811243516537, -25.07],
+      "scale": [3.1, 1.2106540829011025, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 1 0",
+      "position": [-12.299748674246143, 0.651801360967034, -25],
+      "scale": [3.1, 1.268602721934068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 1 1",
+      "position": [-12.369750854436825, 1.9554040829011021, -25.07],
+      "scale": [3.1, 1.268602721934068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 1 2",
+      "position": [-12.425582563187836, 3.25900680483517, -25.14],
+      "scale": [3.1, 1.268602721934068, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 2 0",
+      "position": [-13.849748674246142, 0.6662885207252756, -25],
+      "scale": [3.1, 1.2975770414505512, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 2 1",
+      "position": [-13.919750854436824, 1.9988655621758267, -25.07],
+      "scale": [3.1, 1.2975770414505512, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 2 2",
+      "position": [-13.975582563187835, 3.331442603626378, -25.14],
+      "scale": [3.1, 1.2975770414505512, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 3 2 3",
+      "position": [-13.989763685179604, 4.6640196450769285, -25.21],
+      "scale": [3.1, 1.2975770414505512, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 0 0",
+      "position": [-10.748936274287926, 0.4493858903710233, -33],
+      "scale": [3.1, 0.8637717807420465, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 0 1",
+      "position": [-10.680291261521587, 1.3481576711130698, -33.07],
+      "scale": [3.1, 0.8637717807420465, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 1 0",
+      "position": [-12.298936274287927, 0.5205905935806822, -33],
+      "scale": [3.1, 1.0061811871613644, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 1 1",
+      "position": [-12.230291261521588, 1.5617717807420464, -33.07],
+      "scale": [3.1, 1.0061811871613644, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 1 2",
+      "position": [-12.169023137439924, 2.602952967903411, -33.14],
+      "scale": [3.1, 1.0061811871613644, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 2 0",
+      "position": [-13.848936274287926, 0.7415905935806822, -33],
+      "scale": [3.1, 1.4481811871613646, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 2 1",
+      "position": [-13.780291261521587, 2.2247717807420466, -33.07],
+      "scale": [3.1, 1.4481811871613646, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 4 2 2",
+      "position": [-13.719023137439923, 3.7079529679034113, -33.14],
+      "scale": [3.1, 1.4481811871613646, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 0 0",
+      "position": [-11.184967788277035, 0.45179864079693016, -41],
+      "scale": [3.1, 0.8685972815938603, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 0 1",
+      "position": [-11.250881703221786, 1.3553959223907905, -41.07],
+      "scale": [3.1, 0.8685972815938603, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 1 0",
+      "position": [-12.734967788277036, 0.52219909386462, -41],
+      "scale": [3.1, 1.0093981877292402, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 1 1",
+      "position": [-12.800881703221787, 1.56659728159386, -41.07],
+      "scale": [3.1, 1.0093981877292402, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 1 2",
+      "position": [-12.866359960714043, 2.6109954693231003, -41.14],
+      "scale": [3.1, 1.0093981877292402, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 2 0",
+      "position": [-14.284967788277035, 0.7431990938646201, -41],
+      "scale": [3.1, 1.4513981877292403, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 2 1",
+      "position": [-14.350881703221786, 2.2295972815938603, -41.07],
+      "scale": [3.1, 1.4513981877292403, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 5 2 2",
+      "position": [-14.416359960714042, 3.7159954693231008, -41.14],
+      "scale": [3.1, 1.4513981877292403, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 0 0",
+      "position": [-10.767872994529638, 0.5619240613052294, -49],
+      "scale": [3.1, 1.088848122610459, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 0 1",
+      "position": [-10.706009444862248, 1.6857721839156883, -49.07],
+      "scale": [3.1, 1.088848122610459, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 1 0",
+      "position": [-12.317872994529639, 0.5956160408701529, -49],
+      "scale": [3.1, 1.1562320817403058, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 1 1",
+      "position": [-12.256009444862249, 1.7868481226104587, -49.07],
+      "scale": [3.1, 1.1562320817403058, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 1 2",
+      "position": [-12.187631601728302, 2.978080204350764, -49.14],
+      "scale": [3.1, 1.1562320817403058, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 2 0",
+      "position": [-13.867872994529638, 0.6124620306526146, -49],
+      "scale": [3.1, 1.1899240613052293, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 2 1",
+      "position": [-13.806009444862248, 1.837386091957844, -49.07],
+      "scale": [3.1, 1.1899240613052293, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 2 2",
+      "position": [-13.737631601728301, 3.062310153263073, -49.14],
+      "scale": [3.1, 1.1899240613052293, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 6 2 3",
+      "position": [-13.696394731224062, 4.2872342145683024, -49.21],
+      "scale": [3.1, 1.1899240613052293, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 0 0",
+      "position": [-10.7102430112854, 0.6049152189393119, -57],
+      "scale": [3.1, 1.1748304378786238, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 0 1",
+      "position": [-10.766817996308218, 1.8147456568179356, -57.07],
+      "scale": [3.1, 1.1748304378786238, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 1 0",
+      "position": [-12.2602430112854, 0.6242768126262078, -57],
+      "scale": [3.1, 1.2135536252524157, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 1 1",
+      "position": [-12.316817996308218, 1.8728304378786236, -57.07],
+      "scale": [3.1, 1.2135536252524157, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 1 2",
+      "position": [-12.38672684208862, 3.121384063131039, -57.14],
+      "scale": [3.1, 1.2135536252524157, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 2 0",
+      "position": [-13.810243011285399, 0.6339576094696558, -57],
+      "scale": [3.1, 1.2329152189393118, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 2 1",
+      "position": [-13.866817996308217, 1.9018728284089677, -57.07],
+      "scale": [3.1, 1.2329152189393118, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 2 2",
+      "position": [-13.93672684208862, 3.169788047348279, -57.14],
+      "scale": [3.1, 1.2329152189393118, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace -1 7 2 3",
+      "position": [-13.985560729930567, 4.437703266287591, -57.21],
+      "scale": [3.1, 1.2329152189393118, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 0 0",
+      "position": [10.9, 0.5801838731009872, -1],
+      "scale": [3.1, 1.1253677462019744, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 0 1",
+      "position": [10.96569865987188, 1.7405516193029615, -1.07],
+      "scale": [3.1, 1.1253677462019744, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 1 0",
+      "position": [12.450000000000001, 0.6701225820673247, -1],
+      "scale": [3.1, 1.3052451641346494, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 1 1",
+      "position": [12.51569865987188, 2.010367746201974, -1.07],
+      "scale": [3.1, 1.3052451641346494, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 1 2",
+      "position": [12.549060735569489, 3.3506129103366233, -1.1400000000000001],
+      "scale": [3.1, 1.3052451641346494, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 2 0",
+      "position": [14, 0.7150919365504935, -1],
+      "scale": [3.1, 1.3951838731009871, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 2 1",
+      "position": [14.06569865987188, 2.145275809651481, -1.07],
+      "scale": [3.1, 1.3951838731009871, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 2 2",
+      "position": [14.099060735569488, 3.5754596827524674, -1.1400000000000001],
+      "scale": [3.1, 1.3951838731009871, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 0 2 3",
+      "position": [14.083665563853605, 5.005643555853455, -1.21],
+      "scale": [3.1, 1.3951838731009871, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 0 0",
+      "position": [11.197085742142844, 0.5273364281883752, -9],
+      "scale": [3.1, 1.0196728563767505, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 0 1",
+      "position": [11.12857163024792, 1.5820092845651257, -9.07],
+      "scale": [3.1, 1.0196728563767505, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 1 0",
+      "position": [12.747085742142845, 0.6193076187922499, -9],
+      "scale": [3.1, 1.2036152375845, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 1 1",
+      "position": [12.678571630247921, 1.8579228563767498, -9.07],
+      "scale": [3.1, 1.2036152375845, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 1 2",
+      "position": [12.636833992148903, 3.0965380939612497, -9.14],
+      "scale": [3.1, 1.2036152375845, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 2 0",
+      "position": [14.297085742142844, 0.6652932140941874, -9],
+      "scale": [3.1, 1.2955864281883749, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 2 1",
+      "position": [14.22857163024792, 1.9958796422825622, -9.07],
+      "scale": [3.1, 1.2955864281883749, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 2 2",
+      "position": [14.186833992148902, 3.326466070470937, -9.14],
+      "scale": [3.1, 1.2955864281883749, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 1 2 3",
+      "position": [14.192415905136194, 4.657052498659311, -9.21],
+      "scale": [3.1, 1.2955864281883749, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 0 0",
+      "position": [10.538997724318778, 0.7085392013668955, -17],
+      "scale": [3.1, 1.3820784027337911, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 1 0",
+      "position": [12.088997724318778, 0.7325196006834476, -17],
+      "scale": [3.1, 1.4300392013668952, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 1 1",
+      "position": [12.158955977821336, 2.1975588020503425, -17.07],
+      "scale": [3.1, 1.4300392013668952, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 2 0",
+      "position": [13.638997724318777, 0.7405130671222984, -17],
+      "scale": [3.1, 1.4460261342445968, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 2 1",
+      "position": [13.708955977821335, 2.221539201366895, -17.07],
+      "scale": [3.1, 1.4460261342445968, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 2 2 2",
+      "position": [13.758233799211434, 3.702565335611492, -17.14],
+      "scale": [3.1, 1.4460261342445968, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 0 0",
+      "position": [11.050251325753859, 0.5304130171146705, -25],
+      "scale": [3.1, 1.025826034229341, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 1 0",
+      "position": [12.60025132575386, 0.6200815085573352, -25],
+      "scale": [3.1, 1.2051630171146706, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 1 1",
+      "position": [12.530249145563177, 1.8602445256720057, -25.07],
+      "scale": [3.1, 1.2051630171146706, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 2 0",
+      "position": [14.150251325753858, 0.6499710057048902, -25],
+      "scale": [3.1, 1.2649420114097805, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 2 1",
+      "position": [14.080249145563176, 1.9499130171146706, -25.07],
+      "scale": [3.1, 1.2649420114097805, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 3 2 2",
+      "position": [14.024417436812165, 3.249855028524451, -25.14],
+      "scale": [3.1, 1.2649420114097805, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 0 0",
+      "position": [11.051063725712075, 0.6477975664505884, -33],
+      "scale": [3.1, 1.2605951329011769, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 1 0",
+      "position": [12.601063725712075, 0.6553987832252941, -33],
+      "scale": [3.1, 1.2757975664505883, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 1 1",
+      "position": [12.669708738478414, 1.9661963496758823, -33.07],
+      "scale": [3.1, 1.2757975664505883, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 2 0",
+      "position": [14.151063725712074, 0.6579325221501962, -33],
+      "scale": [3.1, 1.2808650443003924, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 2 1",
+      "position": [14.219708738478413, 1.9737975664505885, -33.07],
+      "scale": [3.1, 1.2808650443003924, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 4 2 2",
+      "position": [14.280976862560077, 3.2896626107509808, -33.14],
+      "scale": [3.1, 1.2808650443003924, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 0 0",
+      "position": [10.615032211722966, 0.42345499773553713, -41],
+      "scale": [3.1, 0.8119099954710742, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 0 1",
+      "position": [10.549118296778214, 1.2703649932066114, -41.07],
+      "scale": [3.1, 0.8119099954710742, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 1 0",
+      "position": [12.165032211722966, 0.754954997735537, -41],
+      "scale": [3.1, 1.474909995471074, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 1 1",
+      "position": [12.099118296778215, 2.264864993206611, -41.07],
+      "scale": [3.1, 1.474909995471074, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 2 0",
+      "position": [13.715032211722965, 0.7243033318236914, -41],
+      "scale": [3.1, 1.413606663647383, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 2 1",
+      "position": [13.649118296778214, 2.172909995471074, -41.07],
+      "scale": [3.1, 1.413606663647383, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 5 2 2",
+      "position": [13.583640039285958, 3.6215166591184573, -41.14],
+      "scale": [3.1, 1.413606663647383, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 0 0",
+      "position": [11.032127005470363, 0.38902942630694687, -49],
+      "scale": [3.1, 0.7430588526138937, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 0 1",
+      "position": [11.093990555137752, 1.1670882789208405, -49.07],
+      "scale": [3.1, 0.7430588526138937, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 1 0",
+      "position": [12.582127005470364, 0.7205294263069468, -49],
+      "scale": [3.1, 1.4060588526138937, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 1 1",
+      "position": [12.643990555137753, 2.1615882789208403, -49.07],
+      "scale": [3.1, 1.4060588526138937, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 2 0",
+      "position": [14.132127005470362, 0.7013529508712978, -49],
+      "scale": [3.1, 1.3677059017425957, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 2 1",
+      "position": [14.193990555137752, 2.1040588526138935, -49.07],
+      "scale": [3.1, 1.3677059017425957, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 6 2 2",
+      "position": [14.262368398271699, 3.506764754356489, -49.14],
+      "scale": [3.1, 1.3677059017425957, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 0 0",
+      "position": [11.089756988714601, 0.542111223465888, -57],
+      "scale": [3.1, 1.0492224469317761, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 1 0",
+      "position": [12.639756988714602, 0.602555611732944, -57],
+      "scale": [3.1, 1.1701112234658881, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 1 1",
+      "position": [12.583182003691784, 1.807666835198832, -57.07],
+      "scale": [3.1, 1.1701112234658881, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 2 0",
+      "position": [14.189756988714601, 0.6227037411552959, -57],
+      "scale": [3.1, 1.210407482310592, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 2 1",
+      "position": [14.133182003691783, 1.8681112234658879, -57.07],
+      "scale": [3.1, 1.210407482310592, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry terrace 1 7 2 2",
+      "position": [14.06327315791138, 3.1135187057764795, -57.14],
+      "scale": [3.1, 1.210407482310592, 8.06],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 0",
+      "position": [2, 0.04, -8],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 1",
+      "position": [2, 0.04, -10.3],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 2",
+      "position": [2, 0.04, -12.6],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 3",
+      "position": [2, 0.04, -14.899999999999999],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 4",
+      "position": [2, 0.04, -17.2],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 5",
+      "position": [2, 0.04, -19.5],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 6",
+      "position": [2, 0.04, -21.799999999999997],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 7",
+      "position": [2, 0.04, -24.099999999999998],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 8",
+      "position": [2, 0.04, -26.4],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 9",
+      "position": [2, 0.04, -28.7],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 10",
+      "position": [2, 0.04, -31],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 11",
+      "position": [2, 0.04, -33.3],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 12",
+      "position": [2, 0.04, -35.599999999999994],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 13",
+      "position": [2, 0.04, -37.9],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 14",
+      "position": [2, 0.04, -40.199999999999996],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 15",
+      "position": [2, 0.04, -42.5],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 16",
+      "position": [2, 0.04, -44.8],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 17",
+      "position": [2, 0.04, -47.099999999999994],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 18",
+      "position": [2, 0.04, -49.4],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade paver 19",
+      "position": [2, 0.04, -51.699999999999996],
+      "scale": [3, 0.13, 2.16],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade border -1",
+      "position": [0.25, 0.1, -27],
+      "scale": [0.2, 0.25, 45],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Promenade border 1",
+      "position": [3.75, 0.1, -27],
+      "scale": [0.2, 0.25, 45],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 0 -1",
+      "position": [-0.10000000000000009, 1.55, -43],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 0 1",
+      "position": [4.1, 1.55, -43],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage lintel 0",
+      "position": [2, 3.3, -43],
+      "scale": [4.9, 0.4, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 1 -1",
+      "position": [-0.10000000000000009, 1.55, -49],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 1 1",
+      "position": [4.1, 1.55, -49],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage lintel 1",
+      "position": [2, 3.3, -49],
+      "scale": [4.9, 0.4, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 2 -1",
+      "position": [-0.10000000000000009, 1.55, -55],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 2 1",
+      "position": [4.1, 1.55, -55],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage lintel 2",
+      "position": [2, 3.3, -55],
+      "scale": [4.9, 0.4, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 3 -1",
+      "position": [-0.10000000000000009, 1.55, -61],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage jamb 3 1",
+      "position": [4.1, 1.55, -61],
+      "scale": [0.7, 3.1, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "block",
+      "name": "Passage lintel 3",
+      "position": [2, 3.3, -61],
+      "scale": [4.9, 0.4, 0.8],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry horizon -1",
+      "position": [-15, 4.1, -72],
+      "scale": [26, 8.2, 8],
+      "rotationY": 0
+    },
+    {
+      "asset": "quarry",
+      "name": "Quarry horizon 1",
+      "position": [15, 4.1, -72],
+      "scale": [26, 8.2, 8],
+      "rotationY": 0
+    },
+    {
+      "asset": "gravel",
+      "name": "Scattered quarry gravel",
+      "position": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "rotationY": 0
+    }
+  ],
+  "views": {
+    "overview": { "position": [5, 3.4, 16.7], "target": [-1.5, 2, -10] },
+    "passage": { "position": [2, 3.1, 6.5], "target": [1.5, 2.5, -22] },
+    "surface": { "position": [-0.1, 4.9, 5.7], "target": [-2.7, 4.2, 0] }
+  },
+  "sourceTriangles": 1287944,
+  "contentVersion": "sha256:edd84f53519347fe3d83b18460af4f788aa419a7e26c5fe2120076745994c58a",
+  "coarseTriangles": 889236
+}

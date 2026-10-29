@@ -28,7 +28,8 @@
     "test/ui/stable-capture.ts",
     "test/ui/example-paths.ts",
     "playwright.player.config.ts",
-    "vitest.surface-render.config.ts"
+    "vitest.surface-render.config.ts",
+    "test/fixtures/meshlets/source.ts"
   ],
   "references": [
     {

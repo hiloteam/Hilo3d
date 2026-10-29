@@ -847,6 +847,7 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly materialVariantBudget: number;
     readonly materialVariantBudgetExceededCount: number;
     readonly materialVariantWarmupTimeMs: number;
+    readonly meshletGeometry: Readonly<MeshletGeometryDiagnostics> | null;
     readonly objectCount: number;
     readonly occludedObjectCount: number;
     readonly renderScale: number;
@@ -1797,6 +1798,9 @@ export const constants: {
 export function createEmptyGLTFRoot(): GLTFRoot;
 
 // @public
+export function createMeshletFallbackGeometry(meshlets: MeshletGeometry): Geometry;
+
+// @public
 export function createStageSystemService<T>(name: string): StageSystemService<T>;
 
 // @public (undocumented)
@@ -1923,6 +1927,9 @@ export interface DecalProjectorOptions {
     readonly roughness?: number;
     readonly transform?: Readonly<Matrix4>;
 }
+
+// @public
+export function decodeMeshletGeometryPage(bytes: Uint8Array, descriptor: MeshletPageDescriptor): MeshletGeometryPage;
 
 // @public
 export const DEFAULT_2D_LAYER: number;
@@ -2085,6 +2092,9 @@ export interface ElasticEaseObject extends TweenEaseObject {
     // (undocumented)
     s: number;
 }
+
+// @public
+export function encodeMeshletGeometryPage(page: MeshletGeometryPage): Uint8Array;
 
 // @public (undocumented)
 export namespace engineConstants {
@@ -3648,6 +3658,7 @@ export interface GPUSceneBucket {
     readonly geometry: Geometry;
     readonly lods?: readonly GPUSceneLOD[];
     readonly material: PBRMaterial;
+    readonly meshlets?: MeshletGeometry;
 }
 
 // @public
@@ -5028,6 +5039,139 @@ export class Mesh extends Node_2 {
     static readonly typeName: string;
     useInstanced: boolean;
 }
+
+// @public
+export interface MeshletAssetManifest {
+    // (undocumented)
+    readonly groups: readonly MeshletGroupDescriptor[];
+    // (undocumented)
+    readonly pages: readonly MeshletPageDescriptor[];
+    // (undocumented)
+    readonly version: 1;
+    // (undocumented)
+    readonly vertexStride: 8;
+}
+
+// @public
+export interface MeshletDescriptor {
+    // (undocumented)
+    readonly bounds: MeshletSphere;
+    // (undocumented)
+    readonly coneApex: MeshletVector3;
+    // (undocumented)
+    readonly coneAxis: MeshletVector3;
+    readonly coneCutoff: number;
+    // (undocumented)
+    readonly firstIndex: number;
+    // (undocumented)
+    readonly indexCount: number;
+}
+
+// @public
+export class MeshletGeometry {
+    constructor(manifest: MeshletAssetManifest, options?: Readonly<MeshletGeometryOptions>);
+    evictPage(pageId: number): void;
+    // @internal
+    getPageData(pageId: number): Readonly<MeshletGeometryPage> | null;
+    hasPage(pageId: number): boolean;
+    // (undocumented)
+    readonly manifest: Readonly<MeshletAssetManifest>;
+    // (undocumented)
+    readonly options: Readonly<MeshletGeometryLimits>;
+    get revision(): number;
+    setPageData(pageId: number, page: MeshletGeometryPage): void;
+}
+
+// @public
+export interface MeshletGeometryDiagnostics {
+    // (undocumented)
+    readonly allocatedBytes: number;
+    // (undocumented)
+    readonly deferredPageCount: number;
+    // (undocumented)
+    readonly lastUploadBytes: number;
+    // (undocumented)
+    readonly maxResidentBytes: number;
+    // (undocumented)
+    readonly overflowObjectCount: number;
+    // (undocumented)
+    readonly residentBytes: number;
+    // (undocumented)
+    readonly residentPageCount: number;
+    // (undocumented)
+    readonly uploadedBytes: number;
+    // (undocumented)
+    readonly visibleMeshletCount: number;
+}
+
+// @public
+export interface MeshletGeometryLimits {
+    // (undocumented)
+    readonly maximumProjectedError: number;
+    // (undocumented)
+    readonly maxResidentBytes: number;
+    // (undocumented)
+    readonly maxUploadBytesPerFrame: number;
+    // (undocumented)
+    readonly maxVisibleMeshlets: number;
+}
+
+// @public
+export interface MeshletGeometryOptions {
+    readonly maximumProjectedError?: number;
+    readonly maxResidentBytes?: number;
+    readonly maxUploadBytesPerFrame?: number;
+    readonly maxVisibleMeshlets?: number;
+}
+
+// @public
+export interface MeshletGeometryPage {
+    readonly indices: Uint32Array;
+    // (undocumented)
+    readonly meshlets: readonly MeshletDescriptor[];
+    readonly vertices: Float32Array;
+}
+
+// @public
+export interface MeshletGroupDescriptor {
+    // (undocumented)
+    readonly bounds: MeshletSphere;
+    // (undocumented)
+    readonly id: number;
+    // (undocumented)
+    readonly lods: readonly MeshletLODDescriptor[];
+}
+
+// @public
+export interface MeshletLODDescriptor {
+    readonly error: number;
+    // (undocumented)
+    readonly pageId: number;
+}
+
+// @public
+export function meshletPageChecksum(bytes: Uint8Array): number;
+
+// @public
+export interface MeshletPageDescriptor {
+    // (undocumented)
+    readonly byteLength: number;
+    readonly checksum: number;
+    // (undocumented)
+    readonly id: number;
+    // (undocumented)
+    readonly indexCount: number;
+    // (undocumented)
+    readonly meshletCount: number;
+    // (undocumented)
+    readonly vertexCount: number;
+}
+
+// @public
+export type MeshletSphere = readonly [number, number, number, number];
+
+// @public
+export type MeshletVector3 = readonly [number, number, number];
 
 // @public (undocumented)
 export interface MeshParameters extends NodeParameters {
@@ -8306,6 +8450,9 @@ export interface SlicedSpriteParameters extends NodeParameters {
     width?: number;
 }
 
+// @public
+export function snapshotMeshletAssetManifest(value: unknown): MeshletAssetManifest;
+
 // @public (undocumented)
 export class Sphere {
     constructor(params?: {
@@ -9600,6 +9747,9 @@ export namespace util {
 
 // @public (undocumented)
 export type UV = readonly number[];
+
+// @public
+export function validateMeshletGeometryPage(page: MeshletGeometryPage, descriptor: MeshletPageDescriptor): void;
 
 // @public
 export class Vector2 {

@@ -1,3 +1,7 @@
+import {
+    shadowCasterGeometry,
+    type ShadowCasterGeometryOverride
+} from './ShadowCasterGeometryScope';
 import Mesh from '../../core/Mesh';
 import { ShadowCasterBounds } from './ShadowCasterBounds';
 import SkinnedMesh from '../../core/SkinnedMesh';
@@ -43,6 +47,7 @@ interface CasterSnapshot {
     geometry: Geometry | null;
     geometryMode: number;
     geometryRevision: number;
+    geometryOverride: Readonly<ShadowCasterGeometryOverride> | null;
     readonly geometryLayouts: number[];
     material: Material | null;
     materialRevision: number;
@@ -99,6 +104,7 @@ function createCasterSnapshot(): CasterSnapshot {
         geometry: null,
         geometryMode: -1,
         geometryRevision: -1,
+        geometryOverride: null,
         geometryLayouts: [],
         material: null,
         materialRevision: -1,
@@ -543,6 +549,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         }
         const geometry = mesh.geometry;
         if (
+            previous.geometryOverride !== shadowCasterGeometry(mesh) ||
             previous.geometry !== geometry ||
             previous.geometryMode !== (geometry?.mode ?? -1) ||
             previous.geometryRevision !== (geometry?.revision ?? -1) ||
@@ -603,6 +610,7 @@ export class ShadowAtlasContentCache implements RHIUploadBatchParticipant {
         target.geometry = geometry;
         target.geometryMode = geometry?.mode ?? -1;
         target.geometryRevision = geometry?.revision ?? -1;
+        target.geometryOverride = shadowCasterGeometry(mesh);
         copyNumbers(target.geometryLayouts, this.#layoutScratch, this.#layoutScratch.length);
         target.material = material;
         target.materialRevision = material?.revision ?? -1;

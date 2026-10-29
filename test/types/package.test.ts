@@ -14,6 +14,7 @@ import {
     constants,
     createStageSystemService,
     createStorageLayout,
+    createMeshletFallbackGeometry,
     DEFAULT_MATERIAL_PIPELINE_STATE,
     DirectionalLight,
     EventDispatcher,
@@ -21,6 +22,7 @@ import {
     HiloEvent,
     Loader,
     Mesh,
+    MeshletGeometry,
     MeshPicker,
     Node,
     OrbitControls,
@@ -52,6 +54,10 @@ import {
     type KTXTextureOptions,
     type LoaderRequest,
     type MeshParameters,
+    type Geometry,
+    type MeshletAssetManifest,
+    type MeshletGeometryPage,
+    type MeshletGeometryOptions,
     type NodeParameters,
     type OrbitControlsOptions,
     type OrderedRendererListDescriptor,
@@ -181,6 +187,45 @@ import {
     type Live2DSource
 } from '@hilo/addon-live2d';
 import { createCubismRuntime } from '@hilo/addon-live2d/cubism';
+import {
+    GeometryPageManager,
+    type GeometryAssetSource,
+    type GeometryPageLease,
+    type GeometryStreamingDiagnostics
+} from '@hilo/addon-assets';
+
+declare const cookedMeshletManifest: MeshletAssetManifest;
+declare const cookedMeshletPage: MeshletGeometryPage;
+declare const streamedGeometrySource: GeometryAssetSource;
+const meshletOptions = {
+    maxResidentBytes: 8 * 1024 * 1024,
+    maxUploadBytesPerFrame: 512 * 1024,
+    maxVisibleMeshlets: 4096,
+    maximumProjectedError: 1
+} satisfies MeshletGeometryOptions;
+const streamedMeshlets = new MeshletGeometry(cookedMeshletManifest, meshletOptions);
+streamedMeshlets.setPageData(0, cookedMeshletPage);
+const createCoarseMesh: (meshlets: MeshletGeometry) => Geometry = createMeshletFallbackGeometry;
+void createCoarseMesh;
+streamedMeshlets.evictPage(0);
+const geometryPages = new GeometryPageManager(streamedMeshlets, streamedGeometrySource, {
+    autoUpdate: false,
+    budgets: { cpuBytes: 32 * 1024 * 1024, concurrentRequests: 2 }
+});
+const geometryPageLease: GeometryPageLease = geometryPages.acquirePage(0, { priority: 2 });
+const geometryPageReady: Promise<void> = geometryPageLease.ready;
+const geometryStreamingDiagnostics: Readonly<GeometryStreamingDiagnostics> =
+    geometryPages.getDiagnostics();
+const meshletPipeline = new ClusteredForwardPlusPipelineFactory({
+    buckets: [
+        { geometry: new BoxGeometry(), material: new PBRMaterial(), meshlets: streamedMeshlets }
+    ]
+});
+void geometryPageReady;
+void geometryStreamingDiagnostics;
+void meshletPipeline;
+geometryPageLease.release();
+geometryPages.destroy();
 
 const live2DConfiguration = {
     nonce: 'application-csp-nonce',

@@ -1,0 +1,1017 @@
+{
+  "version": 1,
+  "vertexStride": 8,
+  "groups": [
+    {
+      "id": 0,
+      "bounds": [
+        -1.0831937789916992, -0.23031775653362274, -0.48036980628967285, 0.5462191700935364
+      ],
+      "lods": [
+        { "pageId": 0, "error": 0 },
+        { "pageId": 1, "error": 0.019069965928792953 },
+        { "pageId": 2, "error": 0.07436827570199966 }
+      ]
+    },
+    {
+      "id": 1,
+      "bounds": [
+        -0.7987444400787354, -0.7474665641784668, -0.05076231062412262, 0.5323492884635925
+      ],
+      "lods": [
+        { "pageId": 3, "error": 0 },
+        { "pageId": 4, "error": 0.008498001843690872 },
+        { "pageId": 5, "error": 0.047041989862918854 },
+        { "pageId": 6, "error": 0.07495315559208393 }
+      ]
+    },
+    {
+      "id": 2,
+      "bounds": [
+        -0.3705197274684906, -0.764191746711731, -0.42655932903289795, 0.48073938488960266
+      ],
+      "lods": [
+        { "pageId": 7, "error": 0 },
+        { "pageId": 8, "error": 0.007693977560847998 },
+        { "pageId": 9, "error": 0.04439462115988135 },
+        { "pageId": 10, "error": 0.07699362700805068 }
+      ]
+    },
+    {
+      "id": 3,
+      "bounds": [-0.3096553683280945, -0.12493541091680527, -0.8470373153686523, 0.609969973564148],
+      "lods": [
+        { "pageId": 11, "error": 0 },
+        { "pageId": 12, "error": 0.020000020042061806 },
+        { "pageId": 13, "error": 0.07834204472601414 }
+      ]
+    },
+    {
+      "id": 4,
+      "bounds": [-0.8040724992752075, 0.5077926516532898, -0.5286545753479004, 0.5215069055557251],
+      "lods": [
+        { "pageId": 14, "error": 0 },
+        { "pageId": 15, "error": 0.01459030993282795 },
+        { "pageId": 16, "error": 0.0734055656939745 }
+      ]
+    },
+    {
+      "id": 5,
+      "bounds": [-1.1968622207641602, -0.24789310991764069, 0.3195769786834717, 0.6059836745262146],
+      "lods": [
+        { "pageId": 17, "error": 0 },
+        { "pageId": 18, "error": 0.019875207915902138 },
+        { "pageId": 19, "error": 0.07949728332459927 }
+      ]
+    },
+    {
+      "id": 6,
+      "bounds": [-0.6207439303398132, -0.6862019896507263, 0.44587987661361694, 0.6132529377937317],
+      "lods": [
+        { "pageId": 20, "error": 0 },
+        { "pageId": 21, "error": 0.008705239742994308 },
+        { "pageId": 22, "error": 0.07334161922335625 }
+      ]
+    },
+    {
+      "id": 7,
+      "bounds": [
+        -0.7125338315963745, -0.0022028726525604725, 0.7342203259468079, 0.6355592012405396
+      ],
+      "lods": [
+        { "pageId": 23, "error": 0 },
+        { "pageId": 24, "error": 0.01951286941766739 },
+        { "pageId": 25, "error": 0.07916533201932907 }
+      ]
+    },
+    {
+      "id": 8,
+      "bounds": [0.14532795548439026, -0.4011589288711548, 0.7561755776405334, 0.6395249366760254],
+      "lods": [
+        { "pageId": 26, "error": 0 },
+        { "pageId": 27, "error": 0.013899841345846653 },
+        { "pageId": 28, "error": 0.0712834158912301 }
+      ]
+    },
+    {
+      "id": 9,
+      "bounds": [-1.159656047821045, 0.3058176636695862, 0.048530690371990204, 0.6067997813224792],
+      "lods": [
+        { "pageId": 29, "error": 0 },
+        { "pageId": 30, "error": 0.019264191389083862 },
+        { "pageId": 31, "error": 0.07794530317187309 }
+      ]
+    },
+    {
+      "id": 10,
+      "bounds": [-0.5978536009788513, 0.8338901400566101, 0.10388714075088501, 0.4366246461868286],
+      "lods": [
+        { "pageId": 32, "error": 0 },
+        { "pageId": 33, "error": 0.0060755349695682526 },
+        { "pageId": 34, "error": 0.053664449602365494 }
+      ]
+    },
+    {
+      "id": 11,
+      "bounds": [-0.5510236024856567, 0.6808456778526306, 0.5385867357254028, 0.6023359298706055],
+      "lods": [
+        { "pageId": 35, "error": 0 },
+        { "pageId": 36, "error": 0.013432158157229424 },
+        { "pageId": 37, "error": 0.07480659894645214 }
+      ]
+    },
+    {
+      "id": 12,
+      "bounds": [
+        -0.17521673440933228, -0.9489163756370544, -0.015083720907568932, 0.28974124789237976
+      ],
+      "lods": [
+        { "pageId": 38, "error": 0 },
+        { "pageId": 39, "error": 0.0016892370767891407 },
+        { "pageId": 40, "error": 0.07078100414946675 }
+      ]
+    },
+    {
+      "id": 13,
+      "bounds": [
+        0.12334758043289185, -0.9206570982933044, 0.17784817516803741, 0.32543596625328064
+      ],
+      "lods": [
+        { "pageId": 41, "error": 0 },
+        { "pageId": 42, "error": 0.002839519875124097 },
+        { "pageId": 43, "error": 0.03347468678839505 },
+        { "pageId": 44, "error": 0.07693252270109951 }
+      ]
+    },
+    {
+      "id": 14,
+      "bounds": [0.331919401884079, -0.8466895222663879, -0.22530877590179443, 0.4290117919445038],
+      "lods": [
+        { "pageId": 45, "error": 0 },
+        { "pageId": 46, "error": 0.0047806003130972385 },
+        { "pageId": 47, "error": 0.05255048209801316 }
+      ]
+    },
+    {
+      "id": 15,
+      "bounds": [0.45592233538627625, -0.5128148794174194, -0.698483943939209, 0.5936651229858398],
+      "lods": [
+        { "pageId": 48, "error": 0 },
+        { "pageId": 49, "error": 0.014884725213050842 },
+        { "pageId": 50, "error": 0.07916822284460068 }
+      ]
+    },
+    {
+      "id": 16,
+      "bounds": [-0.11617878079414368, 0.6840605735778809, -0.60318523645401, 0.530306875705719],
+      "lods": [
+        { "pageId": 51, "error": 0 },
+        { "pageId": 52, "error": 0.006460695527493954 },
+        { "pageId": 53, "error": 0.040532528422772884 },
+        { "pageId": 54, "error": 0.07931619789451361 }
+      ]
+    },
+    {
+      "id": 17,
+      "bounds": [
+        -0.24898585677146912, 0.9321384429931641, -0.13899171352386475, 0.3656216561794281
+      ],
+      "lods": [
+        { "pageId": 55, "error": 0 },
+        { "pageId": 56, "error": 0.0015028074849396944 },
+        { "pageId": 57, "error": 0.06670930539257824 }
+      ]
+    },
+    {
+      "id": 18,
+      "bounds": [0.0626179575920105, 0.983754575252533, 0.14428934454917908, 0.3646736145019531],
+      "lods": [
+        { "pageId": 58, "error": 0 },
+        { "pageId": 59, "error": 0.0025674377102404833 },
+        { "pageId": 60, "error": 0.05708870408125222 }
+      ]
+    },
+    {
+      "id": 19,
+      "bounds": [0.4421400725841522, 0.8752780556678772, -0.194379523396492, 0.4313680827617645],
+      "lods": [
+        { "pageId": 61, "error": 0 },
+        { "pageId": 62, "error": 0.005741088651120663 },
+        { "pageId": 63, "error": 0.06488977652043104 }
+      ]
+    },
+    {
+      "id": 20,
+      "bounds": [0.48924753069877625, 0.36499735713005066, -0.8159456253051758, 0.6379876732826233],
+      "lods": [
+        { "pageId": 64, "error": 0 },
+        { "pageId": 65, "error": 0.013332405127584934 },
+        { "pageId": 66, "error": 0.07645109388977289 }
+      ]
+    },
+    {
+      "id": 21,
+      "bounds": [0.9422842264175415, 0.7473337054252625, 0.060273684561252594, 0.5683016777038574],
+      "lods": [
+        { "pageId": 67, "error": 0 },
+        { "pageId": 68, "error": 0.015997646376490593 },
+        { "pageId": 69, "error": 0.07414066977798939 }
+      ]
+    },
+    {
+      "id": 22,
+      "bounds": [1.1865721940994263, 0.33597424626350403, -0.36110207438468933, 0.6730725765228271],
+      "lods": [
+        { "pageId": 70, "error": 0 },
+        { "pageId": 71, "error": 0.01962103322148323 },
+        { "pageId": 72, "error": 0.07956826686859131 }
+      ]
+    },
+    {
+      "id": 23,
+      "bounds": [0.46013665199279785, 0.6560209393501282, 0.6583741903305054, 0.6446572542190552],
+      "lods": [
+        { "pageId": 73, "error": 0 },
+        { "pageId": 74, "error": 0.011037086136639118 },
+        { "pageId": 75, "error": 0.07211654726415873 }
+      ]
+    },
+    {
+      "id": 24,
+      "bounds": [0.3737146556377411, 0.16596326231956482, 0.8367782831192017, 0.7762157320976257],
+      "lods": [
+        { "pageId": 76, "error": 0 },
+        { "pageId": 77, "error": 0.01905776560306549 },
+        { "pageId": 78, "error": 0.07683088257908821 }
+      ]
+    },
+    {
+      "id": 25,
+      "bounds": [0.7185752987861633, -0.683281421661377, 0.28522777557373047, 0.5669000744819641],
+      "lods": [
+        { "pageId": 79, "error": 0 },
+        { "pageId": 80, "error": 0.009870397858321667 },
+        { "pageId": 81, "error": 0.0712491711601615 }
+      ]
+    },
+    {
+      "id": 26,
+      "bounds": [1.2073218822479248, -0.14871740341186523, 0.3113560676574707, 0.6072046756744385],
+      "lods": [
+        { "pageId": 82, "error": 0 },
+        { "pageId": 83, "error": 0.019652649760246277 },
+        { "pageId": 84, "error": 0.0788022093474865 }
+      ]
+    },
+    {
+      "id": 27,
+      "bounds": [
+        0.9729576706886292, -0.25037461519241333, -0.07975298911333084, 0.8834047913551331
+      ],
+      "lods": [
+        { "pageId": 85, "error": 0 },
+        { "pageId": 86, "error": 0.016834184527397156 },
+        { "pageId": 87, "error": 0.0794994980096817 }
+      ]
+    },
+    {
+      "id": 28,
+      "bounds": [1.1123557090759277, 0.41667166352272034, 0.47798359394073486, 0.37522029876708984],
+      "lods": [
+        { "pageId": 88, "error": 0 },
+        { "pageId": 89, "error": 0.027431545779109 },
+        { "pageId": 90, "error": 0.07985304854810238 }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": 0,
+      "byteLength": 14148,
+      "vertexCount": 256,
+      "indexCount": 1353,
+      "meshletCount": 8,
+      "checksum": 3554664776
+    },
+    {
+      "id": 1,
+      "byteLength": 7564,
+      "vertexCount": 143,
+      "indexCount": 675,
+      "meshletCount": 4,
+      "checksum": 92394434
+    },
+    {
+      "id": 2,
+      "byteLength": 3908,
+      "vertexCount": 80,
+      "indexCount": 297,
+      "meshletCount": 2,
+      "checksum": 2152282674
+    },
+    {
+      "id": 3,
+      "byteLength": 14000,
+      "vertexCount": 256,
+      "indexCount": 1332,
+      "meshletCount": 7,
+      "checksum": 1301498352
+    },
+    {
+      "id": 4,
+      "byteLength": 7592,
+      "vertexCount": 145,
+      "indexCount": 666,
+      "meshletCount": 4,
+      "checksum": 3792775321
+    },
+    {
+      "id": 5,
+      "byteLength": 3712,
+      "vertexCount": 78,
+      "indexCount": 264,
+      "meshletCount": 2,
+      "checksum": 303156917
+    },
+    {
+      "id": 6,
+      "byteLength": 3656,
+      "vertexCount": 77,
+      "indexCount": 258,
+      "meshletCount": 2,
+      "checksum": 44814122
+    },
+    {
+      "id": 7,
+      "byteLength": 14000,
+      "vertexCount": 256,
+      "indexCount": 1332,
+      "meshletCount": 7,
+      "checksum": 3149972592
+    },
+    {
+      "id": 8,
+      "byteLength": 7592,
+      "vertexCount": 145,
+      "indexCount": 666,
+      "meshletCount": 4,
+      "checksum": 1923070592
+    },
+    {
+      "id": 9,
+      "byteLength": 3712,
+      "vertexCount": 78,
+      "indexCount": 264,
+      "meshletCount": 2,
+      "checksum": 2319915763
+    },
+    {
+      "id": 10,
+      "byteLength": 3656,
+      "vertexCount": 77,
+      "indexCount": 258,
+      "meshletCount": 2,
+      "checksum": 3237776505
+    },
+    {
+      "id": 11,
+      "byteLength": 14024,
+      "vertexCount": 256,
+      "indexCount": 1338,
+      "meshletCount": 7,
+      "checksum": 4269948697
+    },
+    {
+      "id": 12,
+      "byteLength": 7560,
+      "vertexCount": 144,
+      "indexCount": 666,
+      "meshletCount": 4,
+      "checksum": 3802401331
+    },
+    {
+      "id": 13,
+      "byteLength": 4128,
+      "vertexCount": 85,
+      "indexCount": 312,
+      "meshletCount": 2,
+      "checksum": 4168276142
+    },
+    {
+      "id": 14,
+      "byteLength": 13988,
+      "vertexCount": 256,
+      "indexCount": 1329,
+      "meshletCount": 7,
+      "checksum": 1688972865
+    },
+    {
+      "id": 15,
+      "byteLength": 7580,
+      "vertexCount": 145,
+      "indexCount": 663,
+      "meshletCount": 4,
+      "checksum": 245562780
+    },
+    {
+      "id": 16,
+      "byteLength": 3812,
+      "vertexCount": 80,
+      "indexCount": 273,
+      "meshletCount": 2,
+      "checksum": 3423280020
+    },
+    {
+      "id": 17,
+      "byteLength": 14048,
+      "vertexCount": 256,
+      "indexCount": 1344,
+      "meshletCount": 7,
+      "checksum": 466624843
+    },
+    {
+      "id": 18,
+      "byteLength": 7584,
+      "vertexCount": 144,
+      "indexCount": 672,
+      "meshletCount": 4,
+      "checksum": 254900685
+    },
+    {
+      "id": 19,
+      "byteLength": 4040,
+      "vertexCount": 83,
+      "indexCount": 306,
+      "meshletCount": 2,
+      "checksum": 201913016
+    },
+    {
+      "id": 20,
+      "byteLength": 13964,
+      "vertexCount": 256,
+      "indexCount": 1323,
+      "meshletCount": 7,
+      "checksum": 180503008
+    },
+    {
+      "id": 21,
+      "byteLength": 7556,
+      "vertexCount": 145,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 3473213118
+    },
+    {
+      "id": 22,
+      "byteLength": 3732,
+      "vertexCount": 79,
+      "indexCount": 261,
+      "meshletCount": 2,
+      "checksum": 4241022381
+    },
+    {
+      "id": 23,
+      "byteLength": 14036,
+      "vertexCount": 256,
+      "indexCount": 1341,
+      "meshletCount": 7,
+      "checksum": 2620476518
+    },
+    {
+      "id": 24,
+      "byteLength": 7572,
+      "vertexCount": 144,
+      "indexCount": 669,
+      "meshletCount": 4,
+      "checksum": 1155296198
+    },
+    {
+      "id": 25,
+      "byteLength": 4140,
+      "vertexCount": 85,
+      "indexCount": 315,
+      "meshletCount": 2,
+      "checksum": 907336091
+    },
+    {
+      "id": 26,
+      "byteLength": 14036,
+      "vertexCount": 256,
+      "indexCount": 1341,
+      "meshletCount": 7,
+      "checksum": 425237240
+    },
+    {
+      "id": 27,
+      "byteLength": 7572,
+      "vertexCount": 144,
+      "indexCount": 669,
+      "meshletCount": 4,
+      "checksum": 3802725866
+    },
+    {
+      "id": 28,
+      "byteLength": 3692,
+      "vertexCount": 77,
+      "indexCount": 267,
+      "meshletCount": 2,
+      "checksum": 3592851463
+    },
+    {
+      "id": 29,
+      "byteLength": 14000,
+      "vertexCount": 256,
+      "indexCount": 1332,
+      "meshletCount": 7,
+      "checksum": 75358556
+    },
+    {
+      "id": 30,
+      "byteLength": 7592,
+      "vertexCount": 145,
+      "indexCount": 666,
+      "meshletCount": 4,
+      "checksum": 502201379
+    },
+    {
+      "id": 31,
+      "byteLength": 4048,
+      "vertexCount": 84,
+      "indexCount": 300,
+      "meshletCount": 2,
+      "checksum": 941993976
+    },
+    {
+      "id": 32,
+      "byteLength": 13916,
+      "vertexCount": 256,
+      "indexCount": 1311,
+      "meshletCount": 7,
+      "checksum": 702189195
+    },
+    {
+      "id": 33,
+      "byteLength": 7564,
+      "vertexCount": 146,
+      "indexCount": 651,
+      "meshletCount": 4,
+      "checksum": 332534140
+    },
+    {
+      "id": 34,
+      "byteLength": 3796,
+      "vertexCount": 81,
+      "indexCount": 261,
+      "meshletCount": 2,
+      "checksum": 2206748875
+    },
+    {
+      "id": 35,
+      "byteLength": 13940,
+      "vertexCount": 256,
+      "indexCount": 1317,
+      "meshletCount": 7,
+      "checksum": 799723911
+    },
+    {
+      "id": 36,
+      "byteLength": 7588,
+      "vertexCount": 146,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 1045825217
+    },
+    {
+      "id": 37,
+      "byteLength": 3876,
+      "vertexCount": 82,
+      "indexCount": 273,
+      "meshletCount": 2,
+      "checksum": 2406225261
+    },
+    {
+      "id": 38,
+      "byteLength": 13688,
+      "vertexCount": 256,
+      "indexCount": 1254,
+      "meshletCount": 7,
+      "checksum": 4116576346
+    },
+    {
+      "id": 39,
+      "byteLength": 7616,
+      "vertexCount": 151,
+      "indexCount": 624,
+      "meshletCount": 4,
+      "checksum": 3301955015
+    },
+    {
+      "id": 40,
+      "byteLength": 4184,
+      "vertexCount": 92,
+      "indexCount": 270,
+      "meshletCount": 2,
+      "checksum": 3825898764
+    },
+    {
+      "id": 41,
+      "byteLength": 13844,
+      "vertexCount": 256,
+      "indexCount": 1293,
+      "meshletCount": 7,
+      "checksum": 3996070679
+    },
+    {
+      "id": 42,
+      "byteLength": 7604,
+      "vertexCount": 148,
+      "indexCount": 645,
+      "meshletCount": 4,
+      "checksum": 3174748336
+    },
+    {
+      "id": 43,
+      "byteLength": 3836,
+      "vertexCount": 83,
+      "indexCount": 255,
+      "meshletCount": 2,
+      "checksum": 3489536751
+    },
+    {
+      "id": 44,
+      "byteLength": 3668,
+      "vertexCount": 80,
+      "indexCount": 237,
+      "meshletCount": 2,
+      "checksum": 2881028702
+    },
+    {
+      "id": 45,
+      "byteLength": 13736,
+      "vertexCount": 256,
+      "indexCount": 1266,
+      "meshletCount": 7,
+      "checksum": 2338944469
+    },
+    {
+      "id": 46,
+      "byteLength": 7608,
+      "vertexCount": 150,
+      "indexCount": 630,
+      "meshletCount": 4,
+      "checksum": 2478392758
+    },
+    {
+      "id": 47,
+      "byteLength": 4232,
+      "vertexCount": 92,
+      "indexCount": 282,
+      "meshletCount": 2,
+      "checksum": 1469795984
+    },
+    {
+      "id": 48,
+      "byteLength": 13964,
+      "vertexCount": 256,
+      "indexCount": 1323,
+      "meshletCount": 7,
+      "checksum": 4057940331
+    },
+    {
+      "id": 49,
+      "byteLength": 7556,
+      "vertexCount": 145,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 3579758301
+    },
+    {
+      "id": 50,
+      "byteLength": 3900,
+      "vertexCount": 82,
+      "indexCount": 279,
+      "meshletCount": 2,
+      "checksum": 450158127
+    },
+    {
+      "id": 51,
+      "byteLength": 13988,
+      "vertexCount": 256,
+      "indexCount": 1329,
+      "meshletCount": 7,
+      "checksum": 454144453
+    },
+    {
+      "id": 52,
+      "byteLength": 7580,
+      "vertexCount": 145,
+      "indexCount": 663,
+      "meshletCount": 4,
+      "checksum": 1402192532
+    },
+    {
+      "id": 53,
+      "byteLength": 3700,
+      "vertexCount": 78,
+      "indexCount": 261,
+      "meshletCount": 2,
+      "checksum": 2671598361
+    },
+    {
+      "id": 54,
+      "byteLength": 3532,
+      "vertexCount": 75,
+      "indexCount": 243,
+      "meshletCount": 2,
+      "checksum": 3087763086
+    },
+    {
+      "id": 55,
+      "byteLength": 13556,
+      "vertexCount": 256,
+      "indexCount": 1221,
+      "meshletCount": 7,
+      "checksum": 231179321
+    },
+    {
+      "id": 56,
+      "byteLength": 7652,
+      "vertexCount": 154,
+      "indexCount": 609,
+      "meshletCount": 4,
+      "checksum": 4169351530
+    },
+    {
+      "id": 57,
+      "byteLength": 4668,
+      "vertexCount": 103,
+      "indexCount": 303,
+      "meshletCount": 2,
+      "checksum": 184483658
+    },
+    {
+      "id": 58,
+      "byteLength": 13508,
+      "vertexCount": 256,
+      "indexCount": 1209,
+      "meshletCount": 7,
+      "checksum": 3480501091
+    },
+    {
+      "id": 59,
+      "byteLength": 7660,
+      "vertexCount": 155,
+      "indexCount": 603,
+      "meshletCount": 4,
+      "checksum": 3496581419
+    },
+    {
+      "id": 60,
+      "byteLength": 4844,
+      "vertexCount": 107,
+      "indexCount": 315,
+      "meshletCount": 2,
+      "checksum": 585368045
+    },
+    {
+      "id": 61,
+      "byteLength": 13784,
+      "vertexCount": 256,
+      "indexCount": 1278,
+      "meshletCount": 7,
+      "checksum": 1927288440
+    },
+    {
+      "id": 62,
+      "byteLength": 7600,
+      "vertexCount": 149,
+      "indexCount": 636,
+      "meshletCount": 4,
+      "checksum": 3126084498
+    },
+    {
+      "id": 63,
+      "byteLength": 4168,
+      "vertexCount": 90,
+      "indexCount": 282,
+      "meshletCount": 2,
+      "checksum": 2539766363
+    },
+    {
+      "id": 64,
+      "byteLength": 14048,
+      "vertexCount": 256,
+      "indexCount": 1344,
+      "meshletCount": 7,
+      "checksum": 1760354359
+    },
+    {
+      "id": 65,
+      "byteLength": 7584,
+      "vertexCount": 144,
+      "indexCount": 672,
+      "meshletCount": 4,
+      "checksum": 4156619949
+    },
+    {
+      "id": 66,
+      "byteLength": 3648,
+      "vertexCount": 76,
+      "indexCount": 264,
+      "meshletCount": 2,
+      "checksum": 1875291411
+    },
+    {
+      "id": 67,
+      "byteLength": 13940,
+      "vertexCount": 256,
+      "indexCount": 1317,
+      "meshletCount": 7,
+      "checksum": 1983755243
+    },
+    {
+      "id": 68,
+      "byteLength": 7588,
+      "vertexCount": 146,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 4022742106
+    },
+    {
+      "id": 69,
+      "byteLength": 4212,
+      "vertexCount": 88,
+      "indexCount": 309,
+      "meshletCount": 2,
+      "checksum": 809800326
+    },
+    {
+      "id": 70,
+      "byteLength": 13940,
+      "vertexCount": 256,
+      "indexCount": 1317,
+      "meshletCount": 7,
+      "checksum": 2666995148
+    },
+    {
+      "id": 71,
+      "byteLength": 7588,
+      "vertexCount": 146,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 1370790946
+    },
+    {
+      "id": 72,
+      "byteLength": 4380,
+      "vertexCount": 91,
+      "indexCount": 327,
+      "meshletCount": 2,
+      "checksum": 1151350112
+    },
+    {
+      "id": 73,
+      "byteLength": 13964,
+      "vertexCount": 256,
+      "indexCount": 1323,
+      "meshletCount": 7,
+      "checksum": 3507917874
+    },
+    {
+      "id": 74,
+      "byteLength": 7556,
+      "vertexCount": 145,
+      "indexCount": 657,
+      "meshletCount": 4,
+      "checksum": 987810515
+    },
+    {
+      "id": 75,
+      "byteLength": 3732,
+      "vertexCount": 79,
+      "indexCount": 261,
+      "meshletCount": 2,
+      "checksum": 2581262967
+    },
+    {
+      "id": 76,
+      "byteLength": 13988,
+      "vertexCount": 256,
+      "indexCount": 1329,
+      "meshletCount": 7,
+      "checksum": 1999681055
+    },
+    {
+      "id": 77,
+      "byteLength": 7580,
+      "vertexCount": 145,
+      "indexCount": 663,
+      "meshletCount": 4,
+      "checksum": 1651816308
+    },
+    {
+      "id": 78,
+      "byteLength": 3924,
+      "vertexCount": 82,
+      "indexCount": 285,
+      "meshletCount": 2,
+      "checksum": 983793600
+    },
+    {
+      "id": 79,
+      "byteLength": 13904,
+      "vertexCount": 256,
+      "indexCount": 1308,
+      "meshletCount": 7,
+      "checksum": 1317601460
+    },
+    {
+      "id": 80,
+      "byteLength": 7608,
+      "vertexCount": 147,
+      "indexCount": 654,
+      "meshletCount": 4,
+      "checksum": 4044461365
+    },
+    {
+      "id": 81,
+      "byteLength": 3784,
+      "vertexCount": 81,
+      "indexCount": 258,
+      "meshletCount": 2,
+      "checksum": 2498307578
+    },
+    {
+      "id": 82,
+      "byteLength": 14048,
+      "vertexCount": 256,
+      "indexCount": 1344,
+      "meshletCount": 7,
+      "checksum": 837933833
+    },
+    {
+      "id": 83,
+      "byteLength": 7584,
+      "vertexCount": 144,
+      "indexCount": 672,
+      "meshletCount": 4,
+      "checksum": 1611666768
+    },
+    {
+      "id": 84,
+      "byteLength": 4152,
+      "vertexCount": 85,
+      "indexCount": 318,
+      "meshletCount": 2,
+      "checksum": 61732582
+    },
+    {
+      "id": 85,
+      "byteLength": 13640,
+      "vertexCount": 256,
+      "indexCount": 1242,
+      "meshletCount": 7,
+      "checksum": 3851918661
+    },
+    {
+      "id": 86,
+      "byteLength": 7624,
+      "vertexCount": 152,
+      "indexCount": 618,
+      "meshletCount": 4,
+      "checksum": 2323394563
+    },
+    {
+      "id": 87,
+      "byteLength": 4808,
+      "vertexCount": 104,
+      "indexCount": 330,
+      "meshletCount": 2,
+      "checksum": 4123844529
+    },
+    {
+      "id": 88,
+      "byteLength": 3160,
+      "vertexCount": 60,
+      "indexCount": 270,
+      "meshletCount": 2,
+      "checksum": 3773559640
+    },
+    {
+      "id": 89,
+      "byteLength": 1808,
+      "vertexCount": 37,
+      "indexCount": 132,
+      "meshletCount": 1,
+      "checksum": 4050247659
+    },
+    {
+      "id": 90,
+      "byteLength": 1360,
+      "vertexCount": 29,
+      "indexCount": 84,
+      "meshletCount": 1,
+      "checksum": 1290024950
+    }
+  ]
+}

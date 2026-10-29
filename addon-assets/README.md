@@ -1,8 +1,8 @@
 # @hilo/addon-assets
 
-A0 texture streaming for the prepared Hilo3D 2.0.0-alpha.9 release. Publication is pending; this
-package/API is absent from alpha.8. Install the exact matching core and addon versions after
-release.
+A0 texture and geometry-page streaming for the prepared Hilo3D 2.0.0-alpha.9 release. Publication is
+pending; this package/API is absent from alpha.8. Install the exact matching core and addon versions
+after release.
 
 An optional ESM addon owns KTX2/Basis requests, dedicated module workers, shared asset identities,
 reference-counted leases, visibility/LOD demand and bounded texture residency. The core owns GPU
@@ -51,3 +51,17 @@ WASM.
 
 The published addon peers with the exact core version. Runtime/binary licenses are included in
 [THIRD-PARTY-NOTICES](./THIRD-PARTY-NOTICES.md).
+
+`GeometryPageManager` separately owns versioned meshlet page HTTP requests, shared leases, coarse
+LOD dependencies and CPU/network/decode budgets. Construct it with a core `MeshletGeometry` and the
+asset's complete page URL table, then call `acquirePage(pageId, { priority, visible })`. Its `ready`
+promise means validated CPU pages are available; the Clustered renderer owns GPU residency, upload
+admission and submission. After coarse leases are ready, `createMeshletFallbackGeometry(meshlets)`
+builds the small ordinary fallback for the bucket.
+
+Geometry updates use demand-driven rAF or explicit `update()` with `autoUpdate: false`; there is no
+implicit Stage System or camera demand. Version 1 pages are uncompressed and decoded synchronously
+under per-update count/byte limits, with no worker or runtime meshoptimizer dependency. Destroy the
+manager before the renderer when leaving the scene. See the
+[geometry contract](https://github.com/hiloteam/Hilo3d/blob/dev/documentation/MESHLET_GEOMETRY.md)
+for the offline cooker, supported vertex/material subset and separate memory budgets.

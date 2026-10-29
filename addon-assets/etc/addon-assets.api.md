@@ -5,6 +5,7 @@
 ```ts
 
 import type { EventListener as EventListener_2 } from 'hilo3d';
+import { MeshletGeometry } from 'hilo3d';
 import type { Renderer } from 'hilo3d';
 import { StageSystem } from 'hilo3d';
 import { StageSystemService } from 'hilo3d';
@@ -117,6 +118,117 @@ export interface DecodedAssetTexture {
     readonly mipLevel: number;
     // (undocumented)
     readonly mipmaps: readonly AssetTextureMipmap[];
+}
+
+// @public
+export interface GeometryAssetSource {
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly pages: readonly Readonly<GeometryPageSource>[];
+    // (undocumented)
+    readonly version: string;
+}
+
+// @public
+export interface GeometryPageBudgets {
+    readonly concurrentRequests?: number;
+    readonly cpuBytes?: number;
+    readonly decodeBytesPerUpdate?: number;
+    readonly decodesPerUpdate?: number;
+    readonly inFlightBytes?: number;
+    readonly queuedPages?: number;
+    readonly sourceBytes?: number;
+}
+
+// @public
+export interface GeometryPageDemand {
+    readonly priority?: number;
+    readonly visible?: boolean;
+}
+
+// @public
+export interface GeometryPageDiagnostics {
+    // (undocumented)
+    readonly coarseFallback: boolean;
+    // (undocumented)
+    readonly cpuBytes: number;
+    // (undocumented)
+    readonly error: string | null;
+    // (undocumented)
+    readonly pageId: number;
+    // (undocumented)
+    readonly references: number;
+    // (undocumented)
+    readonly stall: 'none' | 'hidden' | 'cpu-budget' | 'in-flight-budget' | 'decode-budget';
+    // (undocumented)
+    readonly state: 'queued' | 'loading' | 'fetched' | 'available' | 'failed' | 'evicted';
+    // (undocumented)
+    readonly visible: boolean;
+}
+
+// @public
+export interface GeometryPageLease {
+    // (undocumented)
+    readonly geometry: MeshletGeometry;
+    // (undocumented)
+    readonly pageId: number;
+    readonly ready: Promise<void>;
+    release(): void;
+    retry(): Promise<void>;
+    setDemand(demand: Readonly<GeometryPageDemand>): Promise<void>;
+}
+
+// @public
+export class GeometryPageManager {
+    constructor(geometry: MeshletGeometry, source: Readonly<GeometryAssetSource>, options?: Readonly<GeometryPageManagerOptions>);
+    acquirePage(pageId: number, initial?: Readonly<GeometryPageDemand>, signal?: AbortSignal): GeometryPageLease;
+    destroy(): void;
+    // (undocumented)
+    readonly geometry: MeshletGeometry;
+    getDiagnostics(): Readonly<GeometryStreamingDiagnostics>;
+    update(): void;
+}
+
+// @public
+export interface GeometryPageManagerOptions {
+    readonly autoUpdate?: boolean;
+    // (undocumented)
+    readonly baseURL?: string;
+    // (undocumented)
+    readonly budgets?: Readonly<GeometryPageBudgets>;
+    readonly fetch?: typeof fetch;
+    readonly requestTimeoutMilliseconds?: number;
+}
+
+// @public
+export interface GeometryPageSource {
+    // (undocumented)
+    readonly pageId: number;
+    // (undocumented)
+    readonly url: string;
+}
+
+// @public
+export interface GeometryStreamingDiagnostics {
+    // (undocumented)
+    readonly activeRequests: number;
+    // (undocumented)
+    readonly cancellations: number;
+    // (undocumented)
+    readonly cpuBytes: number;
+    // (undocumented)
+    readonly decodedBytesLastUpdate: number;
+    // (undocumented)
+    readonly evictions: number;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly inFlightBytes: number;
+    // (undocumented)
+    readonly pages: readonly Readonly<GeometryPageDiagnostics>[];
+    // (undocumented)
+    readonly version: string;
 }
 
 // @public

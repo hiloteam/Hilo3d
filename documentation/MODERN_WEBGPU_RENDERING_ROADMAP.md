@@ -7,8 +7,9 @@ historical. For cross-engine priorities and evidence gates, use [the main roadma
 
 Implementation update: 2026-10-18. GI0 asset coverage, V0 shared-atlas shadows, DECAL0 and TRANS0
 have Unreleased source implementations and executable fixtures. MAT1 now also implements cloth, thin
-surfaces and bounded profile SSS; RG1 and DEFORM0 remain unstarted. Implementation does not close
-independent physical-performance or release evidence gates.
+surfaces and bounded profile SSS; RG1 and DEFORM0 remain unstarted. The bounded M0
+group-LOD/geometry-page slice was added on 2026-10-28. Implementation does not close independent
+physical-performance or release evidence gates.
 
 ## Delivered slices and remaining boundaries
 
@@ -28,8 +29,8 @@ performance result. DDGI is prepared for [alpha.9](./VERSIONS.md); publication i
 | Q0   | Implemented                                 | Portable GTAO/SSGI and WebGPU Clustered Hi-Z SSR.                                                                                 | Offscreen specular is separate GI work; transparent/offscreen geometry is not screen-trace input.                                                     |
 | S0   | Implemented; evidence pending               | Stable atlas cache, caster cull, budget/cadence/pages; opt-in directional virtual clipmaps, GPU requests/remapping/LRU.           | Physical stress evidence, wider caster and local-light coverage.                                                                                      |
 | V0   | Implemented slice                           | Froxels, shared directional/spot/point atlas shadows, height/local fog, atmosphere/clouds.                                        | Transparent volumetric history and enrolled physical performance.                                                                                     |
-| A0   | Texture slice implemented; evidence pending | Optional addon: KTX2/Basis workers, bounded leases/mip residency and fenced uploads.                                              | Physical workload budgets; sparse/range loading and geometry pages remain.                                                                            |
-| M0   | Not started                                 | Existing GPU Scene/bucket LOD can be reused.                                                                                      | Offline meshlets/cluster LOD, material bins and geometry streaming after A0.                                                                          |
+| A0   | Texture slice implemented; evidence pending | Optional addon: KTX2/Basis workers, bounded leases/mip residency and fenced uploads.                                              | Physical workload budgets; compressed/range pages and broader streaming remain.                                                                       |
+| M0   | Bounded slice implemented; evidence pending | Rigid group LOD pages, offline cooking, bounded CPU/GPU residency and fixed material-bucket pulling.                              | Hierarchical cluster DAGs, compressed/range pages, wider vertex formats and physical scaling evidence.                                                |
 | GI0  | Implemented slice; evidence pending         | Textured/masked/deformed PBR software BVH, DDGI probes, decal transport and signed SSGI hybrid.                                   | Performance baseline; custom deformation, transparent/specular transport and optional SDF representation.                                             |
 
 ## Dependency and evidence order
@@ -38,7 +39,7 @@ performance result. DDGI is prepared for [alpha.9](./VERSIONS.md); publication i
 flowchart LR
   CORE["Implemented: Graph / RHI / Material / GPU Scene"] --> PERF["Pending: enrolled performance evidence"]
   CORE --> A["A0 texture streaming / geometry pending"]
-  A --> M["Not started: M0 meshlets"]
+  A --> M["Implemented slice: M0 group LOD / geometry pages"]
   S["Implemented: S0 directional virtual pages"] --> SP["Pending: shadow stress evidence"]
   GI["Implemented: GI0 DDGI + SSGI hybrid"] --> GP["Pending: GI baseline review"]
   SP --> SX["Extension: caster / local-light coverage"]
@@ -46,17 +47,17 @@ flowchart LR
   A -. scaling .-> GX
 ```
 
-The initial DDGI and directional virtual-shadow slices do not depend on unfinished A0/M0 work.
-Streaming becomes a scaling dependency for larger scene representations. Functional extensions and
-performance enrollment must have different status rows so already delivered capabilities are not
-scheduled again.
+The initial DDGI and directional virtual-shadow slices do not depend on the remaining A0/M0 scaling
+extensions. Streaming becomes a scaling dependency for larger scene representations. Functional
+extensions and performance enrollment must have different status rows so already delivered
+capabilities are not scheduled again.
 
 ## A0: resource streaming
 
 The initial texture slice is implemented in `@hilo/addon-assets`; see
 [its contract](./ASSET_STREAMING.md). Whole-file fetch with mip-suffix replacement is explicit.
-Geometry streaming and physical-device performance enrollment remain open; the list below describes
-the complete A0 work package.
+Independent geometry page streaming now has a bounded source implementation; physical-device
+performance enrollment remains open; the list below describes the complete A0 work package.
 
 Inputs: versioned compressed assets, device format capabilities, visibility/LOD demand and explicit
 memory/upload/in-flight budgets. Outputs: cancelable requests and observable mip/geometry residency
@@ -72,6 +73,13 @@ Acceptance needs low-bandwidth cold start, camera teleport, cancellation, memory
 recovery with actual assets. A format loader alone is not a completed streaming subsystem.
 
 ## M0: meshlet and cluster geometry
+
+**Bounded implementation (2026-10-28).** [Meshlet geometry](./MESHLET_GEOMETRY.md) defines an
+uncompressed versioned page format, real offline boundary-locked simplification, independent group
+LODs, CPU page demand/leases, renderer-local bounded residency and GPU cluster culling/compaction.
+Fixed material draws pull vertices through the shared PBR shader path. Missing page sets and visible
+capacity overflow retain complete ordinary geometry. Physical-performance enrollment, compressed
+transport and an arbitrary hierarchical cluster DAG remain open.
 
 Inputs: static rigid geometry, offline cluster bounds/error data, A0 residency and shared material
 handles. Outputs: GPU-visible cluster ranges and fixed bounded indirect buckets in the existing
@@ -253,10 +261,10 @@ The GI0/V0/DECAL0/TRANS0 appearance sequence now has bounded source implementati
 their combined regression and physical workload evidence before enlarging supported content. REFL0
 retains separately tracked visibility, temporal and performance extensions. RG1 proceeds from
 measured CPU or transient-memory pressure; DEFORM0 is driven by actual character content. MAT1
-extensions build on the implemented material/diffusion contract and its measured content needs. A0
--> M0 continues as the independent streaming/geometry lane. Existing physical-GPU performance gates
-remain mandatory evidence for their respective workloads; these planned additions do not mark them
-complete.
+extensions build on the implemented material/diffusion contract and its measured content needs.
+A0/M0 continues with measured scaling and the explicitly remaining streaming/geometry extensions.
+Existing physical-GPU performance gates remain mandatory evidence for their respective workloads;
+these planned additions do not mark them complete.
 
 ## Evidence gates
 

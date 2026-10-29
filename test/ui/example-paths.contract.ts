@@ -39,11 +39,11 @@ const examplesDirectory = fileURLToPath(new URL('../../examples/', import.meta.u
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 // Reviewed totals live in this contract. Browser tests derive their expectations from the catalog.
 const REVIEWED_CATALOG = {
-    scenes: 96,
+    scenes: 97,
     galleries: 2,
-    featured: 28,
+    featured: 29,
     webgl2Only: 1,
-    webgpuOnly: 15
+    webgpuOnly: 16
 } as const;
 const genericReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./examples.spec.ts', import.meta.url)),
@@ -67,6 +67,10 @@ const lumenReleaseTestSource = readFileSync(
 );
 const teaGardenReleaseTestSource = readFileSync(
     fileURLToPath(new URL('./rain-tea-garden.spec.ts', import.meta.url)),
+    'utf8'
+);
+const strataReleaseTestSource = readFileSync(
+    fileURLToPath(new URL('./meshlet-strata.spec.ts', import.meta.url)),
     'utf8'
 );
 const physicsReleaseTestSource = readFileSync(
@@ -111,7 +115,8 @@ describe('example release matrix contract', () => {
             const expectedBackends =
                 path === 'webxr.html'
                     ? ['webgl2']
-                    : path === 'bloom.html' ||
+                    : path === 'meshlet_strata.html' ||
+                        path === 'bloom.html' ||
                         path === 'clustered_forward_plus_sponza.html' ||
                         path === 'clustered_forward_plus_lumen.html' ||
                         path === 'dynamic_global_illumination_atelier.html' ||
@@ -223,6 +228,16 @@ describe('example release matrix contract', () => {
         const catalog = createExampleCatalog(examplePaths);
         expect(catalog.filter(entry => entry.featured)).toHaveLength(REVIEWED_CATALOG.featured);
         expect(new Set(catalog.map(entry => entry.title)).size).toBe(catalog.length);
+        const strata = catalog.find(entry => entry.path === 'meshlet_strata.html');
+        expect(strata).toMatchObject({
+            title: 'STRATA / 风蚀石庭',
+            category: 'rendering',
+            featured: true,
+            supportedBackends: ['webgpu']
+        });
+        if (!strata) throw new Error('Missing STRATA example');
+        expect(matchesExampleSearch(strata, 'meshlet streaming')).toBe(true);
+        expect(matchesExampleSearch(strata, '风蚀 Blender')).toBe(true);
         expect(
             catalog.find(entry => entry.path === 'dynamic_global_illumination_atelier.html')
         ).toMatchObject({
@@ -405,6 +420,7 @@ describe('example release matrix contract', () => {
     it('keeps renderer and completion exceptions explicit and minimal', () => {
         expect(WEBGL2_ONLY_EXAMPLE_PATHS).toEqual(['webxr.html']);
         expect(WEBGPU_ONLY_EXAMPLE_PATHS).toEqual([
+            'meshlet_strata.html',
             'bloom.html',
             'clustered_forward_plus_sponza.html',
             'clustered_forward_plus_lumen.html',
@@ -423,6 +439,7 @@ describe('example release matrix contract', () => {
         ]);
         expect(NON_RENDERING_EXAMPLE_PATHS).toEqual([]);
         expect(DEDICATED_RELEASE_TEST_EXAMPLE_PATHS).toEqual([
+            'meshlet_strata.html',
             'mat1_soft_matter.html',
             'live2d.html',
             'scriptable_pipeline.html',
@@ -444,6 +461,7 @@ describe('example release matrix contract', () => {
             'physics/rapier_bridge.html'
         ]);
         expect(exampleUsesDedicatedReleaseTest('cascaded_shadows.html')).toBe(true);
+        expect(exampleUsesDedicatedReleaseTest('meshlet_strata.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_sponza.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('clustered_forward_plus_lumen.html')).toBe(true);
         expect(exampleUsesDedicatedReleaseTest('volumetric_neon_reliquary.html')).toBe(true);
@@ -502,6 +520,7 @@ describe('example release matrix contract', () => {
             'resourceManagerTest.html': 'resource-diagnostics'
         });
         expect(EXAMPLE_QUERY_PARAMETERS).toEqual({
+            'meshlet_strata.html': { test: '1' },
             'loader/glTF_loader.html': { model: 'BoomBox' },
             'audio_piano.html': { test: '1', quality: 'production' },
             'live2d.html': { test: '1' },
@@ -531,6 +550,30 @@ describe('example release matrix contract', () => {
         expect(
             Object.keys(EXAMPLE_COMPLETION_CONTRACTS).every(path => examplePaths.includes(path))
         ).toBe(true);
+    });
+
+    it('keeps STRATA in both dedicated WebGPU lanes with real streaming and lifecycle evidence', () => {
+        expect(backendsForExample('meshlet_strata.html')).toEqual(['webgpu']);
+        expect(exampleRequestUrl('meshlet_strata.html', 'webgpu')).toBe(
+            '/examples/meshlet_strata.html?backend=webgpu&test=1'
+        );
+        expect(strataReleaseTestSource).toContain(
+            'STRATA streams finer geometry after a close camera view @webgpu'
+        );
+        expect(strataReleaseTestSource).toContain(
+            'STRATA remains interactive across stable captures and page lifecycle @webgpu'
+        );
+        expect(strataReleaseTestSource).toContain('captureStableFrame(');
+        expect(strataReleaseTestSource).toContain("page.on('requestfinished'");
+        expect(strataReleaseTestSource).not.toMatch(/\btest\.(?:skip|fixme)\s*\(/u);
+        const packageJson = JSON.parse(
+            readFileSync(join(repositoryRoot, 'package.json'), 'utf8')
+        ) as { readonly scripts?: Readonly<Record<string, string>> };
+        for (const script of ['test:webgpu', 'test:webgpu:native']) {
+            expect(packageJson.scripts?.[script], script).toContain(
+                'test/ui/meshlet-strata.spec.ts'
+            );
+        }
     });
 
     it('schedules the official Live2D example through both dedicated rendering gates', () => {

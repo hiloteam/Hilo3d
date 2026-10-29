@@ -31,6 +31,14 @@ mapping 在命中点求值。`Mesh.contributeToGlobalIllumination = false`
 
 ## 1. 一帧是怎样完成的
 
+`ClusteredForwardPlusPipelineFactory` 的 `GPUSceneBucket.meshlets`
+可显式接入静态刚体几何页。离线工具生成完整 group
+LOD 和有界 meshlet；可选资产 addon 负责 HTTP、CPU 页租约和取消，renderer-local
+arena 负责 GPU 驻留与每帧页上传。共享 GPU Scene 在固定材质桶内完成 group
+LOD 选择、簇裁剪和压紧，顶点拉取继续消费同一 PBR、深度、运动和属性 shader。缺少完整 resident
+group 集合或可见容量不足时保留完整普通几何。页表和 revision 只随有效提交发布，标准阴影缓存将驻留几何身份纳入同一失效合同。格式、能力边界和证据见
+[`MESHLET_GEOMETRY.md`](./MESHLET_GEOMETRY.md)。
+
 局部镜面反射通过共享 PBR 环境采样接入，SSR 读取同一 probe specular baseline。
 `ReflectionProbePipelineFactory` 使用辅助相机作用域在同一 Render Graph/RHI
 submission 内录制六面捕获和 GGX 粗糙度过滤；完整提交后才发布双缓冲结果。辅助视图不推进主相机的时域效果，运行时拥有的捕获目标在资源释放/设备恢复后重建。数量、可见性、材质绑定和时域边界见

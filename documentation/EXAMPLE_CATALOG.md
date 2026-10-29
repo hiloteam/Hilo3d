@@ -1,16 +1,16 @@
 # 示例目录整理
 
-核对日期：2026-10-20。范围：98 个 HTML 入口，其中 96 个场景示例、两个画廊入口。
+核对日期：2026-10-29。范围：99 个 HTML 入口，其中 97 个场景示例、两个画廊入口。
 
 ## 整理结果
 
 - 目录改为逐项审阅的元数据，删除文件名正则分类、自动拼标题和通用套话。新增页面仍由递归 HTML 扫描发现，缺少说明会直接报错。
 - 精选由原 46 项整理为 24 项，加入 Atelier 昼夜 DDGI 室内场景、NOCTURNE 交互钢琴、雨后茶寮和 Soft
-  Matter 材质展厅后现为 28 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
+  Matter 材质展厅与 STRATA 风蚀石庭后现为 29 项；其余示例继续通过全部目录、主题筛选或搜索访问。诊断与验收场景集中到 Diagnostics
   & internals。
 - 将计算渲染、后处理与离屏渲染分开；纠正深度纹理、法线贴图、相机辅助线、GTAO 验收等错分项。
 - 删除四个没有独立 API 教学价值的页面：Canvas 动画并入 Canvas 仪表盘，独立 UBO 页面并入自定义 Shader，最小 PBR 加载并入 glTF
-  Loader，后端名称显示由共享 Stats 承担。当前保留 96 个场景；按实际能力和回归覆盖评估增删，不为旧 URL 保留重复页面。
+  Loader，后端名称显示由共享 Stats 承担。当前保留 97 个场景；按实际能力和回归覆盖评估增删，不为旧 URL 保留重复页面。
 - 删除未被入口、脚本或测试引用的 `NormalTangentHelper.ts` 和
   `postalUi.ts`；保留仍被场景引用的模型、纹理及来源说明。
 - 去掉旧页面禁止用户缩放的 viewport 参数，明确基础页面标题。动态缓冲示例改由场景更新推进，删除独立的定时器。
@@ -31,6 +31,11 @@ BPM。美术灵感来自何同学的魔法钢琴：静默时保持黑暗，演�
 [雨后茶寮 / After the rain](../examples/rain_tea_garden.html) 将 Blender
 MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴花和加权透明组合在同一场景，提供晨光与薄暮两种光照。归入 Lighting
 & shadows，明确要求 WebGPU。概念图、资产路径、交互与验证边界见[案例说明](./RAIN_TEA_GARDEN.md)。
+
+[STRATA / 风蚀石庭](../examples/meshlet_strata.html)
+将 Blender 创作的暖色砂岩环庭与分层浮雕用于展示 meshlet 几何和真实分页流送。Overview、Passage、Surface 三个镜头从远景轮廓推进到近处表面，Adaptive
+/ Coarse 与流送开关允许观察页面请求和 CPU/GPU 计数变化。归入 Render targets &
+passes，作为 WebGPU-only 精选；格式和功能边界见[meshlet 几何合同](./MESHLET_GEOMETRY.md)。
 
 ## 相似示例的保留理由
 
@@ -53,7 +58,7 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | `pbr.html/.ts`                      | BoomBox 加入 `loader/glTF_loader` 的模型列表；该页双后端测试使用 `model=BoomBox`，保留 ORM、法线与自发光资产加载路径。页面默认仍为 Tmall，glTF Viewer 和加载进度页继续覆盖 Tmall。BoomBox 纹理也被 `normal_map` 使用，因此保留资产。 |
 | `webgl_support.html/.ts`            | 原页面没有探测能力，仅在创建成功后显示选中的后端；该信息已由共享 Stats 显示。显式后端选择、启动失败与不允许混用后端的合同保留在共享初始化及完整浏览器矩阵。                                                                          |
 
-自动发现仍覆盖所有 HTML，目录合同独立核对页面身份、元数据与完整后端组合。场景移除减少八个重复 page/backend 组合，当前总数为 180；这不代表尚未运行的浏览器检查已通过。
+自动发现仍覆盖所有 HTML，目录合同独立核对页面身份、元数据与完整后端组合。场景移除减少八个重复 page/backend 组合，新增 STRATA 后当前总数为 181；这不代表尚未运行的浏览器检查已通过。
 
 ## 运行时维护
 
@@ -142,6 +147,7 @@ MCP 创作的清新日漫庭院与动态 GI、共享阴影体积光、落花贴�
 | [MultiSampledRenderbuffers](../examples/MultiSampledRenderbuffers.html)                             | 保留 | rendering       | Render geometric edges with the portable multisampled forward pipeline.                                                                                                                                         |
 | [renderTarget](../examples/renderTarget.html)                                                       | 保留 | rendering       | Render a box into an offscreen target and use its color attachment as a texture.                                                                                                                                |
 | [stencilTest](../examples/stencilTest.html)                                                         | 保留 | rendering       | Use a stencil mask to control where overlapping textured geometry is visible.                                                                                                                                   |
+| [meshlet_strata](../examples/meshlet_strata.html)                                                   | 精选 | rendering       | Explore a Blender-authored sandstone ring garden with layered relief, adaptive meshlet LOD and bounded geometry streaming from distant silhouettes to close surface detail.                                     |
 | [local_reflections_gallery](../examples/local_reflections_gallery.html)                             | 保留 | post-processing | Explore two connected rooms with budgeted HDR reflection captures, parallax correction, probe blending and roughness filtering.                                                                                 |
 | [screen_space_reflections_palace](../examples/screen_space_reflections_palace.html)                 | 保留 | post-processing | Stage the Khronos Car Concept in a seamless smoked-lacquer studio with hierarchical ray tracing, confidence filtering, and temporal reflection resolve.                                                         |
 | [bloom](../examples/bloom.html)                                                                     | 精选 | post-processing | Compare engine HDR Bloom against the same raw scene in a WebGPU nocturne driven by 32,768 compute-simulated fireflies around an eclipse shrine.                                                                 |

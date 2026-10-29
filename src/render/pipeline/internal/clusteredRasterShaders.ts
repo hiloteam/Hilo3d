@@ -394,7 +394,7 @@ void main() {
     v_motionHistoryValid =
         cameraHistoryValid &&
         (flags & ${String(OBJECT_MOTION_HISTORY_FLAG)}u) != 0u &&
-        previousVisibility.values[objectIndex] != 0u
+        previousVisibility.values[objectIndex] == 1u
             ? 1.0
             : 0.0;
     v_temporalReactiveFactor = materials.values[materialIndex * ${String(PBR_GPU_MATERIAL_RECORD_BYTES / 16)}u + 2u].w;
@@ -466,9 +466,14 @@ function variantSampleUV(binding: Readonly<PBRTextureBinding>): string {
     return binding.uv === 0 ? 'v_uv0' : 'v_uv1';
 }
 
+const NO_COVERAGE_TEXTURES: readonly Readonly<PBRTextureBinding>[] = Object.freeze([]);
+
 export function coverageTextures(
     variant: Readonly<PBRMaterialVariant>
 ): readonly Readonly<PBRTextureBinding>[] {
+    // Opaque depth/shadow shaders have position-only inputs and no alpha samplers. Keep the
+    // resource packet aligned with that ABI even when the color material has a base-color map.
+    if (variant.coverageMode !== 'mask') return NO_COVERAGE_TEXTURES;
     return variant.textures.filter(
         binding => binding.role === 'baseColorMap' || binding.role === 'opacityMap'
     );
@@ -531,7 +536,7 @@ flat out float v_temporalReactiveFactor;`
     v_motionHistoryValid =
         cameraHistoryValid &&
         (flags & ${String(OBJECT_MOTION_HISTORY_FLAG)}u) != 0u &&
-        previousVisibility.values[objectIndex] != 0u
+        previousVisibility.values[objectIndex] == 1u
             ? 1.0
             : 0.0;
     v_temporalReactiveFactor = materials.values[

@@ -13,6 +13,8 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
   [PBR/post-processing](./PBR_AND_POST_PROCESSING.md).
 - [Asset streaming](./ASSET_STREAMING.md): optional KTX2/Basis workers and bounded texture
   residency.
+- [Meshlet geometry](./MESHLET_GEOMETRY.md): versioned group LOD pages, bounded geometry streaming
+  and Clustered GPU Scene integration.
 - [Audio](./AUDIO.md): optional spatial sound, bounded voices, mixing and streaming.
 - [Particles](./PARTICLE_SYSTEM.md), [physics](./PHYSICS_ARCHITECTURE.md), [Live2D](./LIVE2D.md).
 - [Example catalog](./EXAMPLE_CATALOG.md) and [game skill](../skills/hilo3d-game/SKILL.md).
@@ -57,9 +59,10 @@ checkout. Start with [version boundaries](./VERSIONS.md) when using an installed
 
 [CSM toy town](./CSM_TOY_SHOWCASE.md), [LUMEN lighting study](./LUMEN_LIGHTING_STUDY.md),
 [rain tea garden](./RAIN_TEA_GARDEN.md), [Soft Matter materials](./SOFT_MATTER_SHOWCASE.md),
-[physics exhibits](./PHYSICS_EXAMPLES.md) and [example catalog](./EXAMPLE_CATALOG.md) preserve art
-direction, interaction and reviewed evidence. Asset licenses and immutable benchmark baselines
-remain source artifacts; their age alone is not a reason to remove them.
+[STRATA geometry streaming](./STRATA_SHOWCASE.md), [physics exhibits](./PHYSICS_EXAMPLES.md) and
+[example catalog](./EXAMPLE_CATALOG.md) preserve art direction, interaction and reviewed evidence.
+Asset licenses and immutable benchmark baselines remain source artifacts; their age alone is not a
+reason to remove them.
 
 ## Sources and maintenance
 

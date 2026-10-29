@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "vertexStride": 8,
+  "groups": [
+    {
+      "id": 0,
+      "bounds": [-1.6671639680862427, -0.5005329847335815, -0.27407127618789673, 3.426293134689331],
+      "lods": [
+        { "pageId": 0, "error": 0 },
+        { "pageId": 1, "error": 0.014070337638258934 },
+        { "pageId": 2, "error": 0.05569145642220974 },
+        { "pageId": 3, "error": 0.14789234660565853 }
+      ]
+    },
+    {
+      "id": 1,
+      "bounds": [1.7855437994003296, -0.7473832964897156, 0.12912984192371368, 3.3549489974975586],
+      "lods": [
+        { "pageId": 4, "error": 0 },
+        { "pageId": 5, "error": 0.013938672840595245 },
+        { "pageId": 6, "error": 0.050855208188295364 },
+        { "pageId": 7, "error": 0.1386001817882061 }
+      ]
+    },
+    {
+      "id": 2,
+      "bounds": [
+        0.0017669732915237546, 2.3752760887145996, -0.014550301246345043, 4.079039573669434
+      ],
+      "lods": [
+        { "pageId": 8, "error": 0 },
+        { "pageId": 9, "error": 0.014486857689917088 },
+        { "pageId": 10, "error": 0.0742639945819974 }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "id": 0,
+      "byteLength": 14048,
+      "vertexCount": 256,
+      "indexCount": 1344,
+      "meshletCount": 7,
+      "checksum": 495662153
+    },
+    {
+      "id": 1,
+      "byteLength": 7584,
+      "vertexCount": 144,
+      "indexCount": 672,
+      "meshletCount": 4,
+      "checksum": 538329527
+    },
+    {
+      "id": 2,
+      "byteLength": 4320,
+      "vertexCount": 88,
+      "indexCount": 336,
+      "meshletCount": 2,
+      "checksum": 2971392648
+    },
+    {
+      "id": 3,
+      "byteLength": 3368,
+      "vertexCount": 71,
+      "indexCount": 234,
+      "meshletCount": 2,
+      "checksum": 3371430328
+    },
+    {
+      "id": 4,
+      "byteLength": 14024,
+      "vertexCount": 256,
+      "indexCount": 1338,
+      "meshletCount": 7,
+      "checksum": 3821891066
+    },
+    {
+      "id": 5,
+      "byteLength": 7560,
+      "vertexCount": 144,
+      "indexCount": 666,
+      "meshletCount": 4,
+      "checksum": 4156269183
+    },
+    {
+      "id": 6,
+      "byteLength": 4296,
+      "vertexCount": 88,
+      "indexCount": 330,
+      "meshletCount": 2,
+      "checksum": 3325064447
+    },
+    {
+      "id": 7,
+      "byteLength": 3624,
+      "vertexCount": 76,
+      "indexCount": 258,
+      "meshletCount": 2,
+      "checksum": 473737422
+    },
+    {
+      "id": 8,
+      "byteLength": 8568,
+      "vertexCount": 160,
+      "indexCount": 774,
+      "meshletCount": 5,
+      "checksum": 4290762611
+    },
+    {
+      "id": 9,
+      "byteLength": 4736,
+      "vertexCount": 95,
+      "indexCount": 384,
+      "meshletCount": 2,
+      "checksum": 1868720302
+    },
+    {
+      "id": 10,
+      "byteLength": 2880,
+      "vertexCount": 63,
+      "indexCount": 192,
+      "meshletCount": 1,
+      "checksum": 2088149144
+    }
+  ]
+}

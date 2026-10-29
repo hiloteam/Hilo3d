@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>STRATA — A study in distance & detail</title>
+        <link rel="stylesheet" href="./meshlet_strata.css" />
+    </head>
+    <body>
+        <main id="scene" aria-label="Interactive sandstone sculpture garden">
+            <div id="container"></div>
+        </main>
+        <header class="masthead">
+            <h1>STRATA</h1>
+            <p>A study in distance &amp; detail</p>
+        </header>
+        <a class="edition" href="./index.html" aria-label="Return to Hilo3D examples"
+            >HILO3D / WEBGPU</a
+        >
+        <aside class="controls" aria-label="Scene controls" aria-describedby="strata-status">
+            <label class="control-label" for="detail-mode">Detail</label>
+            <select id="detail-mode" aria-label="Geometry detail">
+                <option value="adaptive">Adaptive</option>
+                <option value="coarse">Coarse</option>
+            </select>
+            <div class="divider"></div>
+            <label class="control-label" for="streaming-toggle">Streaming</label>
+            <label class="switch-row">
+                <span id="streaming-label">On</span>
+                <input
+                    id="streaming-toggle"
+                    type="checkbox"
+                    checked
+                    aria-label="Geometry streaming"
+                />
+            </label>
+            <div class="residency" aria-hidden="true"><span id="residency-fill"></span></div>
+            <p id="strata-status" role="status" aria-live="polite">Opening…</p>
+            <details class="telemetry">
+                <summary>Live geometry</summary>
+                <dl>
+                    <dt>Visible clusters</dt>
+                    <dd id="clusters">—</dd>
+                    <dt>GPU pages</dt>
+                    <dd id="resident">—</dd>
+                    <dt>CPU pages</dt>
+                    <dd id="cpu">—</dd>
+                </dl>
+            </details>
+        </aside>
+        <footer>
+            <nav class="views" aria-label="Camera views">
+                <button id="view-overview" data-view="overview" aria-pressed="true">
+                    <span>01</span> Overview
+                </button>
+                <button id="view-passage" data-view="passage" aria-pressed="false">
+                    <span>02</span> Passage
+                </button>
+                <button id="view-surface" data-view="surface" aria-pressed="false">
+                    <span>03</span> Surface
+                </button>
+            </nav>
+            <p class="gesture-hint">Drag to orbit <span>·</span> Scroll to explore</p>
+        </footer>
+        <div id="loading" class="veil" role="status">
+            <span class="loading-title">STRATA</span>
+            <span class="loading-line"></span>
+            <p id="loading-message">Opening the quarry…</p>
+        </div>
+        <section id="failure" class="failure" hidden role="alert"></section>
+        <script type="module" src="./meshlet_strata.ts"></script>
+    </body>
+</html>
