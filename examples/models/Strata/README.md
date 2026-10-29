@@ -65,9 +65,31 @@ across all authored levels. The content version is
 
 The current runtime reserves an 8 MiB arena for the aperture and 4 MiB for each other streamed
 prototype, with at most 512 KiB of incremental uploads per asset per frame. Each CPU page manager
-has a separate 16 MiB payload/scratch budget. These limits exclude ordinary fallback geometry,
-shared renderer effects and JavaScript object overhead; see the
-[showcase contract](../../../documentation/STRATA_SHOWCASE.md) for lifecycle and capture details.
+has a separate 16 MiB payload/scratch budget, eight concurrent requests, 1 MiB of in-flight bytes, a
+64 KiB source-page limit and at most eight pages/256 KiB of decode work per update. These limits
+exclude ordinary fallback geometry, shared renderer effects and JavaScript object overhead.
+
+DDGI and virtual shadows are enabled by default. `gi=0` and `virtualShadows=0` independently disable
+those features for diagnosis. The **Indirect bounce** checkbox under **Live geometry** changes DDGI
+intensity without removing geometry or stopping probe updates. The same panel reports GI scene
+triangles and shadow-page residency, and the test API exposes the official
+`DynamicGlobalIlluminationDiagnostics` and `VirtualShadowMapDiagnostics` snapshots.
+
+The finite ray scene includes the hero aperture, nearest two monoliths, nearest two boulders, ten
+near quarry courses and supporting architecture: 74 contributors and at most 247,560 full-detail
+triangles, checked against 96-mesh/262,144-triangle limits. Complete GPU-resident meshlet groups
+provide the selected geometry as pages arrive or leave. The two stone textures contribute exactly
+3,145,032 decoded UV0 texels under strict texture sampling. Distant quarry courses, remaining
+monolith/boulder instances and gravel explicitly opt out of rays while keeping their raster/shadow
+roles. The sky is also excluded from the ray scene and remains an unlit, non-shadowing background.
+
+Production DDGI uses a 7×5×7 grid with 16 probes updated per frame; the software test profile uses
+5×3×5 with four updates. Both span 21×8×21 world units and trace 64 rays per updated probe. Virtual
+shadows use a 1024 virtual resolution, 128-pixel pages and 32 physical pages in production, or eight
+in the software test profile, with eight/four page updates per frame respectively. These lighting
+allocations are separate from geometry-streaming budgets. See the
+[showcase contract](../../../documentation/STRATA_SHOWCASE.md) for the full lighting scope,
+lifecycle and capture details.
 
 Composition is compared with the original concept at exactly 1672×941. The native runtime capture
 uses that same size; geometry, erosion detail and lighting do not reproduce every generated pixel.
@@ -75,21 +97,22 @@ The concept image itself is never used to render terrain or sculptures. The runt
 current lease identity during initial fine loading: resizing can supersede an old request without
 disposing the scene, while current network/decode errors remain fatal.
 
-On 2026-10-29 that real-HTTP-gated regression passed individually in software (1.2 minutes) and
-native production (13.7 seconds), after reproducing the old native `AbortError`/disposal failure.
-The complete three-case native suite passed in 57.7 seconds with unchanged timeouts/pixel thresholds
-and no retries or skips. Current native artifacts are in ignored `reports/strata-all-fixed-native/`
-and `reports/strata-all-fixed-native-html/`. The full software `npm run test:webgpu` matrix then
-passed all 37 cases, including all three STRATA cases, in 29.5 minutes. All six hosted-UI WebGL2
-groups also passed locally through the shared CI runner, totaling 123 tests; their receipts record
-unchanged source throughout. Results are retained in ignored
-`reports/strata-validation/full-webgpu.json` and `reports/strata-ui-ci-fixed/`.
+The DDGI/virtual-shadow extension passed its final validation on 2026-10-29: four native production
+STRATA cases, all 123 cases across the six affected WebGL2 CI groups, and all 38 cases in the complete
+software WebGPU matrix. There were no browser retries, skips or unexpected failures. The software
+streaming case took 168.743 seconds against its original 180-second budget; no timeout or pixel
+threshold was relaxed. GI scene triangles followed coarse/refined residency, and the actual Indirect
+bounce checkbox produced a pixel change well above the repeated static baseline.
 
-These are correctness gates, not an enrolled performance benchmark or a full native-matrix result;
-the complete `npm run validate` aggregate was not run. The exact tested working-tree fingerprint is
-recorded in the [showcase contract](../../../documentation/STRATA_SHOWCASE.md). This post-validation
-documentation update leaves the visual asset content version unchanged. The prior two-case
-`software-yaw/` and `native-yaw/` reports predate the initialization fix.
+Final reports are retained in ignored `reports/strata-lighting-native-final/`,
+`reports/strata-lighting-ui-ci-verified/` and `reports/strata-lighting-webgpu-verified/`. Exact source
+fingerprints, the scanner-only change between native and broad runs, interim failures and the
+original MR #142 results are recorded in the
+[showcase validation](../../../documentation/STRATA_SHOWCASE.md#validation).
+
+These are correctness gates, not an enrolled performance benchmark or a complete native-matrix
+result. The full `npm run validate`/coverage aggregate was not run. The visual asset content version
+remains unchanged; it does not by itself identify or validate renderer/runtime changes.
 
 The cooker derives cone cutoffs from actual Float32 triangle planes and the serialized axis, then
 places the apex behind every plane after rounding. Hemisphere-spanning or unrepresentable cones use

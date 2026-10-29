@@ -163,12 +163,227 @@ function collectExpressionLiterals(
     current.forEachChild(visitChild);
 }
 
+function staticString(
+    expression: ts.Expression,
+    declarations: ReadonlyMap<string, ts.VariableDeclaration>,
+    visited = new Set<ts.Node>()
+): string | null {
+    const current = unwrapExpression(expression);
+    if (visited.has(current)) return null;
+    visited.add(current);
+    if (ts.isStringLiteral(current) || ts.isNoSubstitutionTemplateLiteral(current))
+        return current.text;
+    if (ts.isIdentifier(current)) {
+        const initializer = declarations.get(current.text)?.initializer;
+        return initializer ? staticString(initializer, declarations, visited) : null;
+    }
+    if (ts.isBinaryExpression(current) && current.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = staticString(current.left, declarations, new Set(visited));
+        const right = staticString(current.right, declarations, new Set(visited));
+        return left !== null && right !== null ? left + right : null;
+    }
+    if (
+        ts.isCallExpression(current) &&
+        ts.isPropertyAccessExpression(current.expression) &&
+        (current.expression.name.text === 'replace' ||
+            current.expression.name.text === 'replaceAll')
+    ) {
+        const [search, replacement] = current.arguments;
+        if (!search || !replacement) return null;
+        const receiver = staticString(
+            current.expression.expression,
+            declarations,
+            new Set(visited)
+        );
+        const pattern = staticReplacementSearch(search, declarations, new Set(visited));
+        const value = staticString(replacement, declarations, new Set(visited));
+        if (receiver === null || receiver.length > 1_048_576 || pattern === null || value === null)
+            return null;
+        try {
+            return current.expression.name.text === 'replaceAll'
+                ? receiver.replaceAll(pattern, value)
+                : receiver.replace(pattern, value);
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+function staticReplacementSearch(
+    expression: ts.Expression,
+    declarations: ReadonlyMap<string, ts.VariableDeclaration>,
+    visited = new Set<ts.Node>()
+): string | RegExp | null {
+    const text = staticString(expression, declarations, new Set(visited));
+    if (text !== null) return text;
+    const current = unwrapExpression(expression);
+    if (visited.has(current)) return null;
+    visited.add(current);
+    if (ts.isIdentifier(current)) {
+        const initializer = declarations.get(current.text)?.initializer;
+        return initializer ? staticReplacementSearch(initializer, declarations, visited) : null;
+    }
+    if (ts.isRegularExpressionLiteral(current)) {
+        const end = current.text.lastIndexOf('/');
+        try {
+            return new RegExp(current.text.slice(1, end), current.text.slice(end + 1));
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
+/** A transformation may inject chunks, but it must not remove or downgrade the inherited header. */
+function changesStorageVersion(
+    receiver: ts.Expression,
+    search: ts.Expression,
+    replacement: ts.Expression,
+    replaceAll: boolean,
+    declarations: ReadonlyMap<string, ts.VariableDeclaration>
+): boolean {
+    const pattern = staticReplacementSearch(search, declarations);
+    if (pattern === null) return false;
+    // Preserve the full input for regex anchors/lookarounds. Only unknown receivers such as
+    // source.vertexSource use a canonical complete shader probe and retain runtime validation.
+    const source = staticString(receiver, declarations) ?? '#version 310 es\nvoid main() {}\n';
+    if (!glsl310Pattern.test(source)) return false; // Complete-source validation reports this case.
+    const replacementText = staticString(replacement, declarations);
+    try {
+        const result = replaceAll
+            ? source.replaceAll(pattern, replacementText ?? '')
+            : source.replace(pattern, replacementText ?? '');
+        return !glsl310Pattern.test(result);
+    } catch {
+        // Non-global replaceAll regexes fail in JavaScript itself; they are not shader dialects.
+        return false;
+    }
+}
+
+function collectStorageExpressionLiterals(
+    expression: ts.Expression,
+    declarations: ReadonlyMap<string, ts.VariableDeclaration>,
+    sources: Set<ts.Node>,
+    fragments: Set<ts.Node>,
+    versionChanges: Set<ts.Node>,
+    transformedSources: Map<ts.Node, string>,
+    visited: Set<ts.Node>
+): void {
+    const current = unwrapExpression(expression);
+    if (visited.has(current)) return;
+    visited.add(current);
+    if (
+        ts.isStringLiteral(current) ||
+        ts.isNoSubstitutionTemplateLiteral(current) ||
+        ts.isTemplateExpression(current)
+    ) {
+        sources.add(current);
+        if (ts.isTemplateExpression(current))
+            for (const span of current.templateSpans)
+                collectExpressionLiterals(span.expression, declarations, fragments, new Set());
+        return;
+    }
+    if (ts.isIdentifier(current)) {
+        const initializer = declarations.get(current.text)?.initializer;
+        if (initializer)
+            collectStorageExpressionLiterals(
+                initializer,
+                declarations,
+                sources,
+                fragments,
+                versionChanges,
+                transformedSources,
+                visited
+            );
+        return;
+    }
+    if (ts.isConditionalExpression(current)) {
+        collectStorageExpressionLiterals(
+            current.whenTrue,
+            declarations,
+            sources,
+            fragments,
+            versionChanges,
+            transformedSources,
+            visited
+        );
+        collectStorageExpressionLiterals(
+            current.whenFalse,
+            declarations,
+            sources,
+            fragments,
+            versionChanges,
+            transformedSources,
+            visited
+        );
+        return;
+    }
+    if (
+        ts.isCallExpression(current) &&
+        ts.isPropertyAccessExpression(current.expression) &&
+        (current.expression.name.text === 'replace' ||
+            current.expression.name.text === 'replaceAll')
+    ) {
+        const receiver = current.expression.expression;
+        collectStorageExpressionLiterals(
+            receiver,
+            declarations,
+            sources,
+            fragments,
+            versionChanges,
+            transformedSources,
+            visited
+        );
+        for (const argument of current.arguments)
+            collectExpressionLiterals(argument, declarations, fragments, new Set());
+        const [search, replacement] = current.arguments;
+        if (
+            search &&
+            replacement &&
+            changesStorageVersion(
+                receiver,
+                search,
+                replacement,
+                current.expression.name.text === 'replaceAll',
+                declarations
+            )
+        )
+            versionChanges.add(current);
+        const transformed = staticString(current, declarations);
+        if (transformed !== null) {
+            sources.add(current);
+            transformedSources.set(current, transformed);
+        }
+        return;
+    }
+    const visitChild = (child: ts.Node): void => {
+        if (ts.isExpression(child)) {
+            collectStorageExpressionLiterals(
+                child,
+                declarations,
+                sources,
+                fragments,
+                versionChanges,
+                transformedSources,
+                visited
+            );
+            return;
+        }
+        child.forEachChild(visitChild);
+    };
+    current.forEachChild(visitChild);
+}
+
 function collectNamedPropertyLiterals(
     object: ts.ObjectLiteralExpression,
     property: string,
     declarations: ReadonlyMap<string, ts.VariableDeclaration>,
     target: Set<ts.Node>,
-    visitedObjects: Set<ts.Node>
+    visitedObjects: Set<ts.Node>,
+    storageFragments?: Set<ts.Node>,
+    storageVersionChanges?: Set<ts.Node>,
+    storageTransformedSources?: Map<ts.Node, string>
 ): void {
     if (visitedObjects.has(object)) return;
     visitedObjects.add(object);
@@ -181,17 +396,40 @@ function collectNamedPropertyLiterals(
                     property,
                     declarations,
                     target,
-                    visitedObjects
+                    visitedObjects,
+                    storageFragments,
+                    storageVersionChanges,
+                    storageTransformedSources
                 );
             }
             continue;
         }
         if (ts.isPropertyAssignment(member) && propertyName(member.name) === property) {
-            collectExpressionLiterals(member.initializer, declarations, target, new Set());
+            if (storageFragments && storageVersionChanges && storageTransformedSources)
+                collectStorageExpressionLiterals(
+                    member.initializer,
+                    declarations,
+                    target,
+                    storageFragments,
+                    storageVersionChanges,
+                    storageTransformedSources,
+                    new Set()
+                );
+            else collectExpressionLiterals(member.initializer, declarations, target, new Set());
             continue;
         }
         if (ts.isShorthandPropertyAssignment(member) && member.name.text === property) {
-            collectExpressionLiterals(member.name, declarations, target, new Set());
+            if (storageFragments && storageVersionChanges && storageTransformedSources)
+                collectStorageExpressionLiterals(
+                    member.name,
+                    declarations,
+                    target,
+                    storageFragments,
+                    storageVersionChanges,
+                    storageTransformedSources,
+                    new Set()
+                );
+            else collectExpressionLiterals(member.name, declarations, target, new Set());
         }
     }
 }
@@ -199,11 +437,17 @@ function collectNamedPropertyLiterals(
 function collectConstructorRoles(sourceFile: ts.SourceFile): Readonly<{
     compute: ReadonlySet<ts.Node>;
     storageGraphics: ReadonlySet<ts.Node>;
+    storageFragments: ReadonlySet<ts.Node>;
+    storageVersionChanges: ReadonlySet<ts.Node>;
+    storageTransformedSources: ReadonlyMap<ts.Node, string>;
     ordinaryGraphics: ReadonlySet<ts.Node>;
 }> {
     const declarations = collectVariableDeclarations(sourceFile);
     const compute = new Set<ts.Node>();
     const storageGraphics = new Set<ts.Node>();
+    const storageFragments = new Set<ts.Node>();
+    const storageVersionChanges = new Set<ts.Node>();
+    const storageTransformedSources = new Map<ts.Node, string>();
     const ordinaryGraphics = new Set<ts.Node>();
     const visit = (node: ts.Node): void => {
         if (ts.isNewExpression(node)) {
@@ -229,14 +473,20 @@ function collectConstructorRoles(sourceFile: ts.SourceFile): Readonly<{
                             'vertexSource',
                             declarations,
                             storageGraphics,
-                            new Set()
+                            new Set(),
+                            storageFragments,
+                            storageVersionChanges,
+                            storageTransformedSources
                         );
                         collectNamedPropertyLiterals(
                             object,
                             'fragmentSource',
                             declarations,
                             storageGraphics,
-                            new Set()
+                            new Set(),
+                            storageFragments,
+                            storageVersionChanges,
+                            storageTransformedSources
                         );
                     }
                 } else if (name === 'Shader' || name === 'Material') {
@@ -252,7 +502,14 @@ function collectConstructorRoles(sourceFile: ts.SourceFile): Readonly<{
         ts.forEachChild(node, visit);
     };
     visit(sourceFile);
-    return { compute, storageGraphics, ordinaryGraphics };
+    return {
+        compute,
+        storageGraphics,
+        storageFragments,
+        storageVersionChanges,
+        storageTransformedSources,
+        ordinaryGraphics
+    };
 }
 
 function isProductionSource(path: string): boolean {
@@ -345,14 +602,24 @@ export function collectShaderModernityViolations(
         violations.push({ label, line });
     };
 
-    for (const literal of literals) {
+    const checkedLiterals: readonly SourceLiteral[] = [
+        ...literals,
+        ...[...roles.storageTransformedSources].map(([node, text]) => ({
+            node,
+            text,
+            offset: node.getStart(sourceFile)
+        }))
+    ];
+    for (const literal of checkedLiterals) {
         const text = literal.text;
         const hasCompute = wgslComputePattern.test(text);
         const hasVertex = wgslVertexPattern.test(text);
         const hasFragment = wgslFragmentPattern.test(text);
         const hasGraphicsStage = hasVertex || hasFragment;
         const computeSource = roles.compute.has(literal.node);
-        const storageGraphicsSource = roles.storageGraphics.has(literal.node);
+        const completeStorageSource = roles.storageGraphics.has(literal.node);
+        const storageGraphicsSource =
+            completeStorageSource || roles.storageFragments.has(literal.node);
         const ordinaryGraphicsSource = roles.ordinaryGraphics.has(literal.node);
         const controlledComputeFixture = controlledComputeFixturePaths.has(path);
         const compilerNegativeFixture = compilerNegativeFixturePaths.has(path);
@@ -389,7 +656,10 @@ export function collectShaderModernityViolations(
             add(literal, 'storage graphics source is outside StorageGraphicsShader');
         }
         if (storageGraphicsSource && !controlledStorageFixture) {
-            if (!has310 || version?.[1] !== '310' || version[2] !== 'es') {
+            if (
+                (completeStorageSource || version !== null) &&
+                (!has310 || version?.[1] !== '310' || version[2] !== 'es')
+            ) {
                 add(literal, 'StorageGraphicsShader source is not GLSL ES 3.10');
             }
             if (hasStorageBlock && !hasExactReadonlyStorageBlocks(text)) {
@@ -397,5 +667,11 @@ export function collectShaderModernityViolations(
             }
         }
     }
+    if (!controlledStorageGraphicsFixturePaths.has(path))
+        for (const node of roles.storageVersionChanges)
+            violations.push({
+                label: 'StorageGraphicsShader transformation changes the GLSL ES 3.10 version',
+                line: lineAt(sourceFile, node.getStart(sourceFile))
+            });
     return violations;
 }

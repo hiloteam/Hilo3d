@@ -31,6 +31,10 @@ import {
 import type { GPUDrivenVertexBufferLayout } from '../passes';
 import type { VirtualShadowMapSettings } from '../VirtualShadowMaps';
 import {
+    VIRTUAL_SHADOW_ATLAS_POSITION_SOURCE,
+    VIRTUAL_SHADOW_ATLAS_SAMPLING_SOURCE
+} from './virtualShadowAtlasCoordinates';
+import {
     FRAME_RECORD_BYTES,
     LIGHT_RECORD_BYTES,
     OBJECT_MOTION_CHANGED_FLAG,
@@ -698,6 +702,7 @@ const GPU_SCENE_VIRTUAL_SHADOW_SHADER_CACHE = new Map<string, StorageGraphicsSha
 
 function virtualShadowVertexTransformSource(settings: Readonly<VirtualShadowMapSettings>): string {
     return `
+${VIRTUAL_SHADOW_ATLAS_POSITION_SOURCE}
 mat4 hiloVirtualShadowMatrix(uint mapIndex) {
     uint base = 13u + mapIndex * 5u;
     return mat4(
@@ -713,12 +718,13 @@ vec4 hiloVirtualShadowAtlasPosition(vec4 clipPosition, vec2 logicalPage, uint ph
         0.5 - clipPosition.y / clipPosition.w * 0.5
     );
     v_virtualPageUV = logicalUV * ${String(settings.virtualPageGridSize)}.0 - logicalPage;
-    vec2 pageNDC = vec2(v_virtualPageUV.x * 2.0 - 1.0, 1.0 - v_virtualPageUV.y * 2.0);
     uint column = physicalIndex % ${String(settings.physicalPageColumns)}u;
     uint row = physicalIndex / ${String(settings.physicalPageColumns)}u;
-    vec2 atlasUV = (vec2(float(column), float(row)) + pageNDC * 0.5 + 0.5) /
-        vec2(${String(settings.physicalPageColumns)}.0, ${String(settings.physicalPageRows)}.0);
-    vec2 atlasNDC = vec2(atlasUV.x * 2.0 - 1.0, 1.0 - atlasUV.y * 2.0);
+    vec2 atlasNDC = hiloVirtualShadowAtlasNDC(
+        v_virtualPageUV,
+        vec2(float(column), float(row)),
+        vec2(${String(settings.physicalPageColumns)}.0, ${String(settings.physicalPageRows)}.0)
+    );
     return vec4(atlasNDC * clipPosition.w, clipPosition.zw);
 }`;
 }
@@ -945,6 +951,7 @@ void main() {
 
 function gpuSceneVirtualShadowSource(settings: Readonly<VirtualShadowMapSettings>): string {
     return `
+${VIRTUAL_SHADOW_ATLAS_SAMPLING_SOURCE}
 vec4 hiloVirtualShadowTableTexel(uint linearIndex) {
     uint width = ${String(settings.pageTableWidth)}u;
     return texelFetch(
@@ -970,18 +977,20 @@ mat4 hiloVirtualShadowInverseView() {
         hiloVirtualShadowTableTexel(8u)
     );
 }
-float hiloVirtualDirectionalShadow(int lightIndex, float bias, vec3 viewPosition) {
+float hiloVirtualDirectionalShadow(int lightIndex, float bias, float stableDepthScale, vec3 viewPosition) {
     vec4 config = hiloVirtualShadowTableTexel(0u);
     int lightCount = int(config.x + 0.5);
     int levels = int(config.y + 0.5);
     int grid = int(config.z + 0.5);
     if (lightIndex < 0 || lightIndex >= lightCount) return -1.0;
-    vec4 world = hiloVirtualShadowInverseView() * vec4(viewPosition, 1.0);
+    mat4 inverseView = hiloVirtualShadowInverseView();
+    vec4 world = inverseView * vec4(viewPosition, 1.0);
     world /= max(abs(world.w), 0.000001) * sign(world.w);
     for (int level = 0; level < ${String(settings.directionalClipmapLevels)}; level++) {
         if (level >= levels) break;
         uint mapIndex = uint(lightIndex * levels + level);
-        vec4 clipPosition = hiloVirtualShadowMapMatrix(mapIndex) * world;
+        mat4 virtualMatrix = hiloVirtualShadowMapMatrix(mapIndex);
+        vec4 clipPosition = virtualMatrix * world;
         if (clipPosition.w <= 0.0) continue;
         vec3 projection = clipPosition.xyz / clipPosition.w;
         vec2 logicalUV = vec2(
@@ -1023,7 +1032,15 @@ float hiloVirtualDirectionalShadow(int lightIndex, float bias, vec3 viewPosition
         vec2 rectMin = vec2(float(column), float(row)) / atlasSlots + texel * 0.5;
         vec2 rectMax = vec2(float(column + 1u), float(row + 1u)) / atlasSlots - texel * 0.5;
         bool reversed = hiloVirtualShadowTableTexel(2u).w > 0.5;
-        float depthBias = reversed ? bias : -bias;
+        // Authored directional bias is in the selected stable CSM projection's depth units.
+        // Preserve its world-space distance when the clipmap has a different near/far span.
+        // The stable CSM matrix is view-to-shadow; put the virtual depth row in that same
+        // basis before comparing lengths, including cameras with scale or shear.
+        // Both matrices map to [-1,1] depth, so the subsequent 0.5 factors cancel.
+        vec3 virtualDepthRowView = vec3(virtualMatrix[0][2], virtualMatrix[1][2], virtualMatrix[2][2]) * mat3(inverseView);
+        float virtualDepthScale = length(virtualDepthRowView);
+        float virtualBias = bias * virtualDepthScale / max(stableDepthScale, 1e-20);
+        float depthBias = reversed ? virtualBias : -virtualBias;
         float visibility = 0.0;
         for (int y = -1; y <= 1; y++) {
             for (int x = -1; x <= 1; x++) {
@@ -1034,7 +1051,7 @@ float hiloVirtualDirectionalShadow(int lightIndex, float bias, vec3 viewPosition
                 );
                 visibility += textureLod(
                     u_virtualShadowAtlas,
-                    vec3(hiloRenderTargetUV(sampleUV), projection.z * 0.5 + 0.5 + depthBias),
+                    vec3(hiloVirtualShadowAtlasSampleUV(sampleUV), projection.z * 0.5 + 0.5 + depthBias),
                     0.0
                 );
             }
@@ -1095,27 +1112,29 @@ float hiloDirectionalShadow(int index, float bias, vec3 viewPosition) {
     vec4 params = frameData.values[${String(SHADOW_DIRECTIONAL_PARAMS_VEC4)}u + uint(index)];
     int cascadeCount = clamp(int(params.x + 0.5), 1, ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)});
     float viewDepth = max(-viewPosition.z, 0.0);
+    int cascade = 0;
+    if (cascadeCount > 1 && viewDepth > splits.x) cascade = 1;
+    if (cascadeCount > 2 && viewDepth > splits.y) cascade = 2;
+    if (cascadeCount > 3 && viewDepth > splits.z) cascade = 3;
+    int matrixIndex = index * ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)} + cascade;
+    uint matrixBase = ${String(SHADOW_DIRECTIONAL_MATRICES_VEC4)}u + uint(matrixIndex) * 4u;
+    mat4 stableMatrix = hiloShadowMatrix(matrixBase);
     ${
         virtualShadows === null
             ? ''
-            : `float virtualVisibility = hiloVirtualDirectionalShadow(index, bias, viewPosition);
+            : `float stableDepthScale = length(vec3(stableMatrix[0][2], stableMatrix[1][2], stableMatrix[2][2]));
+    float virtualVisibility = hiloVirtualDirectionalShadow(index, bias, stableDepthScale, viewPosition);
     if (virtualVisibility >= 0.0) {
         float virtualStrength = clamp(params.z, 0.0, 4.0);
         return clamp(1.0 - (1.0 - virtualVisibility) * virtualStrength, 0.0, 1.0);
     }`
     }
-    int cascade = 0;
-    if (cascadeCount > 1 && viewDepth > splits.x) cascade = 1;
-    if (cascadeCount > 2 && viewDepth > splits.y) cascade = 2;
-    if (cascadeCount > 3 && viewDepth > splits.z) cascade = 3;
     if (viewDepth > splits[cascadeCount - 1]) return 1.0;
-    int matrixIndex = index * ${String(MAX_DIRECTIONAL_SHADOW_CASCADES)} + cascade;
-    uint matrixBase = ${String(SHADOW_DIRECTIONAL_MATRICES_VEC4)}u + uint(matrixIndex) * 4u;
     float visibility = hiloShadowAtlasVisibility(
         matrixIndex,
         bias,
         viewPosition,
-        hiloShadowMatrix(matrixBase)
+        stableMatrix
     );
     float blend = params.y;
     if (cascade < cascadeCount - 1 && blend > 0.0) {

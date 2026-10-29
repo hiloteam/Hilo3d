@@ -11,6 +11,12 @@ surfaces and bounded profile SSS; RG1 and DEFORM0 remain unstarted. The bounded 
 group-LOD/geometry-page slice was added on 2026-10-28. Implementation does not close independent
 physical-performance or release evidence gates.
 
+Current source also composes M0 with DDGI and directional virtual shadows, using the same staged
+resident pages and existing submission transactions. Current functional checks are recorded in the
+[2026-10-29 STRATA validation](./STRATA_SHOWCASE.md#validation), separately from the initial M0
+slice. Physical workload enrollment, full `validate`/coverage and the complete native-device matrix
+remain open.
+
 ## Delivered slices and remaining boundaries
 
 “Implemented” means a bounded source implementation with tests, not a newly verified release or
@@ -30,15 +36,15 @@ performance result. DDGI is prepared for [alpha.9](./VERSIONS.md); publication i
 | S0   | Implemented; evidence pending               | Stable atlas cache, caster cull, budget/cadence/pages; opt-in directional virtual clipmaps, GPU requests/remapping/LRU.           | Physical stress evidence, wider caster and local-light coverage.                                                                                      |
 | V0   | Implemented slice                           | Froxels, shared directional/spot/point atlas shadows, height/local fog, atmosphere/clouds.                                        | Transparent volumetric history and enrolled physical performance.                                                                                     |
 | A0   | Texture slice implemented; evidence pending | Optional addon: KTX2/Basis workers, bounded leases/mip residency and fenced uploads.                                              | Physical workload budgets; compressed/range pages and broader streaming remain.                                                                       |
-| M0   | Bounded slice implemented; evidence pending | Rigid group LOD pages, offline cooking, bounded CPU/GPU residency and fixed material-bucket pulling.                              | Hierarchical cluster DAGs, compressed/range pages, wider vertex formats and physical scaling evidence.                                                |
-| GI0  | Implemented slice; evidence pending         | Textured/masked/deformed PBR software BVH, DDGI probes, decal transport and signed SSGI hybrid.                                   | Performance baseline; custom deformation, transparent/specular transport and optional SDF representation.                                             |
+| M0   | Bounded slice implemented; evidence pending | Rigid group LOD pages, bounded residency/material-bucket pulling, resident DDGI ray geometry and directional virtual-shadow LODs. | Hierarchical cluster DAGs, compressed/range pages, wider vertex formats and physical scaling evidence.                                                |
+| GI0  | Implemented slice; evidence pending         | Textured/masked/deformed PBR software BVH, resident meshlet geometry, DDGI probes, decal transport and signed SSGI hybrid.        | Performance baseline; custom deformation, transparent/specular transport and optional SDF representation.                                             |
 
 ## Dependency and evidence order
 
 ```mermaid
 flowchart LR
   CORE["Implemented: Graph / RHI / Material / GPU Scene"] --> PERF["Pending: enrolled performance evidence"]
-  CORE --> A["A0 texture streaming / geometry pending"]
+  CORE --> A["A0 texture / independent geometry pages"]
   A --> M["Implemented slice: M0 group LOD / geometry pages"]
   S["Implemented: S0 directional virtual pages"] --> SP["Pending: shadow stress evidence"]
   GI["Implemented: GI0 DDGI + SSGI hybrid"] --> GP["Pending: GI baseline review"]
@@ -81,21 +87,30 @@ Fixed material draws pull vertices through the shared PBR shader path. Missing p
 capacity overflow retain complete ordinary geometry. Physical-performance enrollment, compressed
 transport and an arbitrary hierarchical cluster DAG remain open.
 
+The current combination uses finest resident complete groups for camera-independent DDGI geometry,
+with full fallback if any group is missing. Its independent 96-byte-per-triangle CPU snapshots obey
+the global DDGI triangle budget. Directional virtual shadows choose complete group LODs in shadow
+texels, consistently across every physical page in a clipmap, and own bounded per-page visibility
+buffers. Both paths retain submission/discard/device-recovery behavior; stable CSM remains the
+fallback for missing or deferred virtual atlas pages. See the
+[meshlet contract](./MESHLET_GEOMETRY.md) for the additional fixed allocation formulas and separate
+evidence boundary.
+
 Inputs: static rigid geometry, offline cluster bounds/error data, A0 residency and shared material
 handles. Outputs: GPU-visible cluster ranges and fixed bounded indirect buckets in the existing
 Render Graph/RHI path.
 
-Define the offline format/version first, then cluster frustum/cone/Hi-Z tests, LOD selection,
-material binning and page demand. Prove culling and bandwidth benefits on real content. Do not claim
-native mesh/task shaders, sparse residency, unbounded bindless or Nanite equivalence.
-Skinned/morphed content requires a separate contract, not an unmeasured fallback hidden in the path.
+Preserve the offline format/version and cluster frustum/cone/Hi-Z, LOD selection, material-binning
+and page-demand contracts. Prove culling and bandwidth benefits on real content. Do not claim native
+mesh/task shaders, sparse residency, unbounded bindless or Nanite equivalence. Skinned/morphed
+content requires a separate contract, not an unmeasured fallback hidden in the path.
 
 ## S0, V0 and GI0 extensions
 
-S0 currently covers rigid GPU Scene directional virtual casters/receivers. Non-virtual casters,
-Spot/Point and WebGL2 use the shared stable atlas. Missing/deferred virtual pages fall back to
-stable CSM. Preserve exact identity, submission-aware page tables, failure rollback and recovery
-before expanding coverage.
+S0 currently covers rigid GPU Scene directional virtual casters/receivers, including resident
+meshlet groups with coherent shadow-texel LODs. Non-virtual casters, Spot/Point and WebGL2 use the
+shared stable atlas. Missing/deferred virtual pages fall back to stable CSM. Preserve exact
+identity, submission-aware page tables, failure rollback and recovery before expanding coverage.
 
 V0 consumes the shared directional CSM, spot and point atlas through declared graph resources,
 including offscreen casters and bounded tile-clamped PCF. Screen-space visibility and cloud shadows
@@ -103,15 +118,15 @@ remain complementary inputs. Transparent-media history and physical workload bud
 see [volumetrics](./VOLUMETRIC_LIGHTING.md).
 
 GI0 now evaluates real diffuse/emissive/normal texels, alpha-mask visibility, vertex colors,
-world-space decals and built-in skin/morph poses, with exact UV/channel/encoding and submission
-contracts documented in [DDGI](./DYNAMIC_GLOBAL_ILLUMINATION.md). Explicit per-mesh opt-out keeps
-smoke outside solid ray transport without disabling strict validation of other assets. Custom
-per-instance/deformation streams remain fail-closed. Local reflection-probe fallback is REFL0;
-broader offscreen specular ray transport and SDF clipmaps remain independent GI0 extensions with
-transport, temporal, update and memory evidence. An SDF baker must define thin/two-sided/masked
-surfaces, format/version, worker/CI artifacts, teleport and recovery. Require real consumers before
-exposing a generic scene representation provider. The progressive compute path-tracing example is
-not a real-time dynamic GI performance result.
+world-space decals, built-in skin/morph poses and finest-resident meshlet geometry, with exact
+UV/channel/encoding and submission contracts documented in [DDGI](./DYNAMIC_GLOBAL_ILLUMINATION.md).
+Explicit per-mesh opt-out keeps smoke outside solid ray transport without disabling strict
+validation of other assets. Custom per-instance/deformation streams remain fail-closed. Local
+reflection-probe fallback is REFL0; broader offscreen specular ray transport and SDF clipmaps remain
+independent GI0 extensions with transport, temporal, update and memory evidence. An SDF baker must
+define thin/two-sided/masked surfaces, format/version, worker/CI artifacts, teleport and recovery.
+Require real consumers before exposing a generic scene representation provider. The progressive
+compute path-tracing example is not a real-time dynamic GI performance result.
 
 ## Planned rendering work packages
 

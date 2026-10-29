@@ -38,6 +38,10 @@
             <p id="strata-status" role="status" aria-live="polite">Opening…</p>
             <details class="telemetry">
                 <summary>Live geometry</summary>
+                <label class="lighting-switch" for="indirect-light">
+                    <input id="indirect-light" type="checkbox" checked />
+                    Indirect bounce
+                </label>
                 <dl>
                     <dt>Visible clusters</dt>
                     <dd id="clusters">—</dd>
@@ -45,6 +49,10 @@
                     <dd id="resident">—</dd>
                     <dt>CPU pages</dt>
                     <dd id="cpu">—</dd>
+                    <dt>GI triangles</dt>
+                    <dd id="gi-triangles">—</dd>
+                    <dt>Shadow pages</dt>
+                    <dd id="shadow-pages">—</dd>
                 </dl>
             </details>
         </aside>

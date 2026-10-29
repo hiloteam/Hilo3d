@@ -1,7 +1,7 @@
 # STRATA / 风蚀石庭
 
-STRATA is a sandstone sculpture garden for the bounded M0 meshlet and geometry-streaming slice. Open
-`examples/meshlet_strata.html?backend=webgpu` through `npm run examples:dev`. The example is
+STRATA is a sandstone sculpture garden for bounded M0 meshlet streaming, DDGI and virtual shadows.
+Open `examples/meshlet_strata.html?backend=webgpu` through `npm run examples:dev`. The example is
 featured in the gallery and explicitly requires WebGPU.
 
 ## Visual target and comparison
@@ -13,11 +13,11 @@ aperture, bronze seams, concentric steps, a receding quarry promenade and a rest
 
 The fixed concept is 1672×941 pixels. Composition comparisons use that exact viewport at device
 pixel ratio 1, with the production geometry and resolution. The implementation uses original
-editable Blender geometry, PBR lighting, standard shadow atlases, GTAO, TAA and the existing
-volumetric-lighting feature. The saved native runtime capture uses the same 1672×941 dimensions as
-the concept. It is an interactive geometry-and-material reconstruction, not a pixel-identical
-reproduction: individual erosion marks, silhouettes and lighting still differ from the generated
-image.
+editable Blender geometry, PBR lighting, DDGI, virtual shadows, GTAO, TAA and the existing
+volumetric-lighting feature. The saved native runtime captures include DDGI and virtual shadows; the
+desktop views use the same 1672×941 dimensions as the concept. It is an interactive
+geometry-and-material reconstruction, not a pixel-identical reproduction: individual erosion marks,
+silhouettes and lighting still differ from the generated image.
 
 ![STRATA running on native WebGPU](./images/strata/runtime-overview.png)
 
@@ -72,28 +72,60 @@ GPU arena space. Coarse leases stay pinned while the scene is alive.
 - **Coarse** releases fine pages while retaining a complete visible scene.
 - **Streaming off** cancels fine demand and retains the coarse foundation. Re-enabling it applies
   the current camera's demand.
-- **Live geometry** shows actual renderer cluster/residency counters and CPU page accounting.
+- **Live geometry** shows actual renderer cluster/residency counters, CPU page accounting, DDGI
+  scene triangles and virtual-shadow requested/resident pages. Its **Indirect bounce** checkbox
+  changes DDGI intensity between one and zero while keeping the scene and probe updates active.
 
 The aperture bucket has an 8 MiB GPU arena; each other streamed prototype has 4 MiB. Every streamed
 bucket admits at most 512 KiB of incremental page/page-table writes per frame and has a bounded
-visible-cluster buffer. Each page manager separately budgets 16 MiB of CPU payload/scratch, four
-concurrent requests and 256 KiB of decode work per update. These are per-asset limits; ordinary
-fallback buffers and shared effects remain separate allocations. Readback is used for UI diagnostics
-only and never drives GPU culling or indirect draw arguments. The renderer still follows shared
-frontend → Render Graph → portable RHI. See [the M0 contract](./MESHLET_GEOMETRY.md) for initial
-allocation/recovery accounting and limits.
+visible-cluster buffer. Each page manager separately budgets 16 MiB of CPU payload/scratch, eight
+concurrent requests, 1 MiB of in-flight bytes and a 64 KiB source-page limit. Decode work is bounded
+to eight pages and 256 KiB per update. These are per-asset limits; ordinary fallback buffers and
+shared effects remain separate allocations. Readback is used for UI diagnostics only and never
+drives GPU culling or indirect draw arguments. The renderer still follows shared frontend → Render
+Graph → portable RHI. See [the M0 contract](./MESHLET_GEOMETRY.md) for initial allocation/recovery
+accounting and limits.
 
 Pages and static primitives live in immutable digest directories. A successful offline build
 publishes `scene.json` by atomic rename only after every referenced version exists. The content
 version includes texture bytes, so rebuilding an albedo also invalidates the image URL.
 
-The production renderer uses two stable shadow cascades and an authored receiver-bias range suited
-to this scene's world-space extent. A `shadows=0` diagnostic query was used to isolate self-shadow
-striping before calibrating the bias; default captures and acceptance keep the shadows enabled. Warm
-directional lighting and cooler fill illuminate the PBR surfaces. Distance haze uses the pipeline's
-existing froxel volumetric-lighting feature. The current showcase does not enable the
-physical-atmosphere, procedural cloud or cloud-shadow passes; its sky is the separate sky-only
-texture described above.
+DDGI and virtual shadows are enabled by default. `gi=0` disables DDGI at initialization and disables
+the Indirect bounce checkbox; `virtualShadows=0` selects the ordinary shadow path. The independent
+`shadows=0` query removes the key light's shadows for diagnostic comparison. The ordinary shadow
+fallback retains two stable cascades. Warm directional lighting and cooler fill illuminate the PBR
+surfaces. Distance haze uses the pipeline's existing froxel volumetric-lighting feature. The current
+showcase does not enable the physical-atmosphere, procedural cloud or cloud-shadow passes; its sky
+is the separate sky-only texture described above.
+
+DDGI covers a finite hero study: the aperture, nearest two monoliths, nearest two boulders, ten near
+quarry courses and their supporting architecture contribute 74 meshes with at most 247,560
+full-detail triangles. Initialization checks this authored selection against limits of 262,144
+triangles and 96 meshes. The ray scene follows complete GPU-resident meshlet groups as pages arrive
+or leave; it does not keep a permanent coarse lighting proxy. Selected materials use their actual
+UV0 textures under strict `texturePolicy: 'sample'`, with an atlas capacity derived from the decoded
+images: exactly 3,145,032 texels for the two stone textures.
+
+Distant quarry courses, the remaining monolith/boulder instances and gravel explicitly opt out of
+the ray scene while retaining normal raster and shadow participation. The sky sphere also opts out
+of rays and remains an unlit background without casting or receiving shadows. This bounded selection
+is an authored lighting scope, not whole-quarry ray coverage or silent budget eviction.
+
+| Setting                   | Production | Software test profile |
+| ------------------------- | ---------- | --------------------- |
+| DDGI probe grid           | 7×5×7      | 5×3×5                 |
+| DDGI updated probes/frame | 16         | 4                     |
+| Rays per updated probe    | 64         | 64                    |
+| Probe-volume span         | 21×8×21    | 21×8×21               |
+| Virtual-shadow resolution | 1024       | 1024                  |
+| Shadow page size          | 128        | 128                   |
+| Physical shadow pages     | 32         | 8                     |
+| Shadow page updates/frame | 8          | 4                     |
+
+`window.__HILO3D_STRATA__.diagnostics()` exposes the official `DynamicGlobalIlluminationDiagnostics`
+and `VirtualShadowMapDiagnostics` snapshots, together with the current `indirectLight` control
+state. Scene triangle/ray counts and requested/resident shadow pages describe actual work; their
+budgets are separate from the geometry arenas above.
 
 ## Lifecycle and capture
 
@@ -118,44 +150,68 @@ runtime images remain separate artifacts.
 
 ## Validation
 
-On 2026-10-29 the startup-lease correction passed its new real-HTTP-gated regression in software
-(one case, 1.2 minutes) and native production (one case, 13.7 seconds). The regression reproduced an
-`AbortError` and disposed scene on the old native implementation when resizing during initial fine
-loading. The fixed implementation preserves the live scene and follows replacement demand.
+The DDGI/virtual-shadow extension passed the following checks on 2026-10-29. The four STRATA cases
+retain real HTTP Request identities, submissions, shaded pixels, post-capture pointer/wheel input,
+preset changes, portrait layout, BFCache pause/resume and post-disposal error observation. The GI
+comparison uses the actual checkbox, 32-frame convergence intervals and an aligned static baseline;
+it does not replace fetch, preread response bodies, synthesize pixels or stop probe updates.
 
-The complete three-case native suite then passed in 57.7 seconds, with unchanged timeouts and pixel
-thresholds, no retries and no skips. It covers the same visual content version listed above plus the
-initialization fix. The full `npm run test:webgpu` software matrix subsequently passed all 37 cases,
-including all three STRATA cases, in 29.5 minutes with no skips or unexpected failures. Suite
-durations are local execution times, not GPU benchmarks.
+| Gate                                                | Executed result                                                                                                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Complete affected hosted-profile WebGL2 groups      | 123/123 passed: catalog 27, catalog-scenes 71, CSM 3, physics 9, post-processing 11, chromatic 2.                                                             |
+| Complete software `npm run test:webgpu`             | 38/38 passed in 31.7 minutes, including all four STRATA cases.                                                                                                |
+| Native production STRATA                            | 4/4 passed in 179.9 seconds.                                                                                                                                  |
+| Focused renderer/geometry/assets/shader regressions | 37 files / 347 tests passed; the final GI/cache lifecycle suite separately passed all three cases.                                                            |
+| Shader source guardrails                            | 17 tests passed, including complete-source/fragment classification and regex-context regressions.                                                             |
+| Architecture and RHI                                | 150 architecture, 224 portable RHI and three native RHI API tests passed; one optional f16 capability case was skipped.                                       |
+| Static and package contracts                        | Build, modernity, format, lint, typecheck, synchronized versions, consumer skill, API update/check, consumer types, docs, examples and package checks passed. |
 
-All six WebGL2 hosted-UI groups also passed locally through the shared CI runner: 123 tests across
-catalog, catalog-scenes, CSM, physics, post-processing and chromatic. Each receipt in ignored
-`reports/strata-ui-ci-fixed/` records `status: passed` and `sourceUnchanged: true`. The complete
-WebGPU JSON result is `reports/strata-validation/full-webgpu.json`.
+All three browser lanes finished without retries, skips, flaky cases or unexpected failures. Every
+WebGL2 group and both complete broad-lane receipts confirm unchanged source. The broad gates used
+HEAD `da3f2506c984f76740ec541df03ff35184992506` plus the tested working tree, with fetched
+`origin/dev` at `df0d45528eb032957b420f19dc2067cfa9199355` and fingerprint
+`5a52414241d8fb4b08f0b027f6ff8f62e84bee78b96bf2c7206c16b48fe66574`.
 
-These broad gates used HEAD and fetched `origin/dev` at `df0d45528eb032957b420f19dc2067cfa9199355`
-plus the unchanged tested working tree fingerprint
-`5aa3d2d7fd4ed68c2e1ab6a952faac1bf5fe4ce12da6f4ab7683e47e09e60979`. This documentation record was
-updated after those runs; the visual asset content version above is unchanged.
+The native four-case receipt uses fingerprint
+`24795da8383141566e048bf690d75977813c8b6af8f41be8556f04aef07fe73e`. Only
+`scripts/shader-modernity.ts` and its regression test changed afterward to correct regex matching
+context; renderer and example sources were unchanged. The subsequent broad lanes use the corrected
+scanner. These final acceptance notes were updated after testing; no runtime or test implementation
+changed after the broad gates.
 
-The dedicated cases observe actual HTTP Request identities and completion generations, including
-refetches; they do not replace fetch or preread response bodies. They retain real GPU submission,
-shaded pixels, post-capture pointer/wheel input, preset changes, portrait layout, BFCache
-pause/resume and post-disposal error observation.
+Ignored reports preserve exact cases, timings, images, blobs, JSON/HTML and source receipts:
 
-The current native screenshots and streaming-evidence attachments are retained under ignored
-`reports/strata-all-fixed-native/` and `reports/strata-all-fixed-native-html/`. The earlier two-case
-`reports/strata-validation/software-yaw/` and `native-yaw/` passes predate the startup correction
-and remain historical evidence. Earlier `software-final/`, `native-final/`, `software-ci/` and
-`native-production/` reports also remain separate. Resident page/cluster counters demonstrate
-selection and refetch behavior; they are not hardware memory measurements or enrolled performance
-comparisons.
+- `reports/strata-lighting-ui-ci-verified/`: all six complete hosted-profile groups.
+- `reports/strata-lighting-webgpu-verified/`: the full software matrix and extracted STRATA
+  evidence.
+- `reports/strata-lighting-native-final/`: native production cases and extracted evidence.
+- `reports/strata-validation/`: focused CPU/GPU regressions, including virtual-atlas sampling,
+  scaled/sheared-camera bias, ray transport, cache retirement, rollback and recovery.
 
-The real-GPU regression suite exercises positive-error near/far LODs with both levels resident,
-multiple materials/instances, mirrored and sheared transforms, material compatibility transitions
-and release-driven GPU page handoff. The showcase has also exposed opaque shadow texture binding and
-near-flat Float32 cone-generation boundaries, covered by targeted regressions. Current-source
-evidence does not include running the complete `npm run validate` aggregate, the entire native
-WebGPU matrix or an enrolled performance benchmark. Local CI-profile runs also do not establish a
-hosted Linux driver result. Remaining M0 work is tracked in [ROADMAP](./ROADMAP.md).
+The final software streaming case took 168.743 seconds against its unchanged 180-second budget.
+Actual DDGI scene triangles changed from 98,504 coarse to 184,794 refined, returned to 98,504 after
+coarsening and reached 184,794 after streaming resumed. Fine demand reached 627 pages. The software
+GI comparison changed 64.50% of receiver pixels, with mean RGB difference 8.92870 against a repeated
+on-state baseline of 0.075524; restoration produced mean difference 8.90112. Diagnostics recorded
+256 rays per frame and eight resident shadow pages. These counts and local durations are correctness
+evidence, not hardware memory measurements or enrolled performance comparisons.
+
+Development evidence remains separate. An earlier software run passed three cases but reached the
+unchanged fine-page readiness deadline at 604/627 pages. Aligning request concurrency with the
+existing eight-page decode budget resolved that case without increasing timeouts or weakening
+assertions. Reports remain in `reports/strata-lighting-software/`. The first final WebGL2 attempt
+was deliberately interrupted during catalog testing to fix the independently reviewed scanner issue;
+`reports/strata-lighting-ui-ci-final/` records nine passes, one interruption and 17 unrun cases. It
+is not counted as a completed group or a renderer failure.
+
+The original MR #142 records predate the lighting extension: three native STRATA cases, 37 software
+WebGPU cases and 123 WebGL2 cases passed. Those historical receipts remain in
+`reports/strata-all-fixed-native/`, `reports/strata-validation/full-webgpu.json` and
+`reports/strata-ui-ci-fixed/`; they do not substitute for the newer results above. The original
+startup-demand regression reproduced an `AbortError`/disposed scene before its lease-identity fix.
+The source geometry, textures and immutable content version listed above have not changed.
+
+The complete `npm run validate`/coverage aggregate, the entire native WebGPU matrix and enrolled
+physical performance benchmarks were not run. Local macOS checks used Node 25.8.1, npm 10.9.4 and
+Playwright 1.61.1; hosted-profile checks do not establish a hosted Linux driver result. Remaining M0
+work is tracked in [ROADMAP](./ROADMAP.md).

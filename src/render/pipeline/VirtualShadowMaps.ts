@@ -1,3 +1,4 @@
+import { assertSynchronousResult } from '../internal/ScriptableRenderPipelineValidation';
 import type Camera from '../../camera/Camera';
 import type DirectionalLight from '../../light/DirectionalLight';
 import Matrix4 from '../../math/Matrix4';
@@ -28,7 +29,7 @@ const INVALID_TEXTURE = 0 as RenderGraphTextureHandle;
 const MAX_DIRECTIONAL_VIRTUAL_LIGHTS = 4;
 const CLIPMAP_HEADER_VEC4_COUNT = 13;
 const CLIPMAP_MAP_VEC4_COUNT = 5;
-const PHYSICAL_PAGE_STRIDE_BYTES = 256;
+export const PHYSICAL_PAGE_STRIDE_BYTES = 256;
 const PHYSICAL_PAGE_BINDING_BYTES = 32;
 const SHADOW_INDIRECT_ARGUMENT_BYTES = 20;
 const DRAW_INDIRECT_ARGUMENT_BYTES = 16;
@@ -551,9 +552,16 @@ fn objectPreviousModel(object: ObjectRecord) -> mat4x4<f32> {
 fn maximumScale(model: mat4x4<f32>) -> f32 {
     return max(length(model[0].xyz), max(length(model[1].xyz), length(model[2].xyz)));
 }
+fn objectScale(object: ObjectRecord, model: mat4x4<f32>) -> f32 {
+    if ((object.metadata.z & 256u) == 0u) { return maximumScale(model); }
+    let a = abs(model[0].xyz); let b = abs(model[1].xyz); let c = abs(model[2].xyz);
+    let norm1 = max(a.x+a.y+a.z, max(b.x+b.y+b.z, c.x+c.y+c.z));
+    let rows = a+b+c;
+    return sqrt(norm1 * max(rows.x, max(rows.y, rows.z)));
+}
 `;
 
-const CLIPMAP_WGSL = `
+export const CLIPMAP_WGSL = `
 fn clipmapFloat(index: u32) -> vec4<f32> {
     return bitcast<vec4<f32>>(clipmapData[index]);
 }
@@ -714,8 +722,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let previousModel = objectPreviousModel(object);
     let currentWorld = currentModel * vec4<f32>(object.bounds.xyz, 1.0);
     let previousWorld = previousModel * vec4<f32>(object.bounds.xyz, 1.0);
-    let currentRadius = object.bounds.w * maximumScale(currentModel);
-    let previousRadius = object.bounds.w * maximumScale(previousModel);
+    let currentRadius = object.bounds.w * objectScale(object, currentModel);
+    let previousRadius = object.bounds.w * objectScale(object, previousModel);
     let mapCount = clipmapData[4u].y;
     let grid = u32(clipmapFloat(0u).z + 0.5);
     for (var mapIndex = 0u; mapIndex < mapCount; mapIndex += 1u) {
@@ -1051,7 +1059,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let objectIndex = id.x;
     let physicalIndex = id.y;
     let objectCount = frameData.counts.x;
-    let maximumObjects = frameData.budgets.x;
+    let maximumObjects = arrayLength(&objects);
     if (objectIndex >= objectCount || objectIndex >= maximumObjects) { return; }
     let base = physicalBase(physicalIndex);
     let selectedIndex = physicalIndex * maximumObjects + objectIndex;
@@ -1070,7 +1078,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (any(page < vec2<i32>(0)) || any(page >= vec2<i32>(i32(grid)))) { return; }
     let model = objectModel(object);
     let center = model * vec4<f32>(object.bounds.xyz, 1.0);
-    let radius = object.bounds.w * maximumScale(model);
+    let radius = object.bounds.w * objectScale(object, model);
     let matrix = clipmapMatrix(mapIndex);
     let clip = matrix * center;
     if (clip.w <= 0.0) { return; }
@@ -1146,7 +1154,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         bucketOffsets[entry * ${String(BUCKET_OFFSET_STRIDE_BYTES / 4)}u] = offset;
         let indirect = entry * 5u;
         let count = select(0u, atomicLoad(&shadowArguments[indirect + 1u]), physicalPages[physicalBase(physicalIndex) + 6u] != 0u);
-        atomicStore(&shadowArguments[indirect + 4u], offset);
+        // The raster shader reads the explicit visibleOffset binding; gl_InstanceIndex stays local.
+        atomicStore(&shadowArguments[indirect + 4u], 0u);
         offset += count;
     }
 }`,
@@ -1194,7 +1203,7 @@ ${FRAME_WGSL}
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let objectIndex = id.x;
     let physicalIndex = id.y;
-    let maximumObjects = frameData.budgets.x;
+    let maximumObjects = arrayLength(&selectedBuckets) / clipmapData[3u].w;
     if (objectIndex >= frameData.counts.x || objectIndex >= maximumObjects) { return; }
     let bucket = selectedBuckets[physicalIndex * maximumObjects + objectIndex];
     if (bucket == 0xffffffffu) { return; }
@@ -1274,7 +1283,23 @@ export function virtualShadowClearIndirectOffset(physicalPageIndex: number): num
     return physicalPageIndex * DRAW_INDIRECT_ARGUMENT_BYTES;
 }
 
+/** @internal Staged per-page caster selections, before fixed-bucket prefix/compaction. */
+export interface VirtualShadowCasterPreparation {
+    readonly frameBuffer: RenderGraphBufferHandle;
+    readonly clipmapData: RenderGraphBufferHandle;
+    readonly physicalPages: RenderGraphBufferHandle;
+    readonly objects: RenderGraphBufferHandle;
+    readonly selectedBuckets: RenderGraphBufferHandle;
+    readonly shadowIndirectArguments: RenderGraphBufferHandle;
+    readonly activeObjectHighWater: number;
+}
+
 export interface VirtualShadowRecordInputs {
+    /** Internal synchronous extension for shared geometry representations. */
+    readonly recordAdditionalCasters?: (
+        context: RenderPipelineContext,
+        resources: Readonly<VirtualShadowCasterPreparation>
+    ) => unknown;
     readonly frameBuffer: RenderGraphBufferHandle;
     readonly objects: RenderGraphBufferHandle;
     readonly bucketData: RenderGraphBufferHandle;
@@ -1561,6 +1586,18 @@ export class VirtualShadowMapController {
             settings.physicalPageCount
         );
         context.graph.addPass(PAGE_CULL_PASS, cull);
+        if (inputs.recordAdditionalCasters !== undefined) {
+            const result = inputs.recordAdditionalCasters(context, {
+                frameBuffer: inputs.frameBuffer,
+                clipmapData,
+                physicalPages: currentPhysical,
+                objects: inputs.objects,
+                selectedBuckets,
+                shadowIndirectArguments: shadowArguments,
+                activeObjectHighWater: inputs.activeObjectHighWater
+            });
+            assertSynchronousResult('Virtual-shadow additional caster recording', result);
+        }
 
         const prefix = context.acquirePassParameters(this.#prefixPool);
         prefix.setBuffer(0, clipmapData);
@@ -1610,8 +1647,9 @@ export class VirtualShadowMapController {
     }
 
     frameDiscarded(frameIndex: number): void {
-        if (frameIndex !== this.#pendingFrame) return;
+        // Recording can fail inside an additional-caster hook before pending residency is set.
         this.#clipmaps.frameDiscarded(frameIndex);
+        if (frameIndex !== this.#pendingFrame) return;
         this.#pendingFrame = -1;
     }
 

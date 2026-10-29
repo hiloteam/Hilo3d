@@ -39,6 +39,11 @@ LOD 选择、簇裁剪和压紧，顶点拉取继续消费同一 PBR、深度、
 group 集合或可见容量不足时保留完整普通几何。页表和 revision 只随有效提交发布，标准阴影缓存将驻留几何身份纳入同一失效合同。格式、能力边界和证据见
 [`MESHLET_GEOMETRY.md`](./MESHLET_GEOMETRY.md)。
 
+M0 同时支持 DDGI 与方向光虚拟阴影。DDGI 从本帧已暂存的驻留页中选择每个 group 最精细的完整 LOD，形成相机无关的射线几何；缺少任意 group 时使用整个普通 fallback。内部 CPU 快照保留 position/normal/UV0，不修改
+`Mesh.geometry`，分配前检查全局 DDGI 三角形预算。虚拟阴影按 shadow
+texel 误差选择 LOD，同一 clipmap 的所有物理页保持一致；每页的有界簇列表与主视图、稳定 CSM 列表独立。以上路径仍共享同一材质语义、Render
+Graph 及 submission/rollback/recovery 合同。
+
 局部镜面反射通过共享 PBR 环境采样接入，SSR 读取同一 probe specular baseline。
 `ReflectionProbePipelineFactory` 使用辅助相机作用域在同一 Render Graph/RHI
 submission 内录制六面捕获和 GGX 粗糙度过滤；完整提交后才发布双缓冲结果。辅助视图不推进主相机的时域效果，运行时拥有的捕获目标在资源释放/设备恢复后重建。数量、可见性、材质绑定和时域边界见
@@ -161,6 +166,27 @@ bitset 生成和去重逻辑页请求，再按 light/clipmap/page 的确定顺�
 depth atlas，优先复用 exact identity，否则按 last-used frame 驱逐最旧的未选物理页；dirty 页在 update
 budget 不足时保留 pending 状态且不发布 stale page-table entry。随后按物理页进行 caster cull、bucket
 prefix/compact，并用固定上限的 GPU-authored indirect clear/depth draw 更新 atlas。
+
+Meshlet caster 在共享 page
+cull 与 prefix/compact 之间接入，完整对象的簇容量不足时保留普通几何 draw。每个 meshlet
+bucket 额外分配 `12 * maxVisibleMeshlets * physicalPageCount`
+字节的每页可见表及有界 indirect/offset 记录；这些资源进入设备限制规划和
+`allocatedBytes`。物理页 selected-object
+stride 使用配置的对象容量；显式 visible-offset 已承担寻址，因此 indirect `firstInstance`
+保持零，避免重复偏移。Shadow texel LOD 不依赖主相机的可见簇列表。
+
+虚拟 atlas 的物理行号与页内 UV 均保持 top-left；写入时共享 helper 将该坐标直接映射到物理页的 raster 区域。采样先显式完成本路径的 atlas
+→ projected-attachment 坐标转换 `(u, 1 - v)`，随后且仅随后调用一次
+`hiloRenderTargetUV()`。这是有 shader 注释和
+[非对称双后端 fixture](../test/spec/renderer/VirtualShadowAtlasSampling.test.ts)
+覆盖的局部 attachment 坐标例外，不改变普通 engine-managed
+texture 的 top-left 合同。fixture 分别检查不相邻的物理行和不同页内 V，避免上下对称图案掩盖行翻转。
+
+方向光作者设置的 `minBias`/`maxBias` 仍以当前 stable CSM
+cascade 的深度单位解释。虚拟 clipmap 采样前，先将 virtual world-space Z-row 乘以已有的
+`mat3(inverseView)`，与所选 CSM view-to-shadow Z-row 放在同一 view
+basis 中，再按两者长度比转换 bias 并应用 standard/reversed-depth 符号。这也覆盖带 scale/shear 的 Camera，且不新增矩阵求逆。不同 near/far 深度跨度不会因此放大同一偏移并吞掉浅接收面的阴影；无需修改公开的 light
+bias 值。
 
 方向光使用 camera-centered、texel/page-snapped
 clipmap；默认四级，每级覆盖宽度倍增。页 identity 包含 light/map、绝对页坐标与提交感知 epoch，光方向、沿光线方向的 snapped

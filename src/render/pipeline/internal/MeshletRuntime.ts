@@ -1,3 +1,8 @@
+import { MeshletVirtualShadowRuntime } from './MeshletVirtualShadows';
+import type {
+    VirtualShadowCasterPreparation,
+    VirtualShadowMapSettings
+} from '../VirtualShadowMaps';
 import type MeshletGeometry from '../../../geometry/meshlet/MeshletGeometry';
 import type { MeshletGeometryPage } from '../../../geometry/meshlet/MeshletAsset';
 import ComputeShader, { type ComputeShaderBinding } from '../../compute/ComputeShader';
@@ -265,6 +270,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
 /** Renderer-local fixed arena and submission transaction for one material bucket. */
 export class MeshletRuntime {
+    readonly virtualShadows: MeshletVirtualShadowRuntime | null;
     readonly arena: StorageBuffer;
     readonly visible: StorageBuffer;
     readonly indirect: StorageBuffer;
@@ -312,7 +318,8 @@ export class MeshletRuntime {
         maxObjects: number,
         hiZLevels: number,
         temporal: boolean,
-        cone: boolean
+        cone: boolean,
+        virtualShadowSettings: Readonly<VirtualShadowMapSettings> | null = null
     ) {
         const metadataWords =
             16 + geometry.manifest.groups.length * 8 + geometry.manifest.pages.length * 4;
@@ -428,13 +435,24 @@ export class MeshletRuntime {
                   )
               ]
             : null;
+        this.virtualShadows =
+            virtualShadowSettings === null
+                ? null
+                : new MeshletVirtualShadowRuntime(
+                      virtualShadowSettings,
+                      context,
+                      this.arena,
+                      this.index,
+                      geometry.options.maxVisibleMeshlets
+                  );
         this.#owned = [
             this.arena,
             this.visible,
             this.indirect,
             this.zeroOffset,
             this.index,
-            ...(this.#choices ?? [])
+            ...(this.#choices ?? []),
+            ...(this.virtualShadows?.buffers ?? [])
         ];
         this.#cull = computePass(cullShader(0, temporal, false));
         this.#hizCull =
@@ -522,6 +540,30 @@ export class MeshletRuntime {
         this.#pendingDeferred = deferred;
         this.#pendingRevision = this.geometry.revision;
         return changed || revisionChanged;
+    }
+
+    /** CPU recipe for the active frame's staged residency; callers must not mutate its arrays. */
+    getResidentPage(pageId: number): Readonly<MeshletGeometryPage> | null {
+        return (this.#pending ?? this.#committed).get(pageId)?.page.deref() ?? null;
+    }
+
+    recordVirtualShadowCull(
+        context: RenderPipelineContext,
+        resources: Readonly<VirtualShadowCasterPreparation>
+    ): void {
+        if (this.virtualShadows === null)
+            throw new Error('Meshlet virtual-shadow outputs are unavailable');
+        this.virtualShadows.record(context, resources);
+    }
+
+    configureVirtualShadowDraw(
+        context: RenderPipelineContext,
+        parameters: MutableGPUDrivenParameters,
+        physicalPageIndex: number
+    ): void {
+        if (this.virtualShadows === null)
+            throw new Error('Meshlet virtual-shadow outputs are unavailable');
+        this.virtualShadows.configureDraw(context, parameters, physicalPageIndex);
     }
 
     recordCull(context: RenderPipelineContext, input: Readonly<CullInputs>): void {

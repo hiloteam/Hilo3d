@@ -62,6 +62,21 @@ engine release and physical-device performance matrices remain separate, unrun g
 - Add offline meshoptimizer cooking and strict page validation, plus the optional asset addon's
   `GeometryPageManager` with coarse-page dependencies, shared leases, cancellation and independent
   CPU/network/decode budgets. CPU page readiness and renderer GPU residency remain distinct.
+- Compose meshlet buckets with DDGI and directional virtual shadows. Ray transport follows the
+  finest resident complete group pages under the global DDGI triangle budget; virtual-shadow pages
+  share a shadow-texel LOD and bounded per-page cluster output. Missing groups and output overflow
+  retain complete ordinary geometry, while missing virtual atlas pages retain stable CSM.
+- Correct virtual-shadow selected-object strides to use configured object capacity and keep indirect
+  `firstInstance` zero when explicit visible offsets already address per-page output. Preserve page,
+  probe and shadow history commits, discard retries and device recovery in the combined path.
+- Correct virtual-shadow physical atlas row placement and sampling with top-left page coordinates,
+  an explicit atlas-to-attachment conversion and one `hiloRenderTargetUV()` boundary. Preserve
+  authored directional bias by converting from selected stable-CSM depth units to virtual projection
+  depth units with both depth rows in the same view basis, including scaled/sheared cameras. Add
+  asymmetric WebGL2/WebGPU atlas and actual receiver-shadow regressions.
+- Distinguish constructor-owned shader replacement fragments from complete sources in the modernity
+  guard. Continue checking readonly storage, shader dialects, explicit version edits and statically
+  assembled results so meshlet shader composition passes without a path exemption.
 
 - Schedule dirty shadow slices by last successful complete update, preserving fairness across page
   deferral and failed submissions, with bounded overdue progress above saturated soft budgets.

@@ -62,9 +62,10 @@ CPU pages. GPU resource retirement remains the renderer's responsibility.
 
 The renderer path is WebGPU-only and retains the existing Clustered pipeline's single
 PerspectiveCamera view contract. Version 1 accepts the compact opaque/alpha-masked PBR subset with
-UV0 textures. UV1, tangent normal mapping, whole-object `bucket.lods`, `virtualShadows` and
-`dynamicGlobalIllumination` cannot be combined with meshlet buckets and fail explicitly. Standard
-shadow-atlas rendering, depth, PBR, material attributes and TAA use shared semantic shader code.
+UV0 textures. UV1, tangent normal mapping and whole-object `bucket.lods` cannot be combined with
+meshlet buckets and fail explicitly. Standard shadow-atlas rendering, directional virtual shadows,
+DDGI, depth, PBR, material attributes and TAA use shared semantic shader code. The existing virtual
+shadow and DDGI content restrictions still apply to the rest of the scene.
 
 Register the asset as `GPUSceneBucket.meshlets` alongside the ordinary `geometry` and `material`.
 The ordinary geometry supplies scene identity, bounds and a complete fallback. Before every group
@@ -101,6 +102,67 @@ and device recovery rebuild renderer-owned data from retained backend-neutral CP
 allocation, occupied page bytes, pending uploads and visible cluster counters are distinct from the
 manager's CPU/network accounting; none is a hardware memory or performance measurement.
 
+## DDGI and virtual-shadow composition
+
+DDGI uses the finest **resident** complete page from each group, independently of the main camera's
+selected raster LOD or visible-cluster overflow. Pages admitted by the current frame participate in
+the same candidate ray-scene update; CPU availability alone does not make a page a ray input. If any
+group has no resident page, the entire ordinary fallback supplies that object's ray geometry.
+Refinement and eviction therefore change transport geometry instead of leaving GI permanently on the
+coarse fallback. Offscreen objects still contribute under the existing hierarchy, layer and
+`contributeToGlobalIllumination` rules.
+
+A cached internal geometry snapshot preserves positions, normals and logical UV0 without changing
+`Mesh.geometry`. Page identities determine cache reuse; source pages are weakly referenced. After a
+successful ray-scene update, buckets with no remaining GI participants release their snapshots; a
+bucket still shared by any contributing instance retains its cache. The snapshot owns 96 numeric
+bytes per selected triangle, separately from the geometry arena, the asset manager's CPU accounting
+and DDGI's packed triangle/BVH/material storage. The existing global DDGI `maxTriangles` limit
+counts every contributing instance and is checked before allocating a new meshlet snapshot. A
+refined working set that exceeds it fails clearly. Material textures, masks, transforms, ray-scene
+dirty ranges, probe updates and optional SSGI composition retain the
+[DDGI contract](./DYNAMIC_GLOBAL_ILLUMINATION.md).
+
+Directional virtual shadows select complete resident group LODs by projected error in shadow texels.
+Selection uses the light's clipmap projection and virtual resolution, so all physical pages of one
+clipmap choose the same group LOD, including page borders. It does not reuse the main-view
+visible-cluster list. Each physical page has a bounded independent cluster output; reserving a whole
+object's output fails atomically to its ordinary geometry when capacity is exhausted or a complete
+group set is unavailable. Missing or deferred virtual-shadow atlas pages separately keep the
+existing stable-CSM fallback.
+
+Enabling virtual shadows adds `12 * maxVisibleMeshlets * physicalPageCount` bytes of visibility
+storage per meshlet bucket, plus 24-byte indirect and 256-byte aligned-offset records per physical
+page. These fixed allocations are included in meshlet `allocatedBytes` and device-limit planning;
+they are additional to `maxResidentBytes`, which bounds only the geometry arena. Indirect
+`firstInstance` remains zero because the shader consumes an explicit per-page visible offset. The
+shared selected-object table uses the configured object capacity as its physical-page stride.
+
+Physical atlas rows and local page UVs use top-left coordinates. The shared virtual-atlas helper
+places that coordinate directly into the page's raster rectangle. Sampling then explicitly converts
+the top-left atlas coordinate to this path's projected-attachment coordinate with `(u, 1 - v)` and
+crosses `hiloRenderTargetUV()` exactly once. This documented local attachment-coordinate exception
+does not change the engine's top-left managed-texture convention. The
+[asymmetric atlas fixture](../test/spec/renderer/VirtualShadowAtlasSampling.test.ts) exercises the
+production helper on WebGL2 and WebGPU, checking nonadjacent physical rows and different local V
+positions rather than a vertically symmetric image.
+
+Authored directional `minBias`/`maxBias` retain the selected stable CSM cascade's depth units.
+Before sampling a virtual clipmap, both depth rows are expressed in the same view-space basis: the
+virtual world-space Z row is multiplied by the existing `mat3(inverseView)`, then its norm is
+divided by the selected CSM view-to-shadow Z-row norm. This also preserves the conversion for scaled
+or sheared cameras without adding a matrix inverse. The standard/reversed-depth sign is then applied
+as usual. This conversion prevents a different clipmap depth span from magnifying the authored bias
+and erasing shallow receiver shadows; it does not retune the light's public bias values. The same
+fixture compares actual stable/virtual receiver shadows with authored bias.
+
+Geometry-page mappings, DDGI upload revisions/probe histories and virtual-shadow page tables retain
+their own submission transactions in the same Render Graph. A rejected frame does not commit
+candidate GPU mappings or histories; CPU snapshots may be prepared early and their uploads are
+retried against the appropriate committed revisions. Device recovery restores CPU-backed geometry,
+invalidates probe/virtual-page histories and resumes bounded updates. Renderer destruction releases
+the extra CPU snapshots and virtual-shadow buffers.
+
 ## Acceptance and remaining scope
 
 [STRATA / 风蚀石庭](./STRATA_SHOWCASE.md) is the maintained visual and streaming showcase. It uses
@@ -120,7 +182,8 @@ offscreen pixels, coarse-to-fine updates, per-frame upload limits, transformed g
 device recovery and teardown. It is also included in the software and native WebGPU commands.
 Format, cooker, CPU ownership, streaming and renderer transaction regressions supplement that path.
 
-Validation on 2026-10-28, development branch `codex/meshlet-geometry-streaming` based on dev
+Historical validation of the initial slice on 2026-10-28, before DDGI/virtual-shadow composition, on
+development branch `codex/meshlet-geometry-streaming` based on dev
 `df0d45528eb032957b420f19dc2067cfa9199355`, using npm 10.9.4:
 
 | Gate                                                                                      | Executed result                                                                                                                                                                          |
@@ -145,3 +208,12 @@ matrix were not rerun. Physical-device CPU/GPU time, memory pressure, low-bandwi
 workloads and cross-commit bandwidth/culling comparisons require separately reviewed evidence. Wider
 vertex formats, deformation, compressed/range-loaded pages and a hierarchical cluster DAG remain
 future extensions in [the roadmap](./ROADMAP.md).
+
+Follow-up validation on 2026-10-29 covered the expanded M0/DDGI/directional-VSM combination: all six
+shared WebGL2 CI groups passed (123/123), the complete software WebGPU command passed (38/38), and
+focused native acceptance passed (4/4), without retries or skips in those runs. The
+[STRATA validation record](./STRATA_SHOWCASE.md#validation) owns the exact source fingerprints,
+native/tooling boundary and report locations. Focused source fixtures include
+`MeshletRayGeometry.test.ts`, `MeshletGlobalIllumination.test.ts` and
+`MeshletVirtualShadows.test.ts`. These functional results do not complete the full `validate`
+aggregate, coverage, the complete native-device matrix or physical-performance enrollment.

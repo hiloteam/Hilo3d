@@ -2,6 +2,10 @@ import { expect, test, type Page, type Request, type TestInfo } from '@playwrigh
 import { readFile } from 'node:fs/promises';
 import { PNG } from 'pngjs';
 import { snapshotMeshletAssetManifest } from '../../src/geometry/meshlet/MeshletAsset';
+import type {
+    DynamicGlobalIlluminationDiagnostics,
+    VirtualShadowMapDiagnostics
+} from '../../src/Hilo3d';
 import type { TestFrameControl } from '../../examples/shared/test-frame-control';
 import { installPageFailureMonitor } from './page-failure-monitor';
 import { captureStableFrame } from './stable-capture';
@@ -23,6 +27,9 @@ interface StrataDiagnostics {
     readonly view: 'overview' | 'passage' | 'surface';
     readonly detail: 'adaptive' | 'coarse';
     readonly streaming: boolean;
+    readonly indirectLight: boolean;
+    readonly dynamicGlobalIllumination: Readonly<DynamicGlobalIlluminationDiagnostics> | null;
+    readonly virtualShadows: Readonly<VirtualShadowMapDiagnostics> | null;
     readonly sourceTriangles: number;
     readonly coarseTriangles: number;
     readonly coarsePageIds: readonly string[];
@@ -39,6 +46,7 @@ interface StrataDiagnostics {
 interface StrataAPI {
     diagnostics(): StrataDiagnostics;
     setView(view: StrataDiagnostics['view']): void;
+    setIndirectLight(enabled: boolean): void;
     dispose(): void;
 }
 
@@ -224,8 +232,27 @@ function changedPixelRatio(first: Buffer, second: Buffer): number {
     return changed / (left.width * left.height);
 }
 
-async function captureScene(page: Page, testInfo: TestInfo, name: string): Promise<Buffer> {
-    const capture = await captureStableFrame(page, 'webgpu', { style: SCENE_STYLE, frames: 2 });
+function meanRGBDifference(first: Buffer, second: Buffer): number {
+    const left = PNG.sync.read(first),
+        right = PNG.sync.read(second);
+    expect([left.width, left.height]).toEqual([right.width, right.height]);
+    let difference = 0;
+    for (let offset = 0; offset < left.data.length; offset += 4) {
+        for (let channel = 0; channel < 3; channel++)
+            difference += Math.abs(
+                (left.data[offset + channel] ?? 0) - (right.data[offset + channel] ?? 0)
+            );
+    }
+    return difference / (left.width * left.height * 3);
+}
+
+async function captureScene(
+    page: Page,
+    testInfo: TestInfo,
+    name: string,
+    frames = 2
+): Promise<Buffer> {
+    const capture = await captureStableFrame(page, 'webgpu', { style: SCENE_STYLE, frames });
     const statistics = sceneStatistics(capture);
     expect(
         statistics.colors,
@@ -236,6 +263,34 @@ async function captureScene(page: Page, testInfo: TestInfo, name: string): Promi
     );
     await testInfo.attach(name, { body: capture, contentType: 'image/png' });
     return capture;
+}
+
+function assertLightingState(state: StrataDiagnostics): void {
+    expect(state.dynamicGlobalIllumination).not.toBeNull();
+    expect(state.dynamicGlobalIllumination?.sceneTriangleCount).toBeGreaterThan(0);
+    expect(state.dynamicGlobalIllumination?.tracedRayCount).toBeGreaterThan(0);
+    expect(state.virtualShadows).not.toBeNull();
+    expect(state.virtualShadows?.requestedPageCount).toBeGreaterThan(0);
+    expect(state.virtualShadows?.residentPageCount).toBeGreaterThan(0);
+}
+
+async function captureAlignedScene(page: Page, testInfo: TestInfo, name: string): Promise<Buffer> {
+    await page.evaluate(async () => {
+        const view = window as StrataWindow;
+        const control = view.__HILO3D_TEST_CAPTURE__,
+            api = view.__HILO3D_STRATA__;
+        if (!control || !api) throw new Error('STRATA phase-aligned capture unavailable');
+        await control.pause();
+        // Compare the same phase of the real eight-sample TAA sequence, without changing time
+        // or bypassing any render submission. Shared stable capture resumes the ticker below.
+        const frames = (8 - (api.diagnostics().submittedFrames % 8)) % 8;
+        if (frames > 0) {
+            control.resume();
+            await control.waitForFrames(frames);
+            await control.pause();
+        }
+    });
+    return captureScene(page, testInfo, name, 0);
 }
 
 async function waitForRequestedPages(
@@ -268,7 +323,9 @@ async function waitForRequestedPages(
         )
         .toBe(true);
     // The showcase samples submitted GPU counters every fifteen live frames.
-    return liveFrames(page, 18);
+    const state = await liveFrames(page, 18);
+    assertLightingState(state);
+    return state;
 }
 
 async function assertGPUHealth(page: Page): Promise<void> {
@@ -571,6 +628,82 @@ test('STRATA remains interactive across stable captures and page lifecycle @webg
         });
         await observeAfterTeardown(page);
         failures.assertEmpty('STRATA interactive camera and retained/final page lifecycle');
+    } finally {
+        requests.dispose();
+        await failures.dispose();
+    }
+});
+
+test('STRATA shows real indirect-light contribution with meshlet residency and virtual shadows @webgpu', async ({
+    page
+}, testInfo) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 960, height: 640 });
+    const failures = await installPageFailureMonitor(page);
+    const requests = trackGeometryRequests(page);
+    try {
+        await openScene(page, testInfo);
+        await waitForRequestedPages(page, requests);
+        await page.locator('.controls').hover();
+        await page.locator('.telemetry > summary').click();
+        await expect(page.locator('#indirect-light')).toBeVisible();
+        await expect(page.locator('#indirect-light')).toBeChecked();
+        const enabled = await liveFrames(page, 32);
+        expect(enabled.indirectLight).toBe(true);
+        assertLightingState(enabled);
+        const first = await captureAlignedScene(page, testInfo, 'strata-indirect-baseline');
+        await liveFrames(page, 8);
+        const stable = await captureAlignedScene(page, testInfo, 'strata-indirect-enabled');
+        const baseline = meanRGBDifference(first, stable);
+        const requestCount = requests.started;
+
+        await page.locator('#indirect-light').uncheck();
+        const disabled = await liveFrames(page, 32);
+        expect(disabled.indirectLight).toBe(false);
+        assertLightingState(disabled);
+        expect(disabled.cameraPosition).toEqual(enabled.cameraPosition);
+        expect(disabled.requestedPageIds).toEqual(enabled.requestedPageIds);
+        expect(requests.started).toBe(requestCount);
+        const off = await captureAlignedScene(page, testInfo, 'strata-indirect-disabled');
+        const contribution = {
+            changedRatio: changedPixelRatio(stable, off),
+            meanRGB: meanRGBDifference(stable, off)
+        };
+        expect(contribution.changedRatio).toBeGreaterThan(0.005);
+        expect(contribution.meanRGB).toBeGreaterThan(0.15);
+        expect(contribution.meanRGB).toBeGreaterThan(baseline * 4);
+
+        await page.locator('#indirect-light').check();
+        const restored = await liveFrames(page, 32);
+        expect(restored.indirectLight).toBe(true);
+        expect(restored.submittedFrames).toBeGreaterThan(disabled.submittedFrames);
+        expect(restored.cameraPosition).toEqual(enabled.cameraPosition);
+        assertLightingState(restored);
+        const onAgain = await captureAlignedScene(page, testInfo, 'strata-indirect-restored');
+        const restoration = {
+            changedRatio: changedPixelRatio(off, onAgain),
+            meanRGB: meanRGBDifference(off, onAgain)
+        };
+        expect(restoration.changedRatio).toBeGreaterThan(0.005);
+        expect(restoration.meanRGB).toBeGreaterThan(0.15);
+        expect(restoration.meanRGB).toBeGreaterThan(baseline * 4);
+        await testInfo.attach('strata-indirect-light-evidence', {
+            body: JSON.stringify(
+                { enabled, disabled, restored, baseline, contribution, restoration },
+                null,
+                2
+            ),
+            contentType: 'application/json'
+        });
+        await liveFrames(page, 3);
+        await assertGPUHealth(page);
+        await page.evaluate(() => {
+            (window as StrataWindow).__HILO3D_STRATA__?.dispose();
+        });
+        await observeAfterTeardown(page);
+        failures.assertEmpty(
+            'STRATA indirect lighting, virtual shadows and post-teardown observation'
+        );
     } finally {
         requests.dispose();
         await failures.dispose();

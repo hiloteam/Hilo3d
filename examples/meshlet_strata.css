@@ -184,6 +184,17 @@ select {
     color: #806b58;
     font-size: 9px;
 }
+.lighting-switch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.lighting-switch input {
+    accent-color: #806344;
+}
 .telemetry dl {
     display: grid;
     gap: 6px 4px;

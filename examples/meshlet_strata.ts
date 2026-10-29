@@ -52,6 +52,9 @@ export interface StrataDiagnostics {
     readonly view: ViewName;
     readonly detail: DetailMode;
     readonly streaming: boolean;
+    readonly indirectLight: boolean;
+    readonly dynamicGlobalIllumination: Readonly<H.DynamicGlobalIlluminationDiagnostics> | null;
+    readonly virtualShadows: Readonly<H.VirtualShadowMapDiagnostics> | null;
     readonly sourceTriangles: number;
     readonly coarseTriangles: number;
     readonly coarsePageIds: readonly string[];
@@ -67,6 +70,7 @@ export interface StrataDiagnostics {
 export interface StrataAPI {
     diagnostics(): StrataDiagnostics;
     setView(view: ViewName): void;
+    setIndirectLight(enabled: boolean): void;
     dispose(): void;
 }
 declare global {
@@ -78,6 +82,8 @@ declare global {
 const query = new URLSearchParams(location.search);
 const testMode = query.get('test') === '1';
 const reduced = testMode && query.get('quality') !== 'production';
+const giEnabled = query.get('gi') !== '0';
+const virtualShadowsEnabled = query.get('virtualShadows') !== '0';
 const base = new URL('./models/Strata/', location.href);
 const events = new AbortController();
 const streamed: StreamedAsset[] = [];
@@ -98,10 +104,13 @@ let submittedFrames = 0;
 let view: ViewName = 'overview';
 let detail: DetailMode = 'adaptive';
 let streaming = true;
+let indirectLight = giEnabled;
 let coarseTriangles = 0;
 let demandDirty = true;
 let lastCamera = '';
 let gpu: Readonly<H.MeshletGeometryDiagnostics> | null = null;
+let gi: Readonly<H.DynamicGlobalIlluminationDiagnostics> | null = null;
+let shadowPages: Readonly<H.VirtualShadowMapDiagnostics> | null = null;
 let diagnosticsWork: Promise<void> | undefined;
 let cleanup: Promise<void> | undefined;
 let awaken: (() => void) | undefined;
@@ -232,6 +241,8 @@ async function loadTexture(path: string): Promise<H.Texture> {
     if (disposed) throw new DOMException('STRATA disposed', 'AbortError');
     const texture = new H.Texture({
         image,
+        width: image.width,
+        height: image.height,
         flipY: false,
         wrapS: H.constants.webgl.REPEAT,
         wrapT: H.constants.webgl.REPEAT,
@@ -276,6 +287,7 @@ function addSky(target: H.Stage): void {
         }),
         castShadows: false,
         receiveShadows: false,
+        contributeToGlobalIllumination: false,
         frustumTest: false
     }).addTo(target);
 }
@@ -301,6 +313,9 @@ function diagnostics(): StrataDiagnostics {
         view,
         detail,
         streaming,
+        indirectLight,
+        dynamicGlobalIllumination: gi,
+        virtualShadows: shadowPages,
         sourceTriangles: scene?.sourceTriangles ?? 0,
         coarseTriangles,
         coarsePageIds: streamed.flatMap(asset =>
@@ -318,6 +333,27 @@ function diagnostics(): StrataDiagnostics {
         cameraPosition:
             controls === undefined ? [] : [controls.camera.x, controls.camera.y, controls.camera.z]
     };
+}
+function setIndirectLight(enabled: boolean): void {
+    indirectLight = giEnabled && enabled;
+    if (giEnabled) factory?.setDynamicGlobalIlluminationIntensity(indirectLight ? 1 : 0);
+    element('indirect-light', HTMLInputElement).checked = indirectLight;
+    document.body.dataset['indirectLight'] = String(indirectLight);
+}
+
+/** The finite hero lighting study deliberately omits distant quarry courses and loose gravel. */
+function contributesToGI(description: InstanceDescription): boolean {
+    if (description.asset === 'gravel') return false;
+    if (description.asset === 'quarry')
+        return /^Quarry terrace -?1 [01] 0 \d+$/u.test(description.name);
+    if (description.asset === 'monolith')
+        return (
+            description.name === 'Carved standing stone 00' ||
+            description.name === 'Carved standing stone 01'
+        );
+    if (description.asset === 'boulder')
+        return description.name === 'Weathered stone 0' || description.name === 'Weathered stone 1';
+    return true;
 }
 function setView(name: ViewName): void {
     if (!['overview', 'passage', 'surface'].includes(name)) throw new Error('Unknown STRATA view');
@@ -426,6 +462,12 @@ function updateStatus(): void {
     element('resident', HTMLElement).textContent =
         `${((gpu?.residentBytes ?? 0) / 1048576).toFixed(1)} MB`;
     element('cpu', HTMLElement).textContent = `${(diagnostics().cpuBytes / 1048576).toFixed(1)} MB`;
+    element('gi-triangles', HTMLElement).textContent =
+        gi?.sceneTriangleCount.toLocaleString('en-US') ?? 'Off';
+    element('shadow-pages', HTMLElement).textContent =
+        shadowPages === null
+            ? 'Off'
+            : `${String(shadowPages.residentPageCount)} / ${String(shadowPages.physicalPageCapacity)}`;
 }
 function sampleDiagnostics(): void {
     if (!factory || diagnosticsWork || disposed || suspended) return;
@@ -434,6 +476,8 @@ function sampleDiagnostics(): void {
         .then(value => {
             if (!disposed) {
                 gpu = value.meshletGeometry;
+                gi = value.dynamicGlobalIllumination;
+                shadowPages = value.virtualShadows;
                 updateStatus();
             }
         })
@@ -494,6 +538,8 @@ function dispose(): void {
         controls = undefined;
         factory = undefined;
         gpu = null;
+        gi = null;
+        shadowPages = null;
         if (failures.length > 0)
             throw new AggregateError(failures, 'STRATA resource cleanup failed');
     })();
@@ -554,7 +600,7 @@ installPageLifecycle({
     },
     dispose
 });
-window.__HILO3D_STRATA__ = { diagnostics, setView, dispose };
+window.__HILO3D_STRATA__ = { diagnostics, setView, setIndirectLight, dispose };
 ticker.addTick({
     tick(delta: number): void {
         if (disposed || suspended) return;
@@ -629,7 +675,9 @@ async function initialize(): Promise<void> {
             {
                 autoUpdate: false,
                 budgets: {
-                    concurrentRequests: 4,
+                    // Fill the eight-page decode batch even when DDGI scene revisions make
+                    // rendering slower. Byte, CPU and per-update decode limits stay bounded.
+                    concurrentRequests: 8,
                     queuedPages: manifest.pages.length,
                     sourceBytes: 65536,
                     cpuBytes: 16 * 1048576,
@@ -665,6 +713,31 @@ async function initialize(): Promise<void> {
         const meshlets = streamed.find(asset => asset.name === description.name)?.meshlets;
         return { geometry, material, ...(meshlets ? { meshlets } : {}) };
     });
+    const lightingTriangleBudget = 262_144;
+    const lightingInstances = scene.instances.filter(contributesToGI);
+    const lightingTriangleCount = lightingInstances.reduce((sum, instance) => {
+        const asset = scene?.assets.find(candidate => candidate.name === instance.asset);
+        if (!asset) throw new Error('STRATA lighting asset is missing');
+        return sum + asset.triangles;
+    }, 0);
+    if (
+        giEnabled &&
+        (lightingTriangleCount > lightingTriangleBudget || lightingInstances.length > 96)
+    )
+        throw new RangeError('STRATA authored GI contribution exceeds its fixed scene budget');
+    const lightingTexturePaths = new Set(
+        lightingInstances.flatMap(instance => {
+            const asset = scene?.assets.find(candidate => candidate.name === instance.asset);
+            const path = asset ? scene?.materials[asset.material]?.texture : null;
+            return path ? [path] : [];
+        })
+    );
+    const lightingTexels = [...lightingTexturePaths].reduce((sum, path) => {
+        const texture = textures.get(path);
+        if (!texture || texture.width < 1 || texture.height < 1)
+            throw new Error('STRATA lighting texture dimensions are unavailable');
+        return sum + texture.width * texture.height;
+    }, 0);
     factory = new H.ClusteredForwardPlusPipelineFactory({
         buckets,
         maxObjects: 512,
@@ -673,6 +746,40 @@ async function initialize(): Promise<void> {
         maxLightsPerCluster: 8,
         maxViewportWidth: 1920,
         maxViewportHeight: 1080,
+        dynamicGlobalIllumination: giEnabled
+            ? {
+                  origin: new H.Vector3(-11, 0.15, -12),
+                  spacing: new H.Vector3(
+                      reduced ? 5.25 : 3.5,
+                      reduced ? 4 : 2,
+                      reduced ? 5.25 : 3.5
+                  ),
+                  probeCounts: reduced ? [5, 3, 5] : [7, 5, 7],
+                  raysPerProbe: 64,
+                  maxProbesPerFrame: reduced ? 4 : 16,
+                  maxTriangles: lightingTriangleBudget,
+                  maxMeshes: 96,
+                  maxTextureTexels: Math.max(1, lightingTexels),
+                  maxLights: 8,
+                  hysteresis: 0.75,
+                  intensity: 1,
+                  bounceStrength: 0.45,
+                  maxRayDistance: 24,
+                  environment: new H.Color(0.32, 0.36, 0.4),
+                  unsupported: 'error',
+                  texturePolicy: 'sample'
+              }
+            : false,
+        virtualShadows: virtualShadowsEnabled
+            ? {
+                  virtualResolution: 1024,
+                  pageSize: 128,
+                  physicalPageCount: reduced ? 8 : 32,
+                  maxPageUpdatesPerFrame: reduced ? 4 : 8,
+                  directionalClipmapLevels: 2,
+                  firstDirectionalClipmapExtent: 24
+              }
+            : false,
         temporalAA: { sharpness: 0.12 },
         groundTruthAmbientOcclusion: {
             quality: 'low',
@@ -739,7 +846,8 @@ async function initialize(): Promise<void> {
             scaleZ: description.scale[2],
             rotationY: description.rotationY,
             castShadows: description.name !== 'Gallery floor',
-            receiveShadows: true
+            receiveShadows: true,
+            contributeToGlobalIllumination: contributesToGI(description)
         }).addTo(stage);
         coarseTriangles += (geometry.indices?.data.length ?? 0) / 3;
     }
@@ -788,6 +896,16 @@ async function initialize(): Promise<void> {
         demandDirty = true;
     };
     setView(view);
+    const indirectControl = element('indirect-light', HTMLInputElement);
+    indirectControl.disabled = !giEnabled;
+    setIndirectLight(giEnabled);
+    indirectControl.addEventListener(
+        'change',
+        () => {
+            setIndirectLight(indirectControl.checked);
+        },
+        { signal: events.signal }
+    );
     element('detail-mode', HTMLSelectElement).addEventListener(
         'change',
         event => {

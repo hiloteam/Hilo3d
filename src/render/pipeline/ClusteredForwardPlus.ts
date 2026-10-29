@@ -6,6 +6,7 @@ import MeshletGeometry from '../../geometry/meshlet/MeshletGeometry';
 import { MeshletRuntime, type MeshletGeometryDiagnostics } from './internal/MeshletRuntime';
 export type { MeshletGeometryDiagnostics };
 import { meshletRasterShader } from './internal/meshletRasterShader';
+import { meshletVirtualShadowBufferLengths } from './internal/MeshletVirtualShadows';
 import {
     SubsurfaceScatteringController,
     SUBSURFACE_SCATTERING_REQUIREMENTS,
@@ -23,7 +24,12 @@ import {
     type DynamicGlobalIlluminationSettings,
     type DynamicGlobalIlluminationDiagnostics
 } from '../gi/DynamicGlobalIllumination';
-import { RayTracingScene, RAY_TRIANGLE_FLOATS } from '../gi/RayTracingScene';
+import {
+    RayTracingScene,
+    RAY_TRIANGLE_FLOATS,
+    type RayTracingGeometryResolver
+} from '../gi/RayTracingScene';
+import { MeshletRayGeometry } from '../gi/scene/MeshletRayGeometry';
 import { RAY_MATERIAL_BYTES } from '../gi/scene/SceneMaterials';
 import type Camera from '../../camera/Camera';
 import {
@@ -156,6 +162,7 @@ import {
     virtualShadowClearIndirectOffset,
     virtualShadowIndirectOffset,
     virtualShadowPhysicalPageRange,
+    type VirtualShadowCasterPreparation,
     type VirtualShadowFrameResources,
     type VirtualShadowMapDiagnostics,
     type VirtualShadowMapOptions,
@@ -301,7 +308,12 @@ export interface GPUSceneLOD {
 
 /** One material/geometry family consumed by the GPU Scene fixed-bucket indirect path. */
 export interface GPUSceneBucket {
-    /** Optional streamed rigid clusters, sharing this bucket material and ordinary geometry fallback. */
+    /**
+     * Optional streamed rigid clusters sharing this material and a complete ordinary fallback.
+     * DDGI traces the finest staged resident page of every group, independently of camera LOD.
+     * Directional virtual shadows select a coherent shadow-texel LOD within each clipmap and
+     * reserve bounded per-page cluster outputs; incomplete or overflowing objects keep fallback.
+     */
     readonly meshlets?: MeshletGeometry;
     /** Indexed scene identity and complete fallback; use a small coarse mesh when streaming meshlets. */
     readonly geometry: Geometry;
@@ -750,6 +762,14 @@ function bufferRequirementPlan(
                 : [
                       bucket.meshlets.options.maxResidentBytes,
                       bucket.meshlets.options.maxVisibleMeshlets * 12,
+                      ...(virtualShadows === null
+                          ? []
+                          : Object.values(
+                                meshletVirtualShadowBufferLengths(
+                                    bucket.meshlets.options.maxVisibleMeshlets,
+                                    virtualShadows.physicalPageCount
+                                )
+                            )),
                       ...(options.temporalAA === null
                           ? []
                           : [options.maxObjects * bucket.meshlets.manifest.groups.length * 4])
@@ -913,10 +933,6 @@ function normalizeOptions(options: unknown): Readonly<NormalizedOptions> {
                 );
             if ((bucketInput.lods?.length ?? 0) !== 0)
                 throw new TypeError('Meshlet buckets cannot also define whole-object LODs');
-            if (input.virtualShadows || input.dynamicGlobalIllumination)
-                throw new TypeError(
-                    'Meshlet version 1 does not support virtual shadows or dynamic GI'
-                );
         }
         const rawLODs: unknown = bucketInput.lods ?? [];
         if (!Array.isArray(rawLODs)) {
@@ -1363,6 +1379,22 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
     readonly #visibleBucketCapacity: number;
     readonly #physicalBuckets: readonly PhysicalBucket[];
     readonly #meshlets: MeshletRuntime[] = [];
+    readonly #meshletRayGeometry = new Map<number, MeshletRayGeometry>();
+    readonly #usedMeshletRayGeometry = new Set<MeshletRayGeometry>();
+    readonly #recordAdditionalVirtualCasters = (
+        context: RenderPipelineContext,
+        resources: Readonly<VirtualShadowCasterPreparation>
+    ): void => {
+        for (const meshlets of this.#meshlets) meshlets.recordVirtualShadowCull(context, resources);
+    };
+    readonly #resolveRayGeometry: RayTracingGeometryResolver = (mesh, remainingTriangles) => {
+        const record = this.#objectByMesh.get(mesh);
+        if (record?.seenFrame !== this.#frameSerial || mesh.geometry === null) return null;
+        const geometry = this.#meshletRayGeometry.get(record.logicalBucket);
+        if (geometry === undefined) return null;
+        this.#usedMeshletRayGeometry.add(geometry);
+        return geometry.resolve(mesh.geometry, remainingTriangles);
+    };
     #meshletGeometryChanged = false;
     readonly #meshletShadowGeometry = new Map<Mesh, Readonly<ShadowCasterGeometryOverride>>();
     readonly #logicalBounds: readonly LogicalBucketBounds[];
@@ -2140,7 +2172,17 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         }
         this.#ddgiProbeData = null;
         if (this.#dynamicGlobalIllumination !== null && this.#rayTracingScene !== null) {
-            const scene = this.#rayTracingScene.update(context.scene, context.camera.visibility);
+            this.#usedMeshletRayGeometry.clear();
+            const scene = this.#rayTracingScene.update(
+                context.scene,
+                context.camera.visibility,
+                this.#resolveRayGeometry
+            );
+            // CPU extraction caches belong only to current GI participants. A successful scene
+            // update releases retired/filtered buckets while retaining shared-instance snapshots.
+            // Failed extraction keeps the previous cache set available for the existing retry path.
+            for (const geometry of this.#meshletRayGeometry.values())
+                if (!this.#usedMeshletRayGeometry.has(geometry)) geometry.clear();
             this.#ddgiProbeData = this.#dynamicGlobalIllumination.record(context, {
                 scene,
                 lights: this.#collectedLights
@@ -2289,7 +2331,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 shadows: shadowResources,
                 activeObjectHighWater: this.#activeObjectHighWater,
                 previousViewMatrix: this.#committedViewMatrix,
-                cameraHistoryValid: frame.historyValid
+                cameraHistoryValid: frame.historyValid,
+                recordAdditionalCasters: this.#recordAdditionalVirtualCasters
             });
             this.recordVirtualShadowPages(context, virtualShadowResources, objects, materials);
         }
@@ -3006,6 +3049,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         if (this.#destroyed) return;
         this.#destroyed = true;
         this.#meshletShadowGeometry.clear();
+        for (const geometry of this.#meshletRayGeometry.values()) geometry.clear();
+        this.#meshletRayGeometry.clear();
+        this.#usedMeshletRayGeometry.clear();
         this.#recordedGPUSceneParticipants.clear();
         this.#pendingMaterialVariants.clear();
         this.#pendingRejectedMaterialVariants.clear();
@@ -3289,9 +3335,12 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     this.#options.maxObjects,
                     this.#options.hiZLevelCount,
                     this.#options.temporalAA !== null,
-                    logical.cullMode === 'back' && logical.frontFace === 'ccw'
+                    logical.cullMode === 'back' && logical.frontFace === 'ccw',
+                    this.#options.virtualShadows
                 );
                 this.#meshlets.push(meshlet);
+                if (this.#options.dynamicGlobalIllumination !== null)
+                    this.#meshletRayGeometry.set(logicalIndex, new MeshletRayGeometry(meshlet));
                 const physicalIndex = result.length;
                 const bucket: PhysicalBucket = {
                     ...fallback,
@@ -3322,6 +3371,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                   });
         bucket.depthPass = wrap(bucket.depthPass);
         bucket.shadowPass = wrap(bucket.shadowPass);
+        if (bucket.virtualShadowPass !== null)
+            bucket.virtualShadowPass = wrap(bucket.virtualShadowPass);
         bucket.colorPass = wrap(bucket.colorPass);
         if (bucket.materialAttributesPass !== null)
             bucket.materialAttributesPass = wrap(bucket.materialAttributesPass);
@@ -4746,7 +4797,9 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 const coverage = coverageTextures(variant);
                 const parameters = context.acquirePassParameters(this.#virtualShadowDrawPool);
                 parameters.configure(virtualShadowPass.vertexLayouts.length, coverage.length);
-                parameters.configureStorageBufferCount(variant.coverageMode === 'mask' ? 6 : 5);
+                parameters.configureStorageBufferCount(
+                    (variant.coverageMode === 'mask' ? 6 : 5) + (bucket.meshlet === null ? 0 : 1)
+                );
                 parameters.setBuffer(0, resources.clipmapData);
                 parameters.setBufferRange(
                     1,
@@ -4808,6 +4861,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                     this.#physicalBuckets.length
                 );
                 parameters.depthStencilAttachment = depthAttachment;
+                bucket.meshlet?.configureVirtualShadowDraw(context, parameters, page);
                 batch.add(virtualShadowPass, parameters);
             }
         }
@@ -5597,24 +5651,29 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 parameters.colorAttachments[1] = albedoAttachment;
                 let surfacePass = this.#giSurfacePasses.get(bucket.colorPass);
                 if (surfacePass === undefined) {
+                    const surfaceShader = gpuScenePBRShader(
+                        variant,
+                        false,
+                        false,
+                        this.#groundTruthAmbientOcclusion !== null,
+                        resources.cloudShadow !== null,
+                        bucket.colorShadowed,
+                        bucket.colorVirtualShadowed ? this.#options.virtualShadows : null,
+                        true,
+                        true
+                    );
                     surfacePass = new GPUDrivenRenderPass({
                         name: `DDGI diffuse surface bucket ${String(index)}`,
-                        shader: gpuScenePBRShader(
-                            variant,
-                            false,
-                            false,
-                            this.#groundTruthAmbientOcclusion !== null,
-                            resources.cloudShadow !== null,
-                            bucket.colorShadowed,
-                            bucket.colorVirtualShadowed ? this.#options.virtualShadows : null,
-                            true,
-                            true
-                        ),
+                        shader:
+                            bucket.meshlet === null
+                                ? surfaceShader
+                                : meshletRasterShader(surfaceShader),
                         pipelineState: {
                             ...requireBucketPassState(logical.material, 'forward'),
                             depthWrite: false
                         },
-                        vertexLayouts: gpuSceneVertexLayouts(variant),
+                        vertexLayouts:
+                            bucket.meshlet === null ? gpuSceneVertexLayouts(variant) : [],
                         indexFormat: bucket.indexFormat
                     });
                     this.#giSurfacePasses.set(bucket.colorPass, surfacePass);
@@ -6228,9 +6287,9 @@ export class ClusteredForwardPlusPipelineFactory implements RenderPipelineFactor
                 maxStorageBuffersPerShaderStage: this.#options.buckets.some(
                     bucket => bucket.meshlets !== null
                 )
-                    ? this.#options.temporalAA === null
-                        ? 9
-                        : 10
+                    ? this.#options.temporalAA !== null || dynamicGlobalIllumination
+                        ? 10
+                        : 9
                     : dynamicGlobalIllumination
                       ? 9
                       : 8,

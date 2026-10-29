@@ -53,6 +53,12 @@ export interface RayTracingSceneOptions {
     readonly maxTextureTexels?: number;
 }
 
+/** Internal camera-independent geometry replacement, evaluated within the remaining scene budget. */
+export type RayTracingGeometryResolver = (
+    mesh: Mesh,
+    remainingTriangles: number
+) => Geometry | null;
+
 export interface RayTracingSceneDiagnostics {
     readonly meshCount: number;
     readonly triangleCount: number;
@@ -329,7 +335,11 @@ export class RayTracingScene {
      * Exact matrix values are compared because Node.worldMatrixVersion advances every frame.
      * An unchanged scene returns the same snapshot and performs no per-triangle work/allocation.
      */
-    update(root: Node, layerMask = 0xffffffff): RayTracingSceneSnapshot {
+    update(
+        root: Node,
+        layerMask = 0xffffffff,
+        resolveGeometry?: RayTracingGeometryResolver
+    ): RayTracingSceneSnapshot {
         if (!Number.isInteger(layerMask) || layerMask < -2147483648 || layerMask > 0xffffffff)
             throw new RangeError('DDGI scene layerMask must be a 32-bit mask');
         this.stagedRecords.length = 0;
@@ -372,12 +382,18 @@ export class RayTracingScene {
                 excludedMeshCount++;
                 return Node.TRAVERSE_STOP_NONE;
             }
-            const geometry = node.geometry;
-            if (!geometry || !(material instanceof PBRMaterial))
-                throw new TypeError('DDGI scene changed during traversal');
             const objectIndex = this.stagedRecords.length;
             if (objectIndex >= this.maxMeshes)
                 throw new RangeError('DDGI scene mesh budget exceeded');
+            const geometry =
+                resolveGeometry?.(node, this.maxTriangles - triangleCount) ?? node.geometry;
+            if (!geometry || !(material instanceof PBRMaterial))
+                throw new TypeError('DDGI scene changed during traversal');
+            if (
+                geometry !== node.geometry &&
+                (node.isSkinnedMesh || node.geometry?.isMorphGeometry)
+            )
+                throw new TypeError('DDGI geometry replacement requires rigid source meshes');
             const normalSlot =
                 this.texturePolicy === 'sample' ? material.getTextureSlot('normal') : null;
             const tangentMask = normalSlot ? 1 << normalSlot.uvSet : 0;

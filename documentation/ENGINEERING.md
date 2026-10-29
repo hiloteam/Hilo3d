@@ -624,9 +624,11 @@ HTML 后端适用矩阵、双后端交互、WebGPU 深度运行时、双后端�
 extensions，以及 block 外的 non-sampler `uniform`。现代性门禁只允许与 `new ComputeShader(...)`
 结构化关联并由 compiler/Naga 验证的 Direct WGSL `@compute`；`@vertex`/`@fragment` graphics
 WGSL、普通 Shader 中的 GLSL ES 3.10 和未受控 raw source 继续禁止。`StorageGraphicsShader`
-是唯一 GLSL ES 3.10 readonly-storage 入口。扫描范围同时覆盖生产 `.vert`/`.frag`/`.glsl`/`.wgsl`
-源文件，不允许通过非 TypeScript 扩展绕过。运行时门禁会再次在 program link、Naga
-translation 或 WebGPU pipeline creation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga
+是唯一 GLSL ES 3.10 readonly-storage 入口。静态扫描区分完整源码与构造器可追溯的
+`replace()`/`replaceAll()`
+拼接片段：完整源码保留版本声明要求，片段仍检查 readonly/std430、WGSL 和显式版本；可求值的拼接结果再次完整检查，移除或降级版本声明也会失败。运行时仍验证最终组装源码，不增加路径豁免。扫描范围同时覆盖生产
+`.vert`/`.frag`/`.glsl`/`.wgsl` 源文件，不允许通过非 TypeScript 扩展绕过。运行时门禁会再次在 program
+link、Naga translation 或 WebGPU pipeline creation 时拒绝漏网接口，静态规则、WebGL 2 link、Naga
 corpus 与真实 WebGPU pipeline 互为补充。
 
 ## npm 发布生命周期
