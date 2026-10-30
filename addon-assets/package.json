@@ -1,7 +1,7 @@
 {
   "name": "@hilo/addon-assets",
   "version": "2.0.0-alpha.9",
-  "description": "Optional bounded KTX2/Basis texture streaming for Hilo3D.",
+  "description": "Optional bounded texture and meshlet geometry-page streaming for Hilo3D.",
   "type": "module",
   "sideEffects": false,
   "types": "./dist/index.d.ts",

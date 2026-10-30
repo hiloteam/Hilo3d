@@ -36,9 +36,10 @@ const diagnostics = await pipeline.readDiagnostics();
 
 An absent or false option creates no ray scene, probe buffer, compute pass, or hybrid surface pass.
 The static creation requirements include exact buffer sizes, dispatch dimensions, nine storage
-bindings for the combined GPU Scene raster ABI, and the `r32float` generation-history marker.
-Explicit WebGL2 selection fails before pipeline creation. Settings are validated and snapshotted;
-invalid sizes, non-finite numbers and scene/light budget overflow fail clearly.
+bindings for ordinary GPU Scene raster (ten with meshlet vertex pulling), and the `r32float`
+generation-history marker. Explicit WebGL2 selection fails before pipeline creation. Settings are
+validated and snapshotted; invalid sizes, non-finite numbers and scene/light budget overflow fail
+clearly.
 
 ## Scene and material contract
 
@@ -164,6 +165,12 @@ materials and the atlas, plus the selected probe histories. A single 1024×1024 
 1,048,576 texels; sharing a texture between slots/meshes consumes its pixels only once. The caps are
 not resident texture-streaming targets, and no automatic transport downsampling is performed.
 
+Meshlet buckets add an independent CPU geometry snapshot: 96 numeric bytes per selected triangle,
+excluding JavaScript overhead, in addition to the packed DDGI records above. It is owned by the
+renderer and does not count toward the asset manager's CPU page budget or the meshlet GPU arena. The
+global `maxTriangles` budget is checked before snapshot allocation and includes repeated mesh
+instances; source-page sharing does not make their world-space ray triangles free.
+
 ## Probe transport and visibility
 
 Each probe stores an 8×8 octahedral irradiance field and an 8×8 directional first/second distance
@@ -199,6 +206,16 @@ ordinary clustered lane cannot share those pass bindings. An unregistered PBR re
 combination fails clearly. A direct DDGI receiver also fails when its material variant budget is
 exhausted, rather than losing illumination through fallback.
 
+`GPUSceneBucket.meshlets` can receive and contribute DDGI, including alongside directional virtual
+shadows and the SSGI hybrid. Transport uses a camera-independent lighting LOD: the finest resident
+complete page of every group from the geometry arena staged for the current frame. This can differ
+from the main view's coarser raster LOD or its whole-object visibility-overflow fallback. A missing
+group switches the entire ray object to its ordinary fallback; partially loaded groups are not
+silently omitted. Refinement and eviction update the canonical ray scene, preserving material UV0,
+alpha masks, world transforms and offscreen participation without replacing public mesh geometry.
+Only supported rigid meshlet buckets use this replacement; other content retains the scene/material
+contract above. See [meshlet geometry](./MESHLET_GEOMETRY.md) for page and shadow budgets.
+
 When SSGI is enabled alongside DDGI, an additional two-target surface pass exports the exact
 outgoing probe diffuse baseline and receiver diffuse reflectance. It is separate from the normal
 material/reflection MRTs, so the combination does not expand the simultaneous attachment count. The
@@ -224,6 +241,14 @@ current-probe writes and raster reads explicitly. Cursor, scene upload revision,
 submitted diagnostics advance only after a successful submission. Discarded frames do not advance
 the sequence. CPU scene snapshots may be prepared early, but their GPU upload revision is committed
 separately and retried after failure.
+
+The internal meshlet geometry snapshot follows staged arena page identities. Unchanged page choices
+reuse its CPU geometry; changed choices invalidate the ray-scene revision and retain the same
+controller upload/dirty-range retry rules. It does not publish GPU residency or advance probes on
+its own. Discarded page admissions are therefore not treated as committed DDGI geometry. Successful
+ray-scene extraction releases snapshots for buckets with no contributing instances, including
+removal, hierarchy/layer filtering and explicit GI opt-out; another active instance preserves the
+shared cache.
 
 A persistent graph history marker tracks device-generation validity. Device loss recreates neutral
 resources, invalidates old probe history and resumes bounded convergence; CPU-shadow scene recipes

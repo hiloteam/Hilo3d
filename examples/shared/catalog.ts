@@ -114,6 +114,14 @@ interface ExampleDefinition {
 
 /** Reviewed metadata for every example; HTML discovery remains the page source of truth. */
 const EXAMPLE_DEFINITIONS: Readonly<Record<string, ExampleDefinition>> = {
+    'meshlet_strata.html': {
+        title: 'STRATA / 风蚀石庭',
+        description:
+            'Explore a Blender-authored sandstone ring garden with layered relief, adaptive meshlet LOD and bounded geometry streaming from distant silhouettes to close surface detail.',
+        category: 'rendering',
+        featured: true,
+        backend: 'webgpu'
+    },
     'asset_streaming.html': {
         title: 'Texture Residency Lab',
         description:

@@ -5,7 +5,8 @@ export {
     type ClusteredMaterialVariantManifest,
     type ClusteredMaterialVariantManifestEntry,
     type GPUSceneBucket,
-    type GPUSceneLOD
+    type GPUSceneLOD,
+    type MeshletGeometryDiagnostics
 } from './ClusteredForwardPlus';
 export type { VirtualShadowMapDiagnostics, VirtualShadowMapOptions } from './VirtualShadowMaps';
 export {

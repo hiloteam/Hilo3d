@@ -38,7 +38,9 @@
     "scripts/performance/**/*.ts",
     "scripts/documentation-content.ts",
     "editor/**/*.ts",
-    "editor/**/*.json"
+    "editor/**/*.json",
+    "scripts/geometry/meshlet-cooker.ts",
+    "test/fixtures/meshlets/near-flat-cone.json"
   ],
   "exclude": ["test/types/**", "editor/server/**"],
   "references": [

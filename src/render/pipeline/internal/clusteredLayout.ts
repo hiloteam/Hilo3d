@@ -83,6 +83,8 @@ export const OBJECT_CAST_SHADOW_FLAG = 64;
 
 export const OBJECT_SHADOW_DIRTY_FLAG = 128;
 
+export const OBJECT_MESHLET_FLAG = 256;
+
 export const LIGHT_COOKIE_FLAG = 1;
 
 export const LIGHT_IES_FLAG = 2;

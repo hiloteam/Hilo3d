@@ -70,8 +70,8 @@
     "test:ui:webgl2": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts test/ui/physics.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts test/ui/editor-components.spec.ts --project=chromium --grep @webgl2",
     "test:ui:webgl2:ci": "jiti scripts/run-ui-ci.ts",
     "test:ui:webgpu": "npm run test:ui:contract && playwright test test/ui/examples.spec.ts test/ui/animation.spec.ts test/ui/live2d.spec.ts test/ui/post-processing.spec.ts test/ui/scriptable-pipeline.spec.ts test/ui/runtime-parity.spec.ts test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts test/ui/physics.spec.ts test/ui/editor.spec.ts test/ui/editor-authoring.spec.ts test/ui/editor-components.spec.ts --project=chromium --grep @webgpu",
-    "test:webgpu": "playwright test test/ui/webgpu.spec.ts test/ui/compute-effects.spec.ts test/ui/compute-particles.spec.ts test/ui/compute-eclipse-shrine.spec.ts test/ui/compute-raytracing.spec.ts test/ui/screen-space-reflections.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/shadow-residency-sanctum.spec.ts test/ui/dynamic-global-illumination.spec.ts test/ui/rendering-production.spec.ts test/ui/rain-tea-garden.spec.ts --project=chromium",
-    "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/clustered-forward-plus-lumen.spec.ts test/ui/volumetric-lighting.spec.ts test/ui/stormfront-observatory.spec.ts test/ui/dynamic-global-illumination.spec.ts test/ui/rendering-production.spec.ts test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts test/ui/rain-tea-garden.spec.ts --project=chromium-native-webgpu",
+    "test:webgpu": "playwright test test/ui/webgpu.spec.ts test/ui/compute-effects.spec.ts test/ui/compute-particles.spec.ts test/ui/compute-eclipse-shrine.spec.ts test/ui/compute-raytracing.spec.ts test/ui/screen-space-reflections.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/shadow-residency-sanctum.spec.ts test/ui/dynamic-global-illumination.spec.ts test/ui/rendering-production.spec.ts test/ui/rain-tea-garden.spec.ts test/ui/meshlet-streaming.spec.ts test/ui/meshlet-strata.spec.ts --project=chromium",
+    "test:webgpu:native": "playwright test test/ui/native-webgpu.spec.ts test/ui/clustered-forward-plus-scale.spec.ts test/ui/clustered-forward-plus-lumen.spec.ts test/ui/volumetric-lighting.spec.ts test/ui/stormfront-observatory.spec.ts test/ui/dynamic-global-illumination.spec.ts test/ui/rendering-production.spec.ts test/ui/mat1-materials.spec.ts test/ui/mat1-soft-matter.spec.ts test/ui/rain-tea-garden.spec.ts test/ui/meshlet-streaming.spec.ts test/ui/meshlet-strata.spec.ts --project=chromium-native-webgpu",
     "test:gpu-scene-scale": "playwright test test/ui/clustered-forward-plus-scale.spec.ts --project=chromium",
     "test:visual": "playwright test test/ui/visual.spec.ts --project=chromium --grep @visual",
     "test:visual:webgl2": "playwright test test/ui/visual.spec.ts --project=chromium --grep \"through webgl2\"",
@@ -121,7 +121,11 @@
     "test:editor:pages": "playwright test --config playwright.editor-pages.config.ts",
     "player:build": "vite build --config vite.player.config.ts",
     "test:player": "playwright test --config playwright.player.config.ts",
-    "test:surface:render": "vitest run --config vitest.surface-render.config.ts"
+    "test:surface:render": "vitest run --config vitest.surface-render.config.ts",
+    "geometry:cook": "jiti scripts/geometry/cook-meshlet.ts",
+    "geometry:fixture": "jiti scripts/geometry/build-meshlet-fixture.ts",
+    "test:meshlets": "playwright test test/ui/meshlet-streaming.spec.ts --project=chromium",
+    "strata:build": "jiti scripts/geometry/build-strata.ts"
   },
   "repository": {
     "type": "git",
@@ -179,6 +183,7 @@
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
     "jiti": "^2.7.0",
+    "meshoptimizer": "1.3.0",
     "playwright": "^1.61.1",
     "pngjs": "^7.0.0",
     "prettier": "^3.9.5",

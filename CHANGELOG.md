@@ -29,6 +29,10 @@ engine release and physical-device performance matrices remain separate, unrun g
 
 ### Examples
 
+- Add STRATA, an original Blender-authored sandstone sculpture garden with streamed meshlet LODs,
+  camera-distance page demand, coarse/adaptive comparison, real residency counters and responsive
+  OrbitControls views. Preserve generated concepts, editable source and immutable page versions.
+
 - Remove duplicate Canvas-animation, standalone UBO, minimal PBR-loader and backend-name pages, plus
   two unused helpers. Keep BoomBox coverage in the glTF loader and std140 teaching in the custom
   shader; the reviewed catalog now contains 96 scenes and 180 page/backend combinations.
@@ -46,6 +50,33 @@ engine release and physical-device performance matrices remain separate, unrun g
   public OrbitControls, feature comparisons and explicit WebGPU capability handling.
 
 ### Rendering
+
+- Restrict shadow coverage textures to alpha-masked material variants; opaque textured GPU Scene
+  casters retain a position-only shadow ABI. Request meshlet pose-choice history capacity only when
+  temporal AA actually allocates it. Derive offline cone cutoffs from serialized Float32 triangle
+  planes to preserve conservative culling for nearly planar clusters.
+
+- Add opt-in `MeshletGeometry` buckets to Clustered Forward+: versioned rigid group LOD pages,
+  bounded geometry residency and uploads, GPU cluster selection/culling, fixed material-bucket
+  vertex pulling and complete-object fallback for missing pages or visibility overflow.
+- Add offline meshoptimizer cooking and strict page validation, plus the optional asset addon's
+  `GeometryPageManager` with coarse-page dependencies, shared leases, cancellation and independent
+  CPU/network/decode budgets. CPU page readiness and renderer GPU residency remain distinct.
+- Compose meshlet buckets with DDGI and directional virtual shadows. Ray transport follows the
+  finest resident complete group pages under the global DDGI triangle budget; virtual-shadow pages
+  share a shadow-texel LOD and bounded per-page cluster output. Missing groups and output overflow
+  retain complete ordinary geometry, while missing virtual atlas pages retain stable CSM.
+- Correct virtual-shadow selected-object strides to use configured object capacity and keep indirect
+  `firstInstance` zero when explicit visible offsets already address per-page output. Preserve page,
+  probe and shadow history commits, discard retries and device recovery in the combined path.
+- Correct virtual-shadow physical atlas row placement and sampling with top-left page coordinates,
+  an explicit atlas-to-attachment conversion and one `hiloRenderTargetUV()` boundary. Preserve
+  authored directional bias by converting from selected stable-CSM depth units to virtual projection
+  depth units with both depth rows in the same view basis, including scaled/sheared cameras. Add
+  asymmetric WebGL2/WebGPU atlas and actual receiver-shadow regressions.
+- Distinguish constructor-owned shader replacement fragments from complete sources in the modernity
+  guard. Continue checking readonly storage, shader dialects, explicit version edits and statically
+  assembled results so meshlet shader composition passes without a path exemption.
 
 - Schedule dirty shadow slices by last successful complete update, preserving fairness across page
   deferral and failed submissions, with bounded overdue progress above saturated soft budgets.

@@ -7,6 +7,7 @@ import {
     OBJECT_FRUSTUM_CULLING_FLAG,
     OBJECT_HIZ_STABLE_FLAG,
     OBJECT_CAST_SHADOW_FLAG,
+    OBJECT_MESHLET_FLAG,
     BUCKET_OFFSET_STRIDE_WORDS,
     PREFIX_WORKGROUP_SIZE
 } from './clusteredLayout';
@@ -17,7 +18,7 @@ export function computePass(shader: ComputeShader): ComputeRenderPass {
     return new ComputeRenderPass(new ComputeKernel({ label: shader.label, shader }), shader.label);
 }
 
-const FRAME_WGSL = `
+export const FRAME_WGSL = `
 struct FrameData {
     currentViewProjection: mat4x4<f32>,
     previousViewProjection: mat4x4<f32>,
@@ -55,6 +56,12 @@ fn objectPreviousModel(object: ObjectRecord) -> mat4x4<f32> {
 fn maximumScale(model: mat4x4<f32>) -> f32 {
     return max(length(model[0].xyz), max(length(model[1].xyz), length(model[2].xyz)));
 }
+fn objectScale(object: ObjectRecord, model: mat4x4<f32>) -> f32 {
+    if ((object.metadata.z & ${String(OBJECT_MESHLET_FLAG)}u) == 0u) { return maximumScale(model); }
+    let a=abs(model[0].xyz); let b=abs(model[1].xyz); let c=abs(model[2].xyz);
+    let norm1=max(a.x+a.y+a.z,max(b.x+b.y+b.z,c.x+c.y+c.z)); let rows=a+b+c;
+    return sqrt(norm1*max(rows.x,max(rows.y,rows.z)));
+}
 fn projectedRadiusPixels(
     projection: mat4x4<f32>, viewportSize: vec2<f32>, nearPlane: f32,
     viewDepth: f32, radius: f32
@@ -71,14 +78,17 @@ fn selectPhysicalBucket(bucket: BucketRecord, radiusPixels: f32) -> u32 {
 }
 `;
 
-export function gpuSceneCullShader(hiZLevelCount: number): ComputeShader {
+export function gpuSceneHiZSource(
+    hiZLevelCount: number,
+    firstTextureBinding = 6
+): Readonly<{ textureDeclarations: string; textureSample: string }> {
     const withHiZ = hiZLevelCount > 0;
     const maxHiZOcclusionDiameter = 2 ** hiZLevelCount;
     const textureDeclarations = withHiZ
         ? Array.from(
               { length: hiZLevelCount },
               (_unused, index) =>
-                  `@group(0) @binding(${String(6 + index)}) var previousHiZ${String(index)}: texture_2d<f32>;`
+                  `@group(0) @binding(${String(firstTextureBinding + index)}) var previousHiZ${String(index)}: texture_2d<f32>;`
           ).join('\n')
         : '';
     const dimensionCases = Array.from(
@@ -172,6 +182,12 @@ fn occludedByPreviousHiZ(
 ) -> bool {
     return false;
 }`;
+    return { textureDeclarations, textureSample };
+}
+
+export function gpuSceneCullShader(hiZLevelCount: number): ComputeShader {
+    const withHiZ = hiZLevelCount > 0;
+    const { textureDeclarations, textureSample } = gpuSceneHiZSource(hiZLevelCount);
     return new ComputeShader({
         label: withHiZ
             ? 'GPU Scene previous Hi-Z occlusion, frustum, and LOD culling'
@@ -197,8 +213,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let localCenter = vec4<f32>(object.bounds.xyz, 1.0);
     let center = (model * localCenter).xyz;
     let previousCenter = (previousModel * localCenter).xyz;
-    let radius = object.bounds.w * maximumScale(model);
-    let previousRadius = object.bounds.w * maximumScale(previousModel);
+    let radius = object.bounds.w * objectScale(object, model);
+    let previousRadius = object.bounds.w * objectScale(object, previousModel);
     let viewCenter = frameData.view * vec4<f32>(center, 1.0);
     let viewDepth = -viewCenter.z;
     if ((objectFlags & ${String(OBJECT_FRUSTUM_CULLING_FLAG)}u) != 0u) {
@@ -302,7 +318,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let model = objectModel(object);
     let localCenter = vec4<f32>(object.bounds.xyz, 1.0);
     let center = (model * localCenter).xyz;
-    let radius = object.bounds.w * maximumScale(model);
+    let radius = object.bounds.w * objectScale(object, model);
     let clip = frameData.currentViewProjection * vec4<f32>(center, 1.0);
     let rowX = vec3<f32>(
         frameData.currentViewProjection[0].x,

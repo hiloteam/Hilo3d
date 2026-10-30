@@ -103,6 +103,27 @@ export {
 } from './geometry/MorphGeometry';
 export { default as PlaneGeometry, type PlaneGeometryParameters } from './geometry/PlaneGeometry';
 export {
+    default as MeshletGeometry,
+    type MeshletGeometryOptions,
+    type MeshletGeometryLimits
+} from './geometry/meshlet/MeshletGeometry';
+export { createMeshletFallbackGeometry } from './geometry/meshlet/MeshletFallbackGeometry';
+export {
+    snapshotMeshletAssetManifest,
+    validateMeshletGeometryPage,
+    encodeMeshletGeometryPage,
+    decodeMeshletGeometryPage,
+    meshletPageChecksum,
+    type MeshletAssetManifest,
+    type MeshletDescriptor,
+    type MeshletGeometryPage,
+    type MeshletGroupDescriptor,
+    type MeshletLODDescriptor,
+    type MeshletPageDescriptor,
+    type MeshletSphere,
+    type MeshletVector3
+} from './geometry/meshlet/MeshletAsset';
+export {
     default as SphereGeometry,
     type SphereGeometryParameters
 } from './geometry/SphereGeometry';

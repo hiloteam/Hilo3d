@@ -260,7 +260,8 @@ describe('render hot-path architecture', () => {
         expect(layout).toContain('const MAX_HIZ_LEVEL_COUNT = 13');
         expect(clustered).toContain('length: options.hiZLevelCount');
         expect(clustered).toContain('OBJECT_HIZ_STABLE_FLAG');
-        expect(clustered).toContain('const occlusionStable = transformStable && boundsStable');
+        const occlusionStable = /const occlusionStable\s*=\s*([^;]+);/u.exec(clustered)?.[1];
+        expect(occlusionStable).toBe('!streamedGeometryChanged && transformStable && boundsStable');
     });
 
     it('keeps clustered allocation empty-tile aware, deterministic, and directional-global', () => {
