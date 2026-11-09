@@ -7,6 +7,14 @@
 
 ### Features
 
+- Reuse submitted Render Graph schedules after exact structural validation and share compatible
+  transient textures with disjoint pass lifetimes on both backends. Keep callbacks, imports and
+  submission transactions frame-local; invalidate plans on descriptor/topology/device changes.
+- Expose estimated transient logical/peak/physical bytes and schedule hits in renderer timelines;
+  expose meshlet ray-snapshot copy/retention costs and virtual-shadow visibility-list bytes in
+  Clustered diagnostics. Add independent default/post-process/custom SRP capture and cross-commit
+  comparison commands; local diagnostic captures do not enroll performance baselines.
+
 - Add Studio **Publish website** and a self-contained static Player ZIP with per-scene camera and
   animation settings, relative resource URLs, the bundled project, local runtime/WASM resources and
   license notices. Player and Studio Play share scene loading, rendering and isolated scripts.

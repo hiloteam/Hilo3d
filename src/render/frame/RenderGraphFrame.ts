@@ -110,7 +110,11 @@ export class RenderGraphFrame {
                 timeline.setRecordDuration(performance.now() - recordStart);
             }
             const compileStart = timeline === undefined ? 0 : performance.now();
-            const compiled = this.#renderGraph.compile(graph, context.rhi.capabilities);
+            const compiled = this.#renderGraph.compile(
+                graph,
+                context.rhi.capabilities,
+                context.rhi
+            );
             if (timeline !== undefined) {
                 timeline.setCompileDuration(performance.now() - compileStart);
                 timeline.captureGraph(compiled);

@@ -9,6 +9,18 @@ export interface MeshletRayPageSource {
     getResidentPage(pageId: number): Readonly<MeshletGeometryPage> | null;
 }
 
+/** CPU extraction costs; includes completed CPU copies from frames later discarded by the GPU. */
+export interface MeshletRayGeometryDiagnostics {
+    /** Currently retained independent position/normal/UV snapshot bytes, excluding source pages. */
+    readonly snapshotBytes: number;
+    /** Cumulative bytes copied into successfully constructed CPU snapshots. */
+    readonly copiedBytes: number;
+    /** Number of completed CPU snapshot rebuilds; unchanged resident pages do not increment it. */
+    readonly rebuildCount: number;
+    /** Cumulative CPU extraction time, including Geometry construction, in milliseconds. */
+    readonly copyTimeMs: number;
+}
+
 /**
  * Camera-independent transport geometry from the finest resident complete page of every group.
  * The source pages remain weakly referenced; the retained independent triangle soup uses exactly
@@ -20,6 +32,19 @@ export class MeshletRayGeometry {
     readonly #candidatePages: (Readonly<MeshletGeometryPage> | null)[];
     #pageReferences: readonly WeakRef<Readonly<MeshletGeometryPage>>[] = [];
     #snapshot: Geometry | null = null;
+    #snapshotBytes = 0;
+    #copiedBytes = 0;
+    #rebuildCount = 0;
+    #copyTimeMs = 0;
+
+    readDiagnostics(): Readonly<MeshletRayGeometryDiagnostics> {
+        return Object.freeze({
+            snapshotBytes: this.#snapshotBytes,
+            copiedBytes: this.#copiedBytes,
+            rebuildCount: this.#rebuildCount,
+            copyTimeMs: this.#copyTimeMs
+        });
+    }
 
     constructor(readonly source: MeshletRayPageSource) {
         this.#candidatePages = new Array<Readonly<MeshletGeometryPage> | null>(
@@ -55,6 +80,7 @@ export class MeshletRayGeometry {
                     'DDGI resident meshlet geometry exceeds the scene triangle budget'
                 );
             if (unchanged && this.#snapshot !== null) return this.#snapshot;
+            const copyStart = performance.now();
             const vertices = new Float32Array(triangles * 3 * 8);
             let output = 0;
             for (const page of this.#candidatePages) {
@@ -89,6 +115,10 @@ export class MeshletRayGeometry {
                 return new WeakRef(page);
             });
             this.#snapshot = snapshot;
+            this.#snapshotBytes = vertices.byteLength;
+            this.#copiedBytes += vertices.byteLength;
+            this.#rebuildCount++;
+            this.#copyTimeMs += performance.now() - copyStart;
             return snapshot;
         } finally {
             this.#candidatePages.fill(null);
@@ -98,6 +128,7 @@ export class MeshletRayGeometry {
     /** Drop renderer-owned CPU extraction snapshots without mutating the original mesh or pages. */
     clear(): void {
         this.#snapshot = null;
+        this.#snapshotBytes = 0;
         if (this.#pageReferences.length !== 0) this.#pageReferences = [];
         this.#candidatePages.fill(null);
     }

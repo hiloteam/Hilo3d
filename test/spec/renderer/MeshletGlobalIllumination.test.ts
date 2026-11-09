@@ -322,6 +322,10 @@ describe('Meshlet offscreen dynamic global illumination', () => {
             const before = await view.factory.readDiagnostics();
             expect(before.dynamicGlobalIllumination?.sceneTriangleCount).toBe(28);
             expect(before.meshletGeometry?.residentPageCount).toBe(4);
+            expect(before.meshletRayGeometry?.snapshotBytes).toBeGreaterThan(0);
+            expect(before.meshletRayGeometry?.copiedBytes).toBeGreaterThanOrEqual(
+                before.meshletRayGeometry?.snapshotBytes ?? Infinity
+            );
             const shared = snapshots.at(-1);
             expect(shared).toBeDefined();
             expect(shared).not.toBe(view.emitter.fallback);

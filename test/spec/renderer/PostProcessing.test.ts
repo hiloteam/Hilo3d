@@ -468,7 +468,9 @@ describe('built-in post-processing', () => {
                     gpuDurationMs: durationMs
                 }
             ],
-            resources: []
+            resources: [],
+            memory: { logicalBytes: 0, peakLiveBytes: 0, physicalBytes: 0, aliasedTextures: 0 },
+            scheduleCacheHit: false
         });
 
         controller.recordRenderGraphTimeline(timeline(0, 'pending', null));

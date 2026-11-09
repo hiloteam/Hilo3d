@@ -721,3 +721,12 @@ binary copied from a development-only dependency. The upstream JS wrapper is not
 WASM files are colocated so consumer Vite builds emit local assets automatically. The root package
 consumer check includes this addon and renders/recoveries on both backends from installed tarballs.
 See [asset streaming](./ASSET_STREAMING.md) for budgets and remaining A0 work.
+
+## SRP performance diagnostics
+
+`npm run benchmark:srp:collect` records fixed default/post-process/custom shared-renderer workloads
+with real submissions and pixels. `npm run benchmark:srp:compare` checks complete same-workload
+captures across commits. See the independent [SRP protocol](../benchmarks/srp/README.md) for local
+diagnostic versus audited candidate modes, CPU allocation sampling, GPU timestamp boundaries and
+transient-memory estimates. These commands do not change or enroll the existing immutable RHI
+baseline.

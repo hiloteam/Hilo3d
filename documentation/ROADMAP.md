@@ -25,7 +25,7 @@ release and enrolled physical-performance evidence gates remain distinct from so
 | PERF-G0/L0         | Evidence pending                            | Enroll the existing 110k-object/256-light fixture; depends on current GPU Scene/Clustered.                                                                                                                                                                 | Fixed rig/browser/driver, raw CPU record/GPU pass/upload/resident-memory measurements, repeatability and reviewed budgets.                                                  |
 | PERF-S0            | Evidence pending                            | Stress stable and opt-in virtual shadows with fast camera motion and high caster churn; measure fair slice scheduling, conservative CPU caster culling and compact atlas packing.                                                                          | Same scene/quality, dirty/deferred/residency counters, recovery and comparable physical-GPU captures.                                                                       |
 | PERF-GI0           | Evidence pending                            | DDGI implementation and isolated candidate collector exist; baseline review is outstanding.                                                                                                                                                                | Clean committed workload, independent candidate review and accepted budgets; [protocol](../benchmarks/ddgi/README.md).                                                      |
-| PERF-SRP           | Evidence pending                            | Define and implement a dedicated default/custom SRP cross-commit protocol; proposed old `benchmark:srp:*` commands do not exist.                                                                                                                           | Versioned fixture, timing/allocation/command counts, reviewed immutable baseline; no legacy renderer restoration.                                                           |
+| PERF-SRP           | Evidence pending                            | Dedicated default/post-process/custom SRP capture and strict cross-commit comparison are implemented; independent candidate review and physical budgets remain.                                                                                            | Versioned fixture, timing/allocation/command counts, reviewed immutable baseline; no legacy renderer restoration.                                                           |
 | A0                 | Texture slice implemented; evidence pending | Optional addon implements KTX2/Basis workers, mip demand, bounded leases and upload/memory/in-flight budgets. [Contract](./ASSET_STREAMING.md). Independent geometry pages now have a bounded owner; compressed/range loading and physical budgets remain. | Cold start, cancellation, teleport, memory pressure and recovery with real compressed assets and physical-device budgets.                                                   |
 | M0                 | Bounded slice implemented; evidence pending | Versioned rigid group LOD pages, bounded geometry streaming, GPU cluster culling/material bins, finest-resident DDGI and coherent directional virtual-shadow LODs. [Contract](./MESHLET_GEOMETRY.md).                                                      | Functional combination acceptance is [recorded](./STRATA_SHOWCASE.md#validation); independent physical bandwidth/cull/memory evidence remains. No Nanite equivalence claim. |
 | S0-extension       | Extension                                   | Non-rigid/direct casters and local-light virtual pages after pressure evidence. Current opt-in path covers rigid GPU Scene directional clipmaps.                                                                                                           | Explicit compatibility policy, dynamic/deformed coverage and bounded residency, with shared stable atlas retained where required.                                           |
@@ -49,7 +49,7 @@ extensions can proceed independently when their content and budget are known. Se
 | [REFL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#refl0-local-reflection-probes)                     | P1                         | Implemented slice | Static box-projected cubemaps and explicit two-probe material blends; budgeted, atomic HDR dynamic captures on both backends. [Contract](./LOCAL_REFLECTIONS.md). | Room transitions, offscreen reflectors, roughness/mip behavior, no duplicate specular energy, atomic capture publication and device recovery.                |
 | [DECAL0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#decal0-pbr-decals)                                | P1                         | Implemented slice | [Projected opaque-surface decals](./PBR_DECALS.md), bounded atlas membership, layer/angle/distance filtering and base-color/normal/roughness changes.             | Consistent PBR/GTAO/SSR attributes, overlap ordering, moving receiver/projector history rejection and bounded pass/resource costs.                           |
 | [TRANS0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#trans0-transparency-quality)                      | P1                         | Implemented slice | [Explicit transparency classes](./TRANSPARENCY.md), portable weighted OIT for supported Basic/PBR meshes and instance quads, separate sorted refraction.          | Intersecting layers, dense particles, camera motion, temporal composition, explicit approximation limits and bounded memory/bandwidth.                       |
-| [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Not started       | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                     | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
+| [RG1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#rg1-graph-compilation-and-transient-memory)          | P1, measurement-driven     | Implemented slice | Reuse validated schedules for stable topology, reuse compatible transient textures with disjoint lifetimes, and expose peak resource budgets.                     | CPU compile/record and peak transient allocation comparison; topology/descriptor/resize/recovery invalidation, submission lifetime and rollback correctness. |
 | [MAT1](./MODERN_WEBGPU_RENDERING_ROADMAP.md#mat1-cloth-thin-surfaces-and-subsurface-scattering) | P2, content-driven         | Implemented slice | [Cloth sheen, thin diffuse transmission and portable profile SSS](./MAT1_SURFACES.md), with shared Forward/Clustered shading and explicit budgets.                | Shared semantic/texture-slot ABI, energy and thickness fixtures, supported glTF mapping, lighting/temporal consistency and quality budgets.                  |
 | [DEFORM0](./MODERN_WEBGPU_RENDERING_ROADMAP.md#deform0-reusable-gpu-deformation)                | P2, character-scale-driven | Not started       | Opt-in WebGPU compute skin/morph output reused by depth, shadow, motion and color passes.                                                                         | Vertex-path image parity, current/previous pose correctness, multi-camera and shadow reuse, recovery, memory bounds and measured multi-pass savings.         |
 
@@ -57,7 +57,7 @@ The GI0 asset/V0 atlas/DECAL0/TRANS0 appearance lane now needs combined regressi
 workload evidence before further scope expansion. REFL0 has a bounded implementation; broader
 capture visibility, finer temporal masks and enrolled physical-device performance evidence remain
 extensions. This is a recommended sequence, not an artificial dependency between independent
-features. RG1 starts with measured CPU/transient-memory pressure; DEFORM0 needs representative
+features. RG1 now has a measured bounded schedule/texture-reuse slice; DEFORM0 needs representative
 animated-character content. MAT1 now has source implementations and executable material/diffusion
 fixtures; physical performance enrollment remains separate. A0/M0 now has a bounded group-LOD and
 independent-page implementation; compressed pages, hierarchical cluster LOD and physical scaling
@@ -80,8 +80,10 @@ caches, idle-only transient lookup and graph-wide imported identities are implem
 CPU/fake-RHI regressions cover these paths; the real WebGL2/WebGPU import-integration, renderer
 architecture and RHI gates remain evidence pending because the review environment rejects local
 browser-server listening (`EPERM`). Run those gates on an enabled browser runner before release. The
-synthetic compiler timing comparison is local diagnostic evidence only. RG1 schedule caching,
-in-frame transient aliasing and peak-budget reporting remain unimplemented.
+synthetic compiler timing comparison is local diagnostic evidence only. RG1 follow-up on 2026-11-09
+implements submitted structural schedule caching, compatible in-frame transient texture reuse and
+estimated peak-budget reporting. The [SRP protocol](../benchmarks/srp/README.md) owns new
+capture/comparison commands; historical EPERM records above are not current-run results.
 
 SRP review, 2026-10-20: lifecycle/initialization ownership, feature callback completion,
 texture-view usage aggregation, persistent/history transactions and bind-group invalidation are
@@ -99,6 +101,17 @@ checks do not replace browser acceptance: complete affected WebGL2 groups, WebGP
 custom-shader compile/translation/pixel parity must run on a browser-enabled runner. The current
 environment rejects the Playwright web server with `listen EPERM`; no frame-rate improvement or
 visual-baseline approval is claimed. See [the catalog review](./EXAMPLE_CATALOG.md).
+
+## Render Graph reuse, 2026-11-09
+
+RG1 acceptance, 2026-11-09: bounded submitted schedule caching, compatible transient-texture reuse
+and memory/copy diagnostics passed the focused 300-test selection, architecture/RHI, real canvas,
+complete affected WebGL2 groups (123), complete software WebGPU (38), native STRATA (4), and
+static/API/package contracts. The
+[SRP validation record](../benchmarks/srp/README.md#local-validation-2026-11-09) separates measured
+local improvements and unchanged pixels from outstanding independent physical baseline enrollment.
+Default whole-frame CPU did not improve consistently; full `validate`, coverage and the full
+native-device matrix remain separate gates.
 
 ## Meshlet and geometry streaming, 2026-10-28
 

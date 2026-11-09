@@ -7,9 +7,9 @@ historical. For cross-engine priorities and evidence gates, use [the main roadma
 
 Implementation update: 2026-10-18. GI0 asset coverage, V0 shared-atlas shadows, DECAL0 and TRANS0
 have Unreleased source implementations and executable fixtures. MAT1 now also implements cloth, thin
-surfaces and bounded profile SSS; RG1 and DEFORM0 remain unstarted. The bounded M0
-group-LOD/geometry-page slice was added on 2026-10-28. Implementation does not close independent
-physical-performance or release evidence gates.
+surfaces and bounded profile SSS; RG1 now implements bounded schedule/texture reuse; DEFORM0 remains
+unstarted. The bounded M0 group-LOD/geometry-page slice was added on 2026-10-28. Implementation does
+not close independent physical-performance or release evidence gates.
 
 Current source also composes M0 with DDGI and directional virtual shadows, using the same staged
 resident pages and existing submission transactions. Current functional checks are recorded in the
@@ -135,7 +135,7 @@ compute path-tracing example is not a real-time dynamic GI performance result.
 | REFL0   | P1                         | Implemented slice | Existing PBR environment sampling, SSR response/baseline composition, graph subresource views and resource recipes.            |
 | DECAL0  | P1                         | Implemented slice | Shared PBR/attribute ABI, eight atlas-backed world projectors, deterministic overlap and temporal rejection.                   |
 | TRANS0  | P1                         | Implemented slice | Explicit composition classes, bounded portable weighted OIT and separate sorted refraction/temporal composition.               |
-| RG1     | P1, measurement-driven     | Not started       | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
+| RG1     | P1, measurement-driven     | Implemented slice | F0 graph validation/lifetime model and existing CPU/GPU diagnostics; PERF-SRP evidence must stay independently reviewable.     |
 | MAT1    | P2, content-driven         | Implemented slice | Material Definition/Instance, semantic roles and shared BRDF/texture slots; additional passes only for a selected SSS profile. |
 | DEFORM0 | P2, character-scale-driven | Not started       | Compute/storage/vertex graph accesses, shared skin/morph inputs and D0 current/previous transform contracts.                   |
 
@@ -212,6 +212,14 @@ high-opacity surfaces and camera motion. Include a sorted/reference result, docu
 error, no double composition and correct resize/recovery/history rejection.
 
 ### RG1: graph compilation and transient memory
+
+**Implemented slice, 2026-11-09.** Exact structural matching reuses successfully submitted schedules
+in a bounded four-entry cache. Current-frame callbacks/imports/parameters are rebound. Compatible
+transient textures with disjoint lifetimes share physical allocations; buffers, imports,
+extracted/history and in-flight ownership keep their existing boundaries. Timelines expose estimated
+logical, peak-live and physical bytes. The independent [SRP protocol](../benchmarks/srp/README.md)
+measures default, HDR post-process and custom workloads; physical baseline enrollment remains
+pending.
 
 **Scope.** Measure graph compile/record time and peak transient allocations first. Reuse validated
 execution schedules only while their topology and relevant descriptors remain compatible. Reuse

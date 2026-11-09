@@ -1,6 +1,7 @@
 import type { RHICapabilities, RHIDevice } from '../rhi/core';
 import { RenderGraphBuilder, RenderGraphBuilderStorage } from './RenderGraphBuilder';
 import { RenderGraphCompiler, type CompiledRenderGraph } from './RenderGraphCompiler';
+import { RenderGraphScheduleCache } from './RenderGraphScheduleCache';
 import {
     RenderGraphExecutor,
     type RGExecutionOptions,
@@ -10,6 +11,7 @@ import {
 /** Small owner facade for one build/compile/execute graph pipeline. */
 export class RenderGraph {
     readonly #compiler = new RenderGraphCompiler();
+    readonly #scheduleCache = new RenderGraphScheduleCache();
     readonly #executor = new RenderGraphExecutor();
     readonly #builderStorages: RenderGraphBuilderStorage[] = [];
     readonly #availableBuilderStorages: RenderGraphBuilderStorage[] = [];
@@ -70,15 +72,24 @@ export class RenderGraph {
     }
 
     destroy(): void {
+        this.#scheduleCache.destroy();
         this.#executor.destroy();
     }
 
-    compile(builder: RenderGraphBuilder, capabilities: RHICapabilities): CompiledRenderGraph {
+    compile(
+        builder: RenderGraphBuilder,
+        capabilities: RHICapabilities,
+        device?: RHIDevice
+    ): CompiledRenderGraph {
         let finished = false;
         try {
             const snapshot = builder.finish();
             finished = true;
-            return this.#compiler.compile(snapshot, capabilities);
+            const cached = this.#scheduleCache.begin(snapshot, capabilities, device);
+            if (cached !== null) return cached;
+            const compiled = this.#compiler.compile(snapshot, capabilities);
+            this.#scheduleCache.stage(compiled, snapshot);
+            return compiled;
         } finally {
             if (finished) builder.recycleAfterCompile();
         }
@@ -89,7 +100,9 @@ export class RenderGraph {
         device: RHIDevice,
         options?: RGExecutionOptions
     ): RGExecutionResult {
-        return this.#executor.execute(graph, device, options);
+        const result = this.#executor.execute(graph, device, options);
+        this.#scheduleCache.commit(graph, device);
+        return result;
     }
 }
 

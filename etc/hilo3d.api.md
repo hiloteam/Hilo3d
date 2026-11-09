@@ -848,6 +848,7 @@ export interface ClusteredForwardPlusDiagnostics {
     readonly materialVariantBudgetExceededCount: number;
     readonly materialVariantWarmupTimeMs: number;
     readonly meshletGeometry: Readonly<MeshletGeometryDiagnostics> | null;
+    readonly meshletRayGeometry: Readonly<MeshletRayGeometryDiagnostics> | null;
     readonly objectCount: number;
     readonly occludedObjectCount: number;
     readonly renderScale: number;
@@ -5100,6 +5101,7 @@ export interface MeshletGeometryDiagnostics {
     readonly residentPageCount: number;
     // (undocumented)
     readonly uploadedBytes: number;
+    readonly virtualShadowVisibleBytes: number;
     // (undocumented)
     readonly visibleMeshletCount: number;
 }
@@ -5165,6 +5167,14 @@ export interface MeshletPageDescriptor {
     readonly meshletCount: number;
     // (undocumented)
     readonly vertexCount: number;
+}
+
+// @public
+export interface MeshletRayGeometryDiagnostics {
+    readonly copiedBytes: number;
+    readonly copyTimeMs: number;
+    readonly rebuildCount: number;
+    readonly snapshotBytes: number;
 }
 
 // @public
@@ -6768,6 +6778,14 @@ export interface RenderGraphFramePlan {
 export type RenderGraphGPUTimelineStatus = 'unavailable' | 'pending' | 'ready' | 'failed' | 'saturated';
 
 // @public
+export interface RenderGraphMemorySnapshot {
+    readonly aliasedTextures: number;
+    readonly logicalBytes: number;
+    readonly peakLiveBytes: number;
+    readonly physicalBytes: number;
+}
+
+// @public
 export type RenderGraphPassHandle = number & {
     readonly [renderGraphPassHandleBrand]: true;
 };
@@ -6817,10 +6835,12 @@ export interface RenderGraphTimelineSnapshot {
     readonly executeDurationMs: number;
     readonly frameIndex: number;
     readonly gpuStatus: RenderGraphGPUTimelineStatus;
+    readonly memory: Readonly<RenderGraphMemorySnapshot>;
     readonly passes: readonly RenderGraphPassTimelineSnapshot[];
     readonly prepareDurationMs: number;
     readonly recordDurationMs: number;
     readonly resources: readonly RenderGraphResourceLifetimeSnapshot[];
+    readonly scheduleCacheHit: boolean;
 }
 
 // @public

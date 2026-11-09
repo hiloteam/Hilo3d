@@ -19,6 +19,11 @@ import {
 } from '../rhi/core/RHIValidation';
 import type { RGPassNode, RenderGraphBuildSnapshot } from './RenderGraphBuilder';
 import { RenderGraphPassScheduler } from './RenderGraphPassScheduler';
+import {
+    planTransientResources,
+    type RenderGraphMemorySnapshot,
+    type RenderGraphTransientPlan
+} from './RenderGraphTransientPlan';
 import type {
     RGBufferAccessDeclaration,
     RGBufferHandle,
@@ -104,16 +109,23 @@ export interface CompiledRGPass {
 /** Pure compile result. Constructing this object performs no RHI resource or command operation. */
 export class CompiledRenderGraph {
     readonly resourceByHandle: ReadonlyMap<RGResourceHandle, CompiledRGResource>;
+    readonly memory: Readonly<RenderGraphMemorySnapshot>;
 
     /** @internal */
     constructor(
         readonly generation: number,
         readonly resources: readonly CompiledRGResource[],
-        readonly passes: readonly CompiledRGPass[]
+        readonly passes: readonly CompiledRGPass[],
+        readonly transientPlan: Readonly<RenderGraphTransientPlan> = planTransientResources(
+            resources,
+            passes.length
+        ),
+        readonly scheduleCacheHit = false
     ) {
         const resourceByHandle = new Map<RGResourceHandle, CompiledRGResource>();
         for (const resource of resources) resourceByHandle.set(resource.handle, resource);
         this.resourceByHandle = resourceByHandle;
+        this.memory = transientPlan.memory;
         Object.freeze(this.resources);
         Object.freeze(this.passes);
         Object.freeze(this);

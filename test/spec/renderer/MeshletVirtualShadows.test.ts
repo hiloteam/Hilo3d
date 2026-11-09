@@ -395,6 +395,9 @@ describe('Meshlet virtual shadow pages', () => {
             view.meshlets.setPageData(COARSE_ID, view.coarse);
             const coarse = await view.capture(4);
             const runtime = currentRuntime(record.mock.contexts);
+            expect((await runtime.readDiagnostics()).virtualShadowVisibleBytes).toBe(
+                runtime.virtualShadows?.visible.byteLength
+            );
             await verifyResidentPages(runtime, 1);
             expect(
                 (await view.factory.readDiagnostics()).virtualShadows?.renderedPageCount

@@ -92,6 +92,7 @@ interface PreparedRGResource {
     owned: boolean;
     allocated: boolean;
     poolEntry: PooledRGResource | null;
+    sharedAllocation: boolean;
 }
 
 const EMPTY_RESOURCE_LOOKUP_KEYS = new Float64Array(0);
@@ -221,7 +222,8 @@ class RenderGraphExecutorWorkspace {
                 buffer: null,
                 owned: false,
                 allocated: false,
-                poolEntry: null
+                poolEntry: null,
+                sharedAllocation: false
             };
             this.#resourceStorage.push(prepared);
             this.growthCount++;
@@ -235,6 +237,7 @@ class RenderGraphExecutorWorkspace {
             prepared.owned = false;
             prepared.allocated = false;
             prepared.poolEntry = null;
+            prepared.sharedAllocation = false;
         }
         this.resources.push(prepared);
         if (this.preparedByHandle.set(resource.handle, prepared)) this.growthCount++;
@@ -273,6 +276,7 @@ class RenderGraphExecutorWorkspace {
         this.#settlementPool = null;
         this.#settlementRelease = null;
         for (const resource of this.resources) {
+            if (resource.sharedAllocation) continue;
             if (!resource.owned) {
                 resource.textureView?.destroy();
             } else if (resource.extracted) {
@@ -463,6 +467,7 @@ function discardPreparedResource(
     pool: TransientResourcePool,
     includeExtracted: boolean
 ): void {
+    if (resource.sharedAllocation) return;
     if (!resource.owned) {
         resource.textureView?.destroy();
         return;
@@ -496,6 +501,7 @@ function releaseBeforeFrame(
     pool: TransientResourcePool
 ): void {
     for (const resource of resources) {
+        if (resource.sharedAllocation) continue;
         if (resource.poolEntry) pool.release(resource.poolEntry);
         else discardPreparedResource(resource, pool, true);
     }
@@ -569,8 +575,22 @@ export class RenderGraphExecutor {
         const preparedList = workspace.resources;
         const preparedByHandle = workspace.preparedByHandle;
         try {
-            for (const resource of graph.resources) {
+            for (let index = 0; index < graph.resources.length; index++) {
+                const resource = graph.resources[index];
+                if (resource === undefined) throw new Error('Missing compiled graph resource');
                 const prepared = workspace.acquire(resource);
+                const physicalIndex = graph.transientPlan.textureSlots[index];
+                if (physicalIndex !== undefined && physicalIndex !== index) {
+                    const physical = graph.resources[physicalIndex];
+                    const owner =
+                        physical === undefined ? undefined : preparedByHandle.get(physical.handle);
+                    if (resource.kind !== 'texture' || !owner?.texture || !owner.textureView)
+                        throw new Error('Transient texture owner was not prepared');
+                    prepared.sharedAllocation = true;
+                    prepared.texture = owner.texture;
+                    prepared.textureView = owner.textureView;
+                    continue;
+                }
                 if (resource.kind === 'texture-view') {
                     const parent = preparedByHandle.get(resource.texture);
                     if (!parent?.texture) {
