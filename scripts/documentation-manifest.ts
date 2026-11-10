@@ -9,6 +9,7 @@ export const documentationEntryFiles = [
     'CHANGELOG.md',
     'AGENTS.md',
     '.github/CONTRIBUTING.md',
+    'benchmarks/srp/README.md',
     'llms.txt',
     'etc/hilo3d.api.md'
 ] as const;
