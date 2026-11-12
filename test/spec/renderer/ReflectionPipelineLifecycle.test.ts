@@ -253,7 +253,9 @@ describe('Reflection pipeline lifecycle', () => {
             executeDurationMs: 0,
             gpuStatus: 'unavailable',
             passes: [],
-            resources: []
+            resources: [],
+            memory: { logicalBytes: 0, peakLiveBytes: 0, physicalBytes: 0, aliasedTextures: 0 },
+            scheduleCacheHit: false
         };
         await expect(pipeline.recordRenderGraphTimeline?.(snapshot)).rejects.toThrow(failure);
     });

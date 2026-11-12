@@ -62,6 +62,8 @@ export interface StrataDiagnostics {
     readonly cpuBytes: number;
     readonly residentBytes: number;
     readonly allocatedBytes: number;
+    readonly virtualShadowVisibleBytes: number;
+    readonly meshletRayGeometry: Readonly<H.MeshletRayGeometryDiagnostics> | null;
     readonly visibleMeshletCount: number;
     readonly deferredPageCount: number;
     readonly uploadedBytes: number;
@@ -109,6 +111,7 @@ let coarseTriangles = 0;
 let demandDirty = true;
 let lastCamera = '';
 let gpu: Readonly<H.MeshletGeometryDiagnostics> | null = null;
+let rayGeometry: Readonly<H.MeshletRayGeometryDiagnostics> | null = null;
 let gi: Readonly<H.DynamicGlobalIlluminationDiagnostics> | null = null;
 let shadowPages: Readonly<H.VirtualShadowMapDiagnostics> | null = null;
 let diagnosticsWork: Promise<void> | undefined;
@@ -327,6 +330,8 @@ function diagnostics(): StrataDiagnostics {
         cpuBytes: streamed.reduce((sum, asset) => sum + asset.manager.getDiagnostics().cpuBytes, 0),
         residentBytes: gpu?.residentBytes ?? 0,
         allocatedBytes: gpu?.allocatedBytes ?? 0,
+        virtualShadowVisibleBytes: gpu?.virtualShadowVisibleBytes ?? 0,
+        meshletRayGeometry: rayGeometry,
         visibleMeshletCount: gpu?.visibleMeshletCount ?? 0,
         deferredPageCount: gpu?.deferredPageCount ?? 0,
         uploadedBytes: gpu?.uploadedBytes ?? 0,
@@ -476,6 +481,7 @@ function sampleDiagnostics(): void {
         .then(value => {
             if (!disposed) {
                 gpu = value.meshletGeometry;
+                rayGeometry = value.meshletRayGeometry;
                 gi = value.dynamicGlobalIllumination;
                 shadowPages = value.virtualShadows;
                 updateStatus();

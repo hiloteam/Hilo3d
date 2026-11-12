@@ -149,6 +149,32 @@ function fixture(): {
 }
 
 describe('camera-independent resident meshlet ray geometry', () => {
+    it('accounts for CPU copy costs separately from retained snapshots and stable cache hits', () => {
+        const { source, helper, fallback } = fixture();
+        source.stage(1, 3);
+        helper.resolve(fallback, 100);
+        const first = helper.readDiagnostics();
+        expect(first.snapshotBytes).toBe(192);
+        expect(first.copiedBytes).toBe(192);
+        expect(first.rebuildCount).toBe(1);
+        expect(first.copyTimeMs).toBeGreaterThanOrEqual(0);
+        helper.resolve(fallback, 100);
+        expect(helper.readDiagnostics()).toEqual(first);
+        source.stage(0, 2);
+        helper.resolve(fallback, 100);
+        expect(helper.readDiagnostics()).toMatchObject({
+            snapshotBytes: 384,
+            copiedBytes: 576,
+            rebuildCount: 2
+        });
+        helper.clear();
+        expect(helper.readDiagnostics()).toMatchObject({
+            snapshotBytes: 0,
+            copiedBytes: 576,
+            rebuildCount: 2
+        });
+    });
+
     it('keeps a whole-object fallback until every group is resident, then retains stable finest-page identity', () => {
         const { source, helper, fallback } = fixture();
         // Fine CPU pages exist, but availability alone is not a submitted/staged GPU page table.

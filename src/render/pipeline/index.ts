@@ -6,7 +6,8 @@ export {
     type ClusteredMaterialVariantManifestEntry,
     type GPUSceneBucket,
     type GPUSceneLOD,
-    type MeshletGeometryDiagnostics
+    type MeshletGeometryDiagnostics,
+    type MeshletRayGeometryDiagnostics
 } from './ClusteredForwardPlus';
 export type { VirtualShadowMapDiagnostics, VirtualShadowMapOptions } from './VirtualShadowMaps';
 export {
@@ -49,3 +50,5 @@ export type {
     DynamicGlobalIlluminationOptions,
     DynamicGlobalIlluminationDiagnostics
 } from '../gi/DynamicGlobalIllumination';
+
+export type { RenderGraphMemorySnapshot } from '../graph/RenderGraphTransientPlan';

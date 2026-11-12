@@ -1,4 +1,5 @@
 import type { CompiledRenderGraph } from './RenderGraphCompiler';
+import type { RenderGraphMemorySnapshot } from './RenderGraphTransientPlan';
 
 /** Native command-pass categories that can receive GPU timestamps. */
 export type RGPassTimestampKind = 'render' | 'compute';
@@ -51,6 +52,10 @@ export interface RenderGraphTimelineSnapshot {
     readonly passes: readonly RenderGraphPassTimelineSnapshot[];
     /** Compiled logical-resource lifetime snapshots. */
     readonly resources: readonly RenderGraphResourceLifetimeSnapshot[];
+    /** Estimated transient working set; excludes imported, history and extracted resources. */
+    readonly memory: Readonly<RenderGraphMemorySnapshot>;
+    /** True when an exactly matching, previously submitted structural schedule was reused. */
+    readonly scheduleCacheHit: boolean;
 }
 
 /** Optional diagnostics consumer; absence is the Render Graph profiling fast path. */
@@ -69,12 +74,19 @@ interface MutablePassTimeline {
 export class RenderGraphTimelineRecorder {
     readonly #passes: MutablePassTimeline[] = [];
     #resources: readonly RenderGraphResourceLifetimeSnapshot[] = Object.freeze([]);
+    #memory: Readonly<RenderGraphMemorySnapshot> = Object.freeze({
+        logicalBytes: 0,
+        peakLiveBytes: 0,
+        physicalBytes: 0,
+        aliasedTextures: 0
+    });
     #timestampPassCount = 0;
     #recordDurationMs = 0;
     #compileDurationMs = 0;
     #prepareDurationMs = 0;
     #executeDurationMs = 0;
     #gpuStatus: RenderGraphGPUTimelineStatus = 'unavailable';
+    #scheduleCacheHit = false;
     #asyncErrorReporter: ((error: unknown) => void) | undefined;
 
     constructor(
@@ -117,6 +129,8 @@ export class RenderGraphTimelineRecorder {
     }
 
     captureGraph(graph: CompiledRenderGraph): void {
+        this.#memory = graph.memory;
+        this.#scheduleCacheHit = graph.scheduleCacheHit;
         this.#passes.length = 0;
         this.#timestampPassCount = 0;
         for (const pass of graph.passes) {
@@ -196,7 +210,9 @@ export class RenderGraphTimelineRecorder {
                 executeDurationMs: this.#executeDurationMs,
                 gpuStatus: this.#gpuStatus,
                 passes: Object.freeze(passes),
-                resources: this.#resources
+                resources: this.#resources,
+                memory: this.#memory,
+                scheduleCacheHit: this.#scheduleCacheHit
             })
         );
         if (notification !== undefined) {

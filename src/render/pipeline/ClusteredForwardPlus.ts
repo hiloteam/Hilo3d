@@ -29,7 +29,11 @@ import {
     RAY_TRIANGLE_FLOATS,
     type RayTracingGeometryResolver
 } from '../gi/RayTracingScene';
-import { MeshletRayGeometry } from '../gi/scene/MeshletRayGeometry';
+import {
+    MeshletRayGeometry,
+    type MeshletRayGeometryDiagnostics
+} from '../gi/scene/MeshletRayGeometry';
+export type { MeshletRayGeometryDiagnostics };
 import { RAY_MATERIAL_BYTES } from '../gi/scene/SceneMaterials';
 import type Camera from '../../camera/Camera';
 import {
@@ -429,6 +433,8 @@ export interface ClusteredForwardPlusPipelineOptions {
 export interface ClusteredForwardPlusDiagnostics {
     /** Submitted residency, bounded allocation and on-demand GPU cluster counters, or null. */
     readonly meshletGeometry: Readonly<MeshletGeometryDiagnostics> | null;
+    /** Current CPU snapshot retention and cumulative extraction costs; includes discarded-frame CPU work. */
+    readonly meshletRayGeometry: Readonly<MeshletRayGeometryDiagnostics> | null;
     /** Submitted probe work, scene coverage, and bounded resource use, or null when disabled. */
     readonly dynamicGlobalIllumination: Readonly<DynamicGlobalIlluminationDiagnostics> | null;
     /** Ordinary registered meshes currently occupying stable GPU Scene slots. */
@@ -2961,6 +2967,8 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                 ? null
                 : meshletDiagnostics.reduce((sum, value) => ({
                       allocatedBytes: sum.allocatedBytes + value.allocatedBytes,
+                      virtualShadowVisibleBytes:
+                          sum.virtualShadowVisibleBytes + value.virtualShadowVisibleBytes,
                       maxResidentBytes: sum.maxResidentBytes + value.maxResidentBytes,
                       residentBytes: sum.residentBytes + value.residentBytes,
                       residentPageCount: sum.residentPageCount + value.residentPageCount,
@@ -2970,6 +2978,21 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
                       visibleMeshletCount: sum.visibleMeshletCount + value.visibleMeshletCount,
                       overflowObjectCount: sum.overflowObjectCount + value.overflowObjectCount
                   }));
+        const meshletRayGeometry =
+            this.#meshletRayGeometry.size === 0
+                ? null
+                : [...this.#meshletRayGeometry.values()].reduce(
+                      (sum, geometry) => {
+                          const value = geometry.readDiagnostics();
+                          return {
+                              snapshotBytes: sum.snapshotBytes + value.snapshotBytes,
+                              copiedBytes: sum.copiedBytes + value.copiedBytes,
+                              rebuildCount: sum.rebuildCount + value.rebuildCount,
+                              copyTimeMs: sum.copyTimeMs + value.copyTimeMs
+                          };
+                      },
+                      { snapshotBytes: 0, copiedBytes: 0, rebuildCount: 0, copyTimeMs: 0 }
+                  );
         const cull = await this.#cullStats.read();
         const cluster = await this.#clusterStats.read();
         const exposure =
@@ -3009,6 +3032,7 @@ class ClusteredForwardPlusPipeline implements RenderPipeline {
         return Object.freeze({
             dynamicGlobalIllumination: this.#dynamicGlobalIllumination?.getDiagnostics() ?? null,
             meshletGeometry,
+            meshletRayGeometry,
             objectCount: this.#objectCount,
             fallbackObjectCount: this.#fallbackObjectCount,
             clusteredTransparentObjectCount: this.#clusteredTransparentObjectCount,

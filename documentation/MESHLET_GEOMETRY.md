@@ -217,3 +217,12 @@ native/tooling boundary and report locations. Focused source fixtures include
 `MeshletRayGeometry.test.ts`, `MeshletGlobalIllumination.test.ts` and
 `MeshletVirtualShadows.test.ts`. These functional results do not complete the full `validate`
 aggregate, coverage, the complete native-device matrix or physical-performance enrollment.
+
+## CPU extraction and shadow pressure diagnostics
+
+`ClusteredForwardPlusDiagnostics.meshletRayGeometry` separates retained CPU snapshot bytes from
+cumulative copied bytes, rebuilds and extraction time. Completed CPU copies count even if the later
+GPU frame is discarded; stable page sets add no work. `meshletGeometry.virtualShadowVisibleBytes`
+identifies the per-physical-page visibility-table subset of allocated GPU buffer capacity. These
+values are observations, not bandwidth or frame-time budgets. See the
+[SRP measurement protocol](../benchmarks/srp/README.md).

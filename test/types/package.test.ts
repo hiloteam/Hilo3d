@@ -87,6 +87,9 @@ import {
     type RenderGraphTextureAccessHandle,
     type RenderGraphTextureHandle,
     type RenderGraphTimelineSnapshot,
+    type RenderGraphMemorySnapshot,
+    type MeshletRayGeometryDiagnostics,
+    type ClusteredForwardPlusDiagnostics,
     type RenderGraphTextureViewHandle,
     type RenderPipelineHistoryTextureResources,
     type RenderPipelineTextureFormat,
@@ -738,6 +741,16 @@ const dynamicResolutionOptions = {
 } satisfies DynamicResolutionOptions;
 const dynamicTemporalAA = new TemporalAA({ dynamicResolution: dynamicResolutionOptions });
 const timelineSnapshot: RenderGraphTimelineSnapshot | null = null;
+declare const measuredTimeline: RenderGraphTimelineSnapshot;
+declare const measuredClustered: ClusteredForwardPlusDiagnostics;
+const transientBudget: Readonly<RenderGraphMemorySnapshot> = measuredTimeline.memory;
+const copiedGeometry: Readonly<MeshletRayGeometryDiagnostics> | null =
+    measuredClustered.meshletRayGeometry;
+const estimatedBytes: number = transientBudget.physicalBytes;
+const reusedSchedule: boolean = measuredTimeline.scheduleCacheHit;
+void copiedGeometry;
+void estimatedBytes;
+void reusedSchedule;
 const outputColorPolicy: Readonly<RenderPipelineOutputColorAttachment> =
     pipelineOutput.colorAttachment(0);
 const outputDepthStencilPolicy: Readonly<RenderPipelineOutputDepthStencilAttachment> | null =

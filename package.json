@@ -105,6 +105,8 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run publish:check",
     "benchmark:ddgi:collect": "jiti scripts/performance/collect-ddgi-evidence.ts",
+    "benchmark:srp:collect": "jiti scripts/performance/collect-srp-benchmark.ts",
+    "benchmark:srp:compare": "jiti scripts/performance/compare-srp-benchmark.ts",
     "docs:check:sources": "jiti scripts/check-documentation.ts",
     "docs:sync": "jiti scripts/check-documentation.ts --write",
     "test:addon-live2d-package": "publint addon-live2d && attw --pack addon-live2d --profile esm-only && npm pack --dry-run --ignore-scripts --workspace=@hilo/addon-live2d",

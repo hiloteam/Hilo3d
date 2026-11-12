@@ -33,6 +33,8 @@ interface ResidentPage {
 /** CPU residency counters and GPU visibility counters, observed only after valid submissions. */
 export interface MeshletGeometryDiagnostics {
     readonly allocatedBytes: number;
+    /** Subset of allocatedBytes reserved for all physical virtual-shadow page visibility lists. */
+    readonly virtualShadowVisibleBytes: number;
     readonly maxResidentBytes: number;
     readonly residentBytes: number;
     readonly residentPageCount: number;
@@ -653,6 +655,7 @@ export class MeshletRuntime {
         );
         return {
             allocatedBytes: this.#owned.reduce((sum, buffer) => sum + buffer.byteLength, 0),
+            virtualShadowVisibleBytes: this.virtualShadows?.visible.byteLength ?? 0,
             maxResidentBytes: this.arena.byteLength,
             residentBytes: [...this.#committed.values()].reduce((sum, page) => sum + page.bytes, 0),
             residentPageCount: this.#committed.size,

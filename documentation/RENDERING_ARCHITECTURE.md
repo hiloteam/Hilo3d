@@ -740,8 +740,8 @@ Compiler 是纯 CPU 阶段，主要完成：
 
 这意味着大量错误会在创建临时 GPU 资源和 `queue.beginFrame()`
 之前失败，两个后端获得相同的错误边界。图仍先验证全部 Pass 的依赖环，再做存活分析；调度工作区复用不改变历史 compiled
-graph 的独立性。当前仍逐帧构建并编译不可变图结果，不把调度优化表述为 compiled-graph
-cache 或整帧零分配。
+graph 的独立性。每帧仍构建独立图结果。RG1 对完整资源描述、初始化状态、访问、附件、输出和依赖做精确结构比较，命中时复用已验证调度、内容状态和生命周期；回调、参数、handle 与 import
+provider 始终重新绑定到当前帧。
 
 编译内部为 parent
 texture 的 mip/layer/aspect 分配连续数字 hazard 区间，view 选择同一区间中的子集；Buffer 使用独立索引。writer、preferred
@@ -749,6 +749,10 @@ writer 和内容初始化状态以高水位 TypedArray 保存，避免逐子资�
 graph 不引用复用工作区。
 
 相关代码：[`RenderGraphCompiler.ts`](../src/render/graph/RenderGraphCompiler.ts)、[`RenderGraphPassScheduler.ts`](../src/render/graph/RenderGraphPassScheduler.ts)、[`RenderGraphValidation.ts`](../src/render/graph/RenderGraphValidation.ts)。
+
+结构缓存最多保留四个已提交计划，超过 2048 个资源/Pass 或 65536 个签名标量的图继续完整编译。设备 identity/generation 或 capability 快照变化会清空缓存；resize、format、sample
+count、subresource、load/store、读写或依赖变化使对应计划失效。新计划只有有效 submission 后才发布，不保留用户闭包、参数或原生资源。完整校验仍发生在首次编译或结构变化时，命中帧仍在 RHI
+frame 前校验实际 import、upload 与 pass preparation。
 
 ### 2.3 执行：资源准备、Pass 执行与提交围栏
 
@@ -765,8 +769,10 @@ Executor 的顺序是：
 7. 验证 staged source/ownership，然后由 `graphicsQueue.endFrame()` 得到 `RHISubmission`。
 8. 等提交完成后再把瞬态资源归还池、释放 Workspace；提交失败则丢弃相关资源。
 
-当前实现已经具备生命周期分析和跨帧瞬态资源池，但池中资源会保持占用直到对应 Submission 完成；本文不把“根据
-`firstUse / lastUse` 在同一帧内做物理内存别名”列为当前已实现能力。
+RG1 将 descriptor 完全兼容且 `lastUse < firstUse` 的逻辑 transient
+texture 映射到同一物理纹理；view 的使用区间合入 parent，重叠区间不能共享。Imported、history、extracted 资源和 buffer 不参与同帧纹理复用。所有逻辑别名共享唯一 allocation
+owner，直到整个 Submission 完成才归还资源池；prepare/execute/submit 失败沿原有回滚路径清理一次。这是物理纹理复用，不是原生 heap
+aliasing。
 
 已完成提交的闲置资源按使用顺序淘汰，最多保留 128 项、估算 256 MiB，闲置超过 120 次 graph
 execution 也会淘汰。纹理估算包含 mip、layer、3D depth、压缩块和 MSAA；opaque
@@ -783,7 +789,9 @@ resource 或 provider 闭包。
 Canvas 注册 `RendererDiagnostics`，或活动 RenderPipeline 声明内部 timing consumer（例如
 `TemporalAA.dynamicResolution`）时，`RenderGraphFrame` 才创建帧级 timeline
 recorder。它记录 record、compile、prepare、execute 四个 CPU 区间、逐 Pass CPU 时间以及编译后的资源
-`firstUse / lastUse`。启用 `timestamp-query`
+`firstUse / lastUse`，以及结构缓存命中和 transient logical/peak-live/physical
+bytes。字节数按 descriptor 估算，不包含 imported/history/extracted、其他在途帧或 driver
+padding。测量方法见 [SRP protocol](../benchmarks/srp/README.md)。启用 `timestamp-query`
 的 WebGPU 设备还会为每个声明了原生 render/compute 类别的 Graph Pass 自动写入起止 timestamp，经
 `QUERY_RESOLVE -> COPY_DST|MAP_READ` 三槽 ring 异步回读；生产帧从不等待 map，槽位占满只把该帧标记为
 `saturated`。没有 diagnostics 且 pipeline 不消费 timing 时，不创建 QuerySet/resolve/readback 资源，也不在逐 draw 路径增加分支；dynamic-resolution
@@ -1140,9 +1148,9 @@ Renderer 的组合式 Pass，使未来加入新的图优化、调试可视化或
 - compute buffer 的 `minBindingSize` 由 WGSL store type 精确推导；runtime
   array 按标准要求替换为一个 element。调用方仍可声明更强下界，但低于 shader-derived
   minimum 会在创建任何 native pipeline 前拒绝。
-- RenderGraph 每帧重新 Build/Compile，依靠高水位存储复用降低成本；当前没有跨帧复用完整的 Compiled
-  Graph。
-- 已有 Pass 裁剪、资源生命周期区间和跨帧瞬态资源池，但没有宣称同帧物理内存别名复用。
+- RenderGraph 每帧重新 Build，并重新绑定帧内状态；精确匹配时复用已提交的结构调度。
+- 同帧复用仅覆盖完全兼容且生命周期不重叠的 transient texture；没有原生 heap aliasing、buffer
+  aliasing 或在途资源提前回收。
 - WebGL
   2 的立即执行与 WebGPU 的延迟提交无法在原生层完全相同，RHI 保证的是上层可观察合同和错误边界一致。
 - WebGPU Shader 路径依赖异步初始化 Naga Translator，因此显式 WebGPU 创建必须等待 `ready`。

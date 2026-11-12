@@ -4,6 +4,7 @@ import { PNG } from 'pngjs';
 import { snapshotMeshletAssetManifest } from '../../src/geometry/meshlet/MeshletAsset';
 import type {
     DynamicGlobalIlluminationDiagnostics,
+    MeshletRayGeometryDiagnostics,
     VirtualShadowMapDiagnostics
 } from '../../src/Hilo3d';
 import type { TestFrameControl } from '../../examples/shared/test-frame-control';
@@ -37,6 +38,8 @@ interface StrataDiagnostics {
     readonly cpuBytes: number;
     readonly residentBytes: number;
     readonly allocatedBytes: number;
+    readonly virtualShadowVisibleBytes: number;
+    readonly meshletRayGeometry: Readonly<MeshletRayGeometryDiagnostics> | null;
     readonly visibleMeshletCount: number;
     readonly deferredPageCount: number;
     readonly uploadedBytes: number;
@@ -373,6 +376,10 @@ test('STRATA streams finer geometry after a close camera view @webgpu', async ({
         expect(initial.visibleMeshletCount).toBeGreaterThan(0);
         expect(initial.residentBytes).toBeGreaterThan(0);
         expect(initial.residentBytes).toBeLessThanOrEqual(initial.allocatedBytes);
+        expect(initial.virtualShadowVisibleBytes).toBeGreaterThan(0);
+        expect(initial.virtualShadowVisibleBytes).toBeLessThan(initial.allocatedBytes);
+        expect(initial.meshletRayGeometry?.snapshotBytes).toBeGreaterThan(0);
+        expect(initial.meshletRayGeometry?.rebuildCount).toBeGreaterThan(0);
         const overview = await captureScene(page, testInfo, 'strata-overview');
 
         await page.locator('#streaming-toggle').uncheck();
@@ -400,6 +407,13 @@ test('STRATA streams finer geometry after a close camera view @webgpu', async ({
         expect(refined.uploadedBytes).toBeGreaterThan(initial.uploadedBytes);
         expect(refined.residentBytes).toBeLessThanOrEqual(refined.allocatedBytes);
         expect(refined.visibleMeshletCount).toBeGreaterThan(0);
+        expect(refined.virtualShadowVisibleBytes).toBe(initial.virtualShadowVisibleBytes);
+        expect(refined.meshletRayGeometry?.copiedBytes).toBeGreaterThan(
+            initial.meshletRayGeometry?.copiedBytes ?? Infinity
+        );
+        expect(refined.meshletRayGeometry?.copyTimeMs).toBeGreaterThanOrEqual(
+            initial.meshletRayGeometry?.copyTimeMs ?? Infinity
+        );
         const surface = await captureScene(page, testInfo, 'strata-surface');
         expect(changedPixelRatio(overview, surface)).toBeGreaterThan(0.03);
 
